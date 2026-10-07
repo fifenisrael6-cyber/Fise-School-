@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/services/gemini_service.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -28,6 +30,7 @@ class _LessonPageState extends State<LessonPage> {
   final ProgressService _progressService = ProgressService();
   final ResourceService _resourceService = ResourceService();
   final CourseOfflineService _offline = CourseOfflineService();
+  final GeminiService _geminiService = GeminiService();
 
   LessonProgress? _progress;
   List<CourseResource> _resources = const [];
@@ -35,6 +38,7 @@ class _LessonPageState extends State<LessonPage> {
   bool _loading = true;
   bool _loadingResource = false;
   bool _completing = false;
+  bool _aiLoading = false;
   String? _errorMessage;
 
   bool get isEnglish => widget.locale.languageCode == 'en';
@@ -203,6 +207,115 @@ class _LessonPageState extends State<LessonPage> {
     }
   }
 
+  Future<void> _askAiForLesson() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(isEnglish ? 'Ask AI for help' : 'Demander de l\'aide à l\'IA'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: controller,
+            minLines: 3,
+            maxLines: 6,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              hintText: isEnglish
+                  ? 'Explain this lesson simply, quiz me, or give me exercises.'
+                  : 'Explique-moi cette leçon simplement, donne-moi des questions ou un résumé.',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(isEnglish ? 'Cancel' : 'Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: Text(isEnglish ? 'Send' : 'Envoyer'),
+          ),
+        ],
+      ),
+    );
+
+    final userQuestion = (result ?? '').trim();
+    if (userQuestion.isEmpty) {
+      return;
+    }
+
+    setState(() => _aiLoading = true);
+
+    try {
+      final contextText = [
+        'Tu es l\'assistant IA pédagogique de Fise School.',
+        'Le profil de l\'élève : ${widget.profile.firstName} ${widget.profile.lastName} / rôle ${widget.profile.role}.',
+        'Classe : ${widget.profile.className ?? "inconnue"}.',
+        'Sous-système : ${widget.profile.subsystem ?? "inconnu"}.',
+        'Secteur : ${widget.profile.sector ?? "inconnu"}.',
+        'Niveau d\'examen : ${widget.profile.examLevel ?? "inconnu"}.',
+        'Cours : ${widget.course.labelFor(isEnglish ? 'en' : 'fr')}.',
+        'Leçon : $title.',
+        if (objectives != null) 'Objectifs : $objectives',
+        if (content != null) 'Contenu : $content',
+        if (examples != null) 'Exemples : $examples',
+        if (summary != null) 'Résumé : $summary',
+        'Aide l\'élève de façon claire, pédagogique, adaptée au niveau scolaire et en français ou anglais selon la langue du profil.',
+        'Ne réponds que sur la base du contenu fourni. Ne fabrique pas de contenus de cours.',
+      ].join('\n');
+
+      final answer = await _geminiService.ask(
+        message: userQuestion,
+        profile: widget.profile,
+        context: contextText,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(isEnglish ? 'AI answer' : 'Réponse IA'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: SelectableText(answer),
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(isEnglish ? 'Close' : 'Fermer'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isEnglish
+                ? 'Unable to contact the AI assistant.'
+                : 'Impossible de contacter l\'assistant IA.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _aiLoading = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     super.dispose();
@@ -224,15 +337,22 @@ class _LessonPageState extends State<LessonPage> {
         if (!mounted) {
           return;
         }
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
-          locale: widget.locale, userId: widget.profile.id, resource: resource, localPath: local.localPath,
-        )));
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OfflineResourceViewer(
+              locale: widget.locale,
+              userId: widget.profile.id,
+              resource: resource,
+              localPath: local.localPath,
+            ),
+          ),
+        );
       } else {
         if (resource.storagePath.isEmpty) {
           throw Exception();
         }
         final url = await _resourceService.createSignedUrl(resource.storagePath);
-        // Keep the existing online fallback only when no local copy exists.
         final uri = Uri.parse(url);
         if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
           throw Exception();
@@ -248,7 +368,7 @@ class _LessonPageState extends State<LessonPage> {
           content: Text(
             isEnglish
                 ? 'Unable to open this resource.'
-                : 'Impossible d’ouvrir cette ressource.',
+                : 'Impossible d\'ouvrir cette ressource.',
           ),
         ),
       );
@@ -730,6 +850,22 @@ class _LessonPageState extends State<LessonPage> {
           isEnglish ? 'Lesson' : 'Leçon',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            tooltip: isEnglish ? 'AI helper' : 'Aide IA',
+            onPressed: _aiLoading ? null : _askAiForLesson,
+            icon: _aiLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.auto_awesome_rounded),
+          ),
+        ],
       ),
       body: SafeArea(child: _buildBody()),
     );
