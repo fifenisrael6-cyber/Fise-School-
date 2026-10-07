@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/user_profile.dart';
+import 'admin_ai_page.dart';
 import 'admin_assignments_page.dart';
 import 'admin_courses_page.dart';
 import 'admin_grades_page.dart';
@@ -14,21 +16,30 @@ import 'school_classes_page.dart';
 class AdminDashboardPage extends StatelessWidget {
   final Locale locale;
   final Future<void> Function() onSignOut;
+  final UserProfile? profile;
 
   const AdminDashboardPage({
     super.key,
     required this.locale,
     required this.onSignOut,
+    this.profile,
   });
 
   bool get _isFrench => locale.languageCode == 'fr';
 
   @override
   Widget build(BuildContext context) {
+    final adminProfile = profile ?? _createDefaultAdminProfile();
+    
     final entries = <_AdminEntry>[
       _AdminEntry(
+        icon: Icons.auto_awesome_rounded,
+        title: _isFrench ? 'Assistant IA Admin' : 'Admin AI Assistant',
+        builder: (_) => AdminAiPage(locale: locale, profile: adminProfile),
+      ),
+      _AdminEntry(
         icon: Icons.school_rounded,
-        title: _isFrench ? 'Gestion de l\u2019école' : 'School management',
+        title: _isFrench ? 'Gestion de l\'école' : 'School management',
         builder: (_) => AdminSchoolPage(locale: locale),
       ),
       _AdminEntry(
@@ -78,7 +89,7 @@ class AdminDashboardPage extends StatelessWidget {
       ),
       _AdminEntry(
         icon: Icons.history_edu_rounded,
-        title: _isFrench ? 'Annales d\u2019examens' : 'Past exam papers',
+        title: _isFrench ? 'Annales d\'examens' : 'Past exam papers',
         builder: (_) => AdminPastPapersPage(locale: locale),
       ),
     ];
@@ -122,6 +133,21 @@ class AdminDashboardPage extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+
+  UserProfile _createDefaultAdminProfile() {
+    return UserProfile(
+      id: 'admin-ai-context',
+      firstName: 'Admin',
+      lastName: 'Fise School',
+      role: 'admin',
+      preferredLanguage: _isFrench ? 'fr' : 'en',
+      subsystem: 'francophone',
+      sector: 'general',
+      className: 'Administration',
+      examLevel: 'Administration',
+      exam: 'Fise School',
     );
   }
 }
