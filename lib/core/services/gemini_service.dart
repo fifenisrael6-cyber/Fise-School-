@@ -27,6 +27,7 @@ class GeminiService {
     Uint8List? attachmentBytes,
     String? attachmentMimeType,
     String? attachmentName,
+    String? context,
   }) async {
     final response = await _client.functions.invoke(
       'gemini-chat',
@@ -34,6 +35,7 @@ class GeminiService {
         'message': message.trim(),
         'history': history.take(20).map((item) => item.toMap()).toList(),
         'language': profile.preferredLanguage == 'en' ? 'en' : 'fr',
+        'context': context?.trim().isNotEmpty == true ? context!.trim() : null,
         // Kept for backwards compatibility with older deployed functions.
         // The secure function ignores these values and loads the profile from
         // the authenticated Supabase user.
@@ -65,7 +67,7 @@ class GeminiService {
 
     final text = data['text'];
     if (text is! String || text.trim().isEmpty) {
-      throw Exception('L’assistant IA n’a retourné aucune réponse.');
+      throw Exception('L\'assistant IA n\'a retourné aucune réponse.');
     }
     return text.trim();
   }
