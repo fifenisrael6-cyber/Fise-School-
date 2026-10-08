@@ -92,21 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                 ),
               ],
-              _SettingsTile(
-                icon: Icons.logout_rounded,
-                title: isFrench ? 'Se déconnecter' : 'Sign out',
-                subtitle: isFrench
-                    ? 'Fermer la session Fise School sur cet appareil'
-                    : 'Sign out of Fise School on this device',
-                onTap: () async {
-                  await PushService.unregister();
-                  await CourseOfflineService().deleteUserFiles(profile.id);
-                  await Supabase.instance.client.auth.signOut();
-                  if (context.mounted) {
-                    Navigator.popUntil(context, (route) => route.isFirst);
-                  }
-                },
-              ),
+
             ],
           ),
 
@@ -192,7 +178,37 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   );
                 },
-              ),
+              ),,
+              _SettingsTile(
+                icon: Icons.logout_rounded,
+                title: isFrench ? 'Se déconnecter' : 'Sign out',
+                subtitle: isFrench
+                    ? 'Fermer la session Fise School sur cet appareil'
+                    : 'Sign out of Fise School on this device',
+                destructive: true,
+                onTap: () async {
+                  try {
+                    await PushService.unregister();
+                    await CourseOfflineService().deleteUserFiles(profile.id);
+                    await Supabase.instance.client.auth.signOut();
+                    if (context.mounted) {
+                      Navigator.popUntil(context, (route) => route.isFirst);
+                    }
+                  } catch (error) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isFrench
+                                ? 'Impossible de se déconnecter. Réessayez.'
+                                : 'Unable to sign out. Please try again.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+              )
             ],
           ),
 
@@ -386,12 +402,14 @@ class _SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool destructive;
 
   const _SettingsTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.destructive = false,
   });
 
   @override
@@ -402,14 +420,14 @@ class _SettingsTile extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFDCFCE7),
+          color: destructive ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(icon, color: const Color(0xFF166534)),
       ),
       title: Text(
         title,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: destructive ? Colors.red : null),
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
@@ -418,7 +436,7 @@ class _SettingsTile extends StatelessWidget {
           style: const TextStyle(color: Colors.black54, fontSize: 12),
         ),
       ),
-      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+      trailing: Icon(Icons.chevron_right_rounded, color: destructive ? Colors.red : Colors.grey),
       onTap: onTap,
     );
   }
