@@ -33,7 +33,8 @@ begin
   from public.message_group_messages m
   where m.group_id = p_group_id and m.sender_id <> (select auth.uid())
   on conflict (message_id, user_id) do update
-    set delivered_at = coalesce(public.message_group_message_receipts.delivered_at, excluded.delivered_at);
+    set delivered_at = coalesce(public.message_group_message_receipts.delivered_at, excluded.delivered_at)
+    where public.message_group_message_receipts.delivered_at is null;
   get diagnostics n = row_count;
   return n;
 end;
@@ -56,7 +57,9 @@ begin
   where m.group_id = p_group_id and m.sender_id <> (select auth.uid())
   on conflict (message_id, user_id) do update
     set delivered_at = coalesce(public.message_group_message_receipts.delivered_at, excluded.delivered_at),
-        read_at = coalesce(public.message_group_message_receipts.read_at, excluded.read_at);
+        read_at = coalesce(public.message_group_message_receipts.read_at, excluded.read_at)
+    where public.message_group_message_receipts.read_at is null
+       or public.message_group_message_receipts.delivered_at is null;
   get diagnostics n = row_count;
   return n;
 end;
