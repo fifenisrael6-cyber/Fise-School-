@@ -776,28 +776,28 @@ class _LessonPageState extends State<LessonPage> {
           const SizedBox(height: 18),
           _buildProgressCard(),
           const SizedBox(height: 22),
-          if (objectives != null)
+          if (objectives case final value?)
             _buildContentSection(
               title: isEnglish ? 'Objectives' : 'Objectifs',
-              content: objectives!,
+              content: value,
               icon: Icons.flag_rounded,
             ),
-          if (content != null)
+          if (content case final value?)
             _buildContentSection(
               title: isEnglish ? 'Course content' : 'Contenu du cours',
-              content: content!,
+              content: value,
               icon: Icons.menu_book_rounded,
             ),
-          if (examples != null)
+          if (examples case final value?)
             _buildContentSection(
               title: isEnglish ? 'Examples' : 'Exemples',
-              content: examples!,
+              content: value,
               icon: Icons.lightbulb_rounded,
             ),
-          if (summary != null)
+          if (summary case final value?)
             _buildContentSection(
               title: isEnglish ? 'Summary' : 'Résumé',
-              content: summary!,
+              content: value,
               icon: Icons.summarize_rounded,
             ),
           _buildAiCard(),
