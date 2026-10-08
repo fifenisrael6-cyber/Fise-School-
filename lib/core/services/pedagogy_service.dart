@@ -111,11 +111,10 @@ class CourseService {
   }
 
   Future<List<Subject>> listSubjects(UserProfile profile) async {
+    // Never fall back to every subject in the subsystem/sector: only the
+    // curriculum explicitly assigned to the student's classroom is allowed.
     final entries = await listClassSubjects(profile);
-    if (entries.isNotEmpty) {
-      return entries.map((e) => e.subject).toList(growable: false);
-    }
-    return SubjectService(client: _client).listForProfile(profile);
+    return entries.map((e) => e.subject).toList(growable: false);
   }
 
   /// Subjects explicitly assigned to one classroom. Teachers use this when
