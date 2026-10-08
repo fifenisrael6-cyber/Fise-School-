@@ -611,6 +611,7 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   List<Map<String, dynamic>> _compatibleClasses() {
+    if (_tracks.isNotEmpty && _track == null) return const [];
     return _classes.where((item) {
       final seriesId = _sector == ExamSector.general ? _track?.id : null;
       final specialtyId = _sector == ExamSector.technical ? _track?.id : null;
