@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../models/user_profile.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../messages/pages/private_messages_page.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../search/pages/search_page.dart';
@@ -57,16 +56,6 @@ class StudentDashboardPage extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (_) => AssignmentsPage(locale: locale, profile: profile),
-                ),
-              ),
-            ),
-            _DashboardItem(
-              Icons.forum_rounded,
-              texts.forum,
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ForumPage(locale: locale, profile: profile),
                 ),
               ),
             ),
