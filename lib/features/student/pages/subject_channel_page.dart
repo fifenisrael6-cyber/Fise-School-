@@ -43,6 +43,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   final CourseService _courses = CourseService();
   final AssignmentService _assignments = AssignmentService();
   final CourseOfflineService _offline = CourseOfflineService();
+  final ResourceService _resources = ResourceService();
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _connectionSubscription;
   bool _offlineMode = false;
@@ -240,6 +241,17 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
+  Future<List<CourseResource>> _loadResources(String courseId) async {
+    try {
+      final resources = await _resources.listForCourse(courseId);
+      // Keep the offline cache warm without making the online page depend on it.
+      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: await _courses.getCourse(courseId)));
+      return resources;
+    } catch (_) {
+      return _offline.resourcesForCourse(widget.profile.id, courseId);
+    }
+  }
+
   Widget _coursePost(Course course) {
     final code = widget.locale.languageCode;
     final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
@@ -271,7 +283,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             Text(content),
           ],
           FutureBuilder<List<CourseResource>>(
-            future: _offline.resourcesForCourse(widget.profile.id, course.id),
+            future: _loadResources(course.id),
             builder: (context, snapshot) {
               final resources = snapshot.data ?? const <CourseResource>[];
               if (resources.isEmpty) {
