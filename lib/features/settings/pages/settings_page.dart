@@ -200,18 +200,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   try {
                     await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
                   } catch (error) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            isFrench
-                                ? 'Impossible de fermer la session. Vérifiez votre connexion puis réessayez.'
-                                : 'Unable to close the session. Check your connection and try again.',
+                    // Some SDK/storage errors can be raised after the local
+                    // session has already been cleared. Treat that as success;
+                    // only show an error if a session is still present.
+                    debugPrint('Erreur de déconnexion locale : $error');
+                    if (Supabase.instance.client.auth.currentSession == null) {
+                      // Continue to the public home below.
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              isFrench
+                                  ? 'La session est toujours active. Réessayez et vérifiez les détails de connexion.'
+                                  : 'The session is still active. Please retry and check the connection details.',
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
+                      return;
                     }
-                    return;
                   }
 
                   if (context.mounted) {
