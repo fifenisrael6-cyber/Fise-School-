@@ -50,7 +50,6 @@ class _AuthPageState extends State<AuthPage> {
   List<ExamCatalogEntry> _tracks = const [];
   List<Map<String, dynamic>> _classes = const [];
   String? _selectedClassId;
-  bool _loadingClasses = false;
   bool _loadingLevels = false;
   bool _catalogError = false;
 
@@ -424,7 +423,6 @@ class _AuthPageState extends State<AuthPage> {
       });
       return;
     }
-    setState(() => _loadingClasses = true);
     try {
       final rows = await Supabase.instance.client
           .from('school_classes')
@@ -445,7 +443,6 @@ class _AuthPageState extends State<AuthPage> {
     } catch (_) {
       if (mounted) setState(() => _classes = const []);
     } finally {
-      if (mounted) setState(() => _loadingClasses = false);
     }
   }
 
