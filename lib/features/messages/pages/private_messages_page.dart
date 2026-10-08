@@ -54,6 +54,20 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           }
         }
       })
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'private_messages',
+        callback: (payload) {
+          final row = payload.newRecord;
+          if (row['sender_id'] == widget.profile.id || row['recipient_id'] == widget.profile.id) {
+            final selected = _selected;
+            if (selected != null && (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
+              _select(selected);
+            }
+          }
+        },
+      )
       .subscribe();
   }
 
@@ -122,9 +136,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       _loadingMessages = true;
     });
     try {
-      final messages = await _service.listConversation(contact.id);
+      await _service.listConversation(contact.id);
       await _service.markConversationDelivered(contact.id);
       await _service.markConversationRead(contact.id);
+      final messages = await _service.listConversation(contact.id);
       if (mounted) {
         setState(() => _messages = messages);
       }
