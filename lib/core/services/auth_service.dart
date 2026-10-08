@@ -127,6 +127,6 @@ class AuthService {
     } catch (e) {
       debugPrint('Nettoyage du cache hors ligne impossible: $e');
     }
-    await _client.auth.signOut();
+    await _client.auth.signOut(scope: SignOutScope.local);
   }
 }
