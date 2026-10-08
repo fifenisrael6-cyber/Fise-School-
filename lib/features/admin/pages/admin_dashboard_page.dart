@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_assignments_page.dart';
+import 'admin_ai_page.dart';
 import 'admin_courses_page.dart';
 import 'admin_grades_page.dart';
 import 'admin_past_papers_page.dart';
@@ -26,6 +27,11 @@ class AdminDashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = <_AdminEntry>[
+      _AdminEntry(
+        icon: Icons.auto_awesome_rounded,
+        title: _isFrench ? 'IA pédagogique' : 'Pedagogical AI',
+        builder: (_) => AdminAiPage(locale: locale),
+      ),
       _AdminEntry(
         icon: Icons.school_rounded,
         title: _isFrench ? 'Gestion de l\u2019école' : 'School management',
