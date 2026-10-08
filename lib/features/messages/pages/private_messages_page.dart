@@ -64,6 +64,58 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.dispose();
   }
 
+  Future<void> _unlockTeacher() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Code unique de l’enseignant' : 'Teacher access code'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: _isFrench ? 'Code de l’enseignant' : 'Teacher code',
+            hintText: 'FISE-XXXXXX',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            child: Text(_isFrench ? 'Vérifier' : 'Verify'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (code == null || code.isEmpty || !mounted) return;
+    try {
+      final valid = await _service.unlockTeacher(code);
+      if (!mounted) return;
+      if (!valid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench ? 'Code invalide ou non autorisé pour votre classe.' : 'Invalid code or not authorized for your class.')),
+        );
+        return;
+      }
+      setState(() => _contactsFuture = _service.listContacts());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench ? 'Enseignant autorisé. Vous pouvez maintenant lui écrire.' : 'Teacher unlocked. You can now message them.')),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench ? 'Vérification du code impossible.' : 'Unable to verify the code.')),
+        );
+      }
+    }
+  }
+
   Future<void> _select(MessageContact contact) async {
     setState(() {
       _selected = contact;
@@ -71,6 +123,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     });
     try {
       final messages = await _service.listConversation(contact.id);
+      await _service.markConversationDelivered(contact.id);
       await _service.markConversationRead(contact.id);
       if (mounted) {
         setState(() => _messages = messages);
@@ -144,7 +197,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   Widget build(BuildContext context) {
     final title = _isFrench ? 'Messagerie privée' : 'Private messages';
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          if (widget.profile.role == 'student')
+            IconButton(
+              tooltip: _isFrench ? 'Entrer le code unique de l’enseignant' : 'Enter teacher access code',
+              icon: const Icon(Icons.vpn_key_rounded),
+              onPressed: _unlockTeacher,
+            ),
+        ],
+      ),
       body: FutureBuilder<List<MessageContact>>(
         future: _contactsFuture,
         builder: (context, snapshot) {
@@ -287,7 +350,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   ),
                                   if (mine) ...[
                                     const SizedBox(width: 4),
-                                    Icon(message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded, size: 14, color: message.readAt == null ? Colors.black45 : const Color(0xFF166534)),
+                                    Icon(message.readAt != null ? Icons.done_all_rounded : message.deliveredAt != null ? Icons.done_all_rounded : Icons.done_rounded, size: 14, color: message.readAt != null ? const Color(0xFF166534) : Colors.black45),
                                   ],
                                 ],
                               ),
