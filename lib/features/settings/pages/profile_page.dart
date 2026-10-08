@@ -85,11 +85,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 24),
             _schoolInfo(texts),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _loading ? null : () => _save(texts),
-              child: Text(texts.save),
-            ),
           ],
         ),
       ),
