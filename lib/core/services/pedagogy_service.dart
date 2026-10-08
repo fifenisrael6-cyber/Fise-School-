@@ -74,18 +74,10 @@ class CourseService {
               Map<String, dynamic>.from(row),
             );
 
-            // Keep the school-system boundary when the profile has it.
-            // If an older account has missing profile values, the class
-            // membership remains authoritative instead of hiding everything.
-            if (profile.subsystem != null &&
-                entry.subject.subsystem.name != profile.subsystem) {
-              continue;
-            }
-            if (profile.sector != null &&
-                entry.subject.sector.name != profile.sector) {
-              continue;
-            }
-
+            // The active classroom membership is authoritative. Older profiles
+            // can contain stale subsystem/sector labels (especially bilingual
+            // and legacy accounts); filtering subjects a second time by those
+            // labels silently made the Cours page appear empty.
             if (seen.add(entry.subject.id)) {
               result.add(entry);
             }
