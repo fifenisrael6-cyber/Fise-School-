@@ -10,8 +10,9 @@ set is_active = false
 from public.school_classes c
 join public.exam_levels el on el.id = c.exam_level_id
 join public.series sr on sr.id = c.series_id
-join public.subjects s on s.id = cs.subject_id
+join public.subjects s on true
 where cs.class_id = c.id
+  and s.id = cs.subject_id
   and cs.is_active
   and el.level_order >= 5
   and c.subsystem = 'francophone'
@@ -24,8 +25,9 @@ set is_active = true
 from public.school_classes c
 join public.exam_levels el on el.id = c.exam_level_id
 join public.series sr on sr.id = c.series_id
-join public.subjects s on s.id = cs.subject_id
+join public.subjects s on true
 where cs.class_id = c.id
+  and s.id = cs.subject_id
   and el.level_order >= 5
   and c.subsystem = 'francophone'
   and c.sector = 'general'
@@ -57,8 +59,9 @@ set is_active = false
 from public.school_classes c
 join public.exam_levels el on el.id = c.exam_level_id
 join public.series sr on sr.id = c.series_id
-join public.subjects s on s.id = cs.subject_id
+join public.subjects s on true
 where cs.class_id = c.id
+  and s.id = cs.subject_id
   and cs.is_active
   and el.level_order >= 5
   and c.subsystem = 'francophone'
@@ -89,8 +92,9 @@ set is_active = true
 from public.school_classes c
 join public.exam_levels el on el.id = c.exam_level_id
 join public.series sr on sr.id = c.series_id
-join public.subjects s on s.id = cs.subject_id
+join public.subjects s on true
 where cs.class_id = c.id
+  and s.id = cs.subject_id
   and el.level_order >= 5
   and c.subsystem = 'francophone'
   and c.sector = 'general'
