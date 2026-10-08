@@ -6,14 +6,14 @@ import '../../forum/pages/forum_page.dart';
 class AccessCodeDialog extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
-  final String classId;
+  final String? classId;
   final VoidCallback onSuccess;
 
   const AccessCodeDialog({
     super.key,
     required this.locale,
     required this.profile,
-    required this.classId,
+    this.classId,
     required this.onSuccess,
   });
 
@@ -54,32 +54,27 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     });
 
     try {
-      final isValid = await _service.validateAccessCode(code, widget.classId);
+      await _service.joinClassWithAccessCode(code);
 
       if (!mounted) return;
 
-      if (isValid) {
-        widget.onSuccess();
-        if (mounted) {
-          Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ForumPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              ),
-            ),
-          );
-        }
-      } else {
-        setState(() {
-          _error = _isFrench ? 'Code invalide.' : 'Invalid code.';
-        });
-      }
+      widget.onSuccess();
+      Navigator.of(context).pop();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ForumPage(
+            locale: widget.locale,
+            profile: widget.profile,
+          ),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = _isFrench ? 'Erreur lors de la vérification.' : 'Verification error.';
+          final message = e.toString().toLowerCase();
+          _error = message.contains('invalid') || message.contains('inactive')
+              ? (_isFrench ? 'Code invalide ou désactivé.' : 'Invalid or inactive code.')
+              : (_isFrench ? 'Impossible de rejoindre cette salle.' : 'Unable to join this classroom.');
         });
       }
     } finally {
