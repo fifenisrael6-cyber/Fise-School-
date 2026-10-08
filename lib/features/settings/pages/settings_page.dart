@@ -198,7 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   } catch (_) {}
 
                   try {
-                    await Supabase.instance.client.auth.signOut();
+                    await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
                   } catch (error) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
