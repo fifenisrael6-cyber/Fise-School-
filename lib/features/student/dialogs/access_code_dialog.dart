@@ -81,7 +81,7 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
           final message = e.toString().toLowerCase();
           _error = message.contains('invalid') || message.contains('inactive')
               ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
-              : (_isFrench ? 'Impossible d'accéder à cet espace.' : 'Unable to access this space.');
+              : (_isFrench ? 'Impossible d\'accéder à cet espace.' : 'Unable to access this space.');
         });
       }
     } finally {
