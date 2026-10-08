@@ -54,7 +54,14 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     });
 
     try {
-      await _service.joinClassWithAccessCode(code);
+      final classId = widget.classId;
+      if (classId == null || classId.trim().isEmpty) {
+        throw StateError('Student classroom is not configured.');
+      }
+      final valid = await _service.validateAccessCode(code, classId);
+      if (!valid) {
+        throw StateError('Invalid or unauthorized access code.');
+      }
 
       if (!mounted) return;
 
@@ -73,8 +80,8 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         setState(() {
           final message = e.toString().toLowerCase();
           _error = message.contains('invalid') || message.contains('inactive')
-              ? (_isFrench ? 'Code invalide ou désactivé.' : 'Invalid or inactive code.')
-              : (_isFrench ? 'Impossible de rejoindre cette salle.' : 'Unable to join this classroom.');
+              ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
+              : (_isFrench ? 'Impossible d'accéder à cet espace.' : 'Unable to access this space.');
         });
       }
     } finally {
