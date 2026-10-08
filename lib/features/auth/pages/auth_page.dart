@@ -48,6 +48,9 @@ class _AuthPageState extends State<AuthPage> {
   ExamCatalogEntry? _track;
   List<ExamLevel> _levels = const [];
   List<ExamCatalogEntry> _tracks = const [];
+  List<Map<String, dynamic>> _classes = const [];
+  String? _selectedClassId;
+  bool _loadingClasses = false;
   bool _loadingLevels = false;
   bool _catalogError = false;
 
@@ -145,7 +148,8 @@ class _AuthPageState extends State<AuthPage> {
           examLevel: level?.labelFor(_lang),
           exam: level?.exam?.labelFor(_lang),
           track: _track?.labelFor(_lang),
-          className: level?.labelFor(_lang),
+          className: _selectedClassName(level),
+          classId: _selectedClassId,
         );
       } else {
         await _authService.signIn(
@@ -398,6 +402,53 @@ class _AuthPageState extends State<AuthPage> {
     ];
   }
 
+
+  String? _selectedClassName(ExamLevel? level) {
+    if (_selectedClassId == null) return level?.labelFor(_lang);
+    for (final item in _classes) {
+      if (item['id']?.toString() == _selectedClassId) {
+        return item['display_name']?.toString() ?? item['name']?.toString();
+      }
+    }
+    return level?.labelFor(_lang);
+  }
+
+  Future<void> _loadClasses() async {
+    final level = _level;
+    final subsystem = _subsystem;
+    final sector = _sector;
+    if (level == null || subsystem == null || sector == null) {
+      setState(() {
+        _classes = const [];
+        _selectedClassId = null;
+      });
+      return;
+    }
+    setState(() => _loadingClasses = true);
+    try {
+      final rows = await Supabase.instance.client
+          .from('school_classes')
+          .select('id, display_name, name, series_id, specialty_id')
+          .eq('is_active', true)
+          .eq('exam_level_id', level.id)
+          .eq('subsystem', subsystem.name)
+          .eq('sector', sector.name)
+          .order('display_name');
+      if (!mounted) return;
+      setState(() {
+        _classes = List<Map<String, dynamic>>.from(rows);
+        if (_selectedClassId != null &&
+            !_classes.any((item) => item['id']?.toString() == _selectedClassId)) {
+          _selectedClassId = null;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _classes = const []);
+    } finally {
+      if (mounted) setState(() => _loadingClasses = false);
+    }
+  }
+
   List<Widget> _classFields(AppTexts texts) {
     if (_subsystem == null || _sector == null) {
       return const [];
@@ -446,17 +497,50 @@ class _AuthPageState extends State<AuthPage> {
         ],
         validator: (value) => value == null ? texts.selectionRequired : null,
         onChanged: (value) {
-          setState(() => _level = value);
-          if (value != null) {
-            _loadTracks(value);
-          }
+          setState(() { _level = value; _selectedClassId = null; _classes = const []; });
+          if (value != null) { _loadTracks(value); _loadClasses(); }
         },
       ),
       if (level != null) ...[
         const SizedBox(height: 10),
         _levelInfo(texts, level, curriculum),
       ],
+
+      const SizedBox(height: 14),
+      if (_loadingClasses)
+        const Center(child: CircularProgressIndicator())
+      else
+        DropdownButtonFormField<String>(
+          key: ValueKey('school-class-${level.id}'),
+          initialValue: _selectedClassId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Salle / classe'),
+          items: [
+            for (final item in _classes)
+              DropdownMenuItem<String>(
+                value: item['id']?.toString(),
+                child: Text(
+                  item['display_name']?.toString() ??
+                      item['name']?.toString() ??
+                      '',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          validator: (value) =>
+              value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() => _selectedClassId = value),
+        ),
+      if (_classes.isEmpty && !_loadingClasses)
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text(
+            'Aucune salle active pour ce niveau.',
+            textAlign: TextAlign.center,
+          ),
+        ),
       if (_tracks.isNotEmpty) ...[
+
         const SizedBox(height: 14),
         DropdownButtonFormField<ExamCatalogEntry>(
           key: ValueKey('track-${level?.id}'),
