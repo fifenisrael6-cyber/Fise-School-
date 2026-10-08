@@ -529,6 +529,7 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
+          validator: (value) => value == null ? texts.selectionRequired : null,
           onChanged: (value) => setState(() {
             _track = value;
             _languageOption = null;
@@ -558,9 +559,20 @@ class _AuthPageState extends State<AuthPage> {
       Builder(builder: (context) {
         final compatible = _compatibleClasses();
         if (compatible.isEmpty) {
-          return const Text(
-            'Aucune salle ne correspond à ces choix. L’administration doit créer la salle correspondante.',
-            textAlign: TextAlign.center,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Aucune salle ne correspond à ces choix. L’administration doit créer la salle correspondante.',
+                textAlign: TextAlign.center,
+              ),
+              FormField<String>(
+                validator: (_) => _selectedClassId == null
+                    ? 'Aucune salle disponible pour cette classe.'
+                    : null,
+                builder: (_) => const SizedBox.shrink(),
+              ),
+            ],
           );
         }
         return DropdownButtonFormField<String>(
@@ -574,7 +586,7 @@ class _AuthPageState extends State<AuthPage> {
             for (final item in compatible)
               DropdownMenuItem(
                 value: item['id'].toString(),
-                child: Text(item['display_name']?.toString() ?? item['name']?.toString()),
+                child: Text(item['display_name']?.toString() ?? item['name']?.toString() ?? 'Salle scolaire'),
               ),
           ],
           validator: (value) => value == null ? texts.selectionRequired : null,
