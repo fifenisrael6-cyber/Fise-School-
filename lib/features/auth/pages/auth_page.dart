@@ -564,40 +564,6 @@ class _AuthPageState extends State<AuthPage> {
           for (final line in lines)
             Text(line, style: const TextStyle(color: Color(0xFF244331))),
         ],
-      const SizedBox(height: 14),
-      if (_loadingClasses)
-        const Center(child: CircularProgressIndicator())
-      else
-        DropdownButtonFormField<String>(
-          key: ValueKey('school-class-${level.id}'),
-          initialValue: _selectedClassId,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Salle / classe'),
-          items: [
-            for (final item in _classes)
-              DropdownMenuItem<String>(
-                value: item['id']?.toString(),
-                child: Text(
-                  item['display_name']?.toString() ??
-                      item['name']?.toString() ??
-                      '',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          validator: (value) =>
-              value == null ? texts.selectionRequired : null,
-          onChanged: (value) => setState(() => _selectedClassId = value),
-        ),
-      if (_classes.isEmpty && !_loadingClasses)
-        const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text(
-            'Aucune salle active pour ce niveau.',
-            textAlign: TextAlign.center,
-          ),
-        ),
-
       ),
     );
   }
