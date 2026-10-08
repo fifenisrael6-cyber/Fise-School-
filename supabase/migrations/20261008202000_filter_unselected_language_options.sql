@@ -13,8 +13,7 @@ where cs.class_id = c.id
   and s.sector = 'general'
   and s.code in ('allemand','arabe','chinois','espagnol','italien')
   and (
-    (c.language_option is null and el.level_order >= 5 and sr.code is not null)
-    or (c.language_option is null and el.level_order < 5 and c.display_name not like '%Troisième%')
+    (c.language_option is null)
     or (c.language_option is not null and not (s.code = any(string_to_array(c.language_option, '_'))))
   );
 
