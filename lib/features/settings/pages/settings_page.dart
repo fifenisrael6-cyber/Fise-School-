@@ -187,25 +187,35 @@ class _SettingsPageState extends State<SettingsPage> {
                     : 'Sign out of Fise School on this device',
                 destructive: true,
                 onTap: () async {
+                  // Local cleanup must never prevent the authentication
+                  // session from being closed.
                   try {
                     await PushService.unregister();
+                  } catch (_) {}
+
+                  try {
                     await CourseOfflineService().deleteUserFiles(profile.id);
+                  } catch (_) {}
+
+                  try {
                     await Supabase.instance.client.auth.signOut();
-                    if (context.mounted) {
-                      Navigator.popUntil(context, (route) => route.isFirst);
-                    }
                   } catch (error) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
                             isFrench
-                                ? 'Impossible de se déconnecter. Réessayez.'
-                                : 'Unable to sign out. Please try again.',
+                                ? 'Impossible de fermer la session. Vérifiez votre connexion puis réessayez.'
+                                : 'Unable to close the session. Check your connection and try again.',
                           ),
                         ),
                       );
                     }
+                    return;
+                  }
+
+                  if (context.mounted) {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
                   }
                 },
               )
