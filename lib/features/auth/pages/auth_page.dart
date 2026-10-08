@@ -536,7 +536,88 @@ class _AuthPageState extends State<AuthPage> {
           }),
         ),
       ],
+      if (_availableLanguageOptions().isNotEmpty) ...[
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          key: ValueKey('language-option-${level?.id}-${_track?.code}'),
+          initialValue: _languageOption,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Langue / option'),
+          items: [
+            for (final option in _availableLanguageOptions())
+              DropdownMenuItem(value: option.$1, child: Text(option.$2)),
+          ],
+          validator: (value) => value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() {
+            _languageOption = value;
+            _selectedClassId = null;
+          }),
+        ),
+      ],
+      const SizedBox(height: 14),
+      Builder(builder: (context) {
+        final compatible = _compatibleClasses();
+        if (compatible.isEmpty) {
+          return const Text(
+            'Aucune salle ne correspond à ces choix. L’administration doit créer la salle correspondante.',
+            textAlign: TextAlign.center,
+          );
+        }
+        return DropdownButtonFormField<String>(
+          key: ValueKey('school-room-${level?.id}-${_track?.id}-$_languageOption'),
+          initialValue: compatible.any((item) => item['id']?.toString() == _selectedClassId)
+              ? _selectedClassId
+              : null,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: texts.classLabel),
+          items: [
+            for (final item in compatible)
+              DropdownMenuItem(
+                value: item['id'].toString(),
+                child: Text(item['display_name']?.toString() ?? item['name']?.toString()),
+              ),
+          ],
+          validator: (value) => value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() => _selectedClassId = value),
+        );
+      }),
     ];
+  }
+
+  List<(String, String)> _availableLanguageOptions() {
+    if (_subsystem != ExamSubsystem.francophone || _sector != ExamSector.general) return const [];
+    if (_level?.code == 'fr_general_troisieme' ||
+        (_level != null && _level!.levelOrder >= 6 && (_track?.code == 'a2' || _track?.code == 'a4'))) {
+      return const [
+        ('allemand', 'Allemand'), ('espagnol', 'Espagnol'), ('arabe', 'Arabe'),
+        ('italien', 'Italien'), ('chinois', 'Chinois'),
+      ];
+    }
+    if (_level != null && _level!.levelOrder >= 6 && _track?.code == 'a5') {
+      return const [
+        ('allemand_espagnol', 'Allemand + Espagnol'), ('allemand_arabe', 'Allemand + Arabe'),
+        ('allemand_italien', 'Allemand + Italien'), ('allemand_chinois', 'Allemand + Chinois'),
+        ('espagnol_allemand', 'Espagnol + Allemand'), ('espagnol_arabe', 'Espagnol + Arabe'),
+        ('espagnol_italien', 'Espagnol + Italien'), ('espagnol_chinois', 'Espagnol + Chinois'),
+        ('arabe_allemand', 'Arabe + Allemand'), ('arabe_espagnol', 'Arabe + Espagnol'),
+        ('arabe_italien', 'Arabe + Italien'), ('arabe_chinois', 'Arabe + Chinois'),
+        ('italien_allemand', 'Italien + Allemand'), ('italien_espagnol', 'Italien + Espagnol'),
+        ('italien_arabe', 'Italien + Arabe'), ('italien_chinois', 'Italien + Chinois'),
+        ('chinois_allemand', 'Chinois + Allemand'), ('chinois_espagnol', 'Chinois + Espagnol'),
+        ('chinois_arabe', 'Chinois + Arabe'), ('chinois_italien', 'Chinois + Italien'),
+      ];
+    }
+    return const [];
+  }
+
+  List<Map<String, dynamic>> _compatibleClasses() {
+    return _classes.where((item) {
+      final seriesId = _sector == ExamSector.general ? _track?.id : null;
+      final specialtyId = _sector == ExamSector.technical ? _track?.id : null;
+      return item['series_id']?.toString() == seriesId &&
+          item['specialty_id']?.toString() == specialtyId &&
+          item['language_option']?.toString() == _languageOption;
+    }).toList(growable: false);
   }
 
   Widget _levelInfo(AppTexts texts, ExamLevel level, String? curriculum) {
