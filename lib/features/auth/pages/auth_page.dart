@@ -50,6 +50,7 @@ class _AuthPageState extends State<AuthPage> {
   List<ExamCatalogEntry> _tracks = const [];
   List<Map<String, dynamic>> _classes = const [];
   String? _selectedClassId;
+  String? _languageOption;
   bool _loadingLevels = false;
   bool _catalogError = false;
 
@@ -147,6 +148,7 @@ class _AuthPageState extends State<AuthPage> {
           examLevel: level?.labelFor(_lang),
           exam: level?.exam?.labelFor(_lang),
           track: _track?.labelFor(_lang),
+          languageOption: _languageOption,
           className: _selectedClassName(level),
           classId: _selectedClassId,
         );
@@ -426,7 +428,7 @@ class _AuthPageState extends State<AuthPage> {
     try {
       final rows = await Supabase.instance.client
           .from('school_classes')
-          .select('id, display_name, name, series_id, specialty_id')
+          .select('id, display_name, name, series_id, specialty_id, language_option')
           .eq('is_active', true)
           .eq('exam_level_id', level.id)
           .eq('subsystem', subsystem.name)
