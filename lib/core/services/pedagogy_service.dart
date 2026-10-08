@@ -41,33 +41,29 @@ class CourseService {
     : _client = client ?? Supabase.instance.client;
 
   Future<List<ClassSubjectEntry>> listClassSubjects(UserProfile profile) async {
-    if (profile.subsystem == null || profile.sector == null) {
-      return const [];
-    }
-
-    // La salle active de l'élève est la référence : un élève francophone ne
-    // voit pas les matières anglophones, et inversement.
-    // Les lignes serveur sont gardées en cache local : sans Internet,
-    // la dernière liste des matières de la salle reste affichée.
+    // The active class membership is the source of truth. Do not require
+    // profile.subsystem/sector to discover the student's class: older
+    // accounts can have those profile fields incomplete even when their
+    // class membership is valid.
     return JsonCache.instance.cachedRead<List<ClassSubjectEntry>>(
       key: 'class_subjects_${profile.id}',
       fetch: () async {
         final memberships = await _client
             .from('class_students')
-            .select('class_id, school_classes(subsystem, sector)')
+            .select('class_id')
             .eq('student_id', profile.id)
             .eq('is_active', true);
 
-        final classIds = <String>[];
-        for (final row in memberships) {
-          final context = row['school_classes'];
-          if (context is Map &&
-              context['subsystem']?.toString() == profile.subsystem &&
-              context['sector']?.toString() == profile.sector) {
-            classIds.add(row['class_id'] as String);
-          }
+        final classIds = memberships
+            .map((row) => row['class_id']?.toString())
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(growable: false);
+
+        if (classIds.isEmpty) {
+          return <Object?>[];
         }
-        if (classIds.isEmpty) return <Object?>[];
 
         final rows = await _client
             .from('class_subjects')
@@ -75,23 +71,38 @@ class CourseService {
             .inFilter('class_id', classIds)
             .eq('is_active', true)
             .order('position');
+
         return rows.map((row) => Map<String, dynamic>.from(row)).toList();
       },
       decode: (raw) {
         final seen = <String>{};
         final result = <ClassSubjectEntry>[];
         if (raw is! List) return result;
+
         for (final row in raw) {
           if (row is! Map) continue;
           try {
-            final entry = ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row));
-            if (entry.subject.subsystem.name != profile.subsystem ||
+            final entry = ClassSubjectEntry.fromMap(
+              Map<String, dynamic>.from(row),
+            );
+
+            // Keep the school-system boundary when the profile has it.
+            // If an older account has missing profile values, the class
+            // membership remains authoritative instead of hiding everything.
+            if (profile.subsystem != null &&
+                entry.subject.subsystem.name != profile.subsystem) {
+              continue;
+            }
+            if (profile.sector != null &&
                 entry.subject.sector.name != profile.sector) {
               continue;
             }
-            if (seen.add(entry.subject.id)) result.add(entry);
+
+            if (seen.add(entry.subject.id)) {
+              result.add(entry);
+            }
           } catch (_) {
-            // Une ligne illisible ne doit pas casser toute la liste.
+            // A malformed catalogue row must not hide all other subjects.
           }
         }
         return result;
