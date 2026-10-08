@@ -27,6 +27,8 @@ class GeminiService {
     Uint8List? attachmentBytes,
     String? attachmentMimeType,
     String? attachmentName,
+    Map<String, dynamic>? schoolContext,
+    String mode = 'student',
   }) async {
     final response = await _client.functions.invoke(
       'gemini-chat',
@@ -34,6 +36,8 @@ class GeminiService {
         'message': message.trim(),
         'history': history.take(20).map((item) => item.toMap()).toList(),
         'language': profile.preferredLanguage == 'en' ? 'en' : 'fr',
+        'mode': mode,
+        if (schoolContext != null) 'schoolContext': schoolContext,
         // Kept for backwards compatibility with older deployed functions.
         // The secure function ignores these values and loads the profile from
         // the authenticated Supabase user.
