@@ -27,7 +27,6 @@ class PublicHomePage extends StatelessWidget {
                 children: [
                   _topBar(context, texts),
                   _hero(context, texts, isWide),
-                  _profiles(context, texts, isWide),
                   _features(texts, isWide),
                   _footer(texts),
                 ],
@@ -259,45 +258,6 @@ class PublicHomePage extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              Semantics(
-                label: '${texts.login} to ${texts.appName}',
-                button: true,
-                child: FilledButton.tonal(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF166534),
-                    minimumSize: const Size(160, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () => _openAuth(context),
-                  child: Text(texts.login),
-                ),
-              ),
-              Semantics(
-                label: '${texts.register} on ${texts.appName}',
-                button: true,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F3D1F),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(170, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () => _openAuth(context, register: true),
-                  child: Text(texts.register),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -314,141 +274,6 @@ class PublicHomePage extends StatelessWidget {
     ),
     child: _logo(136),
   );
-
-  Widget _profiles(BuildContext context, AppTexts texts, bool isWide) {
-    final cards = [
-      _profileCard(context, texts, true),
-      _profileCard(context, texts, false),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          Text(
-            texts.chooseProfile,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 27,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF123524),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isWide
-                ? 'Choisissez votre parcours pour accéder à votre espace.'
-                : 'Choisissez votre parcours.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
-          ),
-          const SizedBox(height: 24),
-          isWide
-              ? Row(
-                  children: [
-                    Expanded(child: cards[0]),
-                    const SizedBox(width: 18),
-                    Expanded(child: cards[1]),
-                  ],
-                )
-              : Column(
-                  children: [cards[0], const SizedBox(height: 16), cards[1]],
-                ),
-        ],
-      ),
-    );
-  }
-
-  Widget _profileCard(BuildContext context, AppTexts texts, bool isStudent) {
-    final title = isStudent ? texts.student : texts.teacher;
-    final description = isStudent
-        ? texts.studentDescription
-        : texts.teacherDescription;
-    final routeDescription = isStudent
-        ? 'Accéder à l’espace étudiant'
-        : 'Accéder à l’espace enseignant';
-
-    return Semantics(
-      button: true,
-      label: routeDescription,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AuthPage(
-              locale: locale,
-              startInRegisterMode: true,
-              initialRole: isStudent ? 'student' : 'teacher',
-            ),
-          ),
-        ),
-        child: Ink(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFDCEBE0)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5EC),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(
-                  isStudent ? Icons.school_rounded : Icons.co_present_rounded,
-                  color: const Color(0xFF166534),
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF123524),
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      description,
-                      style: TextStyle(color: Colors.grey.shade600, height: 1.45),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Text(
-                          texts.continueText,
-                          style: const TextStyle(
-                            color: Color(0xFF166534),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_rounded,
-                          color: Color(0xFF166534),
-                          size: 19,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _features(AppTexts texts, bool isWide) {
     final features = [
