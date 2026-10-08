@@ -178,7 +178,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   );
                 },
-              ),,
+              ),
               _SettingsTile(
                 icon: Icons.logout_rounded,
                 title: isFrench ? 'Se déconnecter' : 'Sign out',
