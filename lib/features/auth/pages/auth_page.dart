@@ -567,7 +567,7 @@ class _AuthPageState extends State<AuthPage> {
                 textAlign: TextAlign.center,
               ),
               FormField<String>(
-                validator: (_) => _selectedClassId == null
+                validator: (_) => compatible.isEmpty || _selectedClassId == null
                     ? 'Aucune salle disponible pour cette classe.'
                     : null,
                 builder: (_) => const SizedBox.shrink(),
