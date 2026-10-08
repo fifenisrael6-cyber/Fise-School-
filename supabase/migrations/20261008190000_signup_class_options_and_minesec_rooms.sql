@@ -9,7 +9,6 @@ update public.exam_level_series els
 set active = false
 from public.exam_levels el
 where el.id = els.exam_level_id
-  and el.subsystem = 'francophone'
   and el.sector = 'general'
   and el.level_order < 5
   and els.active;
