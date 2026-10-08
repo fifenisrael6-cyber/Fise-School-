@@ -460,9 +460,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(fontSize: 10, color: Colors.black45),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    _groupReceiptIcon(_receipts[message.id]),
+                  ],
+                ],
               ),
             ),
           ],
