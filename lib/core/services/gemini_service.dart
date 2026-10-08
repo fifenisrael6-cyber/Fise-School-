@@ -84,6 +84,8 @@ class GeminiService {
     String? attachmentName,
     String mode = 'student',
     AiLessonContext? context,
+    /// Compatibilité avec les écrans qui envoient encore un contexte libre.
+    Map<String, dynamic>? schoolContext,
     String languageCode = 'fr',
   }) async {
     final isFrench = (profile?.preferredLanguage ?? languageCode) != 'en';
@@ -104,6 +106,8 @@ class GeminiService {
       'language': isFrench ? 'fr' : 'en',
       if (lessonContext != null && !lessonContext.isEmpty)
         'context': lessonContext.toMap(),
+      if (schoolContext != null && schoolContext.isNotEmpty)
+        'schoolContext': schoolContext,
       // Gardé pour les anciennes versions déployées de la fonction.
       // La fonction sécurisée ignore ces valeurs et lit le profil en base.
       if (profile != null)
