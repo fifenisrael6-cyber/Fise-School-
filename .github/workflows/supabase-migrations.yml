@@ -20,7 +20,17 @@ jobs:
         with:
           version: latest
 
-      - name: Apply migrations
-        run: supabase db push --db-url "$SUPABASE_DB_URL"
+      - name: Check database connection secret
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Missing GitHub secret SUPABASE_DB_URL (or SUPABASE_DATABASE_URL)."
+            echo "The migration workflow cannot connect to the production database without a PostgreSQL connection URL."
+            exit 1
+          fi
+
+      - name: Apply migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.SUPABASE_DATABASE_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL"
