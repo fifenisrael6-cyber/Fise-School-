@@ -77,6 +77,11 @@ serve(async (req) => {
     const message = String(body?.message ?? "").trim().slice(0, 12000);
     const language = profile.preferred_language === "en" ? "en" : "fr";
     const attachment = body?.attachment;
+    const mode = String(body?.mode ?? 'student').toLowerCase() === 'admin' ? 'admin' : 'student';
+    const schoolContext = body?.schoolContext && typeof body.schoolContext === 'object' ? body.schoolContext : null;
+    if (mode === 'admin' && profile.role !== 'admin') {
+      return json({ error: language === 'fr' ? 'Accès réservé à l’administrateur.' : 'Administrator access required.' }, 403);
+    }
 
     if (!message && !attachment?.base64) {
       return json({ error: "A message or attachment is required." }, 400);
@@ -102,13 +107,22 @@ serve(async (req) => {
       };
     }
 
-    const schoolContext = language === "en"
+    const contextText = schoolContext ? JSON.stringify(schoolContext).slice(0, 20000) : '';
+    const systemPrompt = language === "en"
       ? `You are Fise School AI, an educational assistant for Cameroon.
-Authenticated student/teacher profile: first name=${profile.first_name ?? "unknown"}, role=${profile.role ?? "unknown"}, subsystem=${profile.subsystem ?? "unknown"}, sector=${profile.sector ?? "unknown"}, class=${profile.class_name ?? "unknown"}, exam level=${profile.exam_level_label ?? "unknown"}, exam=${profile.exam_label ?? "unknown"}.
-Teach clearly and accurately at the user's school level. When solving schoolwork, explain the reasoning instead of only giving a result. Never invent a Fise School course or curriculum detail that is not present in the conversation or attachment.`
-      : `Tu es Fise School AI, un assistant éducatif pour le Cameroun.
+Authenticated profile: first name=${profile.first_name ?? "unknown"}, role=${profile.role ?? "unknown"}, subsystem=${profile.subsystem ?? "unknown"}, sector=${profile.sector ?? "unknown"}, class=${profile.class_name ?? "unknown"}, exam level=${profile.exam_level_label ?? "unknown"}, exam=${profile.exam_label ?? "unknown"}.
+${mode === 'admin'
+  ? 'You are in ADMIN PEDAGOGICAL MODE. Help the administrator create, improve, structure and adapt lessons, exercises, QCM and corrections for a selected classroom. Produce ready-to-use school content, but never invent an official Cameroon curriculum reference when it is not supplied. Clearly label suggestions that require validation.'
+  : 'You are in STUDENT MODE. Explain school subjects like a teacher: definition, explanation, formula/rule when relevant, method, worked example, correction, then a short summary. Adapt vocabulary and difficulty to the authenticated school level.'}
+Use the Cameroon school context when supplied. Do not invent Fise School database facts. If curriculum information is missing, say so and provide a clearly marked general pedagogical explanation.
+${contextText ? `Current Fise School context: ${contextText}` : ''}`
+      : `Tu es Fise School AI, assistant pédagogique pour le Cameroun.
 Profil authentifié : prénom=${profile.first_name ?? "inconnu"}, rôle=${profile.role ?? "inconnu"}, sous-système=${profile.subsystem ?? "inconnu"}, secteur=${profile.sector ?? "inconnu"}, classe=${profile.class_name ?? "inconnue"}, niveau d'examen=${profile.exam_level_label ?? "inconnu"}, examen=${profile.exam_label ?? "inconnu"}.
-Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un exercice, explique le raisonnement et pas seulement le résultat. N'invente jamais un détail de programme ou de cours Fise School qui n'est pas présent dans la conversation ou le document/photo.`;
+${mode === 'admin'
+  ? 'MODE ADMINISTRATEUR PÉDAGOGIQUE : aide à créer, améliorer, structurer et adapter des leçons, exercices, QCM et corrigés pour une salle choisie. Génère un contenu directement exploitable à l’école, mais n’invente jamais une référence officielle du programme camerounais non fournie. Signale clairement ce qui doit être validé.'
+  : 'MODE ÉLÈVE : explique les matières comme un enseignant : définition, explication, formule/règle si nécessaire, méthode, exemple résolu, correction, puis résumé court. Adapte le vocabulaire et la difficulté au niveau scolaire authentifié.'}
+Utilise le contexte scolaire camerounais lorsqu’il est fourni. N’invente jamais les données de la base Fise School. Si une information du programme manque, dis-le et donne une explication pédagogique générale clairement signalée.
+${contextText ? `Contexte Fise School actuel : ${contextText}` : ''}`;
 
     const history = cleanHistory(body?.history);
     const contents: Record<string, unknown>[] = history.map((item) => ({
@@ -130,7 +144,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: schoolContext }] },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           contents,
           generationConfig: { temperature: 0.4 },
         }),
