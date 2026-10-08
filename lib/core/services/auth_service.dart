@@ -39,6 +39,7 @@ class AuthService {
     String? exam,
     String? track,
     String? className,
+    String? classId,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
@@ -60,6 +61,7 @@ class AuthService {
         'exam': exam,
         'track': track,
         'class_name': className,
+        'class_id': classId,
       },
     );
 
