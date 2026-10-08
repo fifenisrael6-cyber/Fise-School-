@@ -38,6 +38,7 @@ class AuthService {
     String? examLevel,
     String? exam,
     String? track,
+    String? languageOption,
     String? className,
     String? classId,
   }) async {
@@ -60,6 +61,7 @@ class AuthService {
         'exam_level': examLevel,
         'exam': exam,
         'track': track,
+        'language_option': languageOption,
         'class_name': className,
         'class_id': classId,
       },
