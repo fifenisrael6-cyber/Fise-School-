@@ -75,6 +75,9 @@ class _AuthPageState extends State<AuthPage> {
     setState(() {
       _level = null;
       _track = null;
+      _languageOption = null;
+      _selectedClassId = null;
+      _classes = const [];
       _levels = const [];
       _tracks = const [];
       _catalogError = false;
@@ -108,7 +111,10 @@ class _AuthPageState extends State<AuthPage> {
   Future<void> _loadTracks(ExamLevel level) async {
     setState(() {
       _track = null;
+      _languageOption = null;
+      _selectedClassId = null;
       _tracks = const [];
+      _classes = const [];
     });
     try {
       final tracks = level.sector == ExamSector.general
@@ -496,7 +502,7 @@ class _AuthPageState extends State<AuthPage> {
         ],
         validator: (value) => value == null ? texts.selectionRequired : null,
         onChanged: (value) {
-          setState(() { _level = value; _selectedClassId = null; _classes = const []; });
+          setState(() { _level = value; _track = null; _languageOption = null; _selectedClassId = null; _classes = const []; });
           if (value != null) { _loadTracks(value); _loadClasses(); }
         },
       ),
@@ -523,7 +529,11 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
-          onChanged: (value) => setState(() => _track = value),
+          onChanged: (value) => setState(() {
+            _track = value;
+            _languageOption = null;
+            _selectedClassId = null;
+          }),
         ),
       ],
     ];
