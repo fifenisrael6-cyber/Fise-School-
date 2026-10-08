@@ -75,6 +75,16 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     super.dispose();
   }
 
+  Future<List<CourseResource>> _loadResources() async {
+    try {
+      final resources = await ResourceService().listForCourse(widget.course.id);
+      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: widget.course));
+      return resources;
+    } catch (_) {
+      return _offline.resourcesForCourse(widget.profile.id, widget.course.id);
+    }
+  }
+
   void _loadLessons() {
     _lessonsFuture = _lessonService.listCourseLessons(widget.course.id);
   }
@@ -183,7 +193,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 ],
                 const SizedBox(height: 18),
                 FutureBuilder<List<CourseResource>>(
-                  future: _offline.resourcesForCourse(widget.profile.id, widget.course.id),
+                  future: _loadResources(),
                   builder: (context, resourceSnapshot) {
                     final resources = resourceSnapshot.data ?? const <CourseResource>[];
                     if (resources.isEmpty) {
