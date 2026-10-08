@@ -125,7 +125,11 @@ class SupabaseSessionService implements SessionService {
 
   @override
   Future<void> signOut() async {
-    await PushService.unregister();
+    try {
+      await PushService.unregister();
+    } catch (_) {
+      // Push-token cleanup must not prevent local sign-out.
+    }
     // Do not leave another user's downloaded courses on a shared device.
     try {
       final userId = _client.auth.currentUser?.id;
@@ -138,6 +142,6 @@ class SupabaseSessionService implements SessionService {
     } catch (_) {
       // Signing out must still succeed if local cache cleanup fails.
     }
-    await _client.auth.signOut();
+    await _client.auth.signOut(scope: SignOutScope.local);
   }
 }
