@@ -259,7 +259,6 @@ class AppTexts {
       : 'Le cours n’a pas pu être enregistré.';
   String get assignments => isEnglish ? 'Assignments' : 'Devoirs';
   String get notifications => isEnglish ? 'Notifications' : 'Notifications';
-  String get forum => isEnglish ? 'Forum' : 'Forum';
   String get messages => isEnglish ? 'Messages' : 'Messages';
   String get profile => isEnglish ? 'Profile' : 'Profil';
   String get login => isEnglish ? 'Log in' : 'Connexion';
