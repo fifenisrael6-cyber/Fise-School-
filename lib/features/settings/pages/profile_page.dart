@@ -3,7 +3,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/photo_service.dart';
-import '../../../core/services/profile_service.dart';
 import '../../../models/user_profile.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -29,11 +28,9 @@ class _ProfilePageState extends State<ProfilePage> {
   late final _lastName = TextEditingController(text: widget.profile.lastName);
   late final _email = TextEditingController(text: widget.profile.email ?? '');
 
-  final _profiles = ProfileService();
   final _photos = PhotoService();
 
   late String _language = widget.profile.preferredLanguage;
-  bool _loading = false;
 
   @override
   void dispose() {
@@ -150,37 +147,6 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _required(String? value) => value == null || value.trim().isEmpty
       ? AppTexts(widget.locale).requiredField
       : null;
-
-  Future<void> _save(AppTexts texts) async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    setState(() => _loading = true);
-
-    try {
-      final updated = await _profiles.updateEditableProfile(
-        firstName: _firstName.text,
-        lastName: _lastName.text,
-        preferredLanguage: _language,
-      );
-
-      widget.onSaved?.call(updated);
-
-      if (mounted) {
-        Navigator.pop(context, updated);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(texts.profileSaveError)));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-    }
-  }
 
   Future<void> _pickPhoto(String source, AppTexts texts) async {
     final XFile? file = source == 'camera'
