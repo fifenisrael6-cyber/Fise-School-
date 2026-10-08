@@ -16,21 +16,9 @@ class SubjectService {
     : _client = client ?? Supabase.instance.client;
 
   Future<List<Subject>> listForProfile(UserProfile profile) async {
-    if (profile.subsystem == null || profile.sector == null) {
-      return const [];
-    }
-
-    final rows = await _client
-        .from('subjects')
-        .select()
-        .eq('subsystem', profile.subsystem!)
-        .eq('sector', profile.sector!)
-        .eq('is_active', true)
-        .order('name_fr');
-
-    return rows
-        .map((row) => Subject.fromMap(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
+    // Students must see only subjects assigned to their active classroom(s).
+    // Never return every subject in the same subsystem/sector as a fallback.
+    return CourseService(client: _client).listSubjects(profile);
   }
 }
 
