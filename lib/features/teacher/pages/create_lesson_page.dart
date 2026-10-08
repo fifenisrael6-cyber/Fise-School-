@@ -322,7 +322,22 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Text(
+                _isFrench
+                    ? r'Astuce de mise en forme : « ## Titre » pour un sous-titre (ex. ## Définitions importantes, ## Formules, ## Exercices), « **mot** » pour le gras, « - » pour une liste, et les formules entre $...$ (ex. $x^2+1$) ou $$...$$ pour une formule centrée.'
+                    : r'Formatting tip: "## Title" for a heading (e.g. ## Key definitions, ## Formulas, ## Exercises), "**word**" for bold, "-" for a list, and formulas between $...$ (e.g. $x^2+1$) or $$...$$ for a centred formula.',
+                style: const TextStyle(height: 1.4, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 16),
             _field(controller: _titleFrController, label: 'Titre français'),
             _field(controller: _titleEnController, label: 'English title'),
             _field(

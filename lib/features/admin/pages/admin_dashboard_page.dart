@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../ai/pages/admin_ai_studio_page.dart';
 import 'admin_assignments_page.dart';
 import 'admin_ai_page.dart';
 import 'admin_courses_page.dart';
@@ -66,6 +67,11 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.library_books_rounded,
         title: _isFrench ? 'Cours' : 'Courses',
         builder: (_) => AdminCoursesPage(locale: locale),
+      ),
+      _AdminEntry(
+        icon: Icons.auto_awesome_rounded,
+        title: _isFrench ? 'Assistant IA pédagogique' : 'Teaching AI assistant',
+        builder: (_) => AdminAiStudioPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.assignment_rounded,

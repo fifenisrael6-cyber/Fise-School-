@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/pedagogy.dart';
 import '../../models/school_class.dart';
 import '../../models/user_profile.dart';
+import '../offline/json_cache.dart';
 import '../offline/offline_repository.dart';
 
 class SubjectService {
@@ -44,46 +45,58 @@ class CourseService {
       return const [];
     }
 
-    // The student's active class is the source of truth. This prevents a
-    // Francophone student from seeing Anglophone classes/subjects and vice versa.
-    final memberships = await _client
-        .from('class_students')
-        .select('class_id, school_classes(subsystem, sector)')
-        .eq('student_id', profile.id)
-        .eq('is_active', true);
+    // La salle active de l'élève est la référence : un élève francophone ne
+    // voit pas les matières anglophones, et inversement.
+    // Les lignes serveur sont gardées en cache local : sans Internet,
+    // la dernière liste des matières de la salle reste affichée.
+    return JsonCache.instance.cachedRead<List<ClassSubjectEntry>>(
+      key: 'class_subjects_${profile.id}',
+      fetch: () async {
+        final memberships = await _client
+            .from('class_students')
+            .select('class_id, school_classes(subsystem, sector)')
+            .eq('student_id', profile.id)
+            .eq('is_active', true);
 
-    final classIds = <String>[];
-    for (final row in memberships) {
-      final context = row['school_classes'];
-      if (context is Map &&
-          context['subsystem']?.toString() == profile.subsystem &&
-          context['sector']?.toString() == profile.sector) {
-        classIds.add(row['class_id'] as String);
-      }
-    }
-    if (classIds.isEmpty) {
-      return const [];
-    }
+        final classIds = <String>[];
+        for (final row in memberships) {
+          final context = row['school_classes'];
+          if (context is Map &&
+              context['subsystem']?.toString() == profile.subsystem &&
+              context['sector']?.toString() == profile.sector) {
+            classIds.add(row['class_id'] as String);
+          }
+        }
+        if (classIds.isEmpty) return <Object?>[];
 
-    final rows = await _client
-        .from('class_subjects')
-        .select('subject_id, is_compulsory, option_group, position, subjects(*)')
-        .inFilter('class_id', classIds)
-        .eq('is_active', true)
-        .order('position');
-
-    final seen = <String>{};
-    final result = <ClassSubjectEntry>[];
-    for (final row in rows) {
-      final entry = ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row));
-      if (entry.subject.subsystem.name != profile.subsystem || entry.subject.sector.name != profile.sector) {
-        continue;
-      }
-      if (seen.add(entry.subject.id)) {
-        result.add(entry);
-      }
-    }
-    return result;
+        final rows = await _client
+            .from('class_subjects')
+            .select('subject_id, is_compulsory, option_group, position, subjects(*)')
+            .inFilter('class_id', classIds)
+            .eq('is_active', true)
+            .order('position');
+        return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+      },
+      decode: (raw) {
+        final seen = <String>{};
+        final result = <ClassSubjectEntry>[];
+        if (raw is! List) return result;
+        for (final row in raw) {
+          if (row is! Map) continue;
+          try {
+            final entry = ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row));
+            if (entry.subject.subsystem.name != profile.subsystem ||
+                entry.subject.sector.name != profile.sector) {
+              continue;
+            }
+            if (seen.add(entry.subject.id)) result.add(entry);
+          } catch (_) {
+            // Une ligne illisible ne doit pas casser toute la liste.
+          }
+        }
+        return result;
+      },
+    );
   }
 
   Future<List<Subject>> listSubjects(UserProfile profile) async {

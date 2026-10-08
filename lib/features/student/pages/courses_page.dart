@@ -93,8 +93,26 @@ class _CoursesPageState extends State<CoursesPage> {
           final entries = snapshot.data ?? const <ClassSubjectEntry>[];
 
           if (entries.isEmpty) {
-            return _Message(texts.noCoursesYet);
+            return RefreshIndicator(
+              onRefresh: _refresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: _Message(
+              _fr
+                  ? 'Aucune matière n\u2019est encore associée à ta salle. Vérifie que tu as bien rejoint ta classe, puis tire l\u2019écran vers le bas pour actualiser.'
+                  : 'No subject is linked to your class yet. Make sure you joined your class, then pull down to refresh.',
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
+
+          final compulsory = entries.where((e) => e.isCompulsory).toList();
+          final optional = entries.where((e) => !e.isCompulsory).toList();
 
           return RefreshIndicator(
             onRefresh: _refresh,
@@ -110,71 +128,107 @@ class _CoursesPageState extends State<CoursesPage> {
                     ),
                     subtitle: Text(
                       _fr
-                          ? 'Choisis une matière pour voir les cours et les QCM de ton enseignant.'
-                          : 'Pick a subject to see your teacher’s courses and quizzes.',
+                          ? '${entries.length} matières de ton programme. Touche une matière pour voir les cours, documents et QCM.'
+                          : '${entries.length} subjects in your programme. Tap a subject to see courses, documents and quizzes.',
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: entries.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.15,
+                if (compulsory.isNotEmpty)
+                  _section(
+                    context,
+                    _fr ? 'Matières de base' : 'Core subjects',
+                    compulsory,
+                    0,
                   ),
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final color = _palette[index % _palette.length];
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SubjectChannelPage(
-                            locale: widget.locale,
-                            profile: widget.profile,
-                            subject: entry.subject,
-                          ),
-                        ),
-                      ),
-                      child: Ink(
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: color.withValues(alpha: 0.35)),
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: color,
-                              child: Icon(_iconFor(entry.subject), color: Colors.white),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              entry.subject.labelFor(widget.locale.languageCode),
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                if (optional.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _section(
+                    context,
+                    _fr ? 'Matières optionnelles' : 'Optional subjects',
+                    optional,
+                    compulsory.length,
+                  ),
+                ],
               ],
             ),
           );
         },
       ),
+    );
+  }
+
+  Widget _section(
+    BuildContext context,
+    String title,
+    List<ClassSubjectEntry> items,
+    int colorOffset,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+          child: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+        ),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.15,
+          ),
+          itemBuilder: (context, index) {
+            final entry = items[index];
+            final color = _palette[(index + colorOffset) % _palette.length];
+            return InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SubjectChannelPage(
+                    locale: widget.locale,
+                    profile: widget.profile,
+                    subject: entry.subject,
+                  ),
+                ),
+              ),
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: color.withValues(alpha: 0.35)),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: color,
+                      child: Icon(_iconFor(entry.subject), color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      entry.subject.labelFor(widget.locale.languageCode),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

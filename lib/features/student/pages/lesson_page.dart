@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/services/gemini_service.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/widgets/rich_lesson_text.dart';
+import '../../ai/pages/ai_page.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 
@@ -31,6 +35,9 @@ class _LessonPageState extends State<LessonPage> {
 
   LessonProgress? _progress;
   List<CourseResource> _resources = const [];
+
+  String? _subjectName;
+  bool _openingAi = false;
 
   bool _loading = true;
   bool _loadingResource = false;
@@ -147,6 +154,152 @@ class _LessonPageState extends State<LessonPage> {
         _errorMessage = error.toString();
       });
     }
+  }
+
+  /// Nom de la matière (chargé seulement quand l'élève ouvre l'IA).
+  Future<String?> _loadSubjectName() async {
+    if (_subjectName != null) {
+      return _subjectName;
+    }
+    try {
+      final row = await Supabase.instance.client
+          .from('subjects')
+          .select('name_fr,name_en')
+          .eq('id', widget.course.subjectId)
+          .maybeSingle();
+      if (row != null) {
+        final value = (isEnglish ? row['name_en'] : row['name_fr']) as String?;
+        if (value != null && value.trim().isNotEmpty) {
+          _subjectName = value.trim();
+        }
+      }
+    } catch (_) {
+      // L'IA reste utilisable sans le nom de la matière.
+    }
+    return _subjectName;
+  }
+
+  /// Texte de la leçon transmis à l'IA (borné, pour une connexion faible).
+  String _lessonTextForAi() {
+    final parts = <String>[
+      if (objectives != null) '${isEnglish ? 'Objectives' : 'Objectifs'} : $objectives',
+      if (content != null) content!,
+      if (examples != null) '${isEnglish ? 'Examples' : 'Exemples'} : $examples',
+      if (summary != null) '${isEnglish ? 'Summary' : 'Résumé'} : $summary',
+    ];
+    final joined = parts.join('\n\n');
+    return joined.length <= 6000 ? joined : joined.substring(0, 6000);
+  }
+
+  Future<void> _openAi([String? prompt]) async {
+    if (_openingAi) {
+      return;
+    }
+    setState(() => _openingAi = true);
+    final subject = await _loadSubjectName();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _openingAi = false);
+
+    final courseTitle = widget.course.labelFor(isEnglish ? 'en' : 'fr').trim();
+    final lessonContext = AiLessonContext(
+      className: widget.profile.className,
+      series: widget.profile.track,
+      subject: subject,
+      chapter: courseTitle.isEmpty ? null : courseTitle,
+      lessonTitle: title,
+      lessonContent: _lessonTextForAi(),
+    );
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiPage(
+          locale: widget.locale,
+          profile: widget.profile,
+          lessonContext: lessonContext,
+          initialPrompt: prompt,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiCard() {
+    final prompts = isEnglish
+        ? const {
+            'Explain this part': 'Explain this part of the lesson to me, step by step.',
+            'I did not understand': 'I did not understand this lesson. Explain it more simply, with an example.',
+            'Lesson quiz': 'Make me a 5-question multiple choice quiz on this lesson, with answers at the end.',
+          }
+        : const {
+            'Explique cette partie': 'Explique-moi cette partie de la leçon, étape par étape.',
+            'Je n’ai pas compris': 'Je n’ai pas compris cette leçon. Explique-la plus simplement, avec un exemple.',
+            'QCM sur la leçon': 'Fais-moi un QCM de 5 questions sur cette leçon, avec la correction à la fin.',
+          };
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: Color(0xFF166534)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isEnglish ? 'Need help with this lesson?' : 'Besoin d’aide sur cette leçon ?',
+                  style: const TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF166534),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: prompts.entries
+                .map(
+                  (entry) => ActionChip(
+                    label: Text(entry.key),
+                    onPressed: _openingAi ? null : () => _openAi(entry.value),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openingAi ? null : () => _openAi(),
+              icon: _openingAi
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded),
+              label: Text(isEnglish ? 'Ask the AI assistant' : 'Demander à l’assistant IA'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF166534),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _completeLesson() async {
@@ -476,14 +629,7 @@ class _LessonPageState extends State<LessonPage> {
             ],
           ),
           const SizedBox(height: 16),
-          SelectableText(
-            content,
-            style: const TextStyle(
-              fontSize: 16,
-              height: 1.65,
-              color: Color(0xFF334155),
-            ),
-          ),
+          RichLessonText(text: content),
         ],
       ),
     );
@@ -654,6 +800,7 @@ class _LessonPageState extends State<LessonPage> {
               content: summary!,
               icon: Icons.summarize_rounded,
             ),
+          _buildAiCard(),
           const SizedBox(height: 8),
           Row(
             children: [
