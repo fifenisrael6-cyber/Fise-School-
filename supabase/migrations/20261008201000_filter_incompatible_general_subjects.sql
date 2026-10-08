@@ -6,9 +6,10 @@ set is_active = false
 from public.school_classes c
 join public.exam_levels el on el.id = c.exam_level_id
 left join public.series sr on sr.id = c.series_id
-join public.subjects s on s.id = cs.subject_id
+join public.subjects s on true
 where cs.class_id = c.id
   and cs.is_active
+  and s.id = cs.subject_id
   and c.sector = 'general'
   and s.sector = 'general'
   and (
@@ -30,8 +31,7 @@ where cs.class_id = c.id
       and sr.code is not null
       and s.code in ('latin','grec')
       and (
-        (sr.code in ('a1') and false)
-        or (sr.code in ('a2','a3') and s.code = 'grec')
+        (sr.code in ('a2','a3') and s.code = 'grec')
         or (sr.code not in ('a1','a2','a3') )
       )
     )
