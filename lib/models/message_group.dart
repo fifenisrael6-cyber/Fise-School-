@@ -94,3 +94,23 @@ class GroupMember {
     );
   }
 }
+
+class GroupMessageReceipt {
+  final int deliveredCount;
+  final int readCount;
+  final int recipientCount;
+
+  const GroupMessageReceipt({
+    required this.deliveredCount,
+    required this.readCount,
+    required this.recipientCount,
+  });
+
+  factory GroupMessageReceipt.fromMap(Map<String, dynamic> map) {
+    return GroupMessageReceipt(
+      deliveredCount: (map['delivered_count'] as num?)?.toInt() ?? 0,
+      readCount: (map['read_count'] as num?)?.toInt() ?? 0,
+      recipientCount: (map['recipient_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

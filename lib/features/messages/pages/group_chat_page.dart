@@ -33,6 +33,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final TextEditingController _composer = TextEditingController();
 
   List<GroupMessage> _messages = const [];
+  Map<String, GroupMessageReceipt> _receipts = const {};
   bool _loading = true;
   bool _sending = false;
   PickedAttachment? _attachment;
@@ -76,8 +77,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
     try {
       final messages = await _service.listMessages(widget.group.id);
+      await _service.markMessagesDelivered(widget.group.id);
+      await _service.markMessagesRead(widget.group.id);
+      final receipts = await _service.listReceipts(widget.group.id);
       if (mounted) {
-        setState(() => _messages = messages);
+        setState(() {
+          _messages = messages;
+          _receipts = receipts;
+        });
       }
     } catch (error) {
       if (mounted) {
@@ -439,6 +446,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _groupReceiptIcon(GroupMessageReceipt? receipt) {
+    final hasDelivery = (receipt?.deliveredCount ?? 0) > 0;
+    final allRead = (receipt?.recipientCount ?? 0) > 0 &&
+        (receipt?.readCount ?? 0) >= (receipt?.recipientCount ?? 0);
+    return Icon(
+      allRead ? Icons.done_all_rounded : hasDelivery ? Icons.done_all_rounded : Icons.done_rounded,
+      size: 14,
+      color: allRead ? const Color(0xFF166534) : Colors.black45,
     );
   }
 

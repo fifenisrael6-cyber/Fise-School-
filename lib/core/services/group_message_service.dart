@@ -51,6 +51,22 @@ class GroupMessageService {
         .toList(growable: false);
   }
 
+  Future<void> markMessagesDelivered(String groupId) async {
+    await _client.rpc('mark_group_messages_delivered', params: {'p_group_id': groupId});
+  }
+
+  Future<void> markMessagesRead(String groupId) async {
+    await _client.rpc('mark_group_messages_read', params: {'p_group_id': groupId});
+  }
+
+  Future<Map<String, GroupMessageReceipt>> listReceipts(String groupId) async {
+    final result = await _client.rpc('list_group_message_receipts', params: {'p_group_id': groupId});
+    return {
+      for (final row in (result as List))
+        (row['message_id'] as String): GroupMessageReceipt.fromMap(Map<String, dynamic>.from(row as Map)),
+    };
+  }
+
   Future<List<GroupMember>> listMembers(String groupId) async {
     final result = await _client.rpc(
       'list_message_group_members',
