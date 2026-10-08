@@ -587,13 +587,13 @@ class _AuthPageState extends State<AuthPage> {
   List<(String, String)> _availableLanguageOptions() {
     if (_subsystem != ExamSubsystem.francophone || _sector != ExamSector.general) return const [];
     if (_level?.code == 'fr_general_troisieme' ||
-        (_level != null && _level!.levelOrder >= 6 && (_track?.code == 'a2' || _track?.code == 'a4'))) {
+        (_level != null && _level!.levelOrder >= 5 && (_track?.code == 'a2' || _track?.code == 'a4'))) {
       return const [
         ('allemand', 'Allemand'), ('espagnol', 'Espagnol'), ('arabe', 'Arabe'),
         ('italien', 'Italien'), ('chinois', 'Chinois'),
       ];
     }
-    if (_level != null && _level!.levelOrder >= 6 && _track?.code == 'a5') {
+    if (_level != null && _level!.levelOrder >= 5 && _track?.code == 'a5') {
       return const [
         ('allemand_espagnol', 'Allemand + Espagnol'), ('allemand_arabe', 'Allemand + Arabe'),
         ('allemand_italien', 'Allemand + Italien'), ('allemand_chinois', 'Allemand + Chinois'),
