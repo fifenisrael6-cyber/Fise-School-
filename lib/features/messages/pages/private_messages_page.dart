@@ -270,6 +270,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             url: url,
             title: message.attachmentName ?? (_isFrench ? 'Pièce jointe' : 'Attachment'),
             mimeType: message.attachmentType ?? 'application/octet-stream',
+            viewOnce: message.viewOnce,
           ),
         ),
       );
