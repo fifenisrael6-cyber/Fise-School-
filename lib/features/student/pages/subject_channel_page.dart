@@ -122,7 +122,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
 
-    return Scaffold(
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
         backgroundColor: const Color(0xFF166534),
@@ -130,6 +132,14 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         title: Text(
           widget.subject.labelFor(code),
           style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        bottom: TabBar(
+          isScrollable: true,
+          tabs: [
+            Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.menu_book_rounded)),
+            Tab(text: _fr ? 'Photos et vidéos' : 'Photos and videos', icon: const Icon(Icons.perm_media_rounded)),
+            Tab(text: _fr ? 'QCM' : 'Quizzes', icon: const Icon(Icons.quiz_rounded)),
+          ],
         ),
         actions: [
           IconButton(
@@ -163,38 +173,74 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             );
           }
           final items = snapshot.data ?? const <_FeedItem>[];
-          if (items.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  _fr
-                      ? 'Aucun cours ni QCM publié dans cette matière pour le moment.'
-                      : 'No course or quiz has been published in this subject yet.',
-                  textAlign: TextAlign.center,
-                ),
+          final officialCourses = items
+              .where((item) => item.course != null && _isOfficialCourse(item.course!))
+              .toList();
+          final teacherMedia = items
+              .where((item) => item.course != null && !_isOfficialCourse(item.course!))
+              .toList();
+          final quizzes = items.where((item) => item.assignment != null).toList();
+
+          return TabBarView(
+            children: [
+              _feedList(
+                officialCourses,
+                _fr ? 'Les cours écrits et les PDF publiés par l’administration apparaîtront ici.' : 'Written lessons and PDFs published by the administration will appear here.',
               ),
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView(
-              reverse: true,
-              padding: const EdgeInsets.all(12),
-              children: [
-                if (_offlineMode) _offlineBanner(),
-                ...List.generate(items.length, (index) {
-                  final item = items[index];
-                  if (item.course != null) {
-                    return _coursePost(item.course!);
-                  }
-                  return _quizPost(item.assignment!);
-                }),
-              ],
-            ),
+              _feedList(
+                teacherMedia,
+                _fr ? 'Aucune photo ou vidéo partagée par l’enseignant pour le moment.' : 'No photos or videos shared by the teacher yet.',
+              ),
+              _feedList(
+                quizzes,
+                _fr ? 'Aucun QCM publié dans cette matière pour le moment.' : 'No quiz has been published for this subject yet.',
+              ),
+            ],
           );
         },
       ),
+      ),
+    );
+  }
+
+  bool _isOfficialCourse(Course course) {
+    // L'administration rattache ses cours au programme/chapitre et peut
+    // publier du texte. Les enseignants publient seulement des médias.
+    return course.curriculumId != null ||
+        course.chapterId != null ||
+        (course.contentFr?.trim().isNotEmpty ?? false) ||
+        (course.contentEn?.trim().isNotEmpty ?? false);
+  }
+
+  Widget _feedList(List<_FeedItem> items, String emptyMessage) {
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: items.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(24),
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.22),
+                Icon(
+                  Icons.menu_book_outlined,
+                  size: 54,
+                  color: Colors.grey.shade500,
+                ),
+                const SizedBox(height: 12),
+                Text(emptyMessage, textAlign: TextAlign.center),
+              ],
+            )
+          : ListView(
+              reverse: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
+              children: [
+                if (_offlineMode) _offlineBanner(),
+                ...items.map((item) => item.course != null
+                    ? _coursePost(item.course!)
+                    : _quizPost(item.assignment!)),
+              ],
+            ),
     );
   }
 
