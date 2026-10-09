@@ -1,3 +1,4 @@
+# Relaunch Android build for the latest Fise School changes.
 # Trigger Android build for the latest Fise School changes.
 name: Build Android apk
 
