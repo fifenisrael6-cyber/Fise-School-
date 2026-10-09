@@ -113,7 +113,7 @@ class GroupMessageService {
     return _client.storage.from(bucket).createSignedUrl(path, 3600);
   }
 
-  Future<void> deleteMessage(GroupMessage message) async {
+  Future<void> deleteMessage({required String groupId, required GroupMessage message}) async {
     final userId = _client.auth.currentUser!.id;
     if (message.senderId != userId) {
       throw StateError('You can only delete messages you sent.');
@@ -133,7 +133,7 @@ class GroupMessageService {
         .from('message_group_messages')
         .delete()
         .eq('id', message.id)
-        .eq('group_id', message.groupId)
+        .eq('group_id', groupId)
         .eq('sender_id', userId);
   }
 }
