@@ -75,6 +75,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false),
+      )
       ..subscribe();
   }
 
