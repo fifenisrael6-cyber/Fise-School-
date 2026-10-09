@@ -182,10 +182,10 @@ class _LessonPageState extends State<LessonPage> {
   /// Texte de la leçon transmis à l'IA (borné, pour une connexion faible).
   String _lessonTextForAi() {
     final parts = <String>[
-      if (objectives != null) '${isEnglish ? 'Objectives' : 'Objectifs'} : $objectives',
-      if (content != null) content!,
-      if (examples != null) '${isEnglish ? 'Examples' : 'Exemples'} : $examples',
-      if (summary != null) '${isEnglish ? 'Summary' : 'Résumé'} : $summary',
+      if (objectives case final value?) '${isEnglish ? 'Objectives' : 'Objectifs'} : $value',
+      if (content case final value?) value,
+      if (examples case final value?) '${isEnglish ? 'Examples' : 'Exemples'} : $value',
+      if (summary case final value?) '${isEnglish ? 'Summary' : 'Résumé'} : $value',
     ];
     final joined = parts.join('\n\n');
     return joined.length <= 6000 ? joined : joined.substring(0, 6000);

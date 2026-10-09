@@ -101,7 +101,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
         await _offline.markOpened(widget.profile.id, widget.resource.id);
       }
 
-      if (!mounted || localPath == null) return;
+      if (!mounted) return;
       await Navigator.push(
         context,
         MaterialPageRoute(

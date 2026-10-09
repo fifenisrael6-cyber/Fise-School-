@@ -44,8 +44,6 @@ jobs:
       - name: Generate Drift code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos
