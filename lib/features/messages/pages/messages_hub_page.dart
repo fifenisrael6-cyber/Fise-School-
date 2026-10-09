@@ -141,7 +141,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
-      classes = await CourseService().listTeacherClasses(widget.profile.id);
+      classes = await CourseService().listTeacherCompatibleClasses();
     } catch (_) {
       classes = const [];
     }
@@ -180,8 +180,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
               const SizedBox(height: 6),
               if (classes.isEmpty)
                 Text(_fr
-                    ? 'Aucune salle ne vous est affectée.'
-                    : 'No classrooms are assigned to you.')
+                    ? 'Aucune salle compatible avec votre sous-système et votre secteur.'
+                    : 'No classrooms match your subsystem and sector.')
               else
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 220),
@@ -225,13 +225,55 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     if (created != true || name.isEmpty) {
       return;
     }
+    if (selectedClassIds.isEmpty) {
+      _snack(_fr ? 'Choisissez au moins une salle.' : 'Select at least one classroom.');
+      return;
+    }
 
     try {
-      await _service.createGroup(name: name, classIds: selectedClassIds.toList(growable: false));
+      final targetClasses = classes
+          .where((schoolClass) => selectedClassIds.contains(schoolClass.id))
+          .toList(growable: false);
+      final targetClassIds = targetClasses
+          .map((schoolClass) => schoolClass.id)
+          .toList(growable: false);
+      await CourseService().authorizeTeacherClasses(targetClassIds);
+
+      var createdCount = 0;
+      final failures = <String>[];
+      for (final schoolClass in targetClasses) {
+        final groupName = targetClasses.length == 1
+            ? name
+            : '$name - ${schoolClass.displayName}';
+        try {
+          await _service.createGroup(
+            name: groupName,
+            classId: schoolClass.id,
+          );
+          createdCount++;
+        } catch (error) {
+          failures.add('${schoolClass.displayName}: $error');
+        }
+      }
+
+      if (createdCount == 0) {
+        throw StateError(
+          failures.isEmpty
+              ? (_fr ? 'Aucun groupe créé.' : 'No group was created.')
+              : failures.first,
+        );
+      }
+
       await _reload();
-      _snack(_fr
-          ? 'Groupe créé. Ouvrez-le pour voir le code d’invitation.'
-          : 'Group created. Open it to see the invitation code.');
+      if (failures.isNotEmpty) {
+        _snack(_fr
+            ? '$createdCount groupe(s) créé(s), mais certains ont échoué : ${failures.first}'
+            : '$createdCount group(s) created, but some failed: ${failures.first}');
+      } else {
+        _snack(_fr
+            ? '$createdCount groupe(s) créé(s). Ouvrez chaque groupe pour voir son code d’invitation.'
+            : '$createdCount group(s) created. Open each group to see its invitation code.');
+      }
     } catch (error) {
       _snack('$error');
     }

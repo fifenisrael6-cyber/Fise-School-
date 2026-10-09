@@ -11,12 +11,14 @@ import '../../../models/school_class.dart';
 class ClassSubjectPicker extends StatefulWidget {
   final Locale locale;
   final String teacherId;
+  final bool includeCompatibleClasses;
   final void Function(List<SchoolClass> classes, Subject? subject) onChanged;
 
   const ClassSubjectPicker({
     super.key,
     required this.locale,
     required this.teacherId,
+    this.includeCompatibleClasses = false,
     required this.onChanged,
   });
 
@@ -39,7 +41,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   @override
   void initState() {
     super.initState();
-    _classesFuture = _service.listTeacherClasses(widget.teacherId).then((list) {
+    _classesFuture = (widget.includeCompatibleClasses
+            ? _service.listTeacherCompatibleClasses()
+            : _service.listTeacherClasses(widget.teacherId))
+        .then((list) {
       _allClasses = list;
       return list;
     });
@@ -248,8 +253,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
             final classes = snapshot.data ?? const <SchoolClass>[];
             if (classes.isEmpty) {
               return Text(_fr
-                  ? 'Aucune salle ne vous est affectée. Contactez l’administration.'
-                  : 'No classroom is assigned to you. Contact the administration.');
+                  ? 'Aucune salle compatible avec votre sous-système et votre secteur. Vérifiez votre profil auprès de l’administration.'
+                  : 'No classroom matches your subsystem and sector. Check your profile with the administrator.');
             }
             return Wrap(
               spacing: 8,

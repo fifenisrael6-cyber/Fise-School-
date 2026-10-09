@@ -6,7 +6,6 @@ import '../../settings/pages/settings_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'qcm_builder_page.dart';
-import 'teacher_timetable_page.dart';
 import 'grades_entry_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
@@ -131,19 +130,7 @@ class _TeacherHome extends StatelessWidget {
               ),
             ),
           ),
-          _TeacherAction(
-            icon: Icons.calendar_month_rounded,
-            title: fr ? 'Emploi du temps' : 'Timetable',
-            subtitle: fr
-                ? 'Consulter vos créneaux de cours.'
-                : 'View your teaching schedule.',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TeacherTimetablePage(locale: locale, profile: profile),
-              ),
-            ),
-          ),
+
 
         ],
       ),

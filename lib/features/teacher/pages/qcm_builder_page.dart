@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/assignment_service.dart';
+import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
@@ -129,6 +130,17 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
 
     var done = 0;
     final errors = <String>[];
+    try {
+      await CourseService().authorizeTeacherClasses(
+        _classes.map((schoolClass) => schoolClass.id).toList(growable: false),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saving = false);
+        _snack('${_fr ? 'Accès aux salles refusé' : 'Classroom access denied'}: $error');
+      }
+      return;
+    }
     final title = _title.text.trim();
     final instructions = _instructions.text.trim();
 
@@ -292,6 +304,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
           ClassSubjectPicker(
             locale: widget.locale,
             teacherId: widget.profile.id,
+            includeCompatibleClasses: true,
             onChanged: (classes, subject) {
               setState(() {
                 _classes = classes;
