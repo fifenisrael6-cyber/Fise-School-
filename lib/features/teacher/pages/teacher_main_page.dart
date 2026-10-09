@@ -35,9 +35,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       _TeacherHome(
         locale: widget.locale,
         profile: widget.profile,
-        onCourses: () => setState(() => _index = 1),
-        onMessages: () => setState(() => _index = 2),
-        onAnnales: () => setState(() => _index = 3),
       ),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
@@ -85,16 +82,9 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
 class _TeacherHome extends StatelessWidget {
   final Locale locale;
   final UserProfile profile;
-  final VoidCallback onCourses;
-  final VoidCallback onMessages;
-  final VoidCallback onAnnales;
-
   const _TeacherHome({
     required this.locale,
     required this.profile,
-    required this.onCourses,
-    required this.onMessages,
-    required this.onAnnales,
   });
 
   @override
@@ -129,22 +119,6 @@ class _TeacherHome extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _TeacherAction(
-            icon: Icons.menu_book_rounded,
-            title: fr ? 'Cours et contenus' : 'Courses and content',
-            subtitle: fr
-                ? 'Publier des cours et des documents dans vos salles.'
-                : 'Publish lessons and documents to your classrooms.',
-            onTap: onCourses,
-          ),
-          _TeacherAction(
-            icon: Icons.history_edu_rounded,
-            title: fr ? 'Annales des examens' : 'Exam papers',
-            subtitle: fr
-                ? 'Créer une évaluation et la diffuser aux salles et séries autorisées.'
-                : 'Create an assessment and publish it to assigned classes and streams.',
-            onTap: onAnnales,
-          ),
-          _TeacherAction(
             icon: Icons.grading_rounded,
             title: fr ? 'Notes' : 'Marks',
             subtitle: fr
@@ -170,14 +144,7 @@ class _TeacherHome extends StatelessWidget {
               ),
             ),
           ),
-          _TeacherAction(
-            icon: Icons.chat_bubble_outline_rounded,
-            title: fr ? 'Messagerie' : 'Messages',
-            subtitle: fr
-                ? 'Échanger avec les élèves autorisés de vos salles.'
-                : 'Chat with authorized students in your classrooms.',
-            onTap: onMessages,
-          ),
+
         ],
       ),
     );
