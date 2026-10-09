@@ -64,6 +64,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false),
+      )
       ..subscribe();
   }
 
@@ -80,6 +91,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
       setState(() => _loading = true);
     }
     try {
+      await _service.markMessagesRead(widget.group.id);
       final messages = await _service.listMessages(widget.group.id);
       if (mounted) {
         setState(() => _messages = messages);
@@ -553,6 +565,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   _formatTime(message.createdAt),
                   style: const TextStyle(fontSize: 10, color: Colors.black45),
                 ),
+                if (mine)
+                  Icon(
+                    message.recipientCount > 0 &&
+                            message.readCount >= message.recipientCount
+                        ? Icons.done_all_rounded
+                        : message.recipientCount > 0 &&
+                                message.deliveredCount >= message.recipientCount
+                            ? Icons.done_all_rounded
+                            : Icons.done_rounded,
+                    size: 14,
+                    color: message.recipientCount > 0 &&
+                            message.readCount >= message.recipientCount
+                        ? const Color(0xFF166534)
+                        : Colors.black45,
+                  ),
                 if (mine || _isOwner)
                   PopupMenuButton<String>(
                     tooltip: _fr ? 'Options du message' : 'Message options',
