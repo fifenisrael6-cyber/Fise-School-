@@ -843,6 +843,6 @@ class _GroupAttachmentViewerState extends State<_GroupAttachmentViewer> {
                             ))
                       : isImage
                           ? Center(child: InteractiveViewer(child: Image.network(widget.url, fit: BoxFit.contain)))
-                          : Center(child: Text(widget.isFrench ? 'Type de fichier non pris en charge.' : 'Unsupported file type.'));
+                          : Center(child: Text(widget.isFrench ? 'Type de fichier non pris en charge.' : 'Unsupported file type.')));
   }
 }
