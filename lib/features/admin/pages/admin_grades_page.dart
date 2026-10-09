@@ -322,7 +322,7 @@ class _BulletinsTab extends StatefulWidget {
 
 class _BulletinsTabState extends State<_BulletinsTab> {
   final _service = GradeService();
-  List<ForumClass> _classes = const [];
+  List<ClassRoom> _classes = const [];
   List<RosterStudent> _roster = const [];
   String? _classId;
   bool _loading = true;
