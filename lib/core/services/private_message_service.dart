@@ -17,6 +17,14 @@ class PrivateMessageService {
         .toList();
   }
 
+  Future<bool> unlockTeacher(String code) async {
+    final result = await _client.rpc(
+      'unlock_teacher_private_messages',
+      params: {'p_code': code.trim()},
+    );
+    return result == true;
+  }
+
   Future<List<PrivateMessage>> listConversation(String contactId) async {
     final result = await _client.rpc(
       'list_private_messages',
