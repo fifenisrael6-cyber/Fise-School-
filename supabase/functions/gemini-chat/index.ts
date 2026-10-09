@@ -131,6 +131,17 @@ serve(async (req) => {
     // "mode" is only a request from the client. The real permission comes from
     // the role stored in the database for the authenticated user.
     const requestedMode = body?.mode === "admin" ? "admin" : "student";
+    // Teachers must not use the student AI endpoint even if they call it directly.
+    if (profile.role === "teacher") {
+      return json({ error: language === "fr"
+        ? "L'assistant IA n'est pas accessible aux enseignants."
+        : "The AI assistant is not available to teachers." }, 403);
+    }
+    if (requestedMode === "student" && profile.role !== "student" && profile.role !== "admin") {
+      return json({ error: language === "fr"
+        ? "Accès réservé aux élèves et aux administrateurs autorisés."
+        : "Access is restricted to students and authorized administrators." }, 403);
+    }
     if (requestedMode === "admin" && profile.role !== "admin") {
       return json({ error: language === "fr"
         ? "Accès réservé aux administrateurs."
