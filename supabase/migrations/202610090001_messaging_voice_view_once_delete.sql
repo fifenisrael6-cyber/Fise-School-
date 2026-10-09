@@ -57,7 +57,7 @@ as $$
     and not ((select auth.uid()) = any(coalesce(m.hidden_for, '{}'::uuid[])))
   order by m.created_at;
 $$;
-revoke all on function public.list_private_messages(uuid) from public;
+revoke all on function public.list_private_messages(uuid) from public, anon;
 grant execute on function public.list_private_messages(uuid) to authenticated;
 
 drop function if exists public.list_message_group_messages(uuid);
@@ -111,7 +111,7 @@ begin
   order by m.created_at asc;
 end;
 $$;
-revoke all on function public.list_message_group_messages(uuid) from public;
+revoke all on function public.list_message_group_messages(uuid) from public, anon;
 grant execute on function public.list_message_group_messages(uuid) to authenticated;
 
 create or replace function public.delete_private_message(
@@ -165,7 +165,7 @@ begin
   return null;
 end;
 $$;
-revoke all on function public.delete_private_message(uuid, boolean) from public;
+revoke all on function public.delete_private_message(uuid, boolean) from public, anon;
 grant execute on function public.delete_private_message(uuid, boolean) to authenticated;
 
 create or replace function public.delete_group_message(
@@ -218,7 +218,7 @@ begin
   return null;
 end;
 $$;
-revoke all on function public.delete_group_message(uuid, boolean) from public;
+revoke all on function public.delete_group_message(uuid, boolean) from public, anon;
 grant execute on function public.delete_group_message(uuid, boolean) to authenticated;
 
 -- Atomic claims prevent multiple recipients/devices from opening the same private attachment twice.
@@ -256,7 +256,7 @@ begin
   return v_path;
 end;
 $$;
-revoke all on function public.claim_private_message_view_once(uuid) from public;
+revoke all on function public.claim_private_message_view_once(uuid) from public, anon;
 grant execute on function public.claim_private_message_view_once(uuid) to authenticated;
 
 -- Each receiving member gets one opening for a group view-once attachment.
@@ -296,7 +296,7 @@ begin
   return v_path;
 end;
 $$;
-revoke all on function public.claim_group_message_view_once(uuid) from public;
+revoke all on function public.claim_group_message_view_once(uuid) from public, anon;
 grant execute on function public.claim_group_message_view_once(uuid) to authenticated;
 
 -- One-time attachments must never receive a client-created URL before the atomic claim.
