@@ -5,6 +5,7 @@ import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
+import 'past_paper_viewer_page.dart';
 
 /// Annales d'examens : sujets et corrigés, filtrables par examen, année et matière.
 class PastPapersPage extends StatefulWidget {
@@ -77,13 +78,34 @@ class _PastPapersPageState extends State<PastPapersPage> {
   Future<void> _open(PastPaper paper) async {
     try {
       final url = await _service.signedUrl(paper.filePath);
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        _snack(_fr ? 'Aucune application pour ouvrir ce fichier.' : 'No app can open this file.');
+      final name = paper.fileName.toLowerCase();
+      final isPdf = name.endsWith('.pdf');
+      final isImage = name.endsWith('.png') ||
+          name.endsWith('.jpg') ||
+          name.endsWith('.jpeg') ||
+          name.endsWith('.webp');
+      if (!isPdf && !isImage) {
+        _snack(_fr
+            ? 'Format non pris en charge dans le lecteur intégré.'
+            : 'This file type is not supported by the in-app viewer.');
+        return;
       }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PastPaperViewerPage(
+            url: url,
+            title: paper.fileName,
+            isPdf: isPdf,
+          ),
+        ),
+      );
     } catch (_) {
       if (mounted) {
-        _snack(_fr ? 'Impossible d’ouvrir ce fichier.' : 'Unable to open this file.');
+        _snack(_fr
+            ? 'Impossible d’ouvrir ce fichier. Vérifiez son accès dans Supabase.'
+            : 'Unable to open this file. Check its access in Supabase.');
       }
     }
   }
