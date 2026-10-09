@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -12,11 +13,13 @@ class MessageAttachmentViewerPage extends StatefulWidget {
     required this.url,
     required this.title,
     required this.mimeType,
+    this.viewOnce = false,
   });
 
   final String url;
   final String title;
   final String mimeType;
+  final bool viewOnce;
 
   @override
   State<MessageAttachmentViewerPage> createState() => _MessageAttachmentViewerPageState();
@@ -29,6 +32,8 @@ class _MessageAttachmentViewerPageState extends State<MessageAttachmentViewerPag
   VideoPlayerController? _videoController;
   String? _error;
   bool _loading = true;
+  bool _viewOnceConsumed = false;
+  StreamSubscription<void>? _audioCompleteSubscription;
 
   bool get _isPdf => widget.mimeType.toLowerCase().contains('pdf');
   bool get _isAudio => widget.mimeType.toLowerCase().startsWith('audio/');
@@ -53,9 +58,15 @@ class _MessageAttachmentViewerPageState extends State<MessageAttachmentViewerPag
       } else if (_isAudio) {
         _audioPlayer = AudioPlayer();
         await _audioPlayer!.setSource(UrlSource(widget.url));
+        if (widget.viewOnce) {
+          _audioCompleteSubscription = _audioPlayer!.onPlayerComplete.listen((_) {
+            if (mounted) setState(() => _viewOnceConsumed = true);
+          });
+        }
       } else if (_isVideo) {
         _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.url));
         await _videoController!.initialize();
+        _videoController!.addListener(_handleVideoState);
       }
       if (mounted) setState(() => _loading = false);
     } catch (_) {
@@ -68,10 +79,21 @@ class _MessageAttachmentViewerPageState extends State<MessageAttachmentViewerPag
     }
   }
 
+  void _handleVideoState() {
+    if (widget.viewOnce &&
+        !_viewOnceConsumed &&
+        _videoController?.value.isCompleted == true &&
+        mounted) {
+      setState(() => _viewOnceConsumed = true);
+    }
+  }
+
   @override
   void dispose() {
+    _audioCompleteSubscription?.cancel();
     _pdfController?.dispose();
     _audioPlayer?.dispose();
+    _videoController?.removeListener(_handleVideoState);
     _videoController?.dispose();
     super.dispose();
   }
@@ -135,15 +157,25 @@ class _MessageAttachmentViewerPageState extends State<MessageAttachmentViewerPag
             builder: (context, snapshot) {
               final playing = snapshot.data == PlayerState.playing;
               return FilledButton.icon(
-                onPressed: () async {
-                  if (playing) {
-                    await _audioPlayer!.pause();
-                  } else {
-                    await _audioPlayer!.resume();
-                  }
-                },
-                icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                label: Text(playing ? 'Pause' : 'Écouter'),
+                onPressed: _viewOnceConsumed
+                    ? null
+                    : () async {
+                        if (playing) {
+                          await _audioPlayer!.pause();
+                        } else {
+                          await _audioPlayer!.resume();
+                        }
+                      },
+                icon: Icon(_viewOnceConsumed
+                    ? Icons.check_circle_rounded
+                    : playing
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded),
+                label: Text(_viewOnceConsumed
+                    ? 'Consultation terminée'
+                    : playing
+                        ? 'Pause'
+                        : 'Écouter'),
               );
             },
           ),
@@ -163,15 +195,21 @@ class _MessageAttachmentViewerPageState extends State<MessageAttachmentViewerPag
             VideoPlayer(controller),
             IconButton.filledTonal(
               iconSize: 40,
-              onPressed: () async {
-                if (controller.value.isPlaying) {
-                  await controller.pause();
-                } else {
-                  await controller.play();
-                }
-                if (mounted) setState(() {});
-              },
-              icon: Icon(controller.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+              onPressed: _viewOnceConsumed
+                  ? null
+                  : () async {
+                      if (controller.value.isPlaying) {
+                        await controller.pause();
+                      } else {
+                        await controller.play();
+                      }
+                      if (mounted) setState(() {});
+                    },
+              icon: Icon(_viewOnceConsumed
+                  ? Icons.check_circle_rounded
+                  : controller.value.isPlaying
+                      ? Icons.pause_rounded
+                      : Icons.play_arrow_rounded),
             ),
           ],
         ),
