@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
@@ -631,16 +632,23 @@ class _PrivateAttachmentViewer extends StatefulWidget {
 
 class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
   PdfControllerPinch? _pdfController;
+  VideoPlayerController? _videoController;
   bool _loading = true;
   String? _error;
 
   bool get _isPdf => widget.mimeType.toLowerCase().contains('pdf');
+  bool get _isVideo => widget.mimeType.toLowerCase().startsWith('video/');
 
   @override
   void initState() {
     super.initState();
-    if (_isPdf) _loadPdf();
-    else _loading = false;
+    if (_isPdf) {
+      _loadPdf();
+    } else if (_isVideo) {
+      _loadVideo();
+    } else {
+      _loading = false;
+    }
   }
 
   Future<void> _loadPdf() async {
@@ -672,9 +680,45 @@ class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
     }
   }
 
+  Future<void> _loadVideo() async {
+    try {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _videoController = controller;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = widget.isFrench
+              ? 'Impossible de lire cette vidéo.'
+              : 'Unable to play this video.';
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleVideo() async {
+    final controller = _videoController;
+    if (controller == null) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     _pdfController?.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
@@ -694,17 +738,40 @@ class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
                   ? (_pdfController == null
                       ? Center(child: Text(widget.isFrench ? 'Document indisponible.' : 'Document unavailable.'))
                       : PdfViewPinch(controller: _pdfController!))
-                  : widget.mimeType.startsWith('image/')
-                      ? Center(
-                          child: InteractiveViewer(
-                            child: Image.network(widget.url, fit: BoxFit.contain),
-                          ),
-                        )
-                      : Center(
-                          child: Text(widget.isFrench
-                              ? 'Aperçu intégré disponible pour les images et les PDF.'
-                              : 'In-app preview is available for images and PDFs.'),
-                        ),
+                  : _isVideo
+                      ? (_videoController == null
+                          ? Center(child: Text(widget.isFrench ? 'Vidéo indisponible.' : 'Video unavailable.'))
+                          : Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  AspectRatio(
+                                    aspectRatio: _videoController!.value.aspectRatio > 0
+                                        ? _videoController!.value.aspectRatio
+                                        : 16 / 9,
+                                    child: VideoPlayer(_videoController!),
+                                  ),
+                                  IconButton(
+                                    onPressed: _toggleVideo,
+                                    icon: Icon(_videoController!.value.isPlaying
+                                        ? Icons.pause_circle_filled_rounded
+                                        : Icons.play_circle_fill_rounded),
+                                    iconSize: 48,
+                                  ),
+                                ],
+                              ),
+                            ))
+                      : widget.mimeType.toLowerCase().startsWith('image/')
+                          ? Center(
+                              child: InteractiveViewer(
+                                child: Image.network(widget.url, fit: BoxFit.contain),
+                              ),
+                            )
+                          : Center(
+                              child: Text(widget.isFrench
+                                  ? 'Type de fichier non pris en charge.'
+                                  : 'Unsupported file type.'),
+                            ),
     );
   }
 }
