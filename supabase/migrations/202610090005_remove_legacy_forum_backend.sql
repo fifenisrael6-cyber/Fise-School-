@@ -1,4 +1,5 @@
--- The forum UI has been removed; retire its backend objects as requested.
+-- The forum UI has been removed; retire its database objects as requested.
+-- Keep the empty private storage bucket until it can be removed through the Storage API.
 drop policy if exists "forum attachments are readable by class members" on storage.objects;
 drop policy if exists "forum attachments can be uploaded by members" on storage.objects;
 drop policy if exists "forum attachments can be deleted by owner" on storage.objects;
@@ -22,12 +23,3 @@ drop table if exists public.forum_posts cascade;
 drop table if exists public.forum_topics cascade;
 drop table if exists public.class_forum_messages cascade;
 drop table if exists public.class_forums cascade;
-
-do $$
-begin
-  if exists (select 1 from storage.buckets where id = 'forum-attachments')
-     and not exists (select 1 from storage.objects where bucket_id = 'forum-attachments') then
-    delete from storage.buckets where id = 'forum-attachments';
-  end if;
-end;
-$$;
