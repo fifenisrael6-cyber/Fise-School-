@@ -67,11 +67,68 @@ begin
     select v_id, selected_id
     from unnest(p_class_ids) as selected_id
     on conflict do nothing;
+
+    -- Students already assigned to any selected classroom see the group
+    -- automatically; unrelated classrooms are not added.
+    insert into public.message_group_members (group_id, user_id, role)
+    select distinct v_id, cs.student_id, 'student'
+    from public.class_students cs
+    join public.message_group_classrooms gc on gc.class_id = cs.class_id
+    where gc.group_id = v_id and cs.is_active
+    on conflict (group_id, user_id) do nothing;
   end if;
 
   return v_id;
 end;
-$$;
+$;
+
+-- Existing invite codes remain useful, but cannot bypass classroom targeting
+-- when a group has one or more classroom targets.
+create or replace function public.join_message_group(p_code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_group public.message_groups%rowtype;
+  v_role text;
+begin
+  select role into v_role from public.profiles where id = auth.uid();
+  if v_role is null then
+    raise exception 'Profile not found';
+  end if;
+
+  select * into v_group
+  from public.message_groups
+  where invite_code = upper(trim(p_code));
+
+  if not found then
+    raise exception 'Invalid invitation code';
+  end if;
+
+  if v_role = 'student'
+     and exists (select 1 from public.message_group_classrooms gc where gc.group_id = v_group.id)
+     and not exists (
+       select 1
+       from public.message_group_classrooms gc
+       join public.class_students cs on cs.class_id = gc.class_id
+       where gc.group_id = v_group.id
+         and cs.student_id = auth.uid()
+         and cs.is_active
+     ) then
+    raise exception 'This group is only available to students in its selected classrooms';
+  end if;
+
+  insert into public.message_group_members (group_id, user_id, role)
+  values (v_group.id, auth.uid(), case when v_role = 'student' then 'student' else 'teacher' end)
+  on conflict (group_id, user_id) do nothing;
+
+  return v_group.id;
+end;
+$;
 
 revoke all on function public.create_message_group(text, uuid[]) from public, anon;
 grant execute on function public.create_message_group(text, uuid[]) to authenticated;
+revoke all on function public.join_message_group(text) from public, anon;
+grant execute on function public.join_message_group(text) to authenticated;
