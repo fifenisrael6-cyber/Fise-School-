@@ -89,7 +89,11 @@ class GroupMessageService {
     Uint8List? attachmentBytes,
     String? attachmentName,
     String? attachmentType,
+    bool viewOnce = false,
   }) async {
+    if (viewOnce && (attachmentBytes == null || attachmentName == null)) {
+      throw ArgumentError('View-once messages must include an attachment.');
+    }
     final senderId = _client.auth.currentUser!.id;
     String? path;
 
@@ -117,6 +121,7 @@ class GroupMessageService {
       'attachment_path': path,
       'attachment_name': attachmentName,
       'attachment_type': attachmentType,
+      'view_once': viewOnce,
     });
   }
 
@@ -127,27 +132,42 @@ class GroupMessageService {
     return _client.storage.from(bucket).createSignedUrl(path, 3600);
   }
 
-  Future<void> deleteMessage({required String groupId, required GroupMessage message}) async {
+  Future<String> openViewOnceAttachment(String messageId) async {
+    final response = await _client.functions.invoke(
+      'open-view-once',
+      body: {'message_id': messageId, 'scope': 'group'},
+    );
+    final data = response.data;
+    if (data is Map && data['url'] is String && (data['url'] as String).isNotEmpty) {
+      return data['url'] as String;
+    }
+    throw StateError('The one-time attachment is unavailable.');
+  }
+
+  Future<void> deleteMessage({
+    required String groupId,
+    required GroupMessage message,
+    required bool forEveryone,
+  }) async {
     final userId = _client.auth.currentUser!.id;
-    if (message.senderId != userId) {
-      throw StateError('You can only delete messages you sent.');
+    if (forEveryone && message.senderId != userId) {
+      throw StateError('Only the sender can delete a message for everyone.');
     }
 
-    // Remove the attachment while the message row still exists; the storage
-    // policy verifies ownership through that row.
-    if (message.attachmentPath != null && message.attachmentPath!.isNotEmpty) {
+    final result = await _client.rpc(
+      'delete_group_message',
+      params: {
+        'p_message_id': message.id,
+        'p_for_everyone': forEveryone,
+      },
+    );
+
+    // Delete only this sender-owned storage object after the RPC has marked
+    // or hidden the message. A local delete must not remove it for other users.
+    if (forEveryone && result is String && result.isNotEmpty) {
       try {
-        await _client.storage.from(bucket).remove([message.attachmentPath!]);
-      } catch (_) {
-        // Still delete the message if an attachment was already removed.
-      }
+        await _client.storage.from(bucket).remove([result]);
+      } catch (_) {}
     }
-
-    await _client
-        .from('message_group_messages')
-        .delete()
-        .eq('id', message.id)
-        .eq('group_id', groupId)
-        .eq('sender_id', userId);
   }
 }
