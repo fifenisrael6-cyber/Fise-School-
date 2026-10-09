@@ -110,7 +110,7 @@ class _StudentHome extends StatelessWidget {
           Row(children: [
             Expanded(child: _SmallAction(icon: Icons.notifications_outlined, label: fr ? 'Notifications' : 'Notifications', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(locale: locale, userId: profile.id))))),
             const SizedBox(width: 10),
-            Expanded(child: _SmallAction(icon: Icons.chat_bubble_outline, label: fr ? 'Messages' : 'Messages', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MessagesHubPage(locale: locale, profile: profile))))),
+            Expanded(child: _SmallAction(icon: Icons.chat_bubble_outline, label: fr ? 'Messagerie' : 'Messages', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MessagesHubPage(locale: locale, profile: profile))))),
           ]),
           const SizedBox(height: 8),
           Row(children: [
