@@ -196,8 +196,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                       Center(
                         child: Text(
                           _isFrench
-                              ? 'Les élèves doivent saisir ce code pour accéder au forum de la classe.'
-                              : 'Students must enter this code to access the class forum.',
+                              ? 'Les élèves doivent saisir ce code pour pouvoir vous contacter en messagerie privée.'
+                              : 'Students must enter this code to message you privately.',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
