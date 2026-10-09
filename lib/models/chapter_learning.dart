@@ -1,5 +1,4 @@
 /// Modèles additifs pour les chapitres pédagogiques.
-—
 /// Ils utilisent les tables Supabase déjà présentes et ne remplacent aucun
 /// modèle Course/Lesson existant.
 class LearningChapter {
