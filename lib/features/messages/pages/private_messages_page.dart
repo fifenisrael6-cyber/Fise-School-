@@ -535,8 +535,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                 Expanded(
                   child: TextField(
                     controller: _composer,
-                    minLines: 1,
-                    maxLines: 4,
+                    minLines: 2,
+                       maxLines: 8,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: _recordingVoice
