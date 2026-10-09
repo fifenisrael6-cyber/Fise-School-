@@ -7,6 +7,7 @@ import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/photo_service.dart';
+import '../../../core/services/voice_note_service.dart';
 import '../widgets/message_attachment_viewer.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
@@ -33,6 +34,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   bool _sending = false;
   PickedAttachment? _attachment;
   final PhotoService _photoService = PhotoService();
+  final VoiceNoteService _voiceNoteService = VoiceNoteService();
+  bool _recordingVoice = false;
   RealtimeChannel? _channel;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
@@ -61,6 +64,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    unawaited(_voiceNoteService.dispose());
     super.dispose();
   }
 
@@ -128,6 +132,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   Future<void> _send() async {
     final contact = _selected;
     final body = _composer.text.trim();
+    if (_recordingVoice) {
+      _showMessage(_isFrench ? 'Arrêtez l’enregistrement avant l’envoi.' : 'Stop recording before sending.');
+      return;
+    }
     if (contact == null || _sending) {
       return;
     }
@@ -174,6 +182,51 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         mimeType: 'image/jpeg',
       );
     });
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_sending) return;
+    if (!_recordingVoice && _attachment != null) {
+      _showMessage(_isFrench
+          ? 'Envoyez ou retirez d’abord la pièce jointe actuelle.'
+          : 'Send or remove the current attachment first.');
+      return;
+    }
+    if (_recordingVoice) {
+      try {
+        final attachment = await _voiceNoteService.stop();
+        if (!mounted) return;
+        setState(() {
+          _recordingVoice = false;
+          if (attachment != null) _attachment = attachment;
+        });
+        if (attachment == null) {
+          _showMessage(_isFrench
+              ? 'Aucun audio enregistré.'
+              : 'No audio was recorded.');
+        } else {
+          _showMessage(_isFrench
+              ? 'Message vocal prêt à être envoyé.'
+              : 'Voice message is ready to send.');
+        }
+      } catch (error) {
+        if (mounted) {
+          setState(() => _recordingVoice = false);
+          _showMessage('${_isFrench ? 'Échec de l’enregistrement' : 'Recording failed'}: $error');
+        }
+      }
+      return;
+    }
+    try {
+      await _voiceNoteService.start();
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (error) {
+      if (mounted) {
+        _showMessage(_isFrench
+            ? 'Impossible d’utiliser le microphone. Vérifiez son autorisation.'
+            : 'Could not use the microphone. Check its permission.');
+      }
+    }
   }
 
   Future<void> _pickAttachment() async {
@@ -367,16 +420,25 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   onPressed: _sending ? null : _pickAttachment,
                   icon: const Icon(Icons.attach_file_rounded),
                 ),
+                IconButton(
+                  tooltip: _recordingVoice
+                      ? (_isFrench ? 'Arrêter le vocal' : 'Stop voice message')
+                      : (_isFrench ? 'Enregistrer un vocal' : 'Record voice message'),
+                  onPressed: _sending ? null : _toggleVoiceRecording,
+                  icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_none_rounded),
+                  color: _recordingVoice ? Colors.red : null,
+                ),
                 Expanded(
                   child: TextField(
                     controller: _composer,
+                    enabled: !_recordingVoice,
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: _attachment != null
                           ? (_isFrench
-                              ? 'Pièce jointe : ${_attachment!.name}'
+                              ? (_recordingVoice ? 'Enregistrement vocal…' : 'Pièce jointe : ${_attachment!.name}')
                               : 'Attachment: ${_attachment!.name}')
                           : (_isFrench
                               ? 'Écrire un message...'
