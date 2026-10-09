@@ -254,6 +254,40 @@ class CourseService {
         .toList(growable: false);
   }
 
+  /// Toutes les salles actives compatibles avec le sous-système et le secteur
+  /// du profil enseignant. Le filtrage est aussi appliqué côté base de données.
+  Future<List<SchoolClass>> listTeacherCompatibleClasses() async {
+    final result = await _client.rpc('list_compatible_teacher_classes');
+    final ids = (result as List)
+        .map((row) => (row as Map)['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (ids.isEmpty) return const <SchoolClass>[];
+    final rows = await _client
+        .from('school_classes')
+        .select()
+        .inFilter('id', ids)
+        .eq('is_active', true)
+        .order('display_name');
+    return rows
+        .map((row) => SchoolClass.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
+  /// Active les affectations nécessaires pour les salles compatibles choisies.
+  /// La fonction serveur refuse tout identifiant hors du sous-système/secteur.
+  Future<void> authorizeTeacherClasses(List<String> classIds) async {
+    if (classIds.isEmpty) {
+      throw StateError('Select at least one classroom.');
+    }
+    await _client.rpc(
+      'teacher_authorize_compatible_classes',
+      params: {'p_class_ids': classIds},
+    );
+  }
+
   Future<List<SchoolClass>> listTeacherClasses(String teacherId) async {
     final rows = await _client
         .from('class_teachers')
