@@ -44,6 +44,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _loading = true;
   bool _sending = false;
   PickedAttachment? _attachment;
+  bool _viewOnce = false;
   RealtimeChannel? _channel;
   String? _inviteCode;
 
@@ -149,10 +150,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
-        setState(() => _attachment = null);
+        setState(() {
+          _attachment = null;
+          _viewOnce = false;
+        });
       }
       await _load(showLoader: false);
     } catch (error) {
@@ -240,39 +245,51 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _confirmDeleteMessage(GroupMessage message) async {
-    final confirmed = await showDialog<bool>(
+    final mine = message.senderId == widget.profile.id;
+    final forEveryone = await showDialog<bool?>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(_fr ? 'Supprimer le message ?' : 'Delete message?'),
         content: Text(_fr
-            ? 'Ce message sera supprimé pour tous les membres du groupe.'
-            : 'This message will be deleted for every group member.'),
+            ? 'Choisis si tu veux retirer le message uniquement ici ou pour tous les membres.'
+            : 'Choose whether to remove the message only for you or for all members.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext, null),
             child: Text(_fr ? 'Annuler' : 'Cancel'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Pour moi' : 'For me'),
           ),
+          if (mine)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(_fr ? 'Pour tout le monde' : 'For everyone'),
+            ),
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (forEveryone == null) return;
     try {
-      await _service.deleteMessage(groupId: widget.group.id, message: message);
+      await _service.deleteMessage(
+        groupId: widget.group.id,
+        message: message,
+        forEveryone: forEveryone,
+      );
+      await _load(showLoader: false, markRead: false);
       if (mounted) {
-        setState(() => _messages = _messages.where((item) => item.id != message.id).toList());
-        _snack(_fr ? 'Message supprimé.' : 'Message deleted.');
+        _snack(forEveryone
+            ? (_fr ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
+            : (_fr ? 'Message retiré de ta conversation.' : 'Message removed from your conversation.'));
       }
     } catch (error) {
       if (mounted) _snack('${_fr ? 'Suppression impossible' : 'Could not delete message'}: $error');
     }
   }
 
-  void _openAttachment(GroupMessage message, String url) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
+  Future<void> _openAttachment(GroupMessage message, String url) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => _GroupAttachmentViewer(
         url: url,
         name: message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment'),
@@ -280,6 +297,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
         isFrench: _fr,
       ),
     ));
+  }
+
+  Future<void> _openViewOnceAttachment(GroupMessage message) async {
+    try {
+      final url = await _service.openViewOnceAttachment(message.id);
+      if (!mounted) return;
+      await _openAttachment(message, url);
+      await _load(showLoader: false, markRead: false);
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Cette pièce jointe a déjà été ouverte ou n’est plus disponible.'
+            : 'This attachment has already been opened or is unavailable.');
+      }
+    }
   }
 
   String _formatTime(DateTime value) {
@@ -496,6 +528,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
                   IconButton(
+                    tooltip: _viewOnce
+                        ? (_fr ? 'Désactiver la vue unique' : 'Turn off view once')
+                        : (_fr ? 'Envoyer en vue unique' : 'Send as view once'),
+                    onPressed: _sending
+                        ? null
+                        : () {
+                            if (_attachment == null) {
+                              _snack(_fr
+                                  ? 'Ajoute une photo ou un fichier avant d’activer la vue unique.'
+                                  : 'Attach a photo or file before enabling view once.');
+                              return;
+                            }
+                            setState(() => _viewOnce = !_viewOnce);
+                          },
+                    icon: Icon(
+                      _viewOnce ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      color: _viewOnce ? const Color(0xFF166534) : null,
+                    ),
+                  ),
+                  IconButton(
                     tooltip: _recordingVoice
                         ? (_fr ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
                         : (_fr ? 'Enregistrer un vocal' : 'Record a voice message'),
@@ -513,7 +565,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: _attachment != null
-                            ? '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}'
+                            ? (_viewOnce
+                                ? '${_fr ? 'Vue unique' : 'View once'} : ${_attachment!.name}'
+                                : '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}')
                             : (_fr ? 'Écrire un message...' : 'Write a message...'),
                         border: const OutlineInputBorder(),
                         isDense: true,
@@ -548,7 +602,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: mine ? () => _confirmDeleteMessage(message) : null,
+        onLongPress: () => _confirmDeleteMessage(message),
         child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
@@ -570,8 +624,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   color: isTeacher ? const Color(0xFF166534) : Colors.blueGrey.shade700,
                 ),
               ),
-            if (message.body.isNotEmpty) Text(message.body),
-            if (message.attachmentPath != null) _attachmentView(message),
+            if (message.deletedAt != null)
+              Text(
+                _fr ? 'Ce message a été supprimé' : 'This message was deleted',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+              )
+            else ...[
+              if (message.body.isNotEmpty) Text(message.body),
+              if (message.attachmentPath != null) _attachmentView(message),
+            ],
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
@@ -618,12 +679,51 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Widget _attachmentView(GroupMessage message) {
+    final type = message.attachmentType ?? '';
+
+    // Never create a normal signed URL for a view-once message. The Edge
+    // Function atomically claims the view before returning a short-lived URL.
+    if (message.viewOnce) {
+      if (message.senderId == widget.profile.id) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Text(_fr ? 'Envoyé en vue unique' : 'Sent as view once'),
+            ],
+          ),
+        );
+      }
+      if (message.viewedByMe) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Text(_fr ? 'Déjà ouvert' : 'Already opened'),
+            ],
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: OutlinedButton.icon(
+          onPressed: () => _openViewOnceAttachment(message),
+          icon: const Icon(Icons.visibility_off_rounded),
+          label: Text(_fr ? 'Ouvrir une fois' : 'Open once'),
+        ),
+      );
+    }
+
     return FutureBuilder<String?>(
       future: _service.signedAttachmentUrl(message.attachmentPath),
       builder: (context, snapshot) {
         final url = snapshot.data;
-        final type = message.attachmentType ?? '';
-
         if (url != null && type.startsWith('audio/')) {
           return _GroupRemoteAudioMessage(url: url, isFrench: _fr);
         }
