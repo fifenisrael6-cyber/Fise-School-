@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
+import '../../../core/services/voice_note_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/message_attachment_viewer.dart';
@@ -30,6 +31,8 @@ class GroupChatPage extends StatefulWidget {
 class _GroupChatPageState extends State<GroupChatPage> {
   final GroupMessageService _service = GroupMessageService();
   final PhotoService _photoService = PhotoService();
+  final VoiceNoteService _voiceNoteService = VoiceNoteService();
+  bool _recordingVoice = false;
   final TextEditingController _composer = TextEditingController();
 
   List<GroupMessage> _messages = const [];
@@ -67,6 +70,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    unawaited(_voiceNoteService.dispose());
     super.dispose();
   }
 
@@ -96,6 +100,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _send() async {
     final body = _composer.text.trim();
+    if (_recordingVoice) {
+      _snack(_fr ? 'Arrêtez l’enregistrement avant l’envoi.' : 'Stop recording before sending.');
+      return;
+    }
     if (_sending || (body.isEmpty && _attachment == null)) {
       return;
     }
@@ -139,6 +147,45 @@ class _GroupChatPageState extends State<GroupChatPage> {
         mimeType: 'image/jpeg',
       );
     });
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_sending) return;
+    if (!_recordingVoice && _attachment != null) {
+      _snack(_fr
+          ? 'Envoyez ou retirez d’abord la pièce jointe actuelle.'
+          : 'Send or remove the current attachment first.');
+      return;
+    }
+    if (_recordingVoice) {
+      try {
+        final attachment = await _voiceNoteService.stop();
+        if (!mounted) return;
+        setState(() {
+          _recordingVoice = false;
+          if (attachment != null) _attachment = attachment;
+        });
+        _snack(attachment == null
+            ? (_fr ? 'Aucun audio enregistré.' : 'No audio was recorded.')
+            : (_fr ? 'Message vocal prêt à être envoyé.' : 'Voice message is ready to send.'));
+      } catch (error) {
+        if (mounted) {
+          setState(() => _recordingVoice = false);
+          _snack('${_fr ? 'Échec de l’enregistrement' : 'Recording failed'}: $error');
+        }
+      }
+      return;
+    }
+    try {
+      await _voiceNoteService.start();
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Impossible d’utiliser le microphone. Vérifiez son autorisation.'
+            : 'Could not use the microphone. Check its permission.');
+      }
+    }
   }
 
   Future<void> _pickAttachment() async {
@@ -363,15 +410,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     onPressed: _sending ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
+                  IconButton(
+                    tooltip: _recordingVoice
+                        ? (_fr ? 'Arrêter le vocal' : 'Stop voice message')
+                        : (_fr ? 'Enregistrer un vocal' : 'Record voice message'),
+                    onPressed: _sending ? null : _toggleVoiceRecording,
+                    icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_none_rounded),
+                    color: _recordingVoice ? Colors.red : null,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
+                      enabled: !_recordingVoice,
                       minLines: 1,
                       maxLines: 4,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
-                        hintText: _attachment != null
-                            ? '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}'
+                        hintText: _recordingVoice
+                            ? (_fr ? 'Enregistrement vocal…' : 'Recording voice message…')
+                            : _attachment != null
+                                ? '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}'
                             : (_fr ? 'Écrire un message...' : 'Write a message...'),
                         border: const OutlineInputBorder(),
                         isDense: true,
