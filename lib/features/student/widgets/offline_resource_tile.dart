@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/offline/app_database.dart';
 import '../../../core/offline/course_offline_service.dart';
@@ -62,28 +64,66 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
   }
 
   Future<void> _open() async {
-    final local = _local;
-    if (local != null && local.status == 'done' && File(local.localPath).existsSync()) {
-      await _offline.markOpened(widget.profile.id, widget.resource.id);
-      if (!mounted) {
-        return;
-      }
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
-        locale: widget.locale, userId: widget.profile.id, resource: widget.resource, localPath: local.localPath,
-      )));
-      return;
-    }
+    var localPath = _local?.localPath;
+    final localExists = localPath != null &&
+        _local?.status == 'done' &&
+        File(localPath).existsSync();
+
     try {
-      if (widget.resource.storagePath.isEmpty) {
-        throw StateError('offline-only');
+      if (!localExists) {
+        if (widget.resource.storagePath.isEmpty) {
+          throw StateError('offline-only');
+        }
+        _signedUrl ??= await _resources.createSignedUrl(widget.resource.storagePath);
+        final signedUrl = _signedUrl;
+        if (signedUrl == null || signedUrl.isEmpty) {
+          throw StateError('signed-url-unavailable');
+        }
+
+        // Download the private Supabase file to a temporary local file and
+        // open it with the in-app viewer instead of leaving the application.
+        final response = await http.get(Uri.parse(signedUrl));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw HttpException('Resource download failed: ${response.statusCode}');
+        }
+        final tempDir = await getTemporaryDirectory();
+        final safeName = p.basename(widget.resource.fileName).replaceAll(
+          RegExp(r'[^A-Za-z0-9._-]'),
+          '_',
+        );
+        final file = File(p.join(
+          tempDir.path,
+          'fise_preview_${widget.resource.id}_$safeName',
+        ));
+        await file.writeAsBytes(response.bodyBytes, flush: true);
+        localPath = file.path;
+      } else {
+        await _offline.markOpened(widget.profile.id, widget.resource.id);
       }
-      _signedUrl ??= await _resources.createSignedUrl(widget.resource.storagePath);
-      if (_signedUrl != null) {
-        await launchUrl(Uri.parse(_signedUrl!), mode: LaunchMode.externalApplication);
-      }
+
+      if (!mounted || localPath == null) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfflineResourceViewer(
+            locale: widget.locale,
+            userId: widget.profile.id,
+            resource: widget.resource,
+            localPath: localPath,
+          ),
+        ),
+      );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr ? 'Fichier indisponible hors connexion.' : 'File unavailable offline.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _fr
+                  ? 'Impossible d’ouvrir ce fichier. Vérifie ta connexion puis réessaie.'
+                  : 'Unable to open this file. Check your connection and try again.',
+            ),
+          ),
+        );
       }
     }
   }
