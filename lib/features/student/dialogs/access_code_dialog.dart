@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/user_profile.dart';
-import '../../forum/pages/forum_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
 
 class AccessCodeDialog extends StatefulWidget {
   final Locale locale;
@@ -69,7 +69,7 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       Navigator.of(context).pop();
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ForumPage(
+          builder: (_) => MessagesHubPage(
             locale: widget.locale,
             profile: widget.profile,
           ),
@@ -81,7 +81,7 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
           final message = e.toString().toLowerCase();
           _error = message.contains('invalid') || message.contains('inactive')
               ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
-              : (_isFrench ? 'Impossible d\'accéder à cet espace.' : 'Unable to access this space.');
+              : (_isFrench ? 'Impossible d\'accéder à la messagerie.' : 'Unable to access messaging.');
         });
       }
     } finally {
@@ -103,8 +103,8 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         children: [
           Text(
             _isFrench
-                ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder au forum.'
-                : 'Enter the access code provided by your teacher to access the forum.',
+                ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder à la messagerie de votre enseignant.'
+                : 'Enter the access code provided by your teacher to access your teacher's messaging.',
           ),
           const SizedBox(height: 16),
           TextField(
