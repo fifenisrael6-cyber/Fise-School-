@@ -39,6 +39,7 @@ class MessageGroup {
 
 class GroupMessage {
   final String id;
+  final String groupId;
   final String senderId;
   final String senderName;
   final String senderRole;
@@ -50,6 +51,7 @@ class GroupMessage {
 
   const GroupMessage({
     required this.id,
+    required this.groupId,
     required this.senderId,
     required this.senderName,
     required this.senderRole,
@@ -63,6 +65,7 @@ class GroupMessage {
   factory GroupMessage.fromMap(Map<String, dynamic> map) {
     return GroupMessage(
       id: map['id'] as String,
+      groupId: map['group_id'] as String,
       senderId: map['sender_id'] as String,
       senderName: map['sender_name'] as String? ?? '',
       senderRole: map['sender_role'] as String? ?? '',
