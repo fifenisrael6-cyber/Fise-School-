@@ -129,7 +129,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
     final texts = AppTexts(widget.locale);
 
     return Scaffold(
-      appBar: AppBar(title: Text(texts.myCourses)),
+      appBar: AppBar(title: Text(_isFrench ? 'Mes médias de classe' : 'My classroom media')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createCourse,
         icon: const Icon(Icons.perm_media_rounded),
@@ -161,7 +161,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  texts.noTeacherCourses,
+                  _isFrench ? 'Aucune photo ou vidéo partagée pour le moment.' : 'No photos or videos shared yet.',
                   textAlign: TextAlign.center,
                 ),
               ),
