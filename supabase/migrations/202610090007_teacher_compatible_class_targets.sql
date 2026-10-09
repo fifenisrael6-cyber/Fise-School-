@@ -53,7 +53,7 @@ begin
   from public.profiles p
   where p.id = v_uid;
 
-  if v_role not in ('teacher', 'admin') then
+  if v_role is null or v_role not in ('teacher', 'admin') then
     raise exception 'Only teachers and admins can target classrooms';
   end if;
 
@@ -128,7 +128,11 @@ begin
       raise exception 'Teacher is not assigned to the selected class';
     end if;
 
-    if new.subject_id is not null and not exists (
+    if new.subject_id is null then
+      raise exception 'Assignment subject is required when no course is selected';
+    end if;
+
+    if not exists (
       select 1
       from public.class_subjects cs
       where cs.class_id = new.class_id
