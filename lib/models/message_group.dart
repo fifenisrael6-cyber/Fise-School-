@@ -47,6 +47,9 @@ class GroupMessage {
   final String? attachmentName;
   final String? attachmentType;
   final DateTime createdAt;
+  final bool viewOnce;
+  final bool viewedByMe;
+  final DateTime? deletedAt;
 
   const GroupMessage({
     required this.id,
@@ -58,6 +61,9 @@ class GroupMessage {
     this.attachmentPath,
     this.attachmentName,
     this.attachmentType,
+    this.viewOnce = false,
+    this.viewedByMe = false,
+    this.deletedAt,
   });
 
   factory GroupMessage.fromMap(Map<String, dynamic> map) {
@@ -71,6 +77,9 @@ class GroupMessage {
       attachmentName: map['attachment_name'] as String?,
       attachmentType: map['attachment_type'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
+      viewOnce: map['view_once'] as bool? ?? false,
+      viewedByMe: map['viewed_by_me'] as bool? ?? false,
+      deletedAt: map['deleted_at'] == null ? null : DateTime.parse(map['deleted_at'] as String),
     );
   }
 }
