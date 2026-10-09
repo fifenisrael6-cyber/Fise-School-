@@ -75,6 +75,7 @@ class GroupMessageService {
     Uint8List? attachmentBytes,
     String? attachmentName,
     String? attachmentType,
+    bool viewOnce = false,
   }) async {
     final senderId = _client.auth.currentUser!.id;
     String? path;
@@ -103,14 +104,23 @@ class GroupMessageService {
       'attachment_path': path,
       'attachment_name': attachmentName,
       'attachment_type': attachmentType,
+      'view_once': path == null ? false : viewOnce,
     });
   }
 
-  Future<String?> signedAttachmentUrl(String? path) async {
+  Future<String?> signedAttachmentUrl(String? path, {bool shortLived = false}) async {
     if (path == null || path.isEmpty) {
       return null;
     }
-    return _client.storage.from(bucket).createSignedUrl(path, 3600);
+    return _client.storage.from(bucket).createSignedUrl(path, shortLived ? 60 : 3600);
+  }
+
+  Future<bool> markViewedOnce(String messageId) async {
+    final result = await _client.rpc(
+      'mark_group_message_viewed_once',
+      params: {'p_message_id': messageId},
+    );
+    return result == true;
   }
 
   Future<void> deleteMessage(GroupMessage message) async {
