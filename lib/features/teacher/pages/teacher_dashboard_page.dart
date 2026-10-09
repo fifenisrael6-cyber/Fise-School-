@@ -154,7 +154,6 @@ class TeacherDashboardPage extends StatelessWidget {
                           builder: (_) => CreateAssignmentPage(
                             locale: locale,
                             profile: profile,
-                            examMode: true,
                           ),
                         ),
                       ),

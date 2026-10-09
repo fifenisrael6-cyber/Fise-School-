@@ -104,7 +104,7 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
           Text(
             _isFrench
                 ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder à la messagerie de votre enseignant.'
-                : 'Enter the access code provided by your teacher to access your teacher's messaging.',
+                : "Enter the access code provided by your teacher to access your teacher's messaging.",
           ),
           const SizedBox(height: 16),
           TextField(
