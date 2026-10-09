@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/message_attachment_viewer.dart';
 
 /// Conversation d'un groupe, façon WhatsApp.
 class GroupChatPage extends StatefulWidget {
@@ -442,34 +442,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Widget _attachmentView(GroupMessage message) {
-    return FutureBuilder<String?>(
-      future: _service.signedAttachmentUrl(message.attachmentPath),
-      builder: (context, snapshot) {
-        final url = snapshot.data;
-        final type = message.attachmentType ?? '';
-
-        if (url != null && type.startsWith('image/')) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: GestureDetector(
-              onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(url, width: 220, height: 180, fit: BoxFit.cover),
-              ),
-            ),
-          );
-        }
-
-        return TextButton.icon(
-          onPressed: url == null
-              ? null
-              : () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-          icon: const Icon(Icons.attach_file_rounded),
-          label: Text(message.attachmentName ?? (_fr ? 'Fichier' : 'File')),
-        );
-      },
-    );
-  }
+  Widget _attachmentView(GroupMessage message) =>
+      MessageAttachmentViewer(
+        key: ValueKey(message.id),
+        messageId: message.id,
+        attachmentPath: message.attachmentPath!,
+        attachmentName: message.attachmentName,
+        attachmentType: message.attachmentType,
+        isFrench: _fr,
+        loadUrl: () => _service.signedAttachmentUrl(message.attachmentPath),
+      );
 }
