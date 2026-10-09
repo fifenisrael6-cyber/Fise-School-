@@ -41,8 +41,11 @@ class PrivateMessageService {
     Uint8List? attachmentBytes,
     String? attachmentName,
     String? attachmentType,
+    bool viewOnce = false,
   }) async {
-    final senderId = _client.auth.currentUser!.id;
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('Votre session a expiré. Reconnectez-vous.');
+    final senderId = user.id;
     String? path;
 
     if (attachmentBytes != null && attachmentName != null) {
@@ -58,36 +61,79 @@ class PrivateMessageService {
       );
     }
 
-    if (body.trim().isEmpty && path == null) {
-      return;
-    }
+    if (body.trim().isEmpty && path == null) return;
 
-    await _client.from('private_messages').insert({
-      'sender_id': senderId,
-      'recipient_id': recipientId,
-      'body': body.trim(),
-      'attachment_path': path,
-      'attachment_name': attachmentName,
-      'attachment_type': attachmentType,
-      'attachment_size': attachmentBytes?.length,
-    });
+    try {
+      await _client.from('private_messages').insert({
+        'sender_id': senderId,
+        'recipient_id': recipientId,
+        'body': body.trim(),
+        'attachment_path': path,
+        'attachment_name': attachmentName,
+        'attachment_type': attachmentType,
+        'attachment_size': attachmentBytes?.length,
+        'view_once': path != null && viewOnce,
+      });
+    } catch (_) {
+      // If the database refuses the message, clean up the object already uploaded.
+      if (path != null) {
+        try {
+          await _client.storage.from('private-message-attachments').remove([path]);
+        } catch (_) {}
+      }
+      rethrow;
+    }
   }
 
   Future<String?> signedAttachmentUrl(String? path) async {
-    if (path == null || path.isEmpty) {
-      return null;
-    }
+    if (path == null || path.isEmpty) return null;
     return _client.storage
         .from('private-message-attachments')
-        .createSignedUrl(path, 3600);
+        .createSignedUrl(path, 300);
+  }
+
+  Future<String?> openAttachmentUrl(PrivateMessage message) async {
+    final path = message.attachmentPath;
+    if (path == null || path.isEmpty) return null;
+
+    if (!message.viewOnce) return signedAttachmentUrl(path);
+
+    final response = await _client.functions.invoke(
+      'open-message-attachment',
+      body: {'message_id': message.id, 'kind': 'private'},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      throw StateError('Impossible d’ouvrir cette pièce jointe.');
+    }
+    final data = Map<String, dynamic>.from(response.data as Map);
+    return data['url'] as String?;
+  }
+
+  Future<void> deleteMessage(
+    String messageId, {
+    required bool forEveryone,
+  }) async {
+    final result = await _client.rpc(
+      'delete_private_message',
+      params: {
+        'p_message_id': messageId,
+        'p_for_everyone': forEveryone,
+      },
+    );
+    final path = result is String ? result : null;
+    if (forEveryone && path != null && path.isNotEmpty) {
+      try {
+        await _client.storage.from('private-message-attachments').remove([path]);
+      } catch (_) {
+        // The row is already hidden; a stale private object remains unreadable.
+      }
+    }
   }
 
   Future<void> markConversationRead(String contactId) async {
-    await _client
-        .from('private_messages')
-        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', contactId)
-        .eq('recipient_id', _client.auth.currentUser!.id)
-        .isFilter('read_at', null);
+    await _client.rpc(
+      'mark_private_messages_read',
+      params: {'p_sender_id': contactId},
+    );
   }
 }
