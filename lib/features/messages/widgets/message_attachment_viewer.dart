@@ -45,7 +45,7 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
   @override
   void initState() {
     super.initState();
-    _urlFuture = widget.loadUrl();
+    _urlFuture = _shouldDeferViewOnceUrl ? Future.value(null) : widget.loadUrl();
   }
 
   @override
@@ -53,7 +53,47 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.attachmentPath != widget.attachmentPath ||
         oldWidget.messageId != widget.messageId) {
-      _urlFuture = widget.loadUrl();
+      _urlFuture = _shouldDeferViewOnceUrl ? Future.value(null) : widget.loadUrl();
+    }
+  }
+
+  bool get _shouldDeferViewOnceUrl => widget.viewOnce && !widget.isMessageSender;
+
+  Future<void> _openViewOnce() async {
+    if (_consumedLocally || widget.alreadyViewed) return;
+    try {
+      // Créer le lien avant de marquer le média comme consulté : la politique
+      // Storage bloque ensuite la création de nouveaux liens.
+      final url = await widget.loadUrl();
+      if (url == null || url.isEmpty || !mounted) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.isFrench ? 'Média indisponible.' : 'Media unavailable.')));
+        return;
+      }
+      final mark = widget.markViewedOnce;
+      final ok = mark != null && await mark();
+      if (!ok || !mounted) {
+        if (mounted) {
+          setState(() => _consumedLocally = true);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.isFrench ? 'Ce média a déjà été consulté ou ne peut pas être ouvert.' : 'This media was already viewed or cannot be opened.')));
+        }
+        return;
+      }
+      setState(() => _consumedLocally = true);
+      final type = (widget.attachmentType ?? '').toLowerCase();
+      final name = (widget.attachmentName ?? '').toLowerCase();
+      if (type.startsWith('image/')) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _ImageViewerPage(imageUrl: url, messageId: widget.messageId, isFrench: widget.isFrench)));
+      } else if (type.contains('pdf') || name.endsWith('.pdf')) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _PdfViewerPage(pdfUrl: url, title: widget.attachmentName ?? (widget.isFrench ? 'Document PDF' : 'PDF document'), isFrench: widget.isFrench)));
+      } else if (type.startsWith('audio/') || name.endsWith('.mp3') || name.endsWith('.m4a') || name.endsWith('.aac') || name.endsWith('.wav') || name.endsWith('.ogg')) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _AudioViewerPage(url: url, isFrench: widget.isFrench)));
+      } else if (type.startsWith('video/') || name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.webm')) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _VideoViewerPage(videoUrl: url, title: widget.attachmentName ?? (widget.isFrench ? 'Vidéo' : 'Video'), isFrench: widget.isFrench)));
+      } else {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.platformDefault);
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.isFrench ? 'Impossible d’ouvrir ce média. Vérifiez votre connexion.' : 'Could not open this media. Check your connection.')));
     }
   }
 
@@ -86,7 +126,21 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
     if (widget.viewOnce && !widget.isMessageSender && (widget.alreadyViewed || _consumedLocally)) {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Text(widget.isFrench ? 'Média consulté une fois' : 'Media viewed once'),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.visibility_off_outlined, size: 18),
+          const SizedBox(width: 6),
+          Flexible(child: Text(widget.isFrench ? 'Média consulté une fois' : 'Media viewed once')),
+        ]),
+      );
+    }
+    if (_shouldDeferViewOnceUrl) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: OutlinedButton.icon(
+          onPressed: _openViewOnce,
+          icon: const Icon(Icons.filter_1_rounded),
+          label: Text(widget.attachmentName ?? (widget.isFrench ? 'Voir une seule fois' : 'View once')),
+        ),
       );
     }
     return FutureBuilder<String?>(
@@ -319,6 +373,16 @@ class _PdfViewerPageState extends State<_PdfViewerPage> {
   );
 }
 
+class _AudioViewerPage extends StatelessWidget {
+  final String url;
+  final bool isFrench;
+  const _AudioViewerPage({required this.url, required this.isFrench});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(isFrench ? 'Message vocal' : 'Voice message')),
+    body: Center(child: _AudioMessagePlayer(url: url, isFrench: isFrench, beforePlay: () async => true)),
+  );
+}
 class _AudioMessagePlayer extends StatefulWidget {
   final String url;
   final bool isFrench;
