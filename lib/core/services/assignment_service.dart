@@ -314,13 +314,18 @@ class AssignmentService {
   }
 
   Future<void> publishAssignment(String assignmentId) async {
+    // Require the database to confirm that the row was actually published.
+    // Previously an RLS-filtered UPDATE could affect zero rows without making
+    // the teacher's screen aware that the QCM remained a draft.
     await _client
         .from('assignments')
         .update({
           'status': 'published',
           'published_at': DateTime.now().toIso8601String(),
         })
-        .eq('id', assignmentId);
+        .eq('id', assignmentId)
+        .select('id')
+        .single();
   }
 
   Future<void> closeAssignment(String assignmentId) async {
