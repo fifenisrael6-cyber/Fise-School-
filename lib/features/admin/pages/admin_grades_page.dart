@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/grade_service.dart';
-import '../../../models/forum.dart';
 import '../../../models/grades.dart';
 import '../../student/pages/bulletin_page.dart';
 import '../../teacher/pages/grades_entry_page.dart';
@@ -184,7 +183,7 @@ class _CoefficientsTab extends StatefulWidget {
 
 class _CoefficientsTabState extends State<_CoefficientsTab> {
   final _service = GradeService();
-  List<ForumClass> _classes = const [];
+  List<GradeClass> _classes = const [];
   List<GradeSubject> _subjects = const [];
   String? _classId;
   bool _loading = true;
