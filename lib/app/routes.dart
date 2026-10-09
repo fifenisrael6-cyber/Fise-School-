@@ -11,7 +11,6 @@ class FiseSchoolRoutes {
   static const courses = '/courses';
   static const course = '/course';
   static const lesson = '/lesson';
-  static const forum = '/forum';
   static const messages = '/messages';
   static const assignments = '/assignments';
   static const assignment = '/assignment';
@@ -23,7 +22,6 @@ class FiseSchoolRoutes {
     courses,
     course,
     lesson,
-    forum,
     messages,
     assignments,
     assignment,
