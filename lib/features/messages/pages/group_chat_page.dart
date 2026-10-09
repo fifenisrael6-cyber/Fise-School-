@@ -33,6 +33,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final PhotoService _photoService = PhotoService();
   final VoiceNoteService _voiceNoteService = VoiceNoteService();
   bool _recordingVoice = false;
+  bool _viewOnce = false;
   final TextEditingController _composer = TextEditingController();
 
   List<GroupMessage> _messages = const [];
@@ -116,10 +117,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
-        setState(() => _attachment = null);
+        setState(() {
+          _attachment = null;
+          _viewOnce = false;
+        });
       }
       await _load(showLoader: false);
     } catch (error) {
@@ -452,6 +457,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_none_rounded),
                     color: _recordingVoice ? Colors.red : null,
                   ),
+                  IconButton(
+                    tooltip: _viewOnce
+                        ? (_fr ? 'Désactiver la lecture unique' : 'Disable view once')
+                        : (_fr ? 'Voir une seule fois' : 'View once'),
+                    onPressed: _sending || _recordingVoice
+                        ? null
+                        : () {
+                            if (_attachment == null) {
+                              _snack(_fr
+                                  ? 'Joignez d’abord une photo, un PDF, un audio ou une vidéo.'
+                                  : 'Attach a photo, PDF, audio or video first.');
+                              return;
+                            }
+                            setState(() => _viewOnce = !_viewOnce);
+                          },
+                    icon: Icon(
+                      _viewOnce ? Icons.filter_1_rounded : Icons.visibility_outlined,
+                    ),
+                    color: _viewOnce ? const Color(0xFF166534) : null,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
@@ -559,6 +584,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
         attachmentName: message.attachmentName,
         attachmentType: message.attachmentType,
         isFrench: _fr,
-        loadUrl: () => _service.signedAttachmentUrl(message.attachmentPath),
+        viewOnce: message.viewOnce,
+        alreadyViewed: message.viewedAt != null,
+        isMessageSender: message.senderId == widget.profile.id,
+        markViewedOnce: () => _service.markViewedOnce(message.id),
+        loadUrl: () => _service.signedAttachmentUrl(
+          message.attachmentPath,
+          shortLived: message.viewOnce && message.senderId != widget.profile.id,
+        ),
       );
 }
