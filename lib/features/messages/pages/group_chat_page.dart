@@ -430,7 +430,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             ? (_fr ? 'Enregistrement vocal…' : 'Recording voice message…')
                             : _attachment != null
                                 ? '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}'
-                            : (_fr ? 'Écrire un message...' : 'Write a message...'),
+                                : (_fr ? 'Écrire un message...' : 'Write a message...'),
                         border: const OutlineInputBorder(),
                         isDense: true,
                       ),
