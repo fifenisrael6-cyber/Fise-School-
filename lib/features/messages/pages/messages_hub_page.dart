@@ -150,7 +150,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     }
 
     final nameController = TextEditingController();
-    String? classId;
+    final Set<String> selectedClassIds = <String>{};
 
     final created = await showDialog<bool>(
       context: context,
@@ -170,19 +170,39 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: classId,
-                decoration: InputDecoration(
-                  labelText: _fr ? 'Salle (facultatif)' : 'Classroom (optional)',
-                  border: const OutlineInputBorder(),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _fr ? 'Choisir une ou plusieurs salles' : 'Choose one or more classrooms',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                items: classes
-                    .map(
-                      (c) => DropdownMenuItem<String>(value: c.id, child: Text(c.displayName)),
-                    )
-                    .toList(),
-                onChanged: (value) => setDialogState(() => classId = value),
               ),
+              const SizedBox(height: 6),
+              if (classes.isEmpty)
+                Text(_fr
+                    ? 'Aucune salle ne vous est affectée.'
+                    : 'No classrooms are assigned to you.')
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: classes.map((schoolClass) => CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(schoolClass.displayName),
+                        value: selectedClassIds.contains(schoolClass.id),
+                        onChanged: (selected) => setDialogState(() {
+                          if (selected == true) {
+                            selectedClassIds.add(schoolClass.id);
+                          } else {
+                            selectedClassIds.remove(schoolClass.id);
+                          }
+                        }),
+                      )).toList(),
+                    ),
+                  ),
+                ),
             ],
           ),
           actions: [
@@ -207,7 +227,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     }
 
     try {
-      await _service.createGroup(name: name, classId: classId);
+      await _service.createGroup(name: name, classIds: selectedClassIds.toList(growable: false));
       await _reload();
       _snack(_fr
           ? 'Groupe créé. Ouvrez-le pour voir le code d’invitation.'
@@ -230,7 +250,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           textCapitalization: TextCapitalization.characters,
           decoration: InputDecoration(
             labelText: _fr ? 'Code donné par votre professeur' : 'Code from your teacher',
-            hintText: 'GRP-XXXXXX',
+            hintText: 'FISE-XXXXXX',
             border: const OutlineInputBorder(),
           ),
         ),
