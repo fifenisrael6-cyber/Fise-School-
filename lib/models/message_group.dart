@@ -50,6 +50,9 @@ class GroupMessage {
   final int deliveredCount;
   final int readCount;
   final int recipientCount;
+  final bool viewOnce;
+  final bool viewedByMe;
+  final DateTime? deletedAt;
 
   const GroupMessage({
     required this.id,
@@ -64,6 +67,9 @@ class GroupMessage {
     this.deliveredCount = 0,
     this.readCount = 0,
     this.recipientCount = 0,
+    this.viewOnce = false,
+    this.viewedByMe = false,
+    this.deletedAt,
   });
 
   factory GroupMessage.fromMap(Map<String, dynamic> map) {
@@ -80,6 +86,11 @@ class GroupMessage {
       deliveredCount: (map['delivered_count'] as num?)?.toInt() ?? 0,
       readCount: (map['read_count'] as num?)?.toInt() ?? 0,
       recipientCount: (map['recipient_count'] as num?)?.toInt() ?? 0,
+      viewOnce: map['view_once'] == true,
+      viewedByMe: map['viewed_by_me'] == true,
+      deletedAt: map['deleted_at'] == null
+          ? null
+          : DateTime.tryParse(map['deleted_at'].toString()),
     );
   }
 }
