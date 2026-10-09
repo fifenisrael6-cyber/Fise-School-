@@ -2,14 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'package:pdfx/pdfx.dart';
 
 import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/photo_service.dart';
+import '../widgets/message_attachment_viewer.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
@@ -324,10 +322,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             children: [
                               if (message.body.isNotEmpty) Text(message.body),
                               if (message.attachmentPath != null)
-                                _MessageAttachment(
-                                  service: _service,
-                                  message: message,
+                                MessageAttachmentViewer(
+                                  key: ValueKey(message.id),
+                                  messageId: message.id,
+                                  attachmentPath: message.attachmentPath!,
+                                  attachmentName: message.attachmentName,
+                                  attachmentType: message.attachmentType,
                                   isFrench: _isFrench,
+                                  loadUrl: () => _service.signedAttachmentUrl(message.attachmentPath),
                                 ),
                               const SizedBox(height: 4),
                               Row(
@@ -400,210 +402,6 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           ),
         ],
       ),
-    );
-  }
-}
-
-
-Future<PdfDocument> _loadPdf(String url) async {
-  final response = await http.get(Uri.parse(url));
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw Exception('PDF download failed: ${response.statusCode}');
-  }
-  return PdfDocument.openData(response.bodyBytes);
-}
-
-class _MessageAttachment extends StatelessWidget {
-  final PrivateMessageService service;
-  final PrivateMessage message;
-  final bool isFrench;
-
-  const _MessageAttachment({
-    required this.service,
-    required this.message,
-    required this.isFrench,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: service.signedAttachmentUrl(message.attachmentPath),
-      builder: (context, snapshot) {
-        final url = snapshot.data;
-        final type = message.attachmentType ?? '';
-        if (url == null) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              message.attachmentName ?? (isFrench ? 'Pièce jointe' : 'Attachment'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          );
-        }
-        if (type.startsWith('image/')) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: GestureDetector(
-              onTap: () {
-                showDialog<void>(
-                  context: context,
-                  barrierColor: Colors.black,
-                  builder: (viewerContext) => Dialog.fullscreen(
-                    backgroundColor: Colors.black,
-                    child: SafeArea(
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Center(
-                              child: InteractiveViewer(
-                                minScale: 0.5,
-                                maxScale: 5,
-                                child: Image.network(
-                                  url,
-                                  fit: BoxFit.contain,
-                                  loadingBuilder: (context, child, progress) {
-                                    if (progress == null) return child;
-                                    final total = progress.expectedTotalBytes;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: total == null
-                                            ? null
-                                            : progress.cumulativeBytesLoaded / total,
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Center(
-                                    child: Text(
-                                      isFrench
-                                          ? 'Impossible de charger cette photo.'
-                                          : 'Could not load this photo.',
-                                      style: const TextStyle(color: Colors.white),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: IconButton(
-                              tooltip: isFrench ? 'Fermer' : 'Close',
-                              onPressed: () => Navigator.of(viewerContext).pop(),
-                              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-              child: Hero(
-                tag: 'message-image-${message.id}',
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.network(
-                    url,
-                    width: 220,
-                    height: 180,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return SizedBox(
-                        width: 220,
-                        height: 180,
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: progress.expectedTotalBytes == null
-                                ? null
-                                : progress.cumulativeBytesLoaded /
-                                    progress.expectedTotalBytes!,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) => SizedBox(
-                      width: 220,
-                      height: 100,
-                      child: Center(
-                        child: Text(
-                          isFrench ? 'Photo indisponible' : 'Image unavailable',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-        final isPdf = type.toLowerCase().contains('pdf') ||
-            (message.attachmentName ?? '').toLowerCase().endsWith('.pdf');
-        final isAudio = type.startsWith('audio/');
-        final isVideo = type.startsWith('video/');
-        return Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: TextButton.icon(
-            onPressed: () async {
-              if (isPdf) {
-                showDialog<void>(
-                  context: context,
-                  useSafeArea: false,
-                  builder: (dialogContext) => Dialog.fullscreen(
-                    child: Scaffold(
-                      appBar: AppBar(
-                        title: Text(message.attachmentName ??
-                            (isFrench ? 'Document PDF' : 'PDF document')),
-                        leading: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                        ),
-                      ),
-                      body: FutureBuilder<PdfDocument>(
-                        future: _loadPdf(url),
-                        builder: (context, pdfSnapshot) {
-                          if (pdfSnapshot.hasError) {
-                            return Center(
-                              child: Text(isFrench
-                                  ? 'Impossible d’ouvrir ce PDF. Vérifiez votre connexion.'
-                                  : 'Could not open this PDF. Check your connection.'),
-                            );
-                          }
-                          if (!pdfSnapshot.hasData) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-                          return PdfViewPinch(document: Future.value(pdfSnapshot.data));
-                        },
-                      ),
-                    ),
-                  ),
-                );
-              } else if (isAudio || isVideo) {
-                final uri = Uri.tryParse(url);
-                if (uri != null) {
-                  await launchUrl(uri, mode: LaunchMode.platformDefault);
-                }
-              } else {
-                final uri = Uri.tryParse(url);
-                if (uri != null) {
-                  await launchUrl(uri, mode: LaunchMode.platformDefault);
-                }
-              }
-            },
-            icon: Icon(isPdf
-                ? Icons.picture_as_pdf_rounded
-                : isAudio
-                    ? Icons.play_circle_fill_rounded
-                    : isVideo
-                        ? Icons.video_file_rounded
-                        : Icons.attach_file_rounded),
-            label: Text(message.attachmentName ?? (isFrench ? 'Fichier' : 'File')),
-          ),
-        );
-      },
     );
   }
 }
