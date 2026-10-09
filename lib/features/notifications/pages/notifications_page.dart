@@ -107,7 +107,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'assignment': return Icons.assignment_outlined;
       case 'course': return Icons.menu_book_outlined;
       case 'timetable': return Icons.calendar_month_outlined;
-      case 'forum': return Icons.forum_outlined;
       case 'submission': return Icons.task_alt_outlined;
       default: return Icons.notifications_outlined;
     }
