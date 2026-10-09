@@ -441,7 +441,10 @@ class _SettingsTile extends StatelessWidget {
           color: destructive ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(icon, color: const Color(0xFF166534)),
+        child: Icon(
+          icon,
+          color: destructive ? Colors.red : const Color(0xFF166534),
+        ),
       ),
       title: Text(
         title,
