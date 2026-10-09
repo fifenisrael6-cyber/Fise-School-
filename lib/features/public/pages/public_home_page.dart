@@ -22,17 +22,61 @@ class PublicHomePage extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 800;
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  _topBar(context, texts),
-                  _hero(context, texts, isWide),
-                  _features(texts, isWide),
-                  _footer(context, texts),
-                ],
-              ),
+            return Column(
+              children: [
+                _topBar(context, texts),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _hero(context, texts, isWide),
+                        _features(texts, isWide),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             );
           },
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: const BoxDecoration(
+            color: Color(0xFFEAF5ED),
+            border: Border(
+              top: BorderSide(color: Color(0xFFD1E7D7)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _openAuth(context, register: true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF166534),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: Text(texts.register),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _openAuth(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF166534),
+                    side: const BorderSide(color: Color(0xFF166534)),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: Text(texts.login),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -319,59 +363,6 @@ class PublicHomePage extends StatelessWidget {
     ),
   );
 
-  Widget _footer(BuildContext context, AppTexts texts) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
-    color: const Color(0xFFEAF5ED),
-    child: Column(
-      children: [
-        _logo(45),
-        const SizedBox(height: 10),
-        Text(
-          texts.appName,
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-            color: Color(0xFF14532D),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          texts.cameroonSystem,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade700),
-        ),
-        const SizedBox(height: 22),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton(
-                onPressed: () => _openAuth(context, register: true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF166534),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: Text(texts.register),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton(
-                onPressed: () => _openAuth(context),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF166534),
-                  side: const BorderSide(color: Color(0xFF166534)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: Text(texts.login),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 
   Widget _logo(double size) => SizedBox(
     width: size,
