@@ -19,11 +19,15 @@ class GroupMessageService {
         .toList(growable: false);
   }
 
-  /// Création réservée aux enseignants (vérifiée côté serveur).
-  Future<String> createGroup({required String name, List<String> classIds = const []}) async {
+  /// Creates one class-scoped group. The database RPC accepts a single
+  /// p_class_id, so callers create one group per selected classroom.
+  Future<String> createGroup({
+    required String name,
+    required String classId,
+  }) async {
     final id = await _client.rpc(
       'create_message_group',
-      params: {'p_name': name, 'p_class_ids': classIds},
+      params: {'p_name': name, 'p_class_id': classId},
     );
     return id as String;
   }
