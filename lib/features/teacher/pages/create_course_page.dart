@@ -45,11 +45,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   final PhotoService _photos = PhotoService();
   final ImagePicker _imagePicker = ImagePicker();
 
-  bool _smartLessonEnabled = false;
-  double _minimumScore = 70.0;
-
   final _title = TextEditingController();
-  final _content = TextEditingController();
 
   List<SchoolClass> _classes = const [];
   Subject? _subject;
@@ -61,40 +57,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   @override
   void dispose() {
     _title.dispose();
-    _content.dispose();
     super.dispose();
   }
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  String _typeFromExtension(String extension) {
-    switch (extension.toLowerCase()) {
-      case 'pdf':
-        return 'pdf';
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'webp':
-        return 'image';
-      case 'mp4':
-        return 'video';
-      case 'mp3':
-      case 'm4a':
-      case 'aac':
-        return 'audio';
-      case 'doc':
-      case 'docx':
-      case 'ppt':
-      case 'pptx':
-      case 'xls':
-      case 'xlsx':
-      case 'txt':
-        return 'document';
-      default:
-        return 'other';
-    }
   }
 
   Future<void> _takePhoto() async {
@@ -138,38 +105,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     setState(() => _attachments.addAll(added));
   }
 
-  Future<void> _pickPdf() async {
+  Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf'],
-      withData: true,
-      allowMultiple: true,
-    );
-    if (result == null) {
-      return;
-    }
-    final added = <_CourseAttachment>[];
-    for (final file in result.files) {
-      final bytes = file.bytes;
-      if (bytes == null) {
-        continue;
-      }
-      added.add(
-        _CourseAttachment(name: file.name, bytes: bytes, resourceType: 'pdf'),
-      );
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() => _attachments.addAll(added));
-  }
-
-  Future<void> _pickOtherFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const [
-        'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'mp4', 'mp3', 'm4a',
-      ],
+      allowedExtensions: const ['mp4', 'mov', 'm4v', 'webm', 'mkv'],
       withData: true,
     );
     if (result == null || result.files.isEmpty) {
@@ -188,7 +127,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         _CourseAttachment(
           name: file.name,
           bytes: bytes,
-          resourceType: _typeFromExtension(file.extension ?? ''),
+          resourceType: 'video',
         ),
       );
     });
@@ -196,7 +135,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
   Future<void> _save(String status) async {
     final title = _title.text.trim();
-    final content = _content.text.trim();
 
     if (_classes.isEmpty) {
       _snack(_fr ? 'Choisissez au moins une classe.' : 'Choose at least one class.');
@@ -210,10 +148,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       _snack(_fr ? 'Donnez un titre au cours.' : 'Give the course a title.');
       return;
     }
-    if (content.isEmpty && _attachments.isEmpty) {
+    if (_attachments.isEmpty) {
       _snack(_fr
-          ? 'Écrivez le cours ou joignez un PDF, une photo ou des images.'
-          : 'Write the course or attach a PDF, a photo or images.');
+          ? 'Ajoutez au moins une photo ou une vidéo.'
+          : 'Add at least one photo or video.');
       return;
     }
 
@@ -230,10 +168,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           classId: schoolClass.id,
           titleFr: title,
           titleEn: title,
-          contentFr: content.isEmpty ? null : content,
-          contentEn: content.isEmpty ? null : content,
-          smartLessonEnabled: _smartLessonEnabled,
-          minimumExerciseScore: _minimumScore.round(),
+          contentFr: null,
+          contentEn: null,
+          smartLessonEnabled: false,
           status: status,
         );
 
@@ -297,7 +234,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Créer un cours' : 'Create a course')),
+      appBar: AppBar(title: Text(_fr ? 'Partager des médias' : 'Share media')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -321,50 +258,16 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _content,
-            minLines: 5,
-            maxLines: 12,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              labelText: _fr ? 'Contenu du cours (facultatif)' : 'Course content (optional)',
-              alignLabelWithHint: true,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          Card(
-            elevation: 0,
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(_fr ? 'Autoriser la leçon intelligente' : 'Allow smart lessons', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text(_fr ? 'L’IA reformulera uniquement le contenu indexé et validé.' : 'AI will only reformulate indexed and approved course content.'),
-                    value: _smartLessonEnabled,
-                    onChanged: _saving ? null : (value) => setState(() => _smartLessonEnabled = value),
-                  ),
-                  if (_smartLessonEnabled) ...[
-                    const SizedBox(height: 8),
-                    Text(_fr ? 'Score minimum pour débloquer la suite : ${_minimumScore.round()} %' : 'Minimum score to unlock the next lesson: ${_minimumScore.round()}%'),
-                    Slider(
-                      value: _minimumScore,
-                      min: 0,
-                      max: 100,
-                      divisions: 20,
-                      label: '${_minimumScore.round()}%',
-                      onChanged: _saving ? null : (value) => setState(() => _minimumScore = value),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
+            child: Text(_fr
+                ? 'Les enseignants partagent ici uniquement des photos et des vidéos. Les cours écrits et les PDF sont publiés par l’administration.'
+                : 'Teachers can share photos and videos here. Written lessons and PDFs are published by the administration.'),
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Joindre au cours' : 'Attach to the course',
+            _fr ? 'Photos et vidéos' : 'Photos and videos',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -372,11 +275,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ActionChip(
-                avatar: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                label: Text(_fr ? 'Envoyer un PDF' : 'Send a PDF'),
-                onPressed: _saving ? null : _pickPdf,
-              ),
               ActionChip(
                 avatar: const Icon(Icons.camera_alt_rounded, size: 18),
                 label: Text(_fr ? 'Prendre une photo' : 'Take a photo'),
@@ -388,9 +286,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 onPressed: _saving ? null : _pickImages,
               ),
               ActionChip(
-                avatar: const Icon(Icons.attach_file_rounded, size: 18),
-                label: Text(_fr ? 'Autre fichier' : 'Other file'),
-                onPressed: _saving ? null : _pickOtherFile,
+                avatar: const Icon(Icons.videocam_rounded, size: 18),
+                label: Text(_fr ? 'Choisir une vidéo' : 'Choose a video'),
+                onPressed: _saving ? null : _pickVideo,
               ),
             ],
           ),
@@ -424,7 +322,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: _saving ? null : () => _save('draft'),
-                  child: Text(_fr ? 'Brouillon' : 'Draft'),
+                  child: Text(_fr ? 'Enregistrer' : 'Save'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -437,7 +335,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_fr ? 'Publier' : 'Publish'),
+                      : Text(_fr ? 'Publier les médias' : 'Publish media'),
                 ),
               ),
             ],
