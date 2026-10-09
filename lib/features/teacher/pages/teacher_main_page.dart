@@ -41,7 +41,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       ),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
-      QcmBuilderPage(locale: widget.locale, profile: widget.profile),
+      QcmBuilderPage(locale: widget.locale, profile: widget.profile, examMode: true),
       ProfilePage(locale: widget.locale, profile: widget.profile),
     ];
 
