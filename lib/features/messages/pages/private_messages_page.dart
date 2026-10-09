@@ -166,6 +166,43 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     }
   }
 
+  Future<void> _deleteMessage(PrivateMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Supprimer le message ?' : 'Delete message?'),
+        content: Text(_isFrench
+            ? 'Ce message sera supprimé pour tous les participants.'
+            : 'This message will be deleted for all participants.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.deleteMessage(message);
+      if (!mounted) return;
+      setState(() {
+        _messages = _messages.where((item) => item.id != message.id).toList();
+      });
+      _showMessage(_isFrench ? 'Message supprimé.' : 'Message deleted.');
+    } catch (error) {
+      if (mounted) {
+        _showMessage(_isFrench
+            ? 'Impossible de supprimer ce message : $error'
+            : 'Could not delete this message: $error');
+      }
+    }
+  }
+
   Future<void> _takePhoto() async {
     final file = await _photoService.takePhoto();
     if (file == null) {
@@ -395,6 +432,20 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   if (mine) ...[
                                     const SizedBox(width: 4),
                                     Icon(message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded, size: 14, color: message.readAt == null ? Colors.black45 : const Color(0xFF166534)),
+                                    PopupMenuButton<String>(
+                                      tooltip: _isFrench ? 'Options du message' : 'Message options',
+                                      padding: EdgeInsets.zero,
+                                      iconSize: 16,
+                                      onSelected: (value) {
+                                        if (value == 'delete') _deleteMessage(message);
+                                      },
+                                      itemBuilder: (_) => [
+                                        PopupMenuItem(
+                                          value: 'delete',
+                                          child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ],
                               ),
