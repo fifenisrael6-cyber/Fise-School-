@@ -6,13 +6,13 @@ import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
-import '../../forum/pages/forum_page.dart';
-import '../../messages/pages/private_messages_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
 import 'create_assignment_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
+import 'qcm_builder_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -68,7 +68,6 @@ class TeacherDashboardPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(texts.welcomeBack),
                       ],
                     ),
                   ),
@@ -186,13 +185,15 @@ class TeacherDashboardPage extends StatelessWidget {
                       ),
                     ),
                     _Tile(
-                      Icons.forum_rounded,
-                      texts.forum,
+                      Icons.history_edu_rounded,
+                      locale.languageCode == 'fr' ? 'Annales des examens' : 'Exam papers',
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ForumPage(locale: locale, profile: profile),
+                          builder: (_) => QcmBuilderPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
                         ),
                       ),
                     ),
@@ -202,7 +203,7 @@ class TeacherDashboardPage extends StatelessWidget {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => PrivateMessagesPage(
+                          builder: (_) => MessagesHubPage(
                             locale: locale,
                             profile: profile,
                           ),
