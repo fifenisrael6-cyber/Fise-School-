@@ -33,6 +33,7 @@ class PrivateMessage {
   final String body;
   final DateTime createdAt;
   final DateTime? readAt;
+  final DateTime? deliveredAt;
   final String? attachmentPath;
   final String? attachmentName;
   final String? attachmentType;
@@ -46,6 +47,7 @@ class PrivateMessage {
     required this.body,
     required this.createdAt,
     this.readAt,
+    this.deliveredAt,
     this.attachmentPath,
     this.attachmentName,
     this.attachmentType,
@@ -63,6 +65,9 @@ class PrivateMessage {
       readAt: map['read_at'] == null
           ? null
           : DateTime.parse(map['read_at'] as String),
+      deliveredAt: map['delivered_at'] == null
+          ? null
+          : DateTime.tryParse(map['delivered_at'].toString()),
       attachmentPath: map['attachment_path'] as String?,
       attachmentName: map['attachment_name'] as String?,
       attachmentType: map['attachment_type'] as String?,
