@@ -41,6 +41,20 @@ class GroupMessageService {
     return code as String;
   }
 
+  Future<void> markMessagesDelivered(String groupId) async {
+    await _client.rpc(
+      'mark_group_messages_delivered',
+      params: {'p_group_id': groupId},
+    );
+  }
+
+  Future<void> markMessagesRead(String groupId) async {
+    await _client.rpc(
+      'mark_group_messages_read',
+      params: {'p_group_id': groupId},
+    );
+  }
+
   Future<List<GroupMessage>> listMessages(String groupId) async {
     final result = await _client.rpc(
       'list_message_group_messages',
