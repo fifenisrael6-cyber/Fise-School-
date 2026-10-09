@@ -64,6 +64,49 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.dispose();
   }
 
+  Future<void> _unlockTeacher() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Contacter un enseignant' : 'Contact a teacher'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: _isFrench ? 'Code unique de l’enseignant' : 'Teacher access code',
+            hintText: 'FISE-…',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(_isFrench ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: Text(_isFrench ? 'Valider' : 'Continue')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (code == null || code.trim().isEmpty || !mounted) return;
+    try {
+      final unlocked = await _service.unlockTeacher(code);
+      if (!unlocked) {
+        if (mounted) _showMessage(_isFrench ? 'Code invalide ou enseignant non associé à votre classe.' : 'Invalid code or teacher not assigned to your class.');
+        return;
+      }
+      if (mounted) {
+        setState(() => _contactsFuture = _service.listContacts());
+        _showMessage(_isFrench ? 'Enseignant autorisé. Vous pouvez maintenant ouvrir la conversation.' : 'Teacher unlocked. You can now open the conversation.');
+      }
+    } catch (error) {
+      if (mounted) _showMessage('${_isFrench ? 'Impossible de valider le code' : 'Could not validate code'}: $error');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _select(MessageContact contact) async {
     setState(() {
       _selected = contact;
@@ -106,6 +149,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         setState(() => _attachment = null);
       }
       await _select(contact);
+    } catch (error) {
+      if (mounted) _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
     } finally {
       if (mounted) {
         setState(() => _sending = false);
@@ -144,7 +189,12 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   Widget build(BuildContext context) {
     final title = _isFrench ? 'Messagerie privée' : 'Private messages';
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: widget.profile.role == 'student'
+            ? [IconButton(tooltip: _isFrench ? 'Utiliser le code d’un enseignant' : 'Use teacher code', onPressed: _unlockTeacher, icon: const Icon(Icons.vpn_key_rounded))]
+            : null,
+      ),
       body: FutureBuilder<List<MessageContact>>(
         future: _contactsFuture,
         builder: (context, snapshot) {
@@ -159,8 +209,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             return Center(
               child: Text(
                 _isFrench
-                    ? 'Aucun contact disponible dans votre classe.'
-                    : 'No contact is available in your class.',
+                    ? 'Aucun contact disponible. Pour écrire à un enseignant, utilisez son code unique avec le bouton en haut.'
+                    : 'No contacts available. To message a teacher, use their unique code with the button above.',
               ),
             );
           }
