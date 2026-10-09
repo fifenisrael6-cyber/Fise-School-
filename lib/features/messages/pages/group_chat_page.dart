@@ -131,6 +131,40 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
+  Future<void> _deleteMessage(GroupMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer le message ?' : 'Delete message?'),
+        content: Text(_fr
+            ? 'Le message sera retiré de la conversation du groupe.'
+            : 'The message will be removed from the group conversation.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.deleteMessage(message);
+      await _load(showLoader: false);
+      if (mounted) _snack(_fr ? 'Message supprimé.' : 'Message deleted.');
+    } catch (error) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Impossible de supprimer ce message : $error'
+            : 'Could not delete this message: $error');
+      }
+    }
+  }
+
   Future<void> _takePhoto() async {
     final file = await _photoService.takePhoto();
     if (file == null) {
@@ -487,12 +521,29 @@ class _GroupChatPageState extends State<GroupChatPage> {
             if (message.body.isNotEmpty) Text(message.body),
             if (message.attachmentPath != null) _attachmentView(message),
             const SizedBox(height: 2),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message.createdAt),
+                  style: const TextStyle(fontSize: 10, color: Colors.black45),
+                ),
+                if (mine || _isOwner)
+                  PopupMenuButton<String>(
+                    tooltip: _fr ? 'Options du message' : 'Message options',
+                    padding: EdgeInsets.zero,
+                    iconSize: 16,
+                    onSelected: (value) {
+                      if (value == 'delete') _deleteMessage(message);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text(_fr ? 'Supprimer' : 'Delete'),
+                      ),
+                    ],
+                  ),
+              ],
             ),
           ],
         ),
