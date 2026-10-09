@@ -36,6 +36,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   final PhotoService _photoService = PhotoService();
   final VoiceNoteService _voiceNoteService = VoiceNoteService();
   bool _recordingVoice = false;
+  bool _viewOnce = false;
   RealtimeChannel? _channel;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
@@ -151,10 +152,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
-        setState(() => _attachment = null);
+        setState(() {
+          _attachment = null;
+          _viewOnce = false;
+        });
       }
       await _select(contact);
     } catch (error) {
@@ -419,7 +424,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   attachmentName: message.attachmentName,
                                   attachmentType: message.attachmentType,
                                   isFrench: _isFrench,
-                                  loadUrl: () => _service.signedAttachmentUrl(message.attachmentPath),
+                                  viewOnce: message.viewOnce,
+                                  alreadyViewed: message.viewedAt != null,
+                                  isMessageSender: mine,
+                                  markViewedOnce: () => _service.markViewedOnce(message.id),
+                                  loadUrl: () => _service.signedAttachmentUrl(
+                                    message.attachmentPath,
+                                    shortLived: message.viewOnce && !mine,
+                                  ),
                                 ),
                               const SizedBox(height: 4),
                               Row(
@@ -478,6 +490,26 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   onPressed: _sending ? null : _toggleVoiceRecording,
                   icon: Icon(_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_none_rounded),
                   color: _recordingVoice ? Colors.red : null,
+                ),
+                IconButton(
+                  tooltip: _viewOnce
+                      ? (_isFrench ? 'Désactiver la lecture unique' : 'Disable view once')
+                      : (_isFrench ? 'Voir une seule fois' : 'View once'),
+                  onPressed: _sending || _recordingVoice
+                      ? null
+                      : () {
+                          if (_attachment == null) {
+                            _showMessage(_isFrench
+                                ? 'Joignez d’abord une photo, un PDF, un audio ou une vidéo.'
+                                : 'Attach a photo, PDF, audio or video first.');
+                            return;
+                          }
+                          setState(() => _viewOnce = !_viewOnce);
+                        },
+                  icon: Icon(
+                    _viewOnce ? Icons.filter_1_rounded : Icons.visibility_outlined,
+                  ),
+                  color: _viewOnce ? const Color(0xFF166534) : null,
                 ),
                 Expanded(
                   child: TextField(
