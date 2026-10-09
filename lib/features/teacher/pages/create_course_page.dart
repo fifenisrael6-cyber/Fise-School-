@@ -253,7 +253,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             controller: _title,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              labelText: _fr ? 'Titre du cours' : 'Course title',
+              labelText: _fr ? 'Titre ou légende du média' : 'Media title or caption',
               border: const OutlineInputBorder(),
             ),
           ),
