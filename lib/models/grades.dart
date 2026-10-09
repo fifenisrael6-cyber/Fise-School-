@@ -1,5 +1,23 @@
 double? _num(Object? v) => v == null ? null : (v as num).toDouble();
 
+class GradeClass {
+  final String id;
+  final String name;
+  final String displayName;
+
+  const GradeClass({
+    required this.id,
+    required this.name,
+    required this.displayName,
+  });
+
+  factory GradeClass.fromMap(Map<String, dynamic> map) => GradeClass(
+        id: map['id'].toString(),
+        name: (map['name'] ?? '').toString(),
+        displayName: (map['display_name'] ?? map['name'] ?? '').toString(),
+      );
+}
+
 class GradePeriod {
   final String id;
   final String labelFr;
