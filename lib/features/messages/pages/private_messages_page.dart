@@ -578,24 +578,121 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
 }
 
 
-class _MessageAttachment extends StatelessWidget {
+class _MessageAttachment extends StatefulWidget {
   final PrivateMessageService service;
   final PrivateMessage message;
+  final String currentUserId;
   final bool isFrench;
 
   const _MessageAttachment({
     required this.service,
     required this.message,
+    required this.currentUserId,
     required this.isFrench,
   });
 
   @override
+  State<_MessageAttachment> createState() => _MessageAttachmentState();
+}
+
+class _MessageAttachmentState extends State<_MessageAttachment> {
+  bool _openingViewOnce = false;
+
+  Future<void> _openViewOnce() async {
+    if (_openingViewOnce) return;
+    setState(() => _openingViewOnce = true);
+    try {
+      final url = await widget.service.openViewOnceAttachment(widget.message.id);
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => _PrivateAttachmentViewer(
+          url: url,
+          name: widget.message.attachmentName ??
+              (widget.isFrench ? 'Pièce jointe à vue unique' : 'View-once attachment'),
+          mimeType: widget.message.attachmentType ?? '',
+          isFrench: widget.isFrench,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.isFrench
+                ? 'Cette pièce jointe a déjà été ouverte ou n’est plus disponible.'
+                : 'This attachment has already been opened or is unavailable.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingViewOnce = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isFrench = widget.isFrench;
+    final type = message.attachmentType ?? '';
+
+    // A view-once attachment must never be signed before its single-use claim.
+    if (message.viewOnce) {
+      if (message.senderId == widget.currentUserId) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  message.viewedAt != null
+                      ? (isFrench ? 'Vue unique ouverte' : 'View-once opened')
+                      : (isFrench ? 'Envoyé en vue unique' : 'Sent as view once'),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      if (message.viewedAt != null) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Text(isFrench ? 'Déjà ouvert' : 'Already opened'),
+            ],
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: OutlinedButton.icon(
+          onPressed: _openingViewOnce ? null : _openViewOnce,
+          icon: _openingViewOnce
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.visibility_off_rounded),
+          label: Text(
+            _openingViewOnce
+                ? (isFrench ? 'Ouverture…' : 'Opening…')
+                : (isFrench ? 'Ouvrir une fois' : 'Open once'),
+          ),
+        ),
+      );
+    }
+
     return FutureBuilder<String?>(
-      future: service.signedAttachmentUrl(message.attachmentPath),
+      future: widget.service.signedAttachmentUrl(message.attachmentPath),
       builder: (context, snapshot) {
         final url = snapshot.data;
-        final type = message.attachmentType ?? '';
         if (url == null) {
           return Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -650,7 +747,9 @@ class _MessageAttachment extends StatelessWidget {
             },
             icon: Icon(type == 'application/pdf'
                 ? Icons.picture_as_pdf_rounded
-                : Icons.attach_file_rounded),
+                : type.startsWith('video/')
+                    ? Icons.videocam_rounded
+                    : Icons.attach_file_rounded),
             label: Text(message.attachmentName ?? (isFrench ? 'Fichier' : 'File')),
           ),
         );
@@ -658,7 +757,6 @@ class _MessageAttachment extends StatelessWidget {
     );
   }
 }
-
 
 class _PrivateAttachmentViewer extends StatefulWidget {
   final String url;
@@ -808,6 +906,8 @@ class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
                                 ],
                               ),
                             ))
+                      : widget.mimeType.toLowerCase().startsWith('audio/')
+                      ? Center(child: _RemoteAudioMessage(url: widget.url, isFrench: widget.isFrench))
                       : widget.mimeType.toLowerCase().startsWith('image/')
                           ? Center(
                               child: InteractiveViewer(
