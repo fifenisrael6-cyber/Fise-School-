@@ -107,8 +107,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
     try {
       if (markRead) {
-        await _service.markMessagesDelivered(widget.group.id);
-        await _service.markMessagesRead(widget.group.id);
+        // Receipts are supplementary: keep the chat usable if the new receipt
+        // migration has not reached the connected Supabase project yet.
+        try {
+          await _service.markMessagesDelivered(widget.group.id);
+          await _service.markMessagesRead(widget.group.id);
+        } catch (_) {
+          // The conversation itself must still load.
+        }
       }
       final messages = await _service.listMessages(widget.group.id);
       if (mounted) {
