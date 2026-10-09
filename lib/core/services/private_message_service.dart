@@ -92,13 +92,18 @@ class PrivateMessageService {
     return result == true;
   }
 
-  Future<void> markConversationRead(String contactId) async {
-    await _client
-        .from('private_messages')
-        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', contactId)
-        .eq('recipient_id', _client.auth.currentUser!.id)
-        .isFilter('read_at', null);
+  Future<void> markConversationDelivered(String senderId) async {
+    await _client.rpc(
+      'mark_private_messages_delivered',
+      params: {'p_sender_id': senderId},
+    );
+  }
+
+  Future<void> markConversationRead(String senderId) async {
+    await _client.rpc(
+      'mark_private_messages_read',
+      params: {'p_sender_id': senderId},
+    );
   }
 
   Future<void> deleteMessage(PrivateMessage message) async {
