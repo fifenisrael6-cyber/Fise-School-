@@ -33,6 +33,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final TextEditingController _composer = TextEditingController();
 
   List<GroupMessage> _messages = const [];
+  Map<String, GroupMessageReceipt> _receipts = const {};
   bool _loading = true;
   bool _sending = false;
   PickedAttachment? _attachment;
@@ -60,6 +61,28 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false),
+      )
       ..subscribe();
   }
 
@@ -76,8 +99,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
     try {
       final messages = await _service.listMessages(widget.group.id);
+      await _service.markMessagesDelivered(widget.group.id);
+      await _service.markMessagesRead(widget.group.id);
+      final receipts = await _service.listReceipts(widget.group.id);
       if (mounted) {
-        setState(() => _messages = messages);
+        setState(() {
+          _messages = messages;
+          _receipts = receipts;
+        });
       }
     } catch (error) {
       if (mounted) {
@@ -431,14 +460,34 @@ class _GroupChatPageState extends State<GroupChatPage> {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(fontSize: 10, color: Colors.black45),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    _groupReceiptIcon(_receipts[message.id]),
+                  ],
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _groupReceiptIcon(GroupMessageReceipt? receipt) {
+    final hasDelivery = (receipt?.deliveredCount ?? 0) > 0;
+    final allRead = (receipt?.recipientCount ?? 0) > 0 &&
+        (receipt?.readCount ?? 0) >= (receipt?.recipientCount ?? 0);
+    return Icon(
+      allRead ? Icons.done_all_rounded : hasDelivery ? Icons.done_all_rounded : Icons.done_rounded,
+      size: 14,
+      color: allRead ? const Color(0xFF166534) : Colors.black45,
     );
   }
 

@@ -6,8 +6,8 @@ import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../messages/pages/private_messages_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
 import 'create_assignment_page.dart';
 import 'teacher_courses_page.dart';
@@ -186,13 +186,12 @@ class TeacherDashboardPage extends StatelessWidget {
                       ),
                     ),
                     _Tile(
-                      Icons.forum_rounded,
-                      texts.forum,
+                      Icons.chat_bubble_outline_rounded,
+                      locale.languageCode == 'fr' ? 'Messagerie' : 'Messages',
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ForumPage(locale: locale, profile: profile),
+                          builder: (_) => MessagesHubPage(locale: locale, profile: profile),
                         ),
                       ),
                     ),

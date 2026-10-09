@@ -74,12 +74,25 @@ class PrivateMessageService {
         .createSignedUrl(path, 3600);
   }
 
+  Future<bool> unlockTeacher(String code) async {
+    final result = await _client.rpc(
+      'unlock_teacher_private_messages',
+      params: {'p_code': code.trim()},
+    );
+    return result == true;
+  }
+
+  Future<void> markConversationDelivered(String contactId) async {
+    await _client.rpc(
+      'mark_private_messages_delivered',
+      params: {'p_sender_id': contactId},
+    );
+  }
+
   Future<void> markConversationRead(String contactId) async {
-    await _client
-        .from('private_messages')
-        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', contactId)
-        .eq('recipient_id', _client.auth.currentUser!.id)
-        .isFilter('read_at', null);
+    await _client.rpc(
+      'mark_private_messages_read',
+      params: {'p_sender_id': contactId},
+    );
   }
 }
