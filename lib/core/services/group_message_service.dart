@@ -112,4 +112,28 @@ class GroupMessageService {
     }
     return _client.storage.from(bucket).createSignedUrl(path, 3600);
   }
+
+  Future<void> deleteMessage(GroupMessage message) async {
+    final userId = _client.auth.currentUser!.id;
+    if (message.senderId != userId) {
+      throw StateError('You can only delete messages you sent.');
+    }
+
+    // Remove the attachment while the message row still exists; the storage
+    // policy verifies ownership through that row.
+    if (message.attachmentPath != null && message.attachmentPath!.isNotEmpty) {
+      try {
+        await _client.storage.from(bucket).remove([message.attachmentPath!]);
+      } catch (_) {
+        // Still delete the message if an attachment was already removed.
+      }
+    }
+
+    await _client
+        .from('message_group_messages')
+        .delete()
+        .eq('id', message.id)
+        .eq('group_id', message.groupId)
+        .eq('sender_id', userId);
+  }
 }
