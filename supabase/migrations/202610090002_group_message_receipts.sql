@@ -13,7 +13,7 @@ create index if not exists message_group_receipts_group_user_idx
 
 alter table public.message_group_message_receipts enable row level security;
 -- Enable realtime receipt refresh when the project's realtime publication exists.
-do $
+do $publication$
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
      and not exists (
@@ -25,7 +25,7 @@ begin
     alter publication supabase_realtime add table public.message_group_message_receipts;
   end if;
 end;
-$;
+$publication$;
 
 drop policy if exists "members read group message receipts" on public.message_group_message_receipts;
 create policy "members read group message receipts"
