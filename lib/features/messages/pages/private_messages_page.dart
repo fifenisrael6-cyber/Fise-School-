@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:pdfx/pdfx.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -447,17 +449,121 @@ class _MessageAttachment extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(top: 8),
           child: TextButton.icon(
-            onPressed: () async {
-              final uri = Uri.tryParse(url);
-              if (uri != null) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => _PrivateAttachmentViewer(
+                  url: url,
+                  name: message.attachmentName ?? (isFrench ? 'Fichier' : 'File'),
+                  mimeType: type,
+                  isFrench: isFrench,
+                ),
+              ));
             },
-            icon: const Icon(Icons.attach_file_rounded),
+            icon: Icon(type == 'application/pdf'
+                ? Icons.picture_as_pdf_rounded
+                : Icons.attach_file_rounded),
             label: Text(message.attachmentName ?? (isFrench ? 'Fichier' : 'File')),
           ),
         );
       },
+    );
+  }
+}
+
+
+class _PrivateAttachmentViewer extends StatefulWidget {
+  final String url;
+  final String name;
+  final String mimeType;
+  final bool isFrench;
+
+  const _PrivateAttachmentViewer({
+    required this.url,
+    required this.name,
+    required this.mimeType,
+    required this.isFrench,
+  });
+
+  @override
+  State<_PrivateAttachmentViewer> createState() => _PrivateAttachmentViewerState();
+}
+
+class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
+  PdfControllerPinch? _pdfController;
+  bool _loading = true;
+  String? _error;
+
+  bool get _isPdf => widget.mimeType.toLowerCase().contains('pdf');
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isPdf) _loadPdf();
+    else _loading = false;
+  }
+
+  Future<void> _loadPdf() async {
+    try {
+      final response = await http.get(Uri.parse(widget.url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      final controller = PdfControllerPinch(
+        document: PdfDocument.openData(Future.value(response.bodyBytes)),
+      );
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _pdfController = controller;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = widget.isFrench
+              ? 'Impossible d’ouvrir ce document.'
+              : 'Unable to open this document.';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pdfController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        backgroundColor: const Color(0xFF166534),
+        foregroundColor: Colors.white,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : _isPdf
+                  ? (_pdfController == null
+                      ? Center(child: Text(widget.isFrench ? 'Document indisponible.' : 'Document unavailable.'))
+                      : PdfViewPinch(controller: _pdfController!))
+                  : widget.mimeType.startsWith('image/')
+                      ? Center(
+                          child: InteractiveViewer(
+                            child: Image.network(widget.url, fit: BoxFit.contain),
+                          ),
+                        )
+                      : Center(
+                          child: Text(widget.isFrench
+                              ? 'Aperçu intégré disponible pour les images et les PDF.'
+                              : 'In-app preview is available for images and PDFs.'),
+                        ),
     );
   }
 }
