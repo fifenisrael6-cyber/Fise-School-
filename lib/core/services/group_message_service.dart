@@ -61,6 +61,13 @@ class GroupMessageService {
         .toList(growable: false);
   }
 
+  Future<void> markMessagesRead(String groupId) async {
+    await _client.rpc(
+      'mark_message_group_read',
+      params: {'p_group_id': groupId},
+    );
+  }
+
   Future<void> removeMember(String groupId, String userId) async {
     await _client
         .from('message_group_members')
