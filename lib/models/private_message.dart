@@ -36,6 +36,9 @@ class PrivateMessage {
   final String? attachmentPath;
   final String? attachmentName;
   final String? attachmentType;
+  final bool viewOnce;
+  final DateTime? viewedAt;
+  final DateTime? deletedAt;
 
   const PrivateMessage({
     required this.id,
@@ -47,6 +50,9 @@ class PrivateMessage {
     this.attachmentPath,
     this.attachmentName,
     this.attachmentType,
+    this.viewOnce = false,
+    this.viewedAt,
+    this.deletedAt,
   });
 
   factory PrivateMessage.fromMap(Map<String, dynamic> map) {
@@ -54,14 +60,15 @@ class PrivateMessage {
       id: map['id'] as String,
       senderId: map['sender_id'] as String,
       recipientId: map['recipient_id'] as String,
-      body: map['body'] as String,
+      body: map['body'] as String? ?? '',
       createdAt: DateTime.parse(map['created_at'] as String),
-      readAt: map['read_at'] == null
-          ? null
-          : DateTime.parse(map['read_at'] as String),
+      readAt: map['read_at'] == null ? null : DateTime.parse(map['read_at'] as String),
       attachmentPath: map['attachment_path'] as String?,
       attachmentName: map['attachment_name'] as String?,
       attachmentType: map['attachment_type'] as String?,
+      viewOnce: map['view_once'] as bool? ?? false,
+      viewedAt: map['viewed_at'] == null ? null : DateTime.parse(map['viewed_at'] as String),
+      deletedAt: map['deleted_at'] == null ? null : DateTime.parse(map['deleted_at'] as String),
     );
   }
 }
