@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
+import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -35,6 +39,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   bool _sending = false;
   PickedAttachment? _attachment;
   final PhotoService _photoService = PhotoService();
+  final AudioRecorder _recorder = AudioRecorder();
+  bool _recordingVoice = false;
   RealtimeChannel? _channel;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
@@ -47,6 +53,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
         final row = payload.newRecord;
         if (row['sender_id'] == widget.profile.id || row['recipient_id'] == widget.profile.id) {
+          if (row['recipient_id'] == widget.profile.id && row['sender_id'] != widget.profile.id) {
+            unawaited(_service.markConversationDelivered(row['sender_id'] as String).catchError((_) {}));
+          }
           final selected = _selected;
           if (selected != null && (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
             _select(selected);
@@ -56,6 +65,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           }
         }
       })
+      ..onPostgresChanges(event: PostgresChangeEvent.update, schema: 'public', table: 'private_messages', callback: (payload) {
+        final row = payload.newRecord;
+        final selected = _selected;
+        if (selected != null &&
+            ((row['sender_id'] == widget.profile.id && row['recipient_id'] == selected.id) ||
+             (row['sender_id'] == selected.id && row['recipient_id'] == widget.profile.id))) {
+          _select(selected);
+        }
+      })
       .subscribe();
   }
 
@@ -63,6 +81,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    unawaited(_recorder.dispose());
     super.dispose();
   }
 
@@ -115,8 +134,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       _loadingMessages = true;
     });
     try {
-      final messages = await _service.listConversation(contact.id);
       await _service.markConversationRead(contact.id);
+      final messages = await _service.listConversation(contact.id);
       if (mounted) {
         setState(() => _messages = messages);
       }
@@ -184,6 +203,86 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     );
     if (attachment != null && mounted) {
       setState(() => _attachment = attachment);
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_recordingVoice) {
+      try {
+        final path = await _recorder.stop();
+        if (path == null) {
+          if (mounted) setState(() => _recordingVoice = false);
+          return;
+        }
+        final bytes = await File(path).readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          _recordingVoice = false;
+          _attachment = PickedAttachment(
+            bytes: bytes,
+            name: 'voice-${DateTime.now().millisecondsSinceEpoch}.m4a',
+            mimeType: 'audio/mp4',
+          );
+        });
+      } catch (error) {
+        if (mounted) {
+          setState(() => _recordingVoice = false);
+          _showMessage('${_isFrench ? 'Échec de l’enregistrement' : 'Recording failed'}: $error');
+        }
+      }
+      return;
+    }
+
+    try {
+      if (!await _recorder.hasPermission()) {
+        _showMessage(_isFrench
+            ? 'Autorise le microphone pour enregistrer un message vocal.'
+            : 'Allow microphone access to record a voice message.');
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/fise_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (error) {
+      if (mounted) {
+        _showMessage('${_isFrench ? 'Impossible de démarrer le microphone' : 'Could not start the microphone'}: $error');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteMessage(PrivateMessage message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Supprimer le message ?' : 'Delete message?'),
+        content: Text(_isFrench
+            ? 'Ce message sera supprimé pour tous les participants.'
+            : 'This message will be deleted for all participants.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteMessage(message);
+      if (mounted) {
+        setState(() => _messages = _messages.where((item) => item.id != message.id).toList());
+        _showMessage(_isFrench ? 'Message supprimé.' : 'Message deleted.');
+      }
+    } catch (error) {
+      if (mounted) _showMessage('${_isFrench ? 'Suppression impossible' : 'Could not delete message'}: $error');
     }
   }
 
@@ -308,7 +407,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                         alignment: mine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
-                        child: Container(
+                        child: GestureDetector(
+                          onLongPress: mine ? () => _confirmDeleteMessage(message) : null,
+                          child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
                           constraints: const BoxConstraints(maxWidth: 520),
@@ -339,11 +440,24 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   ),
                                   if (mine) ...[
                                     const SizedBox(width: 4),
-                                    Icon(message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded, size: 14, color: message.readAt == null ? Colors.black45 : const Color(0xFF166534)),
+                                    Icon(
+                                      message.readAt != null
+                                          ? Icons.done_all_rounded
+                                          : message.deliveredAt != null
+                                              ? Icons.done_all_rounded
+                                              : Icons.done_rounded,
+                                      size: 14,
+                                      color: message.readAt != null
+                                          ? const Color(0xFF166534)
+                                          : message.deliveredAt != null
+                                              ? Colors.black54
+                                              : Colors.black45,
+                                    ),
                                   ],
                                 ],
                               ),
                             ],
+                          ),
                           ),
                         ),
                       );
@@ -362,8 +476,18 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                 ),
                 IconButton(
                   tooltip: _isFrench ? 'Joindre un fichier' : 'Attach a file',
-                  onPressed: _sending ? null : _pickAttachment,
+                  onPressed: _sending || _recordingVoice ? null : _pickAttachment,
                   icon: const Icon(Icons.attach_file_rounded),
+                ),
+                IconButton(
+                  tooltip: _recordingVoice
+                      ? (_isFrench ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
+                      : (_isFrench ? 'Enregistrer un vocal' : 'Record a voice message'),
+                  onPressed: _sending ? null : _toggleVoiceRecording,
+                  icon: Icon(
+                    _recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                    color: _recordingVoice ? Colors.red : null,
+                  ),
                 ),
                 Expanded(
                   child: TextField(
@@ -372,7 +496,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: _attachment != null
+                      hintText: _recordingVoice
+                          ? (_isFrench ? 'Enregistrement vocal en cours…' : 'Recording voice message…')
+                          : _attachment != null
                           ? (_isFrench
                               ? 'Pièce jointe : ${_attachment!.name}'
                               : 'Attachment: ${_attachment!.name}')
@@ -431,6 +557,9 @@ class _MessageAttachment extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           );
+        }
+        if (type.startsWith('audio/')) {
+          return _RemoteAudioMessage(url: url, isFrench: isFrench);
         }
         if (type.startsWith('image/')) {
           return Padding(
@@ -577,6 +706,71 @@ class _PrivateAttachmentViewerState extends State<_PrivateAttachmentViewer> {
                               ? 'Aperçu intégré disponible pour les images et les PDF.'
                               : 'In-app preview is available for images and PDFs.'),
                         ),
+    );
+  }
+}
+
+
+class _RemoteAudioMessage extends StatefulWidget {
+  final String url;
+  final bool isFrench;
+
+  const _RemoteAudioMessage({required this.url, required this.isFrench});
+
+  @override
+  State<_RemoteAudioMessage> createState() => _RemoteAudioMessageState();
+}
+
+class _RemoteAudioMessageState extends State<_RemoteAudioMessage> {
+  final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<void>? _completed;
+  bool _playing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _completed = _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _playing = false);
+    });
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.pause();
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
+    if (mounted) setState(() => _playing = true);
+    try {
+      await _player.play(UrlSource(widget.url));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _playing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(widget.isFrench ? 'Lecture audio impossible.' : 'Unable to play audio.')),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_completed?.cancel());
+    unawaited(_player.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: _toggle,
+          icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+        ),
+        Text(widget.isFrench ? 'Message vocal' : 'Voice message'),
+      ],
     );
   }
 }
