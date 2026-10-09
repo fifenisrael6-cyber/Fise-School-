@@ -28,7 +28,7 @@ class PublicHomePage extends StatelessWidget {
                   _topBar(context, texts),
                   _hero(context, texts, isWide),
                   _features(texts, isWide),
-                  _footer(texts),
+                  _footer(context, texts),
                 ],
               ),
             );
@@ -59,29 +59,6 @@ class PublicHomePage extends StatelessWidget {
       ],
     );
 
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          label: '${texts.login} dans ${texts.appName}',
-          button: true,
-          child: TextButton(
-            onPressed: () => _openAuth(context),
-            child: Text(texts.login),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Semantics(
-          label: '${texts.register} dans ${texts.appName}',
-          button: true,
-          child: FilledButton(
-            onPressed: () => _openAuth(context, register: true),
-            child: Text(texts.register),
-          ),
-        ),
-      ],
-    );
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: narrow
@@ -102,8 +79,6 @@ class PublicHomePage extends StatelessWidget {
                 Expanded(
                   child: Align(alignment: Alignment.centerLeft, child: brand),
                 ),
-                actions,
-                const SizedBox(width: 8),
                 _languageMenu(texts),
               ],
             ),
@@ -346,7 +321,7 @@ class PublicHomePage extends StatelessWidget {
     ),
   );
 
-  Widget _footer(AppTexts texts) => Container(
+  Widget _footer(BuildContext context, AppTexts texts) => Container(
     width: double.infinity,
     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
     color: const Color(0xFFEAF5ED),
@@ -367,6 +342,34 @@ class PublicHomePage extends StatelessWidget {
           texts.cameroonSystem,
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 22),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton(
+                onPressed: () => _openAuth(context, register: true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF166534),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: Text(texts.register),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: () => _openAuth(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF166534),
+                  side: const BorderSide(color: Color(0xFF166534)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: Text(texts.login),
+              ),
+            ],
+          ),
         ),
       ],
     ),
