@@ -29,8 +29,9 @@ class _QuestionDraft {
 class QcmBuilderPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final bool examMode;
 
-  const QcmBuilderPage({super.key, required this.locale, required this.profile});
+  const QcmBuilderPage({super.key, required this.locale, required this.profile, this.examMode = false});
 
   @override
   State<QcmBuilderPage> createState() => _QcmBuilderPageState();
@@ -48,6 +49,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
   bool _saving = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+  bool get _examMode => widget.examMode;
 
   @override
   void dispose() {
@@ -94,7 +96,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
       return _fr ? 'Choisissez la matière.' : 'Choose the subject.';
     }
     if (_title.text.trim().isEmpty) {
-      return _fr ? 'Donnez un titre au QCM.' : 'Give the quiz a title.';
+      return _examMode ? (_fr ? 'Donnez un titre à l’examen.' : 'Give the exam a title.') : (_fr ? 'Donnez un titre au QCM.' : 'Give the quiz a title.');
     }
     for (var i = 0; i < _questions.length; i++) {
       final question = _questions[i];
@@ -192,7 +194,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
       }
     } else {
       _snack(status == 'published'
-          ? (_fr ? 'QCM publié dans $done classe(s).' : 'Quiz published in $done class(es).')
+          ? (_examMode ? (_fr ? 'Examen publié dans $done salle(s).' : 'Exam published to $done classroom(s).') : (_fr ? 'QCM publié dans $done classe(s).' : 'Quiz published in $done class(es).'))
           : (_fr ? 'Brouillon enregistré.' : 'Draft saved.'));
     }
 
@@ -283,7 +285,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Nouveau QCM' : 'New quiz')),
+      appBar: AppBar(title: Text(_examMode ? (_fr ? 'Créer un examen' : 'Create an exam') : (_fr ? 'Nouveau QCM' : 'New quiz'))),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -302,7 +304,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
             controller: _title,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              labelText: _fr ? 'Titre du QCM' : 'Quiz title',
+              labelText: _examMode ? (_fr ? 'Titre de l’examen' : 'Exam title') : (_fr ? 'Titre du QCM' : 'Quiz title'),
               border: const OutlineInputBorder(),
             ),
           ),

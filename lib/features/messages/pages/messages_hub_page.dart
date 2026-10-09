@@ -258,8 +258,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
       await _service.joinWithCode(code);
       await _reload();
       _snack(_fr ? 'Vous avez rejoint le groupe.' : 'You joined the group.');
-    } catch (_) {
-      _snack(_fr ? 'Code invalide.' : 'Invalid code.');
+    } catch (error) {
+      _snack(_fr ? 'Impossible de rejoindre le groupe : $error' : 'Could not join group: $error');
     }
   }
 

@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../models/user_profile.dart';
-import '../../../models/forum.dart';
-import '../../../core/services/forum_service.dart';
 import '../../ai/pages/ai_page.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../pages/courses_page.dart';
@@ -44,7 +41,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
-        ForumPage(locale: widget.locale, profile: widget.profile),
+        MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
       ];
@@ -60,7 +57,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum), label: fr ? 'Forums' : 'Forums'),
+          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
           NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
         ],
@@ -143,19 +140,11 @@ class _RoomCard extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Ma salle' : 'My classroom', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
           const SizedBox(height: 10),
-          FutureBuilder<List<ForumClass>>(
-            future: ForumService().listClasses(profile),
-            builder: (context, snapshot) {
-              final rooms = snapshot.data ?? const <ForumClass>[];
-              if (rooms.isEmpty) {
-                return Text(profile.className?.trim().isNotEmpty == true
-                    ? profile.className!
-                    : (fr ? 'Salle non affectée.' : 'No classroom assigned yet.'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800));
-              }
-              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ...rooms.map((room) => Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(room.displayName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)))),
-              ]);
-            },
+          Text(
+            profile.className?.trim().isNotEmpty == true
+                ? profile.className!
+                : (fr ? 'Salle non affectée.' : 'No classroom assigned yet.'),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           if (profile.examLevel != null || profile.subsystem != null) ...[const SizedBox(height: 8), Text([profile.examLevel, profile.subsystem, profile.sector].whereType<String>().where((v) => v.trim().isNotEmpty).join(' • '))],
         ]),
