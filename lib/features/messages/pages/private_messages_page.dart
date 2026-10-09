@@ -436,13 +436,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                     maxLines: 4,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: _attachment != null
-                          ? (_isFrench
-                              ? (_recordingVoice ? 'Enregistrement vocal…' : 'Pièce jointe : ${_attachment!.name}')
-                              : 'Attachment: ${_attachment!.name}')
-                          : (_isFrench
-                              ? 'Écrire un message...'
-                              : 'Write a message...'),
+                      hintText: _recordingVoice
+                          ? (_isFrench ? 'Enregistrement vocal…' : 'Recording voice message…')
+                          : _attachment != null
+                              ? (_isFrench
+                                  ? 'Pièce jointe : ${_attachment!.name}'
+                                  : 'Attachment: ${_attachment!.name}')
+                              : (_isFrench
+                                  ? 'Écrire un message...'
+                                  : 'Write a message...'),
                       border: const OutlineInputBorder(),
                     ),
                   ),
