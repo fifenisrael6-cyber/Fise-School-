@@ -58,6 +58,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           }
         }
       })
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'private_messages',
+        callback: (payload) {
+          final row = payload.newRecord;
+          final selected = _selected;
+          if (selected != null &&
+              (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
+            _select(selected);
+          }
+        },
+      )
       .subscribe();
   }
 
@@ -119,6 +132,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     });
     try {
       final messages = await _service.listConversation(contact.id);
+      await _service.markConversationDelivered(contact.id);
       await _service.markConversationRead(contact.id);
       if (mounted) {
         setState(() => _messages = messages);
@@ -443,7 +457,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   ),
                                   if (mine) ...[
                                     const SizedBox(width: 4),
-                                    Icon(message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded, size: 14, color: message.readAt == null ? Colors.black45 : const Color(0xFF166534)),
+                                    Icon(
+                                      message.readAt != null || message.deliveredAt != null
+                                          ? Icons.done_all_rounded
+                                          : Icons.done_rounded,
+                                      size: 14,
+                                      color: message.readAt != null
+                                          ? const Color(0xFF166534)
+                                          : Colors.black45,
+                                    ),
                                     PopupMenuButton<String>(
                                       tooltip: _isFrench ? 'Options du message' : 'Message options',
                                       padding: EdgeInsets.zero,
