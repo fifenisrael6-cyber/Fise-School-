@@ -22,61 +22,17 @@ class PublicHomePage extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 800;
-            return Column(
-              children: [
-                _topBar(context, texts),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        _hero(context, texts, isWide),
-                        _features(texts, isWide),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  _topBar(context, texts),
+                  _hero(context, texts, isWide),
+                  _authButtons(context, texts),
+                  _features(texts, isWide),
+                ],
+              ),
             );
           },
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: const BoxDecoration(
-            color: Color(0xFFEAF5ED),
-            border: Border(
-              top: BorderSide(color: Color(0xFFD1E7D7)),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => _openAuth(context, register: true),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF166534),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                  ),
-                  child: Text(texts.register),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _openAuth(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF166534),
-                    side: const BorderSide(color: Color(0xFF166534)),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                  ),
-                  child: Text(texts.login),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -291,6 +247,44 @@ class PublicHomePage extends StatelessWidget {
     ),
     child: _logo(136),
   );
+
+  Widget _authButtons(BuildContext context, AppTexts texts) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _openAuth(context, register: true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF166534),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: Text(texts.register),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _openAuth(context),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF166534),
+                    side: const BorderSide(color: Color(0xFF166534)),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: Text(texts.login),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _features(AppTexts texts, bool isWide) {
     final features = [
