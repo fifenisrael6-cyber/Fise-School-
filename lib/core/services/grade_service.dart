@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../models/forum.dart';
 import '../../models/grades.dart';
 
 class GradeService {
@@ -20,13 +19,37 @@ class GradeService {
         .toList(growable: false);
   }
 
-  Future<List<ForumClass>> listAllClasses() async {
+  Future<List<GradeClassOption>> listTeacherClasses(String teacherId) async {
+    final assignments = await _client
+        .from('class_teachers')
+        .select('class_id')
+        .eq('teacher_id', teacherId)
+        .eq('is_active', true);
+    final classIds = assignments
+        .map((row) => row['class_id'])
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (classIds.isEmpty) return const <GradeClassOption>[];
+
+    final rows = await _client
+        .from('school_classes')
+        .select('id, name, display_name')
+        .inFilter('id', classIds)
+        .order('display_name');
+    return rows
+        .map((row) => GradeClassOption.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
+  Future<List<GradeClassOption>> listAllClasses() async {
     final rows = await _client
         .from('school_classes')
         .select('id, name, display_name')
         .order('display_name');
     return rows
-        .map((r) => ForumClass.fromMap(Map<String, dynamic>.from(r)))
+        .map((r) => GradeClassOption.fromMap(Map<String, dynamic>.from(r)))
         .toList(growable: false);
   }
 
