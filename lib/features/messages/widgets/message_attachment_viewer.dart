@@ -14,6 +14,10 @@ class MessageAttachmentViewer extends StatefulWidget {
   final String? attachmentName;
   final String? attachmentType;
   final bool isFrench;
+  final bool viewOnce;
+  final bool alreadyViewed;
+  final bool isMessageSender;
+  final Future<bool> Function()? markViewedOnce;
   final Future<String?> Function() loadUrl;
 
   const MessageAttachmentViewer({
@@ -23,6 +27,10 @@ class MessageAttachmentViewer extends StatefulWidget {
     required this.attachmentName,
     required this.attachmentType,
     required this.isFrench,
+    this.viewOnce = false,
+    this.alreadyViewed = false,
+    this.isMessageSender = false,
+    this.markViewedOnce,
     required this.loadUrl,
   });
 
@@ -32,6 +40,7 @@ class MessageAttachmentViewer extends StatefulWidget {
 
 class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
   late Future<String?> _urlFuture;
+  bool _consumedLocally = false;
 
   @override
   void initState() {
@@ -48,8 +57,38 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
     }
   }
 
+  Future<bool> _consumeOnce() async {
+    if (!widget.viewOnce || widget.isMessageSender) return true;
+    if (widget.alreadyViewed || _consumedLocally) return false;
+    try {
+      final mark = widget.markViewedOnce;
+      final ok = mark != null && await mark();
+      if (!ok) {
+        if (mounted) setState(() => _consumedLocally = true);
+        return false;
+      }
+      if (mounted) setState(() => _consumedLocally = true);
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(widget.isFrench
+              ? 'Impossible de confirmer la consultation unique.'
+              : 'Could not confirm one-time viewing.'),
+        ));
+      }
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.viewOnce && !widget.isMessageSender && (widget.alreadyViewed || _consumedLocally)) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(widget.isFrench ? 'Média consulté une fois' : 'Media viewed once'),
+      );
+    }
     return FutureBuilder<String?>(
       future: _urlFuture,
       builder: (context, snapshot) {
@@ -76,14 +115,17 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
             child: GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => _ImageViewerPage(
-                    imageUrl: url, messageId: widget.messageId,
-                    isFrench: widget.isFrench,
+              onTap: () async {
+                if (!await _consumeOnce() || !context.mounted) return;
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => _ImageViewerPage(
+                      imageUrl: url, messageId: widget.messageId,
+                      isFrench: widget.isFrench,
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
               child: Hero(
                 tag: 'message-image-${widget.messageId}',
                 child: ClipRRect(
@@ -120,23 +162,26 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
         if (isAudio) {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: _AudioMessagePlayer(url: url, isFrench: widget.isFrench),
+            child: _AudioMessagePlayer(url: url, isFrench: widget.isFrench, beforePlay: _consumeOnce),
           );
         }
         if (isVideo) {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
             child: OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => _VideoViewerPage(
-                    videoUrl: url,
-                    title: widget.attachmentName ??
-                        (widget.isFrench ? 'Vidéo' : 'Video'),
-                    isFrench: widget.isFrench,
+              onPressed: () async {
+                if (!await _consumeOnce() || !context.mounted) return;
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => _VideoViewerPage(
+                      videoUrl: url,
+                      title: widget.attachmentName ??
+                          (widget.isFrench ? 'Vidéo' : 'Video'),
+                      isFrench: widget.isFrench,
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
               icon: const Icon(Icons.play_circle_outline_rounded),
               label: Text(widget.attachmentName ??
                   (widget.isFrench ? 'Lire la vidéo' : 'Play video')),
@@ -147,9 +192,10 @@ class _MessageAttachmentViewerState extends State<MessageAttachmentViewer> {
         return Padding(
           padding: const EdgeInsets.only(top: 8),
           child: OutlinedButton.icon(
-            onPressed: () {
+            onPressed: () async {
               if (isPdf) {
-                Navigator.of(context).push(MaterialPageRoute<void>(
+                if (!await _consumeOnce() || !context.mounted) return;
+                await Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => _PdfViewerPage(
                     pdfUrl: url,
                     title: widget.attachmentName ??
@@ -276,7 +322,8 @@ class _PdfViewerPageState extends State<_PdfViewerPage> {
 class _AudioMessagePlayer extends StatefulWidget {
   final String url;
   final bool isFrench;
-  const _AudioMessagePlayer({required this.url, required this.isFrench});
+  final Future<bool> Function() beforePlay;
+  const _AudioMessagePlayer({required this.url, required this.isFrench, required this.beforePlay});
   @override
   State<_AudioMessagePlayer> createState() => _AudioMessagePlayerState();
 }
@@ -309,6 +356,7 @@ class _AudioMessagePlayerState extends State<_AudioMessagePlayer> {
       if (_playing) {
         await _player.pause();
       } else {
+        if (!await widget.beforePlay()) return;
         await _player.setSourceUrl(widget.url);
         await _player.resume();
       }
