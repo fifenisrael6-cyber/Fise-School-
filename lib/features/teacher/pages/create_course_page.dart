@@ -157,6 +157,18 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     setState(() => _saving = true);
 
+    try {
+      await _service.authorizeTeacherClasses(
+        _classes.map((schoolClass) => schoolClass.id).toList(growable: false),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saving = false);
+        _snack('${_fr ? 'Accès aux salles refusé' : 'Classroom access denied'}: $error');
+      }
+      return;
+    }
+
     var published = 0;
     final errors = <String>[];
 
@@ -241,6 +253,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ClassSubjectPicker(
             locale: widget.locale,
             teacherId: widget.profile.id,
+            includeCompatibleClasses: true,
             onChanged: (classes, subject) {
               setState(() {
                 _classes = classes;
