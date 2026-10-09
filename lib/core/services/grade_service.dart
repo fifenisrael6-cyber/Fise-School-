@@ -30,6 +30,9 @@ class GradeService {
   }
 
   Future<List<GradeClass>> listTeacherClasses(String teacherId) async {
+    if (_client.auth.currentUser?.id != teacherId) {
+      throw StateError('The requested teacher does not match the signed-in account.');
+    }
     final rows = await _client.rpc('list_classes_for_teacher_choice');
     return (rows as List)
         .map((row) => Map<String, dynamic>.from(row as Map))
