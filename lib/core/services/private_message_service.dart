@@ -90,4 +90,20 @@ class PrivateMessageService {
         .eq('recipient_id', _client.auth.currentUser!.id)
         .isFilter('read_at', null);
   }
+
+  Future<void> deleteMessage(PrivateMessage message) async {
+    await _client.rpc(
+      'delete_private_message',
+      params: {'p_message_id': message.id},
+    );
+    final path = message.attachmentPath;
+    if (path != null && path.isNotEmpty) {
+      try {
+        await _client.storage.from('private-message-attachments').remove([path]);
+      } catch (_) {
+        // Le message est supprimé. Un éventuel nettoyage du fichier peut être
+        // repris séparément si la politique Storage interdit sa suppression.
+      }
+    }
+  }
 }
