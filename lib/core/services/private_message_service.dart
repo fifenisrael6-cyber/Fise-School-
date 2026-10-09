@@ -82,12 +82,42 @@ class PrivateMessageService {
         .createSignedUrl(path, 3600);
   }
 
+  Future<void> markConversationDelivered(String senderId) async {
+    await _client.rpc(
+      'mark_private_messages_delivered',
+      params: {'p_sender_id': senderId},
+    );
+  }
+
   Future<void> markConversationRead(String contactId) async {
+    await _client.rpc(
+      'mark_private_messages_read',
+      params: {'p_sender_id': contactId},
+    );
+  }
+
+  Future<void> deleteMessage(PrivateMessage message) async {
+    final userId = _client.auth.currentUser!.id;
+    if (message.senderId != userId) {
+      throw StateError('You can only delete messages you sent.');
+    }
+
+    // Remove the private attachment if storage permissions allow it. Message
+    // deletion must still work if the object was already removed.
+    if (message.attachmentPath != null && message.attachmentPath!.isNotEmpty) {
+      try {
+        await _client.storage
+            .from('private-message-attachments')
+            .remove([message.attachmentPath!]);
+      } catch (_) {
+        // Best effort cleanup; the row deletion remains authoritative.
+      }
+    }
+
     await _client
         .from('private_messages')
-        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', contactId)
-        .eq('recipient_id', _client.auth.currentUser!.id)
-        .isFilter('read_at', null);
+        .delete()
+        .eq('id', message.id)
+        .eq('sender_id', userId);
   }
 }
