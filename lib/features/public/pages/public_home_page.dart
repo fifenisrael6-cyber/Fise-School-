@@ -59,29 +59,6 @@ class PublicHomePage extends StatelessWidget {
       ],
     );
 
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          label: '${texts.login} dans ${texts.appName}',
-          button: true,
-          child: TextButton(
-            onPressed: () => _openAuth(context),
-            child: Text(texts.login),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Semantics(
-          label: '${texts.register} dans ${texts.appName}',
-          button: true,
-          child: FilledButton(
-            onPressed: () => _openAuth(context, register: true),
-            child: Text(texts.register),
-          ),
-        ),
-      ],
-    );
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: narrow
@@ -93,8 +70,6 @@ class PublicHomePage extends StatelessWidget {
                     _languageMenu(texts),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Align(alignment: Alignment.centerRight, child: actions),
               ],
             )
           : Row(
@@ -102,8 +77,6 @@ class PublicHomePage extends StatelessWidget {
                 Expanded(
                   child: Align(alignment: Alignment.centerLeft, child: brand),
                 ),
-                actions,
-                const SizedBox(width: 8),
                 _languageMenu(texts),
               ],
             ),
@@ -367,6 +340,42 @@ class PublicHomePage extends StatelessWidget {
           texts.cameroonSystem,
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 24),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _openAuth(context),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: const Color(0xFF166534),
+                    side: const BorderSide(color: Color(0xFF166534)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(texts.login),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _openAuth(context, register: true),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    backgroundColor: const Color(0xFF166534),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(texts.register),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     ),
