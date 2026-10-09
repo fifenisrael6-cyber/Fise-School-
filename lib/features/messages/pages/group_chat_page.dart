@@ -69,6 +69,28 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
       ..subscribe();
   }
 
@@ -80,11 +102,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
     super.dispose();
   }
 
-  Future<void> _load({bool showLoader = true}) async {
+  Future<void> _load({bool showLoader = true, bool markRead = true}) async {
     if (showLoader && mounted) {
       setState(() => _loading = true);
     }
     try {
+      if (markRead) {
+        await _service.markMessagesDelivered(widget.group.id);
+        await _service.markMessagesRead(widget.group.id);
+      }
       final messages = await _service.listMessages(widget.group.id);
       if (mounted) {
         setState(() => _messages = messages);
@@ -544,9 +570,39 @@ class _GroupChatPageState extends State<GroupChatPage> {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(fontSize: 10, color: Colors.black45),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    Tooltip(
+                      message: message.recipientCount > 0 && message.readCount >= message.recipientCount
+                          ? (_fr ? 'Lu par tous' : 'Read by everyone')
+                          : message.recipientCount > 0 && message.deliveredCount >= message.recipientCount
+                              ? (_fr ? 'Reçu par tous' : 'Delivered to everyone')
+                              : message.deliveredCount > 0
+                                  ? (_fr ? 'En cours de réception' : 'Being delivered')
+                                  : (_fr ? 'Envoyé' : 'Sent'),
+                      child: Icon(
+                        message.recipientCount > 0 && message.readCount >= message.recipientCount
+                            ? Icons.done_all_rounded
+                            : message.deliveredCount > 0
+                                ? Icons.done_all_rounded
+                                : Icons.done_rounded,
+                        size: 14,
+                        color: message.recipientCount > 0 && message.readCount >= message.recipientCount
+                            ? const Color(0xFF166534)
+                            : message.deliveredCount > 0
+                                ? Colors.black54
+                                : Colors.black45,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
