@@ -70,8 +70,6 @@ class PublicHomePage extends StatelessWidget {
                     _languageMenu(texts),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Align(alignment: Alignment.centerRight, child: actions),
               ],
             )
           : Row(
