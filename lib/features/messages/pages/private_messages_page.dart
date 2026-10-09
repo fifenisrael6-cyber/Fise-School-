@@ -49,9 +49,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
         final row = payload.newRecord;
         if (row['sender_id'] == widget.profile.id || row['recipient_id'] == widget.profile.id) {
+          // Marquer la livraison dès que le message entrant arrive sur le client,
+          // même si la conversation correspondante n'est pas actuellement ouverte.
+          final senderId = row['sender_id']?.toString();
+          if (row['recipient_id'] == widget.profile.id &&
+              senderId != null &&
+              senderId != widget.profile.id) {
+            unawaited(_service.markConversationDelivered(senderId));
+          }
+
           final selected = _selected;
-          if (selected != null && (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
-            _select(selected);
+          if (selected != null &&
+              (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
+            unawaited(_select(selected));
           }
           if (mounted) {
             setState(() => _contactsFuture = _service.listContacts());
