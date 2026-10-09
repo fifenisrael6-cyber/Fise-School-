@@ -235,6 +235,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
             url: url,
             title: message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment'),
             mimeType: message.attachmentType ?? 'application/octet-stream',
+            viewOnce: message.viewOnce,
           ),
         ),
       );
