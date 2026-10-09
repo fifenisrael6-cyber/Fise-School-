@@ -160,7 +160,14 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
 
   Future<void> _pickAndUpload() async {
     try {
-      final result = await FilePicker.platform.pickFiles(withData: true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+          'mp4', 'mov', 'avi', 'mkv', 'webm',
+        ],
+        withData: true,
+      );
 
       if (result == null || result.files.isEmpty) {
         return;
@@ -187,6 +194,16 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
+      if (type != 'image' && type != 'video') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_isFrench
+                ? 'Seules les photos et les vidéos sont autorisées pour les enseignants.'
+                : 'Teachers can only upload photos and videos.')),
+          );
+        }
+        return;
+      }
       final position = await _nextPosition();
 
       if (!mounted) {
@@ -857,8 +874,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               isFrench
-                  ? 'Ajoutez un PDF, document, image, vidéo ou fichier audio.'
-                  : 'Add a PDF, document, image, video, or audio file.',
+                  ? 'Ajoutez une photo ou une vidéo.'
+                  : 'Add a photo or video.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.black54),
             ),
