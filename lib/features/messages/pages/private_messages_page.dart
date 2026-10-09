@@ -435,13 +435,26 @@ class _MessageAttachment extends StatelessWidget {
         if (type.startsWith('image/')) {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.network(
-                url,
-                width: 220,
-                height: 180,
-                fit: BoxFit.cover,
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => _PrivateAttachmentViewer(
+                    url: url,
+                    name: message.attachmentName ?? (isFrench ? 'Image' : 'Image'),
+                    mimeType: type,
+                    isFrench: isFrench,
+                  ),
+                ));
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  url,
+                  width: 220,
+                  height: 180,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined),
+                ),
               ),
             ),
           );
