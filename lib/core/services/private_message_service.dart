@@ -41,7 +41,11 @@ class PrivateMessageService {
     Uint8List? attachmentBytes,
     String? attachmentName,
     String? attachmentType,
+    bool viewOnce = false,
   }) async {
+    if (viewOnce && (attachmentBytes == null || attachmentName == null)) {
+      throw ArgumentError('View-once messages must include an attachment.');
+    }
     final senderId = _client.auth.currentUser!.id;
     String? path;
 
@@ -70,6 +74,7 @@ class PrivateMessageService {
       'attachment_name': attachmentName,
       'attachment_type': attachmentType,
       'attachment_size': attachmentBytes?.length,
+      'view_once': viewOnce,
     });
   }
 
@@ -83,41 +88,64 @@ class PrivateMessageService {
   }
 
   Future<void> markConversationDelivered(String senderId) async {
-    await _client.rpc(
-      'mark_private_messages_delivered',
-      params: {'p_sender_id': senderId},
-    );
+    final userId = _client.auth.currentUser!.id;
+    await _client
+        .from('private_messages')
+        .update({'delivered_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('sender_id', senderId)
+        .eq('recipient_id', userId)
+        .isFilter('delivered_at', null);
   }
 
   Future<void> markConversationRead(String contactId) async {
-    await _client.rpc(
-      'mark_private_messages_read',
-      params: {'p_sender_id': contactId},
-    );
+    final userId = _client.auth.currentUser!.id;
+    await _client
+        .from('private_messages')
+        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
+        .eq('sender_id', contactId)
+        .eq('recipient_id', userId)
+        .isFilter('read_at', null);
   }
 
-  Future<void> deleteMessage(PrivateMessage message) async {
+  /// Atomically consumes a view-once attachment and asks the Edge Function
+  /// to return a short-lived signed URL. The URL is never persisted in a row.
+  Future<String> openViewOnceAttachment(String messageId) async {
+    final response = await _client.functions.invoke(
+      'open-view-once',
+      body: {'message_id': messageId, 'scope': 'private'},
+    );
+    final data = response.data;
+    if (data is Map && data['url'] is String && (data['url'] as String).isNotEmpty) {
+      return data['url'] as String;
+    }
+    throw StateError('The one-time attachment is unavailable.');
+  }
+
+  Future<void> deleteMessage(
+    PrivateMessage message, {
+    required bool forEveryone,
+  }) async {
     final userId = _client.auth.currentUser!.id;
-    if (message.senderId != userId) {
-      throw StateError('You can only delete messages you sent.');
+    if (forEveryone && message.senderId != userId) {
+      throw StateError('Only the sender can delete a message for everyone.');
     }
 
-    // Remove the private attachment if storage permissions allow it. Message
-    // deletion must still work if the object was already removed.
-    if (message.attachmentPath != null && message.attachmentPath!.isNotEmpty) {
+    final result = await _client.rpc(
+      'delete_private_message',
+      params: {
+        'p_message_id': message.id,
+        'p_for_everyone': forEveryone,
+      },
+    );
+
+    // The database function clears the attachment path before returning it.
+    // Storage cleanup is best-effort and does not affect the deletion state.
+    if (result is String && result.isNotEmpty) {
       try {
         await _client.storage
             .from('private-message-attachments')
-            .remove([message.attachmentPath!]);
-      } catch (_) {
-        // Best effort cleanup; the row deletion remains authoritative.
-      }
+            .remove([result]);
+      } catch (_) {}
     }
-
-    await _client
-        .from('private_messages')
-        .delete()
-        .eq('id', message.id)
-        .eq('sender_id', userId);
   }
 }
