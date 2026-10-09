@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'package:pdfx/pdfx.dart';
 
 import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
@@ -403,6 +405,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
 }
 
 
+Future<PdfDocument> _loadPdf(String url) async {
+  final response = await http.get(Uri.parse(url));
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('PDF download failed: ${response.statusCode}');
+  }
+  return PdfDocument.openData(response.bodyBytes);
+}
+
 class _MessageAttachment extends StatelessWidget {
   final PrivateMessageService service;
   final PrivateMessage message;
@@ -530,16 +540,66 @@ class _MessageAttachment extends StatelessWidget {
             ),
           );
         }
+        final isPdf = type.toLowerCase().contains('pdf') ||
+            (message.attachmentName ?? '').toLowerCase().endsWith('.pdf');
+        final isAudio = type.startsWith('audio/');
+        final isVideo = type.startsWith('video/');
         return Padding(
           padding: const EdgeInsets.only(top: 8),
           child: TextButton.icon(
             onPressed: () async {
-              final uri = Uri.tryParse(url);
-              if (uri != null) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (isPdf) {
+                showDialog<void>(
+                  context: context,
+                  useSafeArea: false,
+                  builder: (dialogContext) => Dialog.fullscreen(
+                    child: Scaffold(
+                      appBar: AppBar(
+                        title: Text(message.attachmentName ??
+                            (isFrench ? 'Document PDF' : 'PDF document')),
+                        leading: IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                        ),
+                      ),
+                      body: FutureBuilder<PdfDocument>(
+                        future: _loadPdf(url),
+                        builder: (context, pdfSnapshot) {
+                          if (pdfSnapshot.hasError) {
+                            return Center(
+                              child: Text(isFrench
+                                  ? 'Impossible d’ouvrir ce PDF. Vérifiez votre connexion.'
+                                  : 'Could not open this PDF. Check your connection.'),
+                            );
+                          }
+                          if (!pdfSnapshot.hasData) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          return PdfViewPinch(document: Future.value(pdfSnapshot.data));
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              } else if (isAudio || isVideo) {
+                final uri = Uri.tryParse(url);
+                if (uri != null) {
+                  await launchUrl(uri, mode: LaunchMode.platformDefault);
+                }
+              } else {
+                final uri = Uri.tryParse(url);
+                if (uri != null) {
+                  await launchUrl(uri, mode: LaunchMode.platformDefault);
+                }
               }
             },
-            icon: const Icon(Icons.attach_file_rounded),
+            icon: Icon(isPdf
+                ? Icons.picture_as_pdf_rounded
+                : isAudio
+                    ? Icons.play_circle_fill_rounded
+                    : isVideo
+                        ? Icons.video_file_rounded
+                        : Icons.attach_file_rounded),
             label: Text(message.attachmentName ?? (isFrench ? 'Fichier' : 'File')),
           ),
         );
