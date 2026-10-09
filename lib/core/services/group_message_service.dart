@@ -20,10 +20,10 @@ class GroupMessageService {
   }
 
   /// Création réservée aux enseignants (vérifiée côté serveur).
-  Future<String> createGroup({required String name, String? classId}) async {
+  Future<String> createGroup({required String name, List<String> classIds = const []}) async {
     final id = await _client.rpc(
       'create_message_group',
-      params: {'p_name': name, 'p_class_id': classId},
+      params: {'p_name': name, 'p_class_ids': classIds},
     );
     return id as String;
   }
