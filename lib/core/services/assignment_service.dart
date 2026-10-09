@@ -16,12 +16,13 @@ class AssignmentService {
     String? subjectId,
   }) async {
     try {
-      final memberships = await _client.from('class_students').select('class_id').eq('student_id', studentId).eq('is_active', true);
-      final classIds = memberships.map((row) => row['class_id']).whereType<String>().toList(growable: false);
-      if (classIds.isEmpty) {
-        return const [];
-      }
-      var request = _client.from('assignments').select().inFilter('class_id', classIds).inFilter('status', ['published', 'closed']);
+      // Let Supabase RLS determine which published assignments belong to this
+      // student. This uses the same is_student_in_class policy as the database
+      // instead of a second, potentially inconsistent class_students lookup.
+      var request = _client
+          .from('assignments')
+          .select()
+          .inFilter('status', ['published', 'closed']);
       if (courseId != null) {
         request = request.eq('course_id', courseId);
       }
@@ -32,20 +33,33 @@ class AssignmentService {
         request = request.eq('subject_id', subjectId);
       }
       final rows = await request.order('due_at', ascending: true);
-      final assignments = rows.map((row) => Assignment.fromMap(Map<String, dynamic>.from(row))).toList(growable: false);
+      final assignments = rows
+          .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+
       final offline = OfflineRepository();
       for (final assignment in assignments) {
         await offline.saveAssignment(assignment, studentId);
-        try { await offline.saveAssignmentQuestions(await listQuestions(assignment.id, studentId: studentId), studentId); } catch (_) {}
+        try {
+          await offline.saveAssignmentQuestions(
+            await listQuestions(assignment.id, studentId: studentId),
+            studentId,
+          );
+        } catch (_) {
+          // Keep the published assignment visible even if its questions
+          // cannot be cached at this moment.
+        }
       }
       return assignments;
     } catch (_) {
       final cached = await OfflineRepository().getAssignments(studentId);
-      return cached.where((assignment) =>
-        (courseId == null || assignment.courseId == courseId) &&
-        (lessonId == null || assignment.lessonId == lessonId) &&
-        (subjectId == null || assignment.subjectId == subjectId),
-      ).toList(growable: false);
+      return cached
+          .where((assignment) =>
+              (courseId == null || assignment.courseId == courseId) &&
+              (lessonId == null || assignment.lessonId == lessonId) &&
+              (subjectId == null || assignment.subjectId == subjectId) &&
+              ['published', 'closed'].contains(assignment.status))
+          .toList(growable: false);
     }
   }
 
