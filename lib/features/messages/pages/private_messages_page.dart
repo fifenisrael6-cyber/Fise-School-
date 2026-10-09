@@ -55,13 +55,13 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           if (row['recipient_id'] == widget.profile.id &&
               senderId != null &&
               senderId != widget.profile.id) {
-            unawaited(_service.markConversationDelivered(senderId));
+            unawaited(_service.markConversationDelivered(senderId).catchError((_) {}));
           }
 
           final selected = _selected;
           if (selected != null &&
               (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
-            unawaited(_select(selected));
+            unawaited(_select(selected).catchError((_) {}));
           }
           if (mounted) {
             setState(() => _contactsFuture = _service.listContacts());
