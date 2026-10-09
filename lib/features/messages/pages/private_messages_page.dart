@@ -433,13 +433,99 @@ class _MessageAttachment extends StatelessWidget {
         if (type.startsWith('image/')) {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.network(
-                url,
-                width: 220,
-                height: 180,
-                fit: BoxFit.cover,
+            child: GestureDetector(
+              onTap: () {
+                showDialog<void>(
+                  context: context,
+                  barrierColor: Colors.black,
+                  builder: (viewerContext) => Dialog.fullscreen(
+                    backgroundColor: Colors.black,
+                    child: SafeArea(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Center(
+                              child: InteractiveViewer(
+                                minScale: 0.5,
+                                maxScale: 5,
+                                child: Image.network(
+                                  url,
+                                  fit: BoxFit.contain,
+                                  loadingBuilder: (context, child, progress) {
+                                    if (progress == null) return child;
+                                    final total = progress.expectedTotalBytes;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value: total == null
+                                            ? null
+                                            : progress.cumulativeBytesLoaded / total,
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Center(
+                                    child: Text(
+                                      isFrench
+                                          ? 'Impossible de charger cette photo.'
+                                          : 'Could not load this photo.',
+                                      style: const TextStyle(color: Colors.white),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: IconButton(
+                              tooltip: isFrench ? 'Fermer' : 'Close',
+                              onPressed: () => Navigator.of(viewerContext).pop(),
+                              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+              child: Hero(
+                tag: 'message-image-${message.id}',
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    url,
+                    width: 220,
+                    height: 180,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return SizedBox(
+                        width: 220,
+                        height: 180,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            value: progress.expectedTotalBytes == null
+                                ? null
+                                : progress.cumulativeBytesLoaded /
+                                    progress.expectedTotalBytes!,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => SizedBox(
+                      width: 220,
+                      height: 100,
+                      child: Center(
+                        child: Text(
+                          isFrench ? 'Photo indisponible' : 'Image unavailable',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           );
