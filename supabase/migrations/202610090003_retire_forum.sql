@@ -2,6 +2,19 @@
 -- Les écrans de messagerie et les groupes disposent désormais de leurs propres tables.
 -- Cette migration supprime volontairement les anciennes discussions et leurs pièces jointes.
 
+-- Supprimer d'abord les politiques qui dépendent des fonctions et des tables du forum.
+drop policy if exists "forum topics members read" on public.forum_topics;
+drop policy if exists "forum topics teachers create" on public.forum_topics;
+drop policy if exists "forum topics teachers update" on public.forum_topics;
+drop policy if exists "forum topics teachers delete" on public.forum_topics;
+drop policy if exists "forum posts members read" on public.forum_posts;
+drop policy if exists "forum posts members create" on public.forum_posts;
+drop policy if exists "forum posts authors update" on public.forum_posts;
+drop policy if exists "forum posts authors delete" on public.forum_posts;
+drop policy if exists "forum attachments are readable by class members" on storage.objects;
+drop policy if exists "forum attachments can be uploaded by members" on storage.objects;
+drop policy if exists "forum attachments can be deleted by owner" on storage.objects;
+
 drop trigger if exists forum_topic_notification on public.forum_topics;
 drop trigger if exists forum_post_notification on public.forum_posts;
 
