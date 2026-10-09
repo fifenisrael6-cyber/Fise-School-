@@ -38,6 +38,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   bool _loadingMessages = false;
   bool _sending = false;
   PickedAttachment? _attachment;
+  bool _viewOnce = false;
   final PhotoService _photoService = PhotoService();
   final AudioRecorder _recorder = AudioRecorder();
   bool _recordingVoice = false;
@@ -164,10 +165,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
-        setState(() => _attachment = null);
+        setState(() {
+          _attachment = null;
+          _viewOnce = false;
+        });
       }
       await _select(contact);
     } catch (error) {
@@ -255,31 +260,41 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   Future<void> _confirmDeleteMessage(PrivateMessage message) async {
-    final confirmed = await showDialog<bool>(
+    final mine = message.senderId == widget.profile.id;
+    final forEveryone = await showDialog<bool?>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(_isFrench ? 'Supprimer le message ?' : 'Delete message?'),
         content: Text(_isFrench
-            ? 'Ce message sera supprimé pour tous les participants.'
-            : 'This message will be deleted for all participants.'),
+            ? 'Choisis si tu veux retirer le message uniquement ici ou pour tous les participants.'
+            : 'Choose whether to remove the message only for you or for everyone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(dialogContext, null),
             child: Text(_isFrench ? 'Annuler' : 'Cancel'),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isFrench ? 'Pour moi' : 'For me'),
           ),
+          if (mine)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(_isFrench ? 'Pour tout le monde' : 'For everyone'),
+            ),
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (forEveryone == null) return;
+
     try {
-      await _service.deleteMessage(message);
-      if (mounted) {
-        setState(() => _messages = _messages.where((item) => item.id != message.id).toList());
-        _showMessage(_isFrench ? 'Message supprimé.' : 'Message deleted.');
+      await _service.deleteMessage(message, forEveryone: forEveryone);
+      final contact = _selected;
+      if (contact != null && mounted) {
+        await _select(contact);
+        _showMessage(forEveryone
+            ? (_isFrench ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
+            : (_isFrench ? 'Message retiré de ta conversation.' : 'Message removed from your conversation.'));
       }
     } catch (error) {
       if (mounted) _showMessage('${_isFrench ? 'Suppression impossible' : 'Could not delete message'}: $error');
@@ -408,7 +423,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
                         child: GestureDetector(
-                          onLongPress: mine ? () => _confirmDeleteMessage(message) : null,
+                          onLongPress: () => _confirmDeleteMessage(message),
                           child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
@@ -423,13 +438,21 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (message.body.isNotEmpty) Text(message.body),
-                              if (message.attachmentPath != null)
-                                _MessageAttachment(
-                                  service: _service,
-                                  message: message,
-                                  isFrench: _isFrench,
-                                ),
+                              if (message.deletedAt != null)
+                                Text(
+                                  _isFrench ? 'Ce message a été supprimé' : 'This message was deleted',
+                                  style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+                                )
+                              else ...[
+                                if (message.body.isNotEmpty) Text(message.body),
+                                if (message.attachmentPath != null)
+                                  _MessageAttachment(
+                                    service: _service,
+                                    message: message,
+                                    currentUserId: widget.profile.id,
+                                    isFrench: _isFrench,
+                                  ),
+                              ],
                               const SizedBox(height: 4),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -480,6 +503,26 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   icon: const Icon(Icons.attach_file_rounded),
                 ),
                 IconButton(
+                  tooltip: _viewOnce
+                      ? (_isFrench ? 'Désactiver la vue unique' : 'Turn off view once')
+                      : (_isFrench ? 'Envoyer en vue unique' : 'Send as view once'),
+                  onPressed: _sending
+                      ? null
+                      : () {
+                          if (_attachment == null) {
+                            _showMessage(_isFrench
+                                ? 'Ajoute une photo ou un fichier avant d’activer la vue unique.'
+                                : 'Attach a photo or file before enabling view once.');
+                            return;
+                          }
+                          setState(() => _viewOnce = !_viewOnce);
+                        },
+                  icon: Icon(
+                    _viewOnce ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                    color: _viewOnce ? const Color(0xFF166534) : null,
+                  ),
+                ),
+                IconButton(
                   tooltip: _recordingVoice
                       ? (_isFrench ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
                       : (_isFrench ? 'Enregistrer un vocal' : 'Record a voice message'),
@@ -499,9 +542,13 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                       hintText: _recordingVoice
                           ? (_isFrench ? 'Enregistrement vocal en cours…' : 'Recording voice message…')
                           : _attachment != null
-                          ? (_isFrench
+                          ? (_viewOnce
+                              ? (_isFrench
+                                  ? 'Vue unique : ${_attachment!.name}'
+                                  : 'View once: ${_attachment!.name}')
+                              : (_isFrench
                               ? 'Pièce jointe : ${_attachment!.name}'
-                              : 'Attachment: ${_attachment!.name}')
+                              : 'Attachment: ${_attachment!.name}'))
                           : (_isFrench
                               ? 'Écrire un message...'
                               : 'Write a message...'),
