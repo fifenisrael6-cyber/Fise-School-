@@ -112,4 +112,19 @@ class GroupMessageService {
     }
     return _client.storage.from(bucket).createSignedUrl(path, 3600);
   }
+
+  Future<void> deleteMessage(GroupMessage message) async {
+    await _client.rpc(
+      'delete_message_group_message',
+      params: {'p_message_id': message.id},
+    );
+    final path = message.attachmentPath;
+    if (path != null && path.isNotEmpty) {
+      try {
+        await _client.storage.from(bucket).remove([path]);
+      } catch (_) {
+        // La suppression du message a déjà été validée côté serveur.
+      }
+    }
+  }
 }
