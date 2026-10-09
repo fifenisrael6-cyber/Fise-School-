@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
+import 'message_attachment_viewer_page.dart';
 
 /// Conversation d'un groupe, façon WhatsApp.
 class GroupChatPage extends StatefulWidget {
@@ -36,6 +39,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _loading = true;
   bool _sending = false;
   PickedAttachment? _attachment;
+  bool _viewOnce = false;
+  bool _recordingVoice = false;
+  AudioRecorder? _voiceRecorder;
   RealtimeChannel? _channel;
   String? _inviteCode;
 
@@ -67,6 +73,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    final recorder = _voiceRecorder;
+    _voiceRecorder = null;
+    if (recorder != null) unawaited(recorder.dispose());
     super.dispose();
   }
 
@@ -108,10 +117,14 @@ class _GroupChatPageState extends State<GroupChatPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
-        setState(() => _attachment = null);
+        setState(() {
+          _attachment = null;
+          _viewOnce = false;
+        });
       }
       await _load(showLoader: false);
     } catch (error) {
@@ -119,6 +132,154 @@ class _GroupChatPageState extends State<GroupChatPage> {
     } finally {
       if (mounted) {
         setState(() => _sending = false);
+      }
+    }
+  }
+
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_recordingVoice) {
+      final recorder = _voiceRecorder;
+      if (recorder == null) return;
+      try {
+        final path = await recorder.stop();
+        _voiceRecorder = null;
+        await recorder.dispose();
+        if (path == null || path.isEmpty) {
+          if (mounted) setState(() => _recordingVoice = false);
+          return;
+        }
+        final file = File(path);
+        if (!await file.exists()) {
+          if (mounted) {
+            setState(() => _recordingVoice = false);
+            _snack(_fr ? 'Enregistrement vocal introuvable.' : 'Voice recording not found.');
+          }
+          return;
+        }
+        final bytes = await file.readAsBytes();
+        try { await file.delete(); } catch (_) {}
+        if (!mounted) return;
+        setState(() {
+          _recordingVoice = false;
+          _attachment = PickedAttachment(
+            bytes: bytes,
+            name: 'message-vocal-${DateTime.now().millisecondsSinceEpoch}.m4a',
+            mimeType: 'audio/mp4',
+          );
+          _viewOnce = false;
+        });
+      } catch (error) {
+        if (mounted) {
+          setState(() => _recordingVoice = false);
+          _snack('${_fr ? 'Échec de l’enregistrement vocal' : 'Voice recording failed'}: $error');
+        }
+      }
+      return;
+    }
+
+    try {
+      final recorder = AudioRecorder();
+      if (!await recorder.hasPermission()) {
+        await recorder.dispose();
+        if (mounted) {
+          _snack(_fr
+              ? 'Autorisez le microphone dans les paramètres du téléphone.'
+              : 'Allow microphone access in phone settings.');
+        }
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/fise-voice-${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 64000,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      if (!mounted) {
+        await recorder.cancel();
+        await recorder.dispose();
+        return;
+      }
+      setState(() {
+        _voiceRecorder = recorder;
+        _recordingVoice = true;
+      });
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de démarrer le microphone' : 'Could not start the microphone'}: $error');
+      }
+    }
+  }
+
+  Future<void> _openAttachment(GroupMessage message) async {
+    try {
+      final url = await _service.openAttachmentUrl(message);
+      if (url == null || url.isEmpty) {
+        if (mounted) {
+          _snack(_fr
+              ? 'Cette pièce jointe n’est plus disponible.'
+              : 'This attachment is no longer available.');
+        }
+        return;
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MessageAttachmentViewerPage(
+            url: url,
+            title: message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment'),
+            mimeType: message.attachmentType ?? 'application/octet-stream',
+          ),
+        ),
+      );
+      if (mounted) await _load(showLoader: false);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible d’ouvrir la pièce jointe' : 'Could not open attachment'}: $error');
+      }
+    }
+  }
+
+  Future<void> _deleteMessage(
+    GroupMessage message, {
+    required bool forEveryone,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer le message ?' : 'Delete message?'),
+        content: Text(forEveryone
+            ? (_fr
+                ? 'Le message sera supprimé pour tous les membres.'
+                : 'The message will be deleted for all members.')
+            : (_fr
+                ? 'Le message sera masqué uniquement pour vous.'
+                : 'The message will be hidden only for you.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _service.deleteMessage(message.id, forEveryone: forEveryone);
+      if (mounted) await _load(showLoader: false);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Suppression impossible' : 'Could not delete message'}: $error');
       }
     }
   }
@@ -345,6 +506,29 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         itemBuilder: (context, index) => _bubble(reversed[index]),
                       ),
           ),
+          if (_attachment != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 2),
+              child: Row(
+                children: [
+                  const Icon(Icons.attach_file_rounded, size: 18),
+                  Expanded(child: Text(_attachment!.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Checkbox(
+                    value: _viewOnce,
+                    onChanged: _sending ? null : (value) => setState(() => _viewOnce = value ?? false),
+                  ),
+                  Flexible(child: Text(_fr ? 'Voir une fois' : 'View once')),
+                  IconButton(
+                    tooltip: _fr ? 'Retirer le fichier' : 'Remove attachment',
+                    onPressed: _sending ? null : () => setState(() {
+                      _attachment = null;
+                      _viewOnce = false;
+                    }),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                ],
+              ),
+            ),
           SafeArea(
             top: false,
             child: Container(
@@ -379,6 +563,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: _recordingVoice
+                        ? (_fr ? 'Arrêter l’enregistrement' : 'Stop recording')
+                        : (_fr ? 'Message vocal' : 'Voice message'),
+                    onPressed: _sending ? null : _toggleVoiceRecording,
+                    icon: Icon(
+                      _recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                      color: _recordingVoice ? Colors.red : null,
+                    ),
+                  ),
                   IconButton.filled(
                     tooltip: _fr ? 'Envoyer' : 'Send',
                     onPressed: _sending ? null : _send,
@@ -426,15 +620,45 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   color: isTeacher ? const Color(0xFF166534) : Colors.blueGrey.shade700,
                 ),
               ),
-            if (message.body.isNotEmpty) Text(message.body),
-            if (message.attachmentPath != null) _attachmentView(message),
+            if (message.deletedAt != null)
+              Text(
+                _fr ? 'Ce message a été supprimé.' : 'This message was deleted.',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+              )
+            else if (message.body.isNotEmpty)
+              Text(message.body),
+            if (message.deletedAt == null && message.attachmentPath != null)
+              _attachmentView(message, isMine: mine),
             const SizedBox(height: 2),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                _formatTime(message.createdAt),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message.createdAt),
+                  style: const TextStyle(fontSize: 10, color: Colors.black45),
+                ),
+                if (message.deletedAt == null)
+                  PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    iconSize: 16,
+                    tooltip: _fr ? 'Options du message' : 'Message options',
+                    onSelected: (value) => _deleteMessage(
+                      message,
+                      forEveryone: value == 'everyone',
+                    ),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'me',
+                        child: Text(_fr ? 'Supprimer pour moi' : 'Delete for me'),
+                      ),
+                      if (mine)
+                        PopupMenuItem(
+                          value: 'everyone',
+                          child: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone'),
+                        ),
+                    ],
+                  ),
+              ],
             ),
           ],
         ),
@@ -442,34 +666,71 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
-  Widget _attachmentView(GroupMessage message) {
-    return FutureBuilder<String?>(
-      future: _service.signedAttachmentUrl(message.attachmentPath),
-      builder: (context, snapshot) {
-        final url = snapshot.data;
-        final type = message.attachmentType ?? '';
+  Widget _attachmentView(GroupMessage message, {required bool isMine}) {
+    final name = message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment');
+    final type = (message.attachmentType ?? '').toLowerCase();
 
-        if (url != null && type.startsWith('image/')) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: GestureDetector(
-              onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(url, width: 220, height: 180, fit: BoxFit.cover),
-              ),
+    if (message.viewOnce) {
+      final alreadyOpened = message.viewedByMe && !isMine;
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: OutlinedButton.icon(
+          onPressed: isMine || alreadyOpened ? null : () => _openAttachment(message),
+          icon: const Icon(Icons.visibility_rounded),
+          label: Text(isMine
+              ? (_fr ? 'Envoyé • Voir une fois' : 'Sent • View once')
+              : alreadyOpened
+                  ? (_fr ? 'Déjà ouvert' : 'Already opened')
+                  : (_fr ? 'Ouvrir une fois' : 'Open once')),
+        ),
+      );
+    }
+
+    if (type.startsWith('image/')) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: InkWell(
+          onTap: () => _openAttachment(message),
+          borderRadius: BorderRadius.circular(10),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: FutureBuilder<String?>(
+              future: _service.signedAttachmentUrl(message.attachmentPath),
+              builder: (context, snapshot) => snapshot.data == null
+                  ? SizedBox(
+                      width: 220,
+                      height: 100,
+                      child: Center(child: Text(_fr ? 'Chargement de la photo…' : 'Loading photo…')),
+                    )
+                  : Image.network(
+                      snapshot.data!,
+                      width: 220,
+                      height: 180,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => SizedBox(
+                        width: 220,
+                        height: 80,
+                        child: Center(child: Text(_fr ? 'Photo indisponible' : 'Photo unavailable')),
+                      ),
+                    ),
             ),
-          );
-        }
+          ),
+        ),
+      );
+    }
 
-        return TextButton.icon(
-          onPressed: url == null
-              ? null
-              : () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-          icon: const Icon(Icons.attach_file_rounded),
-          label: Text(message.attachmentName ?? (_fr ? 'Fichier' : 'File')),
-        );
-      },
+    final audio = type.startsWith('audio/');
+    final pdf = type.contains('pdf') || name.toLowerCase().endsWith('.pdf');
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: TextButton.icon(
+        onPressed: () => _openAttachment(message),
+        icon: Icon(audio ? Icons.play_circle_fill_rounded
+            : pdf ? Icons.picture_as_pdf_rounded
+            : Icons.insert_drive_file_rounded),
+        label: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+      ),
     );
   }
 }
+
