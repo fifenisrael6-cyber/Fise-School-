@@ -11,6 +11,7 @@ import '../../settings/pages/settings_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
+import 'teacher_past_papers_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -140,6 +141,35 @@ class TeacherDashboardPage extends StatelessWidget {
                             locale: locale,
                             profile: profile,
                           ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.quiz_outlined,
+                      'QCM',
+                      () => showDialog<void>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('QCM'),
+                          content: Text(locale.languageCode == 'fr'
+                              ? 'Les QCM sont générés automatiquement à partir des cours publiés. Publiez vos cours dans l’onglet Cours ; les élèves génèrent leurs QCM depuis leur classe.'
+                              : 'Quizzes are generated automatically from published courses. Publish your courses in the Courses tab; students generate quizzes from their classroom.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text(locale.languageCode == 'fr' ? 'Compris' : 'Got it'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.history_edu_rounded,
+                      locale.languageCode == 'fr' ? 'Annales des examens' : 'Past exam papers',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TeacherPastPapersPage(locale: locale, profile: profile),
                         ),
                       ),
                     ),
