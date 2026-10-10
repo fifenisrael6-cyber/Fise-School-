@@ -78,7 +78,8 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       } catch (groupError) {
         final groupMessage = groupError.toString().toLowerCase();
         final noGroupsYet = groupMessage.contains('no message group exists') ||
-            groupMessage.contains('aucun groupe');
+            groupMessage.contains('aucun groupe') ||
+            (groupMessage.contains('null') && groupMessage.contains('string'));
         if (!noGroupsYet) rethrow;
       }
 
