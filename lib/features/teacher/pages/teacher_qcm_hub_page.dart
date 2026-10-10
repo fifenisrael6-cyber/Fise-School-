@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
@@ -25,6 +26,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   final AssignmentService _service = AssignmentService();
   late Future<List<Assignment>> _assignmentsFuture;
   late final TabController _tabController;
+  final Map<String, String> _classNames = <String, String>{};
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -33,6 +35,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _reload();
+    _loadClassNames();
   }
 
   @override
@@ -45,6 +48,28 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     _assignmentsFuture = _service.listTeacherAssignments(
       teacherId: widget.profile.id,
     );
+  }
+
+  Future<void> _loadClassNames() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('school_classes')
+          .select('id, display_name')
+          .eq('is_active', true);
+      if (!mounted) return;
+      setState(() {
+        _classNames
+          ..clear()
+          ..addEntries(
+            rows.map((row) => MapEntry(
+                  row['id'].toString(),
+                  (row['display_name'] ?? '').toString(),
+                )),
+          );
+      });
+    } catch (_) {
+      // Keep the QCM list available even if classroom labels cannot load.
+    }
   }
 
   Future<void> _refresh() async {
@@ -293,7 +318,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
-                      '${_fr ? 'Salle' : 'Class'}: ${assignment.classId}\n${_deadline(assignment.dueAt)}',
+                      '${_fr ? 'Salle' : 'Class'}: ${_classNames[assignment.classId] ?? (_fr ? 'Salle non disponible' : 'Class unavailable')}\n${_deadline(assignment.dueAt)}',
                     ),
                   ),
                   isThreeLine: true,
