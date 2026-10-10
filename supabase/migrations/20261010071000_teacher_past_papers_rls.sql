@@ -7,7 +7,6 @@ on public.past_papers for insert to authenticated
 with check (
   created_by = auth.uid()
   and public.check_profile_role(auth.uid(), 'teacher')
-  and (storage.foldername(name))[1] = auth.uid()::text
 );
 
 drop policy if exists "teachers read own past papers" on public.past_papers;
@@ -71,6 +70,7 @@ on storage.objects for insert to authenticated
 with check (
   bucket_id = 'past-papers'
   and public.check_profile_role(auth.uid(), 'teacher')
+  and (storage.foldername(name))[1] = auth.uid()::text
 );
 
 drop policy if exists "teachers update past papers storage" on storage.objects;
