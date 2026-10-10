@@ -246,7 +246,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         if (!mounted || !_recordingVoice) return;
         _voiceLimitTimer = null;
         unawaited(_toggleVoiceRecording());
-        _snack('The 40-minute limit has been reached. Your voice message is ready to send.');
+        _snack(_fr ? 'La limite de 40 minutes est atteinte. Le vocal est en cours de préparation.' : 'The 40-minute limit is reached. Preparing your voice message.');
       });
     } catch (error) {
       if (mounted) {
