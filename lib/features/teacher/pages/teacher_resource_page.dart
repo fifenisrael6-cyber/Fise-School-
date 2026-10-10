@@ -450,7 +450,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                       OutlinedButton.icon(
                         onPressed: () async {
                           try {
-                            await _smart.reindexPdf(resource.id);
+                            await _smart.reindexResource(resource.id);
                             if (sheetContext.mounted) {
                               Navigator.of(sheetContext).pop();
                               await _refresh();
