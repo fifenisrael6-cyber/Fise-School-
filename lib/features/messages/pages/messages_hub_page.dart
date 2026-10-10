@@ -141,7 +141,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
-      classes = await CourseService().listTeacherSelectedClasses();
+      classes = await CourseService().listTeacherCompatibleClasses();
     } catch (_) {
       classes = const [];
     }
@@ -170,12 +170,33 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  _fr ? 'Choisir une ou plusieurs salles' : 'Choose one or more classrooms',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _fr ? 'Choisir les salles' : 'Choose classrooms',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: classes.isEmpty
+                        ? null
+                        : () => setDialogState(() {
+                              if (selectedClassIds.length == classes.length) {
+                                selectedClassIds.clear();
+                              } else {
+                                selectedClassIds
+                                  ..clear()
+                                  ..addAll(classes.map((schoolClass) => schoolClass.id));
+                              }
+                            }),
+                    child: Text(
+                      selectedClassIds.length == classes.length && classes.isNotEmpty
+                          ? (_fr ? 'Tout désélectionner' : 'Clear all')
+                          : (_fr ? 'Tout sélectionner' : 'Select all'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
               if (classes.isEmpty)
@@ -187,19 +208,22 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                   constraints: const BoxConstraints(maxHeight: 220),
                   child: SingleChildScrollView(
                     child: Column(
-                      children: classes.map((schoolClass) => CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(schoolClass.displayName),
-                        value: selectedClassIds.contains(schoolClass.id),
-                        onChanged: (selected) => setDialogState(() {
-                          if (selected == true) {
-                            selectedClassIds.add(schoolClass.id);
-                          } else {
-                            selectedClassIds.remove(schoolClass.id);
-                          }
-                        }),
-                      )).toList(),
+                      children: classes.asMap().entries.map((entry) {
+                        final schoolClass = entry.value;
+                        return CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${entry.key + 1}. ${schoolClass.displayName}'),
+                          value: selectedClassIds.contains(schoolClass.id),
+                          onChanged: (selected) => setDialogState(() {
+                            if (selected == true) {
+                              selectedClassIds.add(schoolClass.id);
+                            } else {
+                              selectedClassIds.remove(schoolClass.id);
+                            }
+                          }),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -239,41 +263,15 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           .toList(growable: false);
       await CourseService().authorizeTeacherClasses(targetClassIds);
 
-      var createdCount = 0;
-      final failures = <String>[];
-      for (final schoolClass in targetClasses) {
-        final groupName = targetClasses.length == 1
-            ? name
-            : '$name - ${schoolClass.displayName}';
-        try {
-          await _service.createGroup(
-            name: groupName,
-            classId: schoolClass.id,
-          );
-          createdCount++;
-        } catch (error) {
-          failures.add('${schoolClass.displayName}: $error');
-        }
-      }
-
-      if (createdCount == 0) {
-        throw StateError(
-          failures.isEmpty
-              ? (_fr ? 'Aucun groupe créé.' : 'No group was created.')
-              : failures.first,
-        );
-      }
+      await _service.createGroup(
+        name: name,
+        classIds: targetClassIds,
+      );
 
       await _reload();
-      if (failures.isNotEmpty) {
-        _snack(_fr
-            ? '$createdCount groupe(s) créé(s), mais certains ont échoué : ${failures.first}'
-            : '$createdCount group(s) created, but some failed: ${failures.first}');
-      } else {
-        _snack(_fr
-            ? '$createdCount groupe(s) créé(s). Ouvrez chaque groupe pour voir son code d’invitation.'
-            : '$createdCount group(s) created. Open each group to see its invitation code.');
-      }
+      _snack(_fr
+          ? 'Groupe « $name » créé pour ${targetClasses.length} salle(s). Les élèves de ces salles y ont accès.'
+          : 'Group “$name” created for ${targetClasses.length} classroom(s). Students in those classrooms can access it.');
     } catch (error) {
       _snack('$error');
     }
