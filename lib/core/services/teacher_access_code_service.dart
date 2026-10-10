@@ -65,7 +65,14 @@ class TeacherAccessCodeService {
       isActive: true,
     );
 
-    await _client.from('teacher_access_codes').insert(newCode.toMap());
+    try {
+      await _client.from('teacher_access_codes').insert(newCode.toMap());
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw ArgumentError('Ce code est déjà utilisé par un autre enseignant. Choisissez un autre code.');
+      }
+      rethrow;
+    }
 
     return newCode;
   }
@@ -78,17 +85,23 @@ class TeacherAccessCodeService {
     final cleanCode = _normalizeCode(newCode);
     _validateCode(cleanCode);
 
-    final response = await _client
-        .from('teacher_access_codes')
-        .update({
-          'code': cleanCode,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', accessCodeId)
-        .select()
-        .single();
-
-    return TeacherAccessCode.fromMap(response);
+    try {
+      final response = await _client
+          .from('teacher_access_codes')
+          .update({
+            'code': cleanCode,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', accessCodeId)
+          .select()
+          .single();
+      return TeacherAccessCode.fromMap(response);
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw ArgumentError('Ce code est déjà utilisé par un autre enseignant. Choisissez un autre code.');
+      }
+      rethrow;
+    }
   }
 
   /// Vérifie le code sans modifier l'inscription de l'élève.
