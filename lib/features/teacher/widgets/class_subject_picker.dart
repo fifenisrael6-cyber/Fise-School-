@@ -41,13 +41,103 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   @override
   void initState() {
     super.initState();
-    _classesFuture = (widget.includeCompatibleClasses
-            ? _service.listTeacherCompatibleClasses()
-            : _service.listTeacherClasses(widget.teacherId))
-        .then((list) {
+    _loadFollowedClasses();
+  }
+
+  Future<void> _loadFollowedClasses() async {
+    _classesFuture = _service.listTeacherSelectedClasses().then((list) {
       _allClasses = list;
       return list;
     });
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _chooseFollowedClasses() async {
+    List<SchoolClass> all;
+    Set<String> existing;
+    try {
+      all = await _service.listTeacherCompatibleClasses();
+      existing = await _service.listTeacherFollowedClassIds();
+    } catch (error) {
+      _snack('${_fr ? 'Impossible de charger les salles' : 'Unable to load classrooms'}: $error');
+      return;
+    }
+    if (!mounted) return;
+    final selected = existing.isEmpty
+        ? all.map((c) => c.id).toSet()
+        : existing.intersection(all.map((c) => c.id).toSet());
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        final draft = <String>{...selected};
+        return StatefulBuilder(
+          builder: (context, refreshDialog) => AlertDialog(
+            title: Text(_fr ? 'Salles à suivre' : 'Classrooms to follow'),
+            content: SizedBox(
+              width: 480,
+              height: MediaQuery.of(context).size.height * 0.55,
+              child: all.isEmpty
+                  ? Text(_fr ? 'Aucune salle compatible.' : 'No compatible classrooms.')
+                  : ListView(
+                      children: [
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(_fr ? 'Tout sélectionner' : 'Select all'),
+                          value: all.isNotEmpty && all.every((c) => draft.contains(c.id)),
+                          onChanged: (value) => refreshDialog(() {
+                            if (value == true) {
+                              draft.addAll(all.map((c) => c.id));
+                            } else {
+                              draft.clear();
+                            }
+                          }),
+                        ),
+                        const Divider(),
+                        ...all.map((schoolClass) => CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(schoolClass.displayName),
+                          subtitle: Text(schoolClass.name),
+                          value: draft.contains(schoolClass.id),
+                          onChanged: (value) => refreshDialog(() {
+                            if (value == true) {
+                              draft.add(schoolClass.id);
+                            } else {
+                              draft.remove(schoolClass.id);
+                            }
+                          }),
+                        )),
+                      ],
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_fr ? 'Annuler' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: draft.isEmpty ? null : () => Navigator.pop(dialogContext, draft),
+                child: Text(_fr ? 'Enregistrer' : 'Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (result == null) return;
+    try {
+      await _service.saveTeacherFollowedClasses(result.toList(growable: false));
+      if (!mounted) return;
+      setState(() {
+        _selectedIds.clear();
+        _subject = null;
+        _subjects = const [];
+      });
+      await _loadFollowedClasses();
+      _notify();
+      _snack(_fr ? 'Salles suivies enregistrées.' : 'Followed classrooms saved.');
+    } catch (error) {
+      _snack('${_fr ? 'Enregistrement impossible' : 'Unable to save'}: $error');
+    }
   }
 
   List<SchoolClass> get _selectedClasses => _allClasses
@@ -236,9 +326,24 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _fr ? 'Salles disponibles pour vos activités' : 'Classrooms available for your activities',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _chooseFollowedClasses,
+              icon: const Icon(Icons.tune_rounded),
+              label: Text(_fr ? 'Salles suivies' : 'Followed rooms'),
+            ),
+          ],
+        ),
         Text(
           _fr ? 'Choisir la ou les classes où publier' : 'Choose the class(es) to publish in',
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         FutureBuilder<List<SchoolClass>>(
