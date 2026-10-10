@@ -42,11 +42,14 @@ class TeacherAccessCodeService {
       return existing;
     }
 
-    // Générer un code si non fourni
-    final code = _normalizeCode(suggestedCode ?? _generateCode());
+    // Le code doit être choisi explicitement par l'enseignant.
+    if (suggestedCode == null || suggestedCode.trim().isEmpty) {
+      throw ArgumentError('Choisissez votre code après le préfixe FISE-.');
+    }
+    final code = _normalizeCode(suggestedCode);
 
     if (code.isEmpty) {
-      throw ArgumentError('Code cannot be empty');
+      throw ArgumentError('La suite du code ne peut pas être vide.');
     }
 
     // Valider le format
@@ -62,7 +65,14 @@ class TeacherAccessCodeService {
       isActive: true,
     );
 
-    await _client.from('teacher_access_codes').insert(newCode.toMap());
+    try {
+      await _client.from('teacher_access_codes').insert(newCode.toMap());
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw ArgumentError('Ce code est déjà utilisé par un autre enseignant. Choisissez un autre code.');
+      }
+      rethrow;
+    }
 
     return newCode;
   }
@@ -72,37 +82,46 @@ class TeacherAccessCodeService {
     String accessCodeId,
     String newCode,
   ) async {
-    _validateCode(newCode);
-
     final cleanCode = _normalizeCode(newCode);
+    _validateCode(cleanCode);
 
-    final response = await _client
-        .from('teacher_access_codes')
-        .update({
-          'code': cleanCode,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', accessCodeId)
-        .select()
-        .single();
-
-    return TeacherAccessCode.fromMap(response);
+    try {
+      final response = await _client
+          .from('teacher_access_codes')
+          .update({
+            'code': cleanCode,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', accessCodeId)
+          .select()
+          .single();
+      return TeacherAccessCode.fromMap(response);
+    } on PostgrestException catch (error) {
+      if (error.code == '23505') {
+        throw ArgumentError('Ce code est déjà utilisé par un autre enseignant. Choisissez un autre code.');
+      }
+      rethrow;
+    }
   }
 
-  /// Vérifie le code sans modifier l'inscription de l'élève.
-  Future<bool> validateAccessCode(
-    String code,
-    String studentClassId,
-  ) async {
+  /// Inscrit réellement l'élève dans la classe associée au code.
+  Future<String> joinClassWithAccessCode(String code) async {
+    final cleanCode = _normalizeCode(code);
+    _validateCode(cleanCode);
+    final response = await _client.rpc(
+      'join_class_with_teacher_access_code',
+      params: {'p_code': cleanCode},
+    );
+    if (response == null || response.toString().trim().isEmpty) {
+      throw StateError('La salle associée au code est introuvable.');
+    }
+    return response.toString();
+  }
+
+  /// Compatibilité avec les anciens écrans : cette méthode inscrit l'élève.
+  Future<bool> validateAccessCode(String code, String studentClassId) async {
     try {
-      final response = await _client.rpc(
-        'validate_teacher_access_code',
-        params: {
-          'p_code': _normalizeCode(code),
-          'p_class_id': studentClassId,
-        },
-      );
-      return response == true || response == 'true';
+      return await joinClassWithAccessCode(code) == studentClassId;
     } catch (_) {
       return false;
     }
@@ -133,28 +152,25 @@ class TeacherAccessCodeService {
         .eq('id', accessCodeId);
   }
 
-  /// Génère un code aléatoire
-  String _generateCode() {
-    final value = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    return 'fise${value.substring(value.length > 8 ? value.length - 8 : 0).toUpperCase()}';
-  }
-
   String _normalizeCode(String value) {
-    var clean = value.trim();
-    if (clean.toLowerCase().startsWith('fise')) {
-      clean = clean.substring(4);
+    var clean = value.trim().toUpperCase();
+    if (clean.startsWith('FISE-')) {
+      clean = clean.substring(5);
     }
-    return clean.trim();
+    return clean;
   }
 
-  /// Valide le format du code
+  /// Valide uniquement la suite saisie après le préfixe fixe FISE-.
   void _validateCode(String code) {
-    final cleanCode = code.replaceAll('fise', '').trim();
-    if (cleanCode.isEmpty || cleanCode.length < 3) {
-      throw ArgumentError('Code must be at least 3 characters long');
+    final cleanCode = _normalizeCode(code);
+    if (cleanCode.length < 3) {
+      throw ArgumentError('La suite du code doit contenir au moins 3 caractères.');
     }
-    if (!RegExp(r'^[a-zA-Z0-9_-]*$').hasMatch(cleanCode)) {
-      throw ArgumentError('Code can only contain letters, numbers, underscore and hyphen');
+    if (cleanCode.contains(RegExp(r'\s'))) {
+      throw ArgumentError('Le code ne doit contenir aucun espace.');
+    }
+    if (!RegExp(r'^[A-Z0-9-]+$').hasMatch(cleanCode)) {
+      throw ArgumentError('Utilisez uniquement des lettres, des chiffres et des tirets.');
     }
   }
 }

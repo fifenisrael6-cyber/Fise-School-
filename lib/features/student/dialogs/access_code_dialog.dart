@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_access_code_service.dart';
+import '../../../core/services/group_message_service.dart';
+import '../../../core/services/private_message_service.dart';
 import '../../../models/user_profile.dart';
 import '../../messages/pages/messages_hub_page.dart';
 
@@ -54,17 +56,34 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     });
 
     try {
-      final classId = widget.classId;
-      if (classId == null || classId.trim().isEmpty) {
-        throw StateError('Student classroom is not configured.');
+      final normalizedCode = code.toUpperCase();
+      if (!RegExp(r'^FISE-[A-Z0-9-]{3,}$').hasMatch(normalizedCode)) {
+        throw ArgumentError('Code invalide');
       }
-      final valid = await _service.validateAccessCode(code, classId);
-      if (!valid) {
-        throw StateError('Invalid or unauthorized access code.');
+
+      // Inscrire l'élève dans la salle associée au code, puis déverrouiller
+      // la messagerie privée avec ce même code.
+      await _service.joinClassWithAccessCode(normalizedCode);
+      final privateService = PrivateMessageService();
+      final unlocked = await privateService.unlockTeacher(normalizedCode);
+      if (!unlocked) {
+        throw StateError('Code invalide ou enseignant non autorisé pour cette classe.');
+      }
+
+      // Ajouter l'élève aux groupes existants de l'enseignant. Si le code est
+      // valide mais qu'aucun groupe n'a encore été créé, l'accès à la messagerie
+      // privée reste disponible.
+      try {
+        await GroupMessageService().joinWithCode(normalizedCode);
+      } catch (groupError) {
+        final groupMessage = groupError.toString().toLowerCase();
+        final noGroupsYet = groupMessage.contains('no message group exists') ||
+            groupMessage.contains('aucun groupe') ||
+            (groupMessage.contains('null') && groupMessage.contains('string'));
+        if (!noGroupsYet) rethrow;
       }
 
       if (!mounted) return;
-
       widget.onSuccess();
       Navigator.of(context).pop();
       Navigator.of(context).push(
@@ -79,9 +98,19 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       if (mounted) {
         setState(() {
           final message = e.toString().toLowerCase();
-          _error = message.contains('invalid') || message.contains('inactive')
-              ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
-              : (_isFrench ? 'Impossible d\'accéder à la messagerie.' : 'Unable to access messaging.');
+          final invalidCode = message.contains('invalid') ||
+              message.contains('invalide') ||
+              message.contains('inactive') ||
+              message.contains('non autorisé') ||
+              message.contains('unauthorized') ||
+              message.contains('not valid');
+          _error = invalidCode
+              ? (_isFrench
+                  ? 'Code invalide. Vérifie le code FISE- fourni par ton enseignant.'
+                  : 'Invalid code. Check the FISE- code provided by your teacher.')
+              : (_isFrench
+                  ? 'Impossible d’accéder à la messagerie. Réessaie ou contacte ton enseignant.'
+                  : 'Unable to access messaging. Please try again or contact your teacher.');
         });
       }
     } finally {
@@ -103,16 +132,17 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         children: [
           Text(
             _isFrench
-                ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder à la messagerie de votre enseignant.'
+                ? 'Entrez le code de votre enseignant (il commence par FISE-) pour accéder à ses groupes et à sa messagerie.'
                 : "Enter the access code provided by your teacher to access your teacher's messaging.",
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _codeController,
             enabled: !_loading,
+            textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
-              labelText: _isFrench ? 'Code d\'accès' : 'Access code',
-              hintText: 'fise...',
+              labelText: _isFrench ? 'Entrer le code de l’enseignant' : 'Enter teacher code',
+              hintText: 'FISE-MATHS6A',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),

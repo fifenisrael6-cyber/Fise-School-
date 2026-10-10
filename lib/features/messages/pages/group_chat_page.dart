@@ -39,6 +39,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final TextEditingController _composer = TextEditingController();
   final AudioRecorder _recorder = AudioRecorder();
   bool _recordingVoice = false;
+  GroupMessage? _replyTo;
 
   List<GroupMessage> _messages = const [];
   bool _loading = true;
@@ -137,7 +138,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _send() async {
-    final body = _composer.text.trim();
+    final typedBody = _composer.text.trim();
+    final body = _replyTo == null
+        ? typedBody
+        : '↪ ${_replyTo!.senderName}: ${_replyTo!.body}\n$typedBody';
     if (_sending || (body.isEmpty && _attachment == null)) {
       return;
     }
@@ -157,6 +161,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         setState(() {
           _attachment = null;
           _viewOnce = false;
+          _replyTo = null;
         });
       }
       await _load(showLoader: false);
@@ -244,9 +249,48 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
-  Future<void> _confirmDeleteMessage(GroupMessage message) async {
+  Future<void> _showMessageActions(GroupMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(children: [
+          ListTile(leading: const Icon(Icons.reply_rounded), title: Text(_fr ? 'Répondre' : 'Reply'), onTap: () => Navigator.pop(sheetContext, 'reply')),
+          ListTile(leading: const Icon(Icons.copy_rounded), title: Text(_fr ? 'Copier' : 'Copy'), onTap: () => Navigator.pop(sheetContext, 'copy')),
+          ListTile(leading: const Icon(Icons.forward_rounded), title: Text(_fr ? 'Transférer' : 'Forward'), onTap: () => Navigator.pop(sheetContext, 'forward')),
+          ListTile(leading: const Icon(Icons.delete_outline_rounded), title: Text(_fr ? 'Supprimer pour moi' : 'Delete for me'), onTap: () => Navigator.pop(sheetContext, 'mine')),
+          if (message.senderId == widget.profile.id || _isOwner)
+            ListTile(leading: const Icon(Icons.delete_forever_rounded, color: Colors.red), title: Text(_fr ? 'Supprimer pour tous' : 'Delete for everyone'), onTap: () => Navigator.pop(sheetContext, 'everyone')),
+          ListTile(leading: const Icon(Icons.info_outline_rounded), title: Text(_fr ? 'Infos' : 'Info'), onTap: () => Navigator.pop(sheetContext, 'info')),
+        ]),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'reply':
+        setState(() => _replyTo = message);
+        break;
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.body));
+        if (mounted) _snack(_fr ? 'Message copié.' : 'Message copied.');
+        break;
+      case 'mine':
+        await _confirmDeleteMessage(message, forceEveryone: false);
+        break;
+      case 'everyone':
+        await _confirmDeleteMessage(message, forceEveryone: true);
+        break;
+      case 'forward':
+        _snack(_fr ? 'Le transfert vers un autre groupe sera disponible après sélection du groupe destinataire.' : 'Forwarding will be available after choosing a destination group.');
+        break;
+      case 'info':
+        _snack(_fr ? 'Envoyé le ${_formatTime(message.createdAt)} • reçu : ${message.deliveredCount} • lu : ${message.readCount}' : 'Sent ${_formatTime(message.createdAt)} • delivered: ${message.deliveredCount} • read: ${message.readCount}');
+        break;
+    }
+  }
+
+  Future<void> _confirmDeleteMessage(GroupMessage message, {bool? forceEveryone}) async {
     final mine = message.senderId == widget.profile.id;
-    final forEveryone = await showDialog<bool?>(
+    final forEveryone = forceEveryone ?? await showDialog<bool?>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(_fr ? 'Supprimer le message ?' : 'Delete message?'),
@@ -457,9 +501,48 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+  bool _sameDay(DateTime first, DateTime second) {
+    final a = first.toLocal();
+    final b = second.toLocal();
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _dateLabel(DateTime value) {
+    final date = value.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(date.year, date.month, date.day);
+    if (day == today) return _fr ? "Aujourd’hui" : "Today";
+    if (day == today.subtract(const Duration(days: 1))) return _fr ? "Hier" : "Yesterday";
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _dateDivider(DateTime value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE1F3D8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          child: Text(_dateLabel(value), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final reversed = _messages.reversed.toList(growable: false);
+    final chatItems = <Widget>[];
+    for (var i = 0; i < reversed.length; i++) {
+      chatItems.add(_bubble(reversed[i]));
+      if (i + 1 < reversed.length && !_sameDay(reversed[i].createdAt, reversed[i + 1].createdAt)) {
+        chatItems.add(_dateDivider(reversed[i + 1].createdAt));
+      }
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
@@ -505,8 +588,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     : ListView.builder(
                         reverse: true,
                         padding: const EdgeInsets.all(12),
-                        itemCount: reversed.length,
-                        itemBuilder: (context, index) => _bubble(reversed[index]),
+                        itemCount: chatItems.length,
+                        itemBuilder: (context, index) => chatItems[index],
                       ),
           ),
           SafeArea(
@@ -514,7 +597,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
             child: Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_replyTo != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      margin: const EdgeInsets.only(bottom: 6),
+                      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(10)),
+                      child: Row(children: [
+                        Expanded(child: Text('${_fr ? 'Réponse à' : 'Replying to'} ${_replyTo!.senderName}: ${_replyTo!.body}', maxLines: 2, overflow: TextOverflow.ellipsis)),
+                        IconButton(onPressed: () => setState(() => _replyTo = null), icon: const Icon(Icons.close_rounded), tooltip: _fr ? 'Annuler la réponse' : 'Cancel reply'),
+                      ]),
+                    ),
+                  Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
@@ -527,41 +624,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     onPressed: _sending || _recordingVoice ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
-                  IconButton(
-                    tooltip: _viewOnce
-                        ? (_fr ? 'Désactiver la vue unique' : 'Turn off view once')
-                        : (_fr ? 'Envoyer en vue unique' : 'Send as view once'),
-                    onPressed: _sending
-                        ? null
-                        : () {
-                            if (_attachment == null) {
-                              _snack(_fr
-                                  ? 'Ajoute une photo ou un fichier avant d’activer la vue unique.'
-                                  : 'Attach a photo or file before enabling view once.');
-                              return;
-                            }
-                            setState(() => _viewOnce = !_viewOnce);
-                          },
-                    icon: Icon(
-                      _viewOnce ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                      color: _viewOnce ? const Color(0xFF166534) : null,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: _recordingVoice
-                        ? (_fr ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
-                        : (_fr ? 'Enregistrer un vocal' : 'Record a voice message'),
-                    onPressed: _sending ? null : _toggleVoiceRecording,
-                    icon: Icon(
-                      _recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
-                      color: _recordingVoice ? Colors.red : null,
-                    ),
-                  ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
-                      minLines: 2,
-                       maxLines: 8,
+                      onChanged: (_) => setState(() {}),
+                      minLines: 1,
+                      maxLines: 8,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: _attachment != null
@@ -576,15 +644,28 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   ),
                   const SizedBox(width: 6),
                   IconButton.filled(
-                    tooltip: _fr ? 'Envoyer' : 'Send',
-                    onPressed: _sending ? null : _send,
+                    tooltip: _composer.text.trim().isEmpty && _attachment == null
+                        ? (_recordingVoice ? (_fr ? 'Arrêter le vocal' : 'Stop voice recording') : (_fr ? 'Message vocal' : 'Voice message'))
+                        : (_fr ? 'Envoyer' : 'Send'),
+                    onPressed: _sending
+                        ? null
+                        : (_composer.text.trim().isEmpty && _attachment == null
+                            ? _toggleVoiceRecording
+                            : _send),
                     icon: _sending
                         ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.send_rounded),
+                        : Icon(
+                            _composer.text.trim().isEmpty && _attachment == null
+                                ? (_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded)
+                                : Icons.send_rounded,
+                            color: _recordingVoice ? Colors.red : null,
+                          ),
+                  ),
+                ],
                   ),
                 ],
               ),
@@ -602,7 +683,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: () => _confirmDeleteMessage(message),
+        onLongPress: () => _showMessageActions(message),
+      onHorizontalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) > 250) setState(() => _replyTo = message);
+      },
         child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
