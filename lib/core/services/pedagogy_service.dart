@@ -288,20 +288,14 @@ class CourseService {
     );
   }
 
+  /// Toutes les salles actives du sous-système et du secteur du professeur,
+  /// pas uniquement celles qui lui ont été affectées manuellement.
   Future<List<SchoolClass>> listTeacherClasses(String teacherId) async {
-    final rows = await _client
-        .from('class_teachers')
-        .select('school_classes!inner(*)')
-        .eq('teacher_id', teacherId)
-        .eq('is_active', true);
-
-    return rows
-        .map(
-          (row) => SchoolClass.fromMap(
-            Map<String, dynamic>.from(row['school_classes'] as Map),
-          ),
-        )
-        .toList(growable: false);
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId != teacherId) {
+      throw StateError('A teacher can only list their own compatible classrooms.');
+    }
+    return listTeacherCompatibleClasses();
   }
 
   Future<Course> saveCourse({
