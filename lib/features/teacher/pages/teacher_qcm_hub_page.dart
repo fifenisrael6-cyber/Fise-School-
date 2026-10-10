@@ -120,6 +120,176 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     }
   }
 
+  Future<void> _editAssignment(Assignment assignment) async {
+    final title = TextEditingController(text: assignment.titleFor(widget.locale));
+    final instructions = TextEditingController(text: assignment.instructionsFor(widget.locale) ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Modifier le QCM' : 'Edit quiz'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: title, decoration: InputDecoration(labelText: _fr ? 'Titre' : 'Title')),
+            const SizedBox(height: 10),
+            TextField(controller: instructions, minLines: 2, maxLines: 4,
+              decoration: InputDecoration(labelText: _fr ? 'Consignes' : 'Instructions')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Enregistrer' : 'Save')),
+        ],
+      ),
+    );
+    if (saved != true) {
+      title.dispose();
+      instructions.dispose();
+      return;
+    }
+    if (title.text.trim().isEmpty) {
+      title.dispose();
+      instructions.dispose();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr ? 'Le titre est obligatoire.' : 'A title is required.')),
+      );
+      return;
+    }
+    try {
+      await _service.saveAssignment(
+        id: assignment.id,
+        courseId: assignment.courseId,
+        subjectId: assignment.subjectId,
+        lessonId: assignment.lessonId,
+        teacherId: assignment.teacherId,
+        classId: assignment.classId,
+        titleFr: widget.locale.languageCode == 'fr' ? title.text.trim() : assignment.titleFr,
+        titleEn: widget.locale.languageCode == 'en' ? title.text.trim() : assignment.titleEn,
+        instructionsFr: widget.locale.languageCode == 'fr' ? instructions.text.trim() : assignment.instructionsFr,
+        instructionsEn: widget.locale.languageCode == 'en' ? instructions.text.trim() : assignment.instructionsEn,
+        dueAt: assignment.dueAt,
+        status: assignment.status,
+        maxScore: assignment.maxScore,
+      );
+      if (mounted) {
+        setState(_reload);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr ? 'QCM modifié.' : 'Quiz updated.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Modification impossible' : 'Update failed'}: $error')),
+      );
+    } finally {
+      title.dispose();
+      instructions.dispose();
+    }
+  }
+
+  Future<void> _deleteAssignment(Assignment assignment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
+        content: Text(_fr
+          ? 'Cette action supprimera le QCM et ses données associées si les règles de la base l’autorisent.'
+          : 'This deletes the quiz and related data if permitted by the database rules.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteAssignment(assignment.id);
+      if (mounted) {
+        setState(_reload);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr ? 'QCM supprimé.' : 'Quiz deleted.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
+      );
+    }
+  }
+
+  Future<void> _showResults(Assignment assignment) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('assignment_submissions')
+          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct)')
+          .eq('assignment_id', assignment.id);
+      var correct = 0;
+      var incorrect = 0;
+      var answered = 0;
+      final participants = <Map<String, dynamic>>[];
+      for (final raw in rows) {
+        final row = Map<String, dynamic>.from(raw);
+        final answers = (row['assignment_answers'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item));
+        var studentCorrect = 0;
+        var studentIncorrect = 0;
+        for (final answer in answers) {
+          if (answer['is_correct'] == true) {
+            correct++;
+            studentCorrect++;
+            answered++;
+          } else if (answer['is_correct'] == false) {
+            incorrect++;
+            studentIncorrect++;
+            answered++;
+          }
+        }
+        if (row['status'] == 'submitted' || row['status'] == 'corrected') {
+          participants.add({...row, 'correct_count': studentCorrect, 'incorrect_count': studentIncorrect});
+        }
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_fr ? 'Résultats du QCM' : 'Quiz results'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('${_fr ? 'Participants ayant remis' : 'Submitted participants'} : ${participants.length}'),
+                Text('${_fr ? 'Bonnes réponses' : 'Correct answers'} : $correct'),
+                Text('${_fr ? 'Mauvaises réponses' : 'Incorrect answers'} : $incorrect'),
+                if (answered == 0) Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_fr ? 'Aucune réponse corrigée disponible pour le moment.' : 'No graded answers available yet.'),
+                ),
+                const Divider(),
+                for (final participant in participants)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${_fr ? 'Élève' : 'Student'} · ${participant['student_id']}'),
+                    subtitle: Text('${_fr ? 'Bonnes' : 'Correct'} : ${participant['correct_count']} · ${_fr ? 'Mauvaises' : 'Incorrect'} : ${participant['incorrect_count']}'),
+                    trailing: participant['score'] == null ? null : Text('${participant['score']} / ${assignment.maxScore}'),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_fr ? 'Fermer' : 'Close'))],
+        ),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Impossible de charger les résultats' : 'Could not load results'}: $error')),
+      );
+    }
+  }
+
   String _deadline(DateTime? date) {
     if (date == null) return _fr ? 'Sans date limite' : 'No deadline';
     final local = date.toLocal();
@@ -322,23 +492,33 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     ),
                   ),
                   isThreeLine: true,
-                  trailing: Container(
-                    constraints: const BoxConstraints(maxWidth: 92),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _statusColor(assignment.status).withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _statusLabel(assignment.status),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _statusColor(assignment.status),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+                  trailing: PopupMenuButton<String>(
+                    tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
+                    onSelected: (action) {
+                      if (action == 'results') _showResults(assignment);
+                      if (action == 'edit') _editAssignment(assignment);
+                      if (action == 'delete') _deleteAssignment(assignment);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
+                      PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier titre / consignes' : 'Edit title / instructions')),
+                      PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
+                    ],
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 92),
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _statusColor(assignment.status).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _statusLabel(assignment.status),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _statusColor(assignment.status),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
