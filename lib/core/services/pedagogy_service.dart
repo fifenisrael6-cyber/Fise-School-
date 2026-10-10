@@ -350,7 +350,13 @@ class CourseService {
     final all = await listTeacherCompatibleClasses();
     final selectedIds = await listTeacherFollowedClassIds();
     if (selectedIds.isEmpty) return all;
-    return all.where((c) => selectedIds.contains(c.id)).toList(growable: false);
+    final selected = all
+        .where((schoolClass) => selectedIds.contains(schoolClass.id))
+        .toList(growable: false);
+    // Older saved preferences may contain only empty generic level buckets.
+    // If filtering removes all of them, keep the picker usable and show the
+    // current real classrooms instead of presenting an empty list.
+    return selected.isEmpty ? all : selected;
   }
 
   /// Active les affectations nécessaires pour les salles compatibles choisies.
