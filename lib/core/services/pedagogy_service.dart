@@ -168,18 +168,63 @@ class CourseService {
           .eq('is_active', true);
 
       final classIds = memberships
-          .map((row) => row['class_id'] as String)
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
           .toList(growable: false);
 
       if (classIds.isEmpty) {
         return const [];
       }
 
+      // Include the student's exact class and generic level-wide classrooms
+      // (for example "Terminale") only when subsystem, sector and exam level
+      // match. This lets shared official courses reach series-specific classes
+      // without leaking francophone/anglophone or general/technical content.
+      final enrolledRows = await _client
+          .from('school_classes')
+          .select('id, subsystem, sector, exam_level_id')
+          .inFilter('id', classIds)
+          .eq('is_active', true);
+      final enrolledClasses = enrolledRows
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+      final levelIds = enrolledClasses
+          .map((row) => row['exam_level_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+
+      final allowedClassIds = <String>{...classIds};
+      if (levelIds.isNotEmpty) {
+        final genericRows = await _client
+            .from('school_classes')
+            .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+            .eq('is_active', true)
+            .inFilter('exam_level_id', levelIds);
+        for (final raw in genericRows) {
+          final row = Map<String, dynamic>.from(raw);
+          if (row['series_id'] != null || row['specialty_id'] != null) {
+            continue;
+          }
+          final matchesEnrolledClass = enrolledClasses.any((enrolled) =>
+              enrolled['exam_level_id'] == row['exam_level_id'] &&
+              enrolled['subsystem'] == row['subsystem'] &&
+              enrolled['sector'] == row['sector']);
+          if (matchesEnrolledClass) {
+            final id = row['id']?.toString();
+            if (id != null && id.isNotEmpty) allowedClassIds.add(id);
+          }
+        }
+      }
+
       dynamic request = _client
           .from('courses')
           .select()
           .eq('status', 'published')
-          .inFilter('class_id', classIds);
+          .inFilter('class_id', allowedClassIds.toList(growable: false));
 
       if (subjectId != null) {
         request = request.eq('subject_id', subjectId);
