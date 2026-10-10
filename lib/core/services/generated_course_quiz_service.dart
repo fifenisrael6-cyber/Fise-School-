@@ -12,7 +12,7 @@ class GeneratedCourseQuizService {
   final SupabaseClient _client;
 
   String _cacheKey(String lessonId, String language) =>
-      'fise_generated_quiz_v1:$lessonId:$language';
+      'fise_generated_quiz_v1:${_client.auth.currentUser?.id ?? 'anonymous'}:$lessonId:$language';
 
   Future<Map<String, dynamic>> generate({
     required String lessonId,
