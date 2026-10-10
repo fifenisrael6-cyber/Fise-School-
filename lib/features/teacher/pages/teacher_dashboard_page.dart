@@ -8,7 +8,7 @@ import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
-import 'create_assignment_page.dart';
+import 'teacher_qcm_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
@@ -151,7 +151,7 @@ class TeacherDashboardPage extends StatelessWidget {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => CreateAssignmentPage(
+                          builder: (_) => TeacherQcmHubPage(
                             locale: locale,
                             profile: profile,
                           ),
