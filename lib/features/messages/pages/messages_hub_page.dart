@@ -141,7 +141,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
-      classes = await CourseService().listTeacherCompatibleClasses();
+      classes = await CourseService().listTeacherSelectedClasses();
     } catch (_) {
       classes = const [];
     }
