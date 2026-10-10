@@ -47,7 +47,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       _error = null;
     });
     try {
-      final classes = (await _courses.listTeacherClasses(widget.profile.id))
+      final classes = (await _courses.listTeacherCompatibleClasses())
           .where((c) => c.isActive)
           .toList(growable: false);
       List<ExamDefinition> exams = const [];
@@ -176,6 +176,10 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
         _message(_fr ? 'Sélectionnez des salles d’un seul sous-système par épreuve.' : 'Select classrooms from only one subsystem per paper.');
         return;
       }
+      // Make the selected compatible classrooms active for this teacher before
+      // inserting target rows. The database independently validates subsystem
+      // and sector, and storage/RLS requires an active class_teachers relation.
+      await _courses.authorizeTeacherClasses(selected.toList(growable: false));
       await _papers.create(
         file: file!,
         year: year,
