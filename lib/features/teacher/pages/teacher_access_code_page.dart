@@ -109,6 +109,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
       return;
     }
     try {
+      await CourseService().authorizeTeacherClasses([classId]);
       await _service.getOrCreateAccessCode(widget.profile.id, classId, suffix);
       _newCodeController.clear();
       if (!mounted) return;
@@ -354,7 +355,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           ),
         ),
         subtitle: Text(
-          '${_isFrench ? 'Salle' : 'Class'}: ${_className(code)} • ${_isFrench ? 'Créé le' : 'Created'} ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}',
+          "${_isFrench ? 'Salle' : 'Class'}: ${_className(code)} • ${_isFrench ? 'Créé le' : 'Created'} ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}",
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
