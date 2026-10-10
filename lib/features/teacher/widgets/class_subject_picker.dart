@@ -145,6 +145,15 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       return;
     }
 
+    try {
+      await _service.authorizeTeacherClasses(
+        classes.map((schoolClass) => schoolClass.id).toList(growable: false),
+      );
+    } catch (error) {
+      _snack('${_fr ? 'Accès aux salles refusé' : 'Classroom access denied'}: $error');
+      return;
+    }
+
     final addable = <String, Subject>{};
     try {
       for (final schoolClass in classes) {
