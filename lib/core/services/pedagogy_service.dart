@@ -276,6 +276,38 @@ class CourseService {
         .toList(growable: false);
   }
 
+  /// IDs des salles que l'enseignant a choisi de suivre.
+  Future<Set<String>> listTeacherFollowedClassIds() async {
+    final result = await _client.rpc('list_teacher_followed_class_ids');
+    return (result as List)
+        .map((row) => (row as Map)['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  /// Enregistre la sélection persistante des salles suivies.
+  Future<void> saveTeacherFollowedClasses(List<String> classIds) async {
+    if (classIds.isEmpty) {
+      throw StateError('Choose at least one classroom.');
+    }
+    await _client.rpc(
+      'save_teacher_followed_classes',
+      params: {'p_class_ids': classIds.toSet().toList(growable: false)},
+    );
+    // Ensure each selected classroom is active in the existing teacher scope.
+    await authorizeTeacherClasses(classIds);
+  }
+
+  /// Salles suivies par l'enseignant. Lors de la première utilisation, avant
+  /// toute sélection enregistrée, affiche toutes les salles compatibles.
+  Future<List<SchoolClass>> listTeacherSelectedClasses() async {
+    final all = await listTeacherCompatibleClasses();
+    final selectedIds = await listTeacherFollowedClassIds();
+    if (selectedIds.isEmpty) return all;
+    return all.where((c) => selectedIds.contains(c.id)).toList(growable: false);
+  }
+
   /// Active les affectations nécessaires pour les salles compatibles choisies.
   /// La fonction serveur refuse tout identifiant hors du sous-système/secteur.
   Future<void> authorizeTeacherClasses(List<String> classIds) async {
@@ -288,14 +320,13 @@ class CourseService {
     );
   }
 
-  /// Toutes les salles actives du sous-système et du secteur du professeur,
-  /// pas uniquement celles qui lui ont été affectées manuellement.
+  /// Les formulaires courants affichent seulement les salles suivies.
   Future<List<SchoolClass>> listTeacherClasses(String teacherId) async {
     final currentUserId = _client.auth.currentUser?.id;
     if (currentUserId == null || currentUserId != teacherId) {
       throw StateError('A teacher can only list their own compatible classrooms.');
     }
-    return listTeacherCompatibleClasses();
+    return listTeacherSelectedClasses();
   }
 
   Future<Course> saveCourse({
