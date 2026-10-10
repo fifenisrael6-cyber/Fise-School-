@@ -89,10 +89,15 @@ class PastPaperService {
         'file_path': path,
         'file_name': file.name,
         'created_by': user.id,
+        'is_published': false,
       }).select('id').single();
       paperId = row['id'].toString();
       // Liste vide = visible par toutes les salles.
+      if (classIds.isEmpty) {
+        throw StateError('Une annale doit cibler au moins une salle.');
+      }
       await setTargets(paperId, classIds);
+      await setPublished(paperId, true);
     } catch (_) {
       // Nettoyage : ne pas laisser un fichier orphelin ni une annale ouverte à tous
       // si l'enregistrement des salles échoue.
