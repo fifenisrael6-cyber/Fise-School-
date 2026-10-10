@@ -47,7 +47,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       _error = null;
     });
     try {
-      final classes = (await _courses.listTeacherCompatibleClasses())
+      final classes = (await _courses.listTeacherSelectedClasses())
           .where((c) => c.isActive)
           .toList(growable: false);
       List<ExamDefinition> exams = const [];
