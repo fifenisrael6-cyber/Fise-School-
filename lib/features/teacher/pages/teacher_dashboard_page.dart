@@ -325,6 +325,93 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
     }
   }
 
+  Future<void> _manageFollowedClasses() async {
+    List<SchoolClass> all;
+    Set<String> existing;
+    try {
+      all = await _service.listTeacherCompatibleClasses();
+      existing = await _service.listTeacherFollowedClassIds();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isFrench ? 'Impossible de charger les salles' : 'Unable to load classrooms'}: $error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final availableIds = all.map((c) => c.id).toSet();
+    final draft = existing.isEmpty ? <String>{...availableIds} : existing.intersection(availableIds);
+    final selected = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refreshDialog) => AlertDialog(
+          title: Text(_isFrench ? 'Salles à suivre' : 'Classrooms to follow'),
+          content: SizedBox(
+            width: 480,
+            height: MediaQuery.of(context).size.height * 0.55,
+            child: ListView(
+              children: [
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_isFrench ? 'Tout sélectionner' : 'Select all'),
+                  value: all.isNotEmpty && all.every((room) => draft.contains(room.id)),
+                  onChanged: (value) => refreshDialog(() {
+                    if (value == true) {
+                      draft.addAll(availableIds);
+                    } else {
+                      draft.clear();
+                    }
+                  }),
+                ),
+                const Divider(),
+                ...all.map((room) => CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(room.displayName),
+                  subtitle: Text(room.name),
+                  value: draft.contains(room.id),
+                  onChanged: (value) => refreshDialog(() {
+                    if (value == true) {
+                      draft.add(room.id);
+                    } else {
+                      draft.remove(room.id);
+                    }
+                  }),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: draft.isEmpty ? null : () => Navigator.pop(dialogContext, draft),
+              child: Text(_isFrench ? 'Enregistrer' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    try {
+      await _service.saveTeacherFollowedClasses(selected.toList(growable: false));
+      await _loadClasses();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench ? 'Salles suivies enregistrées.' : 'Followed classrooms saved.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isFrench ? 'Enregistrement impossible' : 'Unable to save'}: $error')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -333,6 +420,13 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
           _isFrench ? 'Mes classes' : 'My classes',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: _manageFollowedClasses,
+            icon: const Icon(Icons.tune_rounded),
+            label: Text(_isFrench ? 'Salles suivies' : 'Followed rooms'),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadClasses,
