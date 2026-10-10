@@ -103,16 +103,17 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         children: [
           Text(
             _isFrench
-                ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder à la messagerie de votre enseignant.'
+                ? 'Entrez le code de votre enseignant (il commence par FISE-) pour accéder à ses groupes et à sa messagerie.'
                 : "Enter the access code provided by your teacher to access your teacher's messaging.",
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _codeController,
             enabled: !_loading,
+            textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
-              labelText: _isFrench ? 'Code d\'accès' : 'Access code',
-              hintText: 'fise...',
+              labelText: _isFrench ? 'Entrer le code de l’enseignant' : 'Enter teacher code',
+              hintText: 'FISE-MATHS6A',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
