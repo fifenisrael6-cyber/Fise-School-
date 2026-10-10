@@ -226,16 +226,6 @@ class _LessonPageState extends State<LessonPage> {
   }
 
   Future<void> _openGeneratedQuiz() async {
-    if (content == null && summary == null && objectives == null && examples == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isEnglish
-              ? 'This lesson has no readable text to generate a reliable quiz.'
-              : 'Cette leçon ne contient pas de texte lisible pour générer un QCM fiable.'),
-        ),
-      );
-      return;
-    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => GeneratedCourseQuizPage(
