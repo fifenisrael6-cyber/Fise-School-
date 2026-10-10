@@ -42,11 +42,14 @@ class TeacherAccessCodeService {
       return existing;
     }
 
-    // Générer un code si non fourni
-    final code = _normalizeCode(suggestedCode ?? _generateCode());
+    // Le code doit être choisi explicitement par l'enseignant.
+    if (suggestedCode == null || suggestedCode.trim().isEmpty) {
+      throw ArgumentError('Choisissez votre code après le préfixe FISE-.');
+    }
+    final code = _normalizeCode(suggestedCode);
 
     if (code.isEmpty) {
-      throw ArgumentError('Code cannot be empty');
+      throw ArgumentError('La suite du code ne peut pas être vide.');
     }
 
     // Valider le format
@@ -72,9 +75,8 @@ class TeacherAccessCodeService {
     String accessCodeId,
     String newCode,
   ) async {
-    _validateCode(newCode);
-
     final cleanCode = _normalizeCode(newCode);
+    _validateCode(cleanCode);
 
     final response = await _client
         .from('teacher_access_codes')
@@ -133,28 +135,27 @@ class TeacherAccessCodeService {
         .eq('id', accessCodeId);
   }
 
-  /// Génère un code aléatoire
-  String _generateCode() {
-    final value = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    return 'fise${value.substring(value.length > 8 ? value.length - 8 : 0).toUpperCase()}';
-  }
-
   String _normalizeCode(String value) {
-    var clean = value.trim();
-    if (clean.toLowerCase().startsWith('fise')) {
-      clean = clean.substring(4);
+    var clean = value.trim().toUpperCase();
+    if (clean.startsWith('FISE-')) {
+      clean = clean.substring(5);
     }
-    return clean.trim();
+    return clean;
   }
 
-  /// Valide le format du code
+  /// Valide uniquement la suite saisie après le préfixe fixe FISE-.
   void _validateCode(String code) {
-    final cleanCode = code.replaceAll('fise', '').trim();
-    if (cleanCode.isEmpty || cleanCode.length < 3) {
-      throw ArgumentError('Code must be at least 3 characters long');
+    final cleanCode = _normalizeCode(code);
+    if (cleanCode.length < 3) {
+      throw ArgumentError('La suite du code doit contenir au moins 3 caractères.');
     }
-    if (!RegExp(r'^[a-zA-Z0-9_-]*$').hasMatch(cleanCode)) {
-      throw ArgumentError('Code can only contain letters, numbers, underscore and hyphen');
+    if (cleanCode.contains(RegExp(r'\\s'))) {
+      throw ArgumentError('Le code ne doit contenir aucun espace.');
+    }
+    if (!RegExp(r'^[A-Z0-9-]+
+}
+).hasMatch(cleanCode)) {
+      throw ArgumentError('Utilisez uniquement des lettres, des chiffres et des tirets.');
     }
   }
 }
