@@ -98,9 +98,19 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       if (mounted) {
         setState(() {
           final message = e.toString().toLowerCase();
-          _error = message.contains('invalid') || message.contains('inactive')
-              ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
-              : (_isFrench ? 'Impossible d\'accéder à la messagerie.' : 'Unable to access messaging.');
+          final invalidCode = message.contains('invalid') ||
+              message.contains('invalide') ||
+              message.contains('inactive') ||
+              message.contains('non autorisé') ||
+              message.contains('unauthorized') ||
+              message.contains('not valid');
+          _error = invalidCode
+              ? (_isFrench
+                  ? 'Code invalide. Vérifie le code FISE- fourni par ton enseignant.'
+                  : 'Invalid code. Check the FISE- code provided by your teacher.')
+              : (_isFrench
+                  ? 'Impossible d’accéder à la messagerie. Réessaie ou contacte ton enseignant.'
+                  : 'Unable to access messaging. Please try again or contact your teacher.');
         });
       }
     } finally {
