@@ -156,6 +156,96 @@ class CourseService {
         .toList(growable: false);
   }
 
+  /// Official curriculum content stored in chapter_content_items is separate
+  /// from teacher-created courses. Load only curricula matching the student's
+  /// enrolled class and the currently opened subject; database RLS applies the
+  /// same student_can_access_chapter check to every returned item.
+  Future<List<Map<String, dynamic>>> listStudentChapterContent(
+    String studentId, {
+    required String subjectId,
+  }) async {
+    try {
+      final memberships = await _client
+          .from('class_students')
+          .select('class_id')
+          .eq('student_id', studentId)
+          .eq('is_active', true);
+      final classIds = memberships
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (classIds.isEmpty) return const <Map<String, dynamic>>[];
+
+      final classRows = await _client
+          .from('school_classes')
+          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+          .inFilter('id', classIds)
+          .eq('is_active', true);
+      final classes = classRows.map((row) => Map<String, dynamic>.from(row)).toList();
+
+      final curriculumRows = await _client
+          .from('curricula')
+          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+          .eq('subject_id', subjectId)
+          .eq('is_active', true);
+      final curriculumIds = <String>{};
+      for (final raw in curriculumRows) {
+        final curriculum = Map<String, dynamic>.from(raw);
+        final matches = classes.any((schoolClass) {
+          if (curriculum['subsystem'] != null &&
+              curriculum['subsystem'] != schoolClass['subsystem']) return false;
+          if (curriculum['sector'] != null &&
+              curriculum['sector'] != schoolClass['sector']) return false;
+          if (curriculum['exam_level_id'] != null &&
+              curriculum['exam_level_id'] != schoolClass['exam_level_id']) return false;
+          if (curriculum['series_id'] != null &&
+              curriculum['series_id'] != schoolClass['series_id']) return false;
+          if (curriculum['specialty_id'] != null &&
+              curriculum['specialty_id'] != schoolClass['specialty_id']) return false;
+          return true;
+        });
+        final id = curriculum['id']?.toString();
+        if (matches && id != null && id.isNotEmpty) curriculumIds.add(id);
+      }
+      if (curriculumIds.isEmpty) return const <Map<String, dynamic>>[];
+
+      final chapterRows = await _client
+          .from('course_chapters')
+          .select('id, curriculum_id, title_fr, title_en, position')
+          .inFilter('curriculum_id', curriculumIds.toList(growable: false))
+          .eq('is_active', true)
+          .order('position');
+      final chapterById = <String, Map<String, dynamic>>{};
+      for (final raw in chapterRows) {
+        final chapter = Map<String, dynamic>.from(raw);
+        final id = chapter['id']?.toString();
+        if (id != null) chapterById[id] = chapter;
+      }
+      if (chapterById.isEmpty) return const <Map<String, dynamic>>[];
+
+      final itemRows = await _client
+          .from('chapter_content_items')
+          .select('id, chapter_id, content_type, title_fr, title_en, body_text_fr, body_text_en, position, created_at')
+          .inFilter('chapter_id', chapterById.keys.toList(growable: false))
+          .eq('content_type', 'course')
+          .eq('is_published', true)
+          .order('position');
+      return itemRows.map((raw) {
+        final item = Map<String, dynamic>.from(raw);
+        final chapter = chapterById[item['chapter_id']?.toString()];
+        item['chapter_title_fr'] = chapter?['title_fr'];
+        item['chapter_title_en'] = chapter?['title_en'];
+        return item;
+      }).toList(growable: false);
+    } catch (_) {
+      // Keep teacher courses, media and QCM available if official content
+      // is temporarily unavailable or the student is offline.
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
   Future<List<Course>> listStudentCourses(
     String studentId, {
     String? subjectId,
