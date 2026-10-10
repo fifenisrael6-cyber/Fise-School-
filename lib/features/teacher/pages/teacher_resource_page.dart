@@ -218,9 +218,9 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         position: position,
       );
 
-      if (type == 'pdf') {
+      if (type == 'pdf' || type == 'image') {
         try {
-          await _smart.reindexPdf(resource.id);
+          await _smart.reindexResource(resource.id);
         } catch (indexError) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -420,7 +420,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                 const SizedBox(height: 10),
                 _DetailRow(
                   label: _isFrench ? 'Indexation' : 'Indexing',
-                  value: resource.resourceType == 'pdf'
+                  value: (resource.resourceType == 'pdf' || resource.resourceType == 'image')
                       ? (resource.indexStatus == 'indexed'
                           ? (resource.indexApproved ? (_isFrench ? 'Validée' : 'Approved') : (_isFrench ? 'À valider' : 'Awaiting approval'))
                           : resource.indexStatus)
@@ -430,7 +430,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                   const SizedBox(height: 8),
                   Text(resource.indexError, style: const TextStyle(color: Colors.redAccent)),
                 ],
-                if (resource.resourceType == 'pdf' && resource.indexPreview.trim().isNotEmpty) ...[
+                if ((resource.resourceType == 'pdf' || resource.resourceType == 'image') && resource.indexPreview.trim().isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(_isFrench ? 'Aperçu IA' : 'AI preview', style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
@@ -442,7 +442,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (resource.resourceType == 'pdf')
+                if (resource.resourceType == 'pdf' || resource.resourceType == 'image')
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
