@@ -41,6 +41,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
+        ProgressPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -57,6 +58,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+          NavigationDestination(icon: const Icon(Icons.insights_outlined), selectedIcon: const Icon(Icons.insights), label: fr ? 'Progression' : 'Progress'),
           NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
           NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
@@ -113,8 +115,6 @@ class _StudentHome extends StatelessWidget {
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: _SmallAction(icon: Icons.assignment_outlined, label: fr ? 'QCM' : 'Quizzes', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignmentsPage(locale: locale, profile: profile))))),
-            const SizedBox(width: 10),
-            Expanded(child: _SmallAction(icon: Icons.insights_outlined, label: fr ? 'Progression' : 'Progress', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(locale: locale, profile: profile))))),
             const SizedBox(width: 10),
             Expanded(child: _SmallAction(icon: Icons.calendar_month_outlined, label: fr ? 'Emploi du temps' : 'Schedule', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TimetablePage(locale: locale, profile: profile))))),
           ]),

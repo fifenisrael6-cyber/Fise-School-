@@ -65,7 +65,7 @@ class PastPaperService {
       throw StateError('Fichier illisible ou vide.');
     }
     final path =
-        '${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
+        '${user.id}/${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
     await _client.storage.from(bucket).uploadBinary(
           path,
           bytes,
@@ -89,10 +89,15 @@ class PastPaperService {
         'file_path': path,
         'file_name': file.name,
         'created_by': user.id,
+        'is_published': false,
       }).select('id').single();
       paperId = row['id'].toString();
       // Liste vide = visible par toutes les salles.
+      if (classIds.isEmpty) {
+        throw StateError('Une annale doit cibler au moins une salle.');
+      }
       await setTargets(paperId, classIds);
+      await setPublished(paperId, true);
     } catch (_) {
       // Nettoyage : ne pas laisser un fichier orphelin ni une annale ouverte à tous
       // si l'enregistrement des salles échoue.
@@ -109,10 +114,20 @@ class PastPaperService {
   }
 
   Future<void> setPublished(String id, bool published) async {
-    await _client
+    final updated = await _client
         .from('past_papers')
-        .update({'is_published': published, 'updated_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', id);
+        .update({
+          'is_published': published,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+    if (updated == null) {
+      throw StateError(
+        'Publication refusée : vérifiez les salles destinataires et vos autorisations.',
+      );
+    }
   }
 
   Future<void> delete(PastPaper paper) async {

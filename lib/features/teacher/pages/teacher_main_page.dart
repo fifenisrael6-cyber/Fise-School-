@@ -5,8 +5,8 @@ import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
-import 'qcm_builder_page.dart';
 import 'grades_entry_page.dart';
+import 'teacher_past_papers_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
   final Locale locale;
@@ -37,7 +37,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       ),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
-      QcmBuilderPage(locale: widget.locale, profile: widget.profile, examMode: true),
+      TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
     ];
 
