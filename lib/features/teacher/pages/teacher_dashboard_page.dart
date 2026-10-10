@@ -8,11 +8,9 @@ import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
-import 'create_assignment_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
-import 'qcm_builder_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -146,19 +144,6 @@ class TeacherDashboardPage extends StatelessWidget {
                       ),
                     ),
                     _Tile(
-                      Icons.assignment_rounded,
-                      locale.languageCode == 'fr' ? 'QCM et exercices' : 'Quizzes and exercises',
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CreateAssignmentPage(
-                            locale: locale,
-                            profile: profile,
-                          ),
-                        ),
-                      ),
-                    ),
-                    _Tile(
                       Icons.insights_rounded,
                       locale.languageCode == 'fr' ? 'Progression de la salle' : 'Class progress',
                       () => Navigator.push(
@@ -180,19 +165,6 @@ class TeacherDashboardPage extends StatelessWidget {
                           builder: (_) => NotificationsPage(
                             locale: locale,
                             userId: profile.id,
-                          ),
-                        ),
-                      ),
-                    ),
-                    _Tile(
-                      Icons.history_edu_rounded,
-                      locale.languageCode == 'fr' ? 'Annales des examens' : 'Exam papers',
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => QcmBuilderPage(
-                            locale: locale,
-                            profile: profile,
                           ),
                         ),
                       ),
