@@ -445,7 +445,15 @@ class _TeacherSubjectsPageState extends State<_TeacherSubjectsPage> {
     });
 
     try {
-      final subjects = await _service.listSubjects(widget.profile);
+      final classes = await _service.listTeacherCompatibleClasses();
+      final byId = <String, Subject>{};
+      for (final schoolClass in classes) {
+        for (final subject in await _service.listSubjectsForClass(schoolClass.id)) {
+          byId[subject.id] = subject;
+        }
+      }
+      final subjects = byId.values.toList()
+        ..sort((a, b) => _subjectName(a).compareTo(_subjectName(b)));
 
       if (!mounted) {
         return;
