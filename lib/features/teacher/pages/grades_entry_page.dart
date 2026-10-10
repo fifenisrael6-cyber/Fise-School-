@@ -73,7 +73,13 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
     try {
       final classes = widget.asAdmin
           ? await _service.listAllClasses()
-          : await CourseService().listTeacherCompatibleClasses();
+          : (await CourseService().listTeacherCompatibleClasses())
+              .map((schoolClass) => GradeClassOption(
+                    id: schoolClass.id,
+                    name: schoolClass.name,
+                    displayName: schoolClass.displayName,
+                  ))
+              .toList(growable: false);
       final periods = await _service.listPeriods();
       if (!mounted) {
         return;
