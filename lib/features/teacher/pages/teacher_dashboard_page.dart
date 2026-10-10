@@ -303,7 +303,7 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
     });
 
     try {
-      final classes = await _service.listTeacherClasses(widget.profile.id);
+      final classes = await _service.listTeacherCompatibleClasses();
 
       if (!mounted) {
         return;
@@ -332,7 +332,7 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isFrench ? 'Mes classes' : 'My classes',
+          _isFrench ? 'Salles compatibles' : 'Compatible classrooms',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
@@ -372,7 +372,7 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    _isFrench ? 'Aucune classe affectée' : 'No assigned class',
+                    _isFrench ? 'Aucune salle compatible' : 'No compatible classroom',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 20,
