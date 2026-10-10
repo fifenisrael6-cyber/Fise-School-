@@ -225,4 +225,33 @@ $;
 revoke all on function public.unlock_teacher_private_messages(text) from public, anon;
 grant execute on function public.unlock_teacher_private_messages(text) to authenticated;
 
+-- Keep the legacy validation RPC compatible with the fixed FISE- prefix.
+create or replace function public.validate_teacher_access_code(
+  p_code text,
+  p_class_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $
+  select exists (
+    select 1
+    from public.teacher_access_codes t
+    where regexp_replace(upper(trim(t.code)), '^FISE-', '') =
+          regexp_replace(upper(trim(coalesce(p_code, ''))), '^FISE-', '')
+      and t.class_id = p_class_id
+      and t.is_active = true
+      and (
+        public.is_admin()
+        or public.is_teacher_assigned(p_class_id, auth.uid())
+        or public.is_student_in_class(p_class_id, auth.uid())
+      )
+  );
+$;
+
+revoke all on function public.validate_teacher_access_code(text, uuid) from public, anon;
+grant execute on function public.validate_teacher_access_code(text, uuid) to authenticated;
+
 notify pgrst, 'reload schema';
