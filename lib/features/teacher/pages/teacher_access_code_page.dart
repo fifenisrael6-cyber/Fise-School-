@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
@@ -109,6 +110,15 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
         );
       }
     }
+  }
+
+  Future<void> _shareCode(String code) async {
+    await SharePlus.instance.share(ShareParams(
+      text: _isFrench
+          ? 'Voici mon code Fise School : $code. Saisissez-le dans l’application pour accéder à mes groupes et à ma messagerie.'
+          : 'My Fise School code is $code. Enter it in the app to access my groups and messaging.',
+      title: _isFrench ? 'Code Fise School' : 'Fise School code',
+    ));
   }
 
   Future<void> _copyToClipboard(String code) async {
@@ -223,6 +233,9 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
         ),
         title: Text(
           code.displayCode,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: 'monospace',
             fontWeight: FontWeight.bold,
@@ -234,10 +247,20 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
               ? 'Créé le ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}'
               : 'Created ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}',
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.copy_rounded),
-          onPressed: () => _copyToClipboard(code.displayCode),
-          tooltip: _isFrench ? 'Copier' : 'Copy',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.copy_rounded),
+              onPressed: () => _copyToClipboard(code.displayCode),
+              tooltip: _isFrench ? 'Copier' : 'Copy',
+            ),
+            IconButton(
+              icon: const Icon(Icons.share_rounded),
+              onPressed: () => _shareCode(code.displayCode),
+              tooltip: _isFrench ? 'Partager' : 'Share',
+            ),
+          ],
         ),
       ),
     );
@@ -261,8 +284,15 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
               const SizedBox(height: 12),
               TextField(
                 controller: _codeController,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                  TextInputFormatter.withFunction((oldValue, newValue) => newValue.copyWith(
+                    text: newValue.text.toUpperCase(),
+                    selection: newValue.selection,
+                  )),
+                ],
                 decoration: InputDecoration(
-                  labelText: _isFrench ? 'Nouveau code' : 'New code',
                   labelText: _isFrench ? 'Suite du code' : 'Code suffix',
                   hintText: 'MATHS6A',
                   prefixText: 'FISE-',
