@@ -37,7 +37,7 @@ class TeacherAccessCode {
     'is_active': isActive,
   };
 
-  String get displayCode => 'fise$code';
+  String get displayCode => 'FISE-${code.replaceFirst(RegExp(r'^FISE-', caseSensitive: false), '').toUpperCase()}';
 
   TeacherAccessCode copyWith({
     String? code,
