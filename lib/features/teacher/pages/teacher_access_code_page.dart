@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
@@ -110,14 +111,12 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     }
   }
 
-  void _copyToClipboard(String code) {
+  Future<void> _copyToClipboard(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          _isFrench
-              ? 'Code copié: $code'
-              : 'Code copied: $code',
-        ),
+        content: Text(_isFrench ? 'Code copié : $code' : 'Code copied: $code'),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -264,10 +263,9 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                 controller: _codeController,
                 decoration: InputDecoration(
                   labelText: _isFrench ? 'Nouveau code' : 'New code',
-                  hintText: _isFrench
-                      ? 'Ex: fise123ABC'
-                      : 'Ex: fise123ABC',
-                  prefixText: 'fise',
+                  labelText: _isFrench ? 'Suite du code' : 'Code suffix',
+                  hintText: 'MATHS6A',
+                  prefixText: 'FISE-',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
