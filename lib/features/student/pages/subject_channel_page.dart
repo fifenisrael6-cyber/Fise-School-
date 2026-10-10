@@ -343,24 +343,23 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               );
             },
           ),
-          if (course.curriculumId != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CourseDetailPage(
-                      locale: widget.locale,
-                      profile: widget.profile,
-                      course: course,
-                    ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CourseDetailPage(
+                    locale: widget.locale,
+                    profile: widget.profile,
+                    course: course,
                   ),
                 ),
-                icon: const Icon(Icons.play_lesson_outlined),
-                label: Text(_fr ? 'Voir les leçons' : 'View lessons'),
               ),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: Text(_fr ? 'Ouvrir le cours' : 'Open course'),
             ),
+          ),
         ],
       ),
     );
