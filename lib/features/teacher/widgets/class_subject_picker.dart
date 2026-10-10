@@ -95,9 +95,12 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                           }),
                         ),
                         const Divider(),
-                        ...all.map((schoolClass) => CheckboxListTile(
+                        ...all.asMap().entries.map((entry) {
+                          final index = entry.key + 1;
+                          final schoolClass = entry.value;
+                          return CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(schoolClass.displayName),
+                          title: Text('$index. ${schoolClass.displayName}'),
                           subtitle: Text(schoolClass.name),
                           value: draft.contains(schoolClass.id),
                           onChanged: (value) => refreshDialog(() {
@@ -106,8 +109,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                             } else {
                               draft.remove(schoolClass.id);
                             }
-                          }),
-                        )),
+                          });
+                        }),
                       ],
                     ),
             ),
@@ -366,13 +369,17 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
             return Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: classes
+              children: classes.asMap().entries
                   .map(
-                    (schoolClass) => FilterChip(
-                      label: Text(schoolClass.displayName),
-                      selected: _selectedIds.contains(schoolClass.id),
-                      onSelected: (value) => _toggleClass(schoolClass, value),
-                    ),
+                    (entry) {
+                      final index = entry.key + 1;
+                      final schoolClass = entry.value;
+                      return FilterChip(
+                        label: Text('$index. ${schoolClass.displayName}'),
+                        selected: _selectedIds.contains(schoolClass.id),
+                        onSelected: (value) => _toggleClass(schoolClass, value),
+                      );
+                    },
                   )
                   .toList(),
             );
