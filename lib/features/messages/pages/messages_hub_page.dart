@@ -292,7 +292,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           textCapitalization: TextCapitalization.characters,
           decoration: InputDecoration(
             labelText: _fr ? 'Code donné par votre professeur' : 'Code from your teacher',
-            hintText: 'GRP-XXXXXX',
+            hintText: 'FISE-XXXXXX',
             border: const OutlineInputBorder(),
           ),
         ),
