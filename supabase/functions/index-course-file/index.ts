@@ -59,8 +59,8 @@ async function transcribeWithGemini(bytes: Uint8Array, mime: string, language: s
   }
   const base64 = btoa(binary);
   const prompt = language === "en"
-    ? "Transcribe the educational PDF accurately. Return only the complete readable text, preserving headings, formulas, lists and examples. Do not summarize or invent content."
-    : "Transcris fidèlement le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.";
+    ? "Read the educational document image or PDF accurately. Return only the complete readable text, preserving headings, formulas, lists and examples. Do not summarize or invent content."
+    : "Lis fidèlement l'image ou le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.";
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
     method: "POST",
@@ -108,12 +108,15 @@ serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey);
     const { data: resource, error: resourceError } = await admin
       .from("course_resources")
-      .select("id,course_id,resource_type,storage_path,file_name,mime_type,index_status")
+      .select("id,course_id,resource_type,storage_path,file_name,mime_type,file_size,index_status")
       .eq("id", resourceId)
       .single();
     if (resourceError || !resource) return json({ error: "Resource not found." }, 404);
-    if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") {
-      return json({ error: "Only PDF resources are indexed." }, 400);
+    const mime = String(resource.mime_type ?? "").toLowerCase();
+    const isPdf = resource.resource_type === "pdf" || mime === "application/pdf";
+    const isImage = resource.resource_type === "image" && ["image/jpeg", "image/png", "image/webp"].includes(mime);
+    if (!isPdf && !isImage) {
+      return json({ error: "Only PDF, JPEG, PNG, and WebP course resources can be indexed." }, 400);
     }
 
     const { data: course, error: courseError } = await admin
@@ -149,13 +152,16 @@ serve(async (req) => {
     const { data: file, error: fileError } = await admin.storage.from("course-resources").download(resource.storage_path);
     if (fileError || !file) throw new Error(fileError?.message ?? "Unable to download the PDF.");
     const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length > 8 * 1024 * 1024) {
+      throw new Error("The file is too large to index. The limit is 8 MB.");
+    }
     const { data: actorProfile } = await userClient.from("profiles").select("preferred_language").eq("id", authData.user.id).maybeSingle();
     const bodyLanguage = body?.language == null ? actorProfile?.preferred_language : body.language;
     const preferredLanguage = String(bodyLanguage ?? "fr") === "en" ? "en" : "fr";
 
-    let text = await extractPdfText(bytes);
+    let text = isPdf ? await extractPdfText(bytes) : "";
     if (text.replace(/\s+/g, " ").trim().length < 300) {
-      text = await transcribeWithGemini(bytes, resource.mime_type ?? "application/pdf", preferredLanguage, geminiKey);
+      text = await transcribeWithGemini(bytes, mime || (isPdf ? "application/pdf" : "image/jpeg"), preferredLanguage, geminiKey);
     }
 
     const chunks = splitWords(text, 700).filter((x) => x.content.trim().length >= 120);
