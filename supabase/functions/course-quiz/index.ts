@@ -185,7 +185,11 @@ serve(async (req) => {
 
     if (sourceText.replace(/\s/g, "").length < 250) {
       const { data: chunks } = await userClient.from("course_chunks")
-        .select("title,content").eq("course_id", course.id).eq("language", language).order("position").limit(8);
+        .select("title,content,course_resources!inner(index_status,index_approved)")
+        .eq("course_id", course.id).eq("language", language)
+        .eq("course_resources.index_status", "indexed")
+        .eq("course_resources.index_approved", true)
+        .order("position").limit(8);
       if (chunks?.length) {
         sourceText = [sourceText, ...chunks.map((row: any) => clean(row.title, 200) + "\n" + clean(row.content, 3000))].join("\n\n");
       }
