@@ -5,7 +5,7 @@ import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
-import 'qcm_builder_page.dart';
+import 'teacher_smart_progress_page.dart';
 import 'grades_entry_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
@@ -37,7 +37,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       ),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
-      QcmBuilderPage(locale: widget.locale, profile: widget.profile, examMode: true),
+      TeacherSmartProgressPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
     ];
 
@@ -63,9 +63,9 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
             label: fr ? 'Messagerie' : 'Messages',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.history_edu_outlined),
-            selectedIcon: const Icon(Icons.history_edu),
-            label: fr ? 'Annales' : 'Exam papers',
+            icon: const Icon(Icons.insights_outlined),
+            selectedIcon: const Icon(Icons.insights),
+            label: fr ? 'Progression' : 'Progress',
           ),
           NavigationDestination(
             icon: const Icon(Icons.person_outline),
