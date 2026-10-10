@@ -35,7 +35,7 @@ class GeneratedCourseQuizService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey(lessonId, language), jsonEncode(safeData));
       return safeData;
-    } catch (error) {
+    } catch (_) {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString(_cacheKey(lessonId, language));
       if (cached != null) {
