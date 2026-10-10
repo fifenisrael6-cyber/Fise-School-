@@ -149,12 +149,10 @@ class TeacherAccessCodeService {
     if (cleanCode.length < 3) {
       throw ArgumentError('La suite du code doit contenir au moins 3 caractères.');
     }
-    if (cleanCode.contains(RegExp(r'\\s'))) {
+    if (cleanCode.contains(RegExp(r'\s'))) {
       throw ArgumentError('Le code ne doit contenir aucun espace.');
     }
-    if (!RegExp(r'^[A-Z0-9-]+
-}
-).hasMatch(cleanCode)) {
+    if (!RegExp(r'^[A-Z0-9-]+$').hasMatch(cleanCode)) {
       throw ArgumentError('Utilisez uniquement des lettres, des chiffres et des tirets.');
     }
   }
