@@ -39,6 +39,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final TextEditingController _composer = TextEditingController();
   final AudioRecorder _recorder = AudioRecorder();
   bool _recordingVoice = false;
+  Timer? _voiceLimitTimer;
 
   List<GroupMessage> _messages = const [];
   bool _loading = true;
@@ -98,6 +99,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    _voiceLimitTimer?.cancel();
     unawaited(_recorder.dispose());
     super.dispose();
   }
@@ -198,6 +200,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _toggleVoiceRecording() async {
     if (_recordingVoice) {
+      _voiceLimitTimer?.cancel();
+      _voiceLimitTimer = null;
       try {
         final path = await _recorder.stop();
         if (path == null) {
@@ -237,6 +241,13 @@ class _GroupChatPageState extends State<GroupChatPage> {
         path: path,
       );
       if (mounted) setState(() => _recordingVoice = true);
+      _voiceLimitTimer?.cancel();
+      _voiceLimitTimer = Timer(const Duration(minutes: 40), () {
+        if (!mounted || !_recordingVoice) return;
+        _voiceLimitTimer = null;
+        unawaited(_toggleVoiceRecording());
+        _snack('The 40-minute limit has been reached. Your voice message is ready to send.');
+      });
     } catch (error) {
       if (mounted) {
         _snack('${_fr ? 'Impossible de démarrer le microphone' : 'Could not start the microphone'}: $error');
