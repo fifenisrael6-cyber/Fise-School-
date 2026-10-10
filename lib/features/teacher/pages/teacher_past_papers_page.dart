@@ -50,7 +50,12 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       final classes = (await _courses.listTeacherClasses(widget.profile.id))
           .where((c) => c.isActive)
           .toList(growable: false);
-      final exams = await ExamCatalogService().getExams();
+      List<ExamDefinition> exams = const [];
+      try {
+        exams = await ExamCatalogService().getExams();
+      } catch (_) {
+        // Exam catalog is optional; papers can still be uploaded without it.
+      }
       final papers = await _papers.list(includeUnpublished: true);
       if (!mounted) return;
       setState(() {
