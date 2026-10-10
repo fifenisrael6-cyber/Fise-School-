@@ -104,20 +104,24 @@ class TeacherAccessCodeService {
     }
   }
 
-  /// Vérifie le code sans modifier l'inscription de l'élève.
-  Future<bool> validateAccessCode(
-    String code,
-    String studentClassId,
-  ) async {
+  /// Inscrit réellement l'élève dans la classe associée au code.
+  Future<String> joinClassWithAccessCode(String code) async {
+    final cleanCode = _normalizeCode(code);
+    _validateCode(cleanCode);
+    final response = await _client.rpc(
+      'join_class_with_teacher_access_code',
+      params: {'p_code': cleanCode},
+    );
+    if (response == null || response.toString().trim().isEmpty) {
+      throw StateError('La salle associée au code est introuvable.');
+    }
+    return response.toString();
+  }
+
+  /// Compatibilité avec les anciens écrans : cette méthode inscrit l'élève.
+  Future<bool> validateAccessCode(String code, String studentClassId) async {
     try {
-      final response = await _client.rpc(
-        'validate_teacher_access_code',
-        params: {
-          'p_code': _normalizeCode(code),
-          'p_class_id': studentClassId,
-        },
-      );
-      return response == true || response == 'true';
+      return await joinClassWithAccessCode(code) == studentClassId;
     } catch (_) {
       return false;
     }
