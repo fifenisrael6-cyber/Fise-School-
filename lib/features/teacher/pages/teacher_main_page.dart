@@ -7,6 +7,7 @@ import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'grades_entry_page.dart';
 import 'teacher_past_papers_page.dart';
+import 'teacher_qcm_hub_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
   final Locale locale;
@@ -36,6 +37,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
         profile: widget.profile,
       ),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
+      TeacherQcmHubPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
       TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -56,6 +58,11 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
             icon: const Icon(Icons.menu_book_outlined),
             selectedIcon: const Icon(Icons.menu_book),
             label: fr ? 'Cours' : 'Courses',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.quiz_outlined),
+            selectedIcon: const Icon(Icons.quiz),
+            label: fr ? 'QCM' : 'Quizzes',
           ),
           NavigationDestination(
             icon: const Icon(Icons.chat_bubble_outline),
