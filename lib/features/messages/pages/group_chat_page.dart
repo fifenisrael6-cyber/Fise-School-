@@ -501,9 +501,48 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+  bool _sameDay(DateTime first, DateTime second) {
+    final a = first.toLocal();
+    final b = second.toLocal();
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _dateLabel(DateTime value) {
+    final date = value.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(date.year, date.month, date.day);
+    if (day == today) return _fr ? "Aujourd’hui" : "Today";
+    if (day == today.subtract(const Duration(days: 1))) return _fr ? "Hier" : "Yesterday";
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _dateDivider(DateTime value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE1F3D8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          child: Text(_dateLabel(value), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final reversed = _messages.reversed.toList(growable: false);
+    final chatItems = <Widget>[];
+    for (var i = 0; i < reversed.length; i++) {
+      chatItems.add(_bubble(reversed[i]));
+      if (i + 1 < reversed.length && !_sameDay(reversed[i].createdAt, reversed[i + 1].createdAt)) {
+        chatItems.add(_dateDivider(reversed[i + 1].createdAt));
+      }
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
@@ -549,8 +588,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     : ListView.builder(
                         reverse: true,
                         padding: const EdgeInsets.all(12),
-                        itemCount: reversed.length,
-                        itemBuilder: (context, index) => _bubble(reversed[index]),
+                        itemCount: chatItems.length,
+                        itemBuilder: (context, index) => chatItems[index],
                       ),
           ),
           SafeArea(
@@ -585,21 +624,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     onPressed: _sending || _recordingVoice ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
-                  IconButton(
-                    tooltip: _recordingVoice
-                        ? (_fr ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
-                        : (_fr ? 'Enregistrer un vocal' : 'Record a voice message'),
-                    onPressed: _sending ? null : _toggleVoiceRecording,
-                    icon: Icon(
-                      _recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
-                      color: _recordingVoice ? Colors.red : null,
-                    ),
-                  ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
-                      minLines: 2,
-                       maxLines: 8,
+                      onChanged: (_) => setState(() {}),
+                      minLines: 1,
+                      maxLines: 8,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: _attachment != null
@@ -614,15 +644,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   ),
                   const SizedBox(width: 6),
                   IconButton.filled(
-                    tooltip: _fr ? 'Envoyer' : 'Send',
-                    onPressed: _sending ? null : _send,
+                    tooltip: _composer.text.trim().isEmpty && _attachment == null
+                        ? (_recordingVoice ? (_fr ? 'Arrêter le vocal' : 'Stop voice recording') : (_fr ? 'Message vocal' : 'Voice message'))
+                        : (_fr ? 'Envoyer' : 'Send'),
+                    onPressed: _sending
+                        ? null
+                        : (_composer.text.trim().isEmpty && _attachment == null
+                            ? _toggleVoiceRecording
+                            : _send),
                     icon: _sending
                         ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.send_rounded),
+                        : Icon(
+                            _composer.text.trim().isEmpty && _attachment == null
+                                ? (_recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded)
+                                : Icons.send_rounded,
+                            color: _recordingVoice ? Colors.red : null,
+                          ),
                   ),
                 ],
                   ),
