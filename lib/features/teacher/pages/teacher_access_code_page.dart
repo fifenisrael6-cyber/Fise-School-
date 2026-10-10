@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/teacher_access_code_service.dart';
+import '../../../models/school_class.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
 
@@ -22,7 +24,10 @@ class TeacherAccessCodePage extends StatefulWidget {
 class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   final TeacherAccessCodeService _service = TeacherAccessCodeService();
   final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _newCodeController = TextEditingController();
   List<TeacherAccessCode> _codes = [];
+  List<SchoolClass> _classes = [];
+  String? _selectedClassId;
   bool _loading = true;
   String? _error;
   TeacherAccessCode? _selectedCode;
@@ -38,6 +43,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   @override
   void dispose() {
     _codeController.dispose();
+    _newCodeController.dispose();
     super.dispose();
   }
 
@@ -49,9 +55,25 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
 
     try {
       final codes = await _service.getTeacherAccessCodes(widget.profile.id);
+      List<SchoolClass> classes = const [];
+      try {
+        classes = await CourseService().listTeacherCompatibleClasses();
+      } catch (_) {
+        // Keep existing codes visible even if the compatible-room list fails.
+      }
+      final available = classes.where(
+        (schoolClass) => !codes.any(
+          (code) => code.classId == schoolClass.id && code.isActive,
+        ),
+      );
       if (mounted) {
         setState(() {
           _codes = codes;
+          _classes = classes;
+          if (_selectedClassId == null ||
+              !available.any((c) => c.id == _selectedClassId)) {
+            _selectedClassId = available.isEmpty ? null : available.first.id;
+          }
           _loading = false;
         });
       }
@@ -64,6 +86,45 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _createCode() async {
+    final classId = _selectedClassId;
+    final suffix = _newCodeController.text.trim();
+    if (classId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Aucune salle disponible pour créer un code.'
+            : 'No classroom is available for a new code.')),
+      );
+      return;
+    }
+    if (suffix.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Choisissez le code après le préfixe FISE-.'
+            : 'Enter the code suffix after FISE-.')),
+      );
+      return;
+    }
+    try {
+      await _service.getOrCreateAccessCode(widget.profile.id, classId, suffix);
+      _newCodeController.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Code FISE créé pour la salle sélectionnée.'
+            : 'FISE code created for the selected classroom.')),
+      );
+      await _loadCodes();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Création impossible : $e'
+            : 'Unable to create code: $e')),
+      );
     }
   }
 
@@ -134,6 +195,11 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
 
   @override
   Widget build(BuildContext context) {
+    final availableClasses = _classes.where(
+      (schoolClass) => !_codes.any(
+        (code) => code.classId == schoolClass.id && code.isActive,
+      ),
+    ).toList(growable: false);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -185,22 +251,60 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      if (_isEditing) ...
-                        _buildEditForm()
-                      else
-                        Center(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() => _isEditing = true);
-                              _codeController.clear();
-                              _selectedCode = _codes.isNotEmpty ? _codes.first : null;
-                            },
-                            icon: const Icon(Icons.edit_rounded),
-                            label: Text(
-                              _isFrench ? 'Modifier le code' : 'Edit code',
+                      Text(
+                        _isFrench ? 'Créer un code FISE pour une salle' : 'Create a FISE code for a classroom',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 10),
+                      if (availableClasses.isEmpty)
+                        Text(_isFrench
+                            ? 'Toutes les salles compatibles ont déjà un code actif.'
+                            : 'All compatible classrooms already have an active code.')
+                      else ...[
+                        DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          initialValue: _selectedClassId,
+                          decoration: InputDecoration(
+                            labelText: _isFrench ? 'Salle de classe' : 'Classroom',
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: availableClasses.map((schoolClass) =>
+                            DropdownMenuItem<String>(
+                              value: schoolClass.id,
+                              child: Text(schoolClass.displayName, overflow: TextOverflow.ellipsis),
                             ),
+                          ).toList(),
+                          onChanged: (value) => setState(() => _selectedClassId = value),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _newCodeController,
+                          textCapitalization: TextCapitalization.characters,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                            TextInputFormatter.withFunction((oldValue, newValue) => newValue.copyWith(
+                              text: newValue.text.toUpperCase(),
+                              selection: newValue.selection,
+                            )),
+                          ],
+                          decoration: InputDecoration(
+                            labelText: _isFrench ? 'Code choisi' : 'Your code',
+                            hintText: 'MATHS6A',
+                            prefixText: 'FISE-',
+                            border: const OutlineInputBorder(),
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _createCode,
+                            icon: const Icon(Icons.vpn_key_rounded),
+                            label: Text(_isFrench ? 'Créer le code' : 'Create code'),
+                          ),
+                        ),
+                      ],
+                      if (_isEditing) ..._buildEditForm(),
                       const SizedBox(height: 16),
                       Center(
                         child: Text(
@@ -218,6 +322,13 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                   ),
                 ),
     );
+  }
+
+  String _className(TeacherAccessCode code) {
+    for (final schoolClass in _classes) {
+      if (schoolClass.id == code.classId) return schoolClass.displayName;
+    }
+    return code.classId;
   }
 
   Widget _buildCodeCard(TeacherAccessCode code) {
@@ -243,13 +354,22 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           ),
         ),
         subtitle: Text(
-          _isFrench
-              ? 'Créé le ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}'
-              : 'Created ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}',
+          '${_isFrench ? 'Salle' : 'Class'}: ${_className(code)} • ${_isFrench ? 'Créé le' : 'Created'} ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: _isFrench ? 'Modifier ce code' : 'Edit this code',
+              onPressed: () {
+                setState(() {
+                  _isEditing = true;
+                  _selectedCode = code;
+                  _codeController.text = code.code;
+                });
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.copy_rounded),
               onPressed: () => _copyToClipboard(code.displayCode),
