@@ -155,6 +155,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
         subjectEn: subjectEn.text.trim(),
         kind: kind,
         examId: examId,
+        subsystem: widget.profile.subsystem,
         session: sessionCtl.text.trim(),
       );
       if (!mounted) return;
