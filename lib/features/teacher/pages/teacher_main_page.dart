@@ -8,6 +8,7 @@ import 'teacher_courses_page.dart';
 import 'teacher_smart_progress_page.dart';
 import 'grades_entry_page.dart';
 import 'teacher_past_papers_page.dart';
+import 'teacher_access_code_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
   final Locale locale;
@@ -138,6 +139,22 @@ class _TeacherHome extends StatelessWidget {
                     ? 'Les élèves génèrent leurs QCM depuis les cours accessibles dans leur classe. Publiez vos cours et ressources dans l’onglet Cours.'
                     : 'Students generate quizzes from courses available to their classroom. Publish your lessons and resources in the Courses tab.'),
                 actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(fr ? 'Compris' : 'Got it'))],
+              ),
+            ),
+          ),
+          _TeacherAction(
+            icon: Icons.vpn_key_rounded,
+            title: fr ? 'Code FISE' : 'FISE access code',
+            subtitle: fr
+                ? 'Créer et partager le même code pour les groupes et la messagerie privée.'
+                : 'Create and share the same code for groups and private messages.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeacherAccessCodePage(
+                  locale: locale,
+                  profile: profile,
+                ),
               ),
             ),
           ),
