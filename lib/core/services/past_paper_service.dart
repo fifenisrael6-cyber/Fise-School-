@@ -60,6 +60,9 @@ class PastPaperService {
     if (user == null) {
       throw const AuthException('Session utilisateur absente.');
     }
+    if (examId == null || examId.trim().isEmpty) {
+      throw ArgumentError('Une annale doit être associée à un examen.');
+    }
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       throw StateError('Fichier illisible ou vide.');
@@ -92,11 +95,12 @@ class PastPaperService {
         'is_published': false,
       }).select('id').single();
       paperId = row['id'].toString();
-      // Liste vide = visible par toutes les salles.
-      if (classIds.isEmpty) {
-        throw StateError('Une annale doit cibler au moins une salle.');
+      // Les annales d'examen sont diffusées par examen, pas par salle.
+      // Les anciennes cibles restent possibles pour les appels d'administration
+      // qui les utilisent encore; l'enseignant ne fournit plus de cibles de salles.
+      if (classIds.isNotEmpty) {
+        await setTargets(paperId, classIds);
       }
-      await setTargets(paperId, classIds);
       await setPublished(paperId, true);
     } catch (_) {
       // Nettoyage : ne pas laisser un fichier orphelin ni une annale ouverte à tous
