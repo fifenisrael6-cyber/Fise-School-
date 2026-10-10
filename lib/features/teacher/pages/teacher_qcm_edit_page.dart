@@ -145,9 +145,15 @@ class _TeacherQcmEditPageState extends State<TeacherQcmEditPage> {
             .where((text) => text.isNotEmpty)
             .toList(growable: false);
         final correctText = draft.options[draft.correctIndex].text.trim();
-        final old = draft.id == null
-            ? null
-            : _originalQuestions.where((item) => item.id == draft.id).firstOrNull;
+        AssignmentQuestion? old;
+        if (draft.id != null) {
+          for (final item in _originalQuestions) {
+            if (item.id == draft.id) {
+              old = item;
+              break;
+            }
+          }
+        }
         final frPrompt = widget.locale.languageCode == 'fr'
             ? draft.prompt.text.trim()
             : old?.questionFr ?? draft.prompt.text.trim();
