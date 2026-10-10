@@ -100,15 +100,17 @@ class CourseService {
   /// Subjects explicitly assigned to one classroom. Teachers use this when
   /// creating content so a subject can never silently come from another room.
   Future<List<Subject>> listSubjectsForClass(String classId) async {
-    final rows = await _client
-        .from('class_subjects')
-        .select('subject_id, is_compulsory, option_group, position, subjects(*)')
-        .eq('class_id', classId)
-        .eq('is_active', true)
-        .order('position');
-
-    return rows
-        .map((row) => ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row)).subject)
+    // Direct table reads are intentionally limited by class_subjects RLS to
+    // assigned teachers/students. The RPC verifies the teacher's subsystem
+    // and sector and returns only the curriculum for this compatible room.
+    final rows = await _client.rpc(
+      'list_teacher_class_subjects',
+      params: {'p_class_id': classId},
+    );
+    return (rows as List)
+        .map((row) => ClassSubjectEntry.fromMap(
+              Map<String, dynamic>.from(row as Map),
+            ).subject)
         .toList(growable: false);
   }
 
