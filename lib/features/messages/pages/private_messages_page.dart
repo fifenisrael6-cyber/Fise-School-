@@ -261,7 +261,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         if (!mounted || !_recordingVoice) return;
         _voiceLimitTimer = null;
         unawaited(_toggleVoiceRecording());
-        _showMessage('La durée maximale de 40 minutes est atteinte. Le vocal est prêt à être envoyé.');
+        _showMessage(_isFrench ? 'La limite de 40 minutes est atteinte. Le vocal est en cours de préparation.' : 'The 40-minute limit is reached. Preparing your voice message.');
       });
     } catch (error) {
       if (mounted) {
