@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
+import 'past_paper_viewer_page.dart';
 
 /// Annales d'examens : sujets et corrigés, filtrables par examen, année et matière.
 class PastPapersPage extends StatefulWidget {
@@ -77,13 +78,25 @@ class _PastPapersPageState extends State<PastPapersPage> {
   Future<void> _open(PastPaper paper) async {
     try {
       final url = await _service.signedUrl(paper.filePath);
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        _snack(_fr ? 'Aucune application pour ouvrir ce fichier.' : 'No app can open this file.');
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('HTTP ${response.statusCode}');
       }
+      if (!mounted) return;
+      final isPdf = paper.fileName.toLowerCase().endsWith('.pdf');
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PastPaperViewerPage(
+            title: paper.subjectFor(widget.locale.languageCode),
+            bytes: response.bodyBytes,
+            isPdf: isPdf,
+          ),
+        ),
+      );
     } catch (_) {
       if (mounted) {
-        _snack(_fr ? 'Impossible d’ouvrir ce fichier.' : 'Unable to open this file.');
+        _snack(_fr ? 'Impossible d’ouvrir ce fichier dans Fise School.' : 'Unable to open this file in Fise School.');
       }
     }
   }
