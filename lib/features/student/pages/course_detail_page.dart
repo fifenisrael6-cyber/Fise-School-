@@ -110,6 +110,10 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   @override
   Widget build(BuildContext context) {
     final isEnglish = widget.locale.languageCode == 'en';
+    final courseContent = (isEnglish
+            ? widget.course.contentEn
+            : widget.course.contentFr)
+        ?.trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8F6),
@@ -179,6 +183,48 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
                 _buildCourseHeader(isEnglish),
+                if (courseContent != null && courseContent.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 0,
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: BorderSide(
+                        color: Colors.grey.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.article_outlined,
+                                color: Color(0xFF166534),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                isEnglish ? 'Course content' : 'Contenu du cours',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SelectableText(
+                            courseContent,
+                            style: const TextStyle(fontSize: 15, height: 1.55),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
                   Container(
