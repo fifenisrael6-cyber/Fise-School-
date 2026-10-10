@@ -68,6 +68,9 @@ as $function$
       or public.student_can_access_assignment(target_assignment_id, auth.uid());
 $function$;
 
+revoke all on function public.can_read_assignment(uuid) from public, anon;
+grant execute on function public.can_read_assignment(uuid) to authenticated;
+
 drop policy if exists "students read published class assignments" on public.assignments;
 create policy "students read published class assignments"
   on public.assignments
