@@ -59,6 +59,7 @@ using (
     where l.id = course_generated_quizzes.lesson_id
       and l.is_published
       and c.status = 'published'
+      and is_lesson_student(l.id)
   )
 );
 
@@ -67,8 +68,14 @@ create policy "students read questions for visible generated quizzes"
 on public.course_generated_quiz_questions for select to authenticated
 using (
   exists (
-    select 1 from public.course_generated_quizzes q
+    select 1
+    from public.course_generated_quizzes q
+    join public.lessons l on l.id = q.lesson_id
+    join public.courses c on c.id = q.course_id
     where q.id = course_generated_quiz_questions.quiz_id
+      and l.is_published
+      and c.status = 'published'
+      and is_lesson_student(l.id)
   )
 );
 
