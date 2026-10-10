@@ -204,7 +204,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isFrench ? 'Code d\'accès unique' : 'Access code',
+          _isFrench ? 'Codes d’accès FISE' : 'FISE access codes',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         backgroundColor: const Color(0xFF166534),
@@ -232,8 +232,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                           children: [
                             Text(
                               _isFrench
-                                  ? 'Votre code d\'accès unique'
-                                  : 'Your unique access code',
+                                  ? 'Vos codes d’accès FISE'
+                                  : 'Your FISE access codes',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -310,8 +310,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                       Center(
                         child: Text(
                           _isFrench
-                              ? 'Les élèves doivent saisir ce code pour pouvoir vous contacter en messagerie privée.'
-                              : 'Students must enter this code to message you privately.',
+                              ? 'Le même code permet aux élèves de vous contacter en privé et de rejoindre les groupes de la salle associée.'
+                              : 'The same code lets students message you privately and join groups for the associated classroom.',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
