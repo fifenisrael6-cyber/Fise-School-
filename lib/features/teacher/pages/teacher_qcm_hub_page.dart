@@ -21,16 +21,24 @@ class TeacherQcmHubPage extends StatefulWidget {
   State<TeacherQcmHubPage> createState() => _TeacherQcmHubPageState();
 }
 
-class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> {
+class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTickerProviderStateMixin {
   final AssignmentService _service = AssignmentService();
   late Future<List<Assignment>> _assignmentsFuture;
+  late final TabController _tabController;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _reload();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   void _reload() {
@@ -61,7 +69,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> {
     if (!mounted) return;
     if (created == true) {
       setState(_reload);
-      DefaultTabController.of(context).animateTo(1);
+      _tabController.animateTo(1);
     }
   }
 
@@ -95,12 +103,11 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: Text(_fr ? 'Espace QCM' : 'Quiz workspace'),
           bottom: TabBar(
+            controller: _tabController,
             tabs: [
               Tab(
                 icon: const Icon(Icons.add_task_rounded),
@@ -114,12 +121,12 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> {
           ),
         ),
         body: TabBarView(
+          controller: _tabController,
           children: [
             _buildCreateTab(),
             _buildAssignmentsTab(),
           ],
         ),
-      ),
     );
   }
 
