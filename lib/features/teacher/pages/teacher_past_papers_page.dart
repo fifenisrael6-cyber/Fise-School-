@@ -9,7 +9,7 @@ import '../../../models/past_paper.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
 
-/// Teacher-only upload and management of past exam papers, scoped to assigned rooms.
+/// Teacher upload and management of past exam papers, distributed to candidates of the selected exam.
 class TeacherPastPapersPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
@@ -26,10 +26,8 @@ class TeacherPastPapersPage extends StatefulWidget {
 
 class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
   final _papers = PastPaperService();
-  final _courses = CourseService();
   bool _loading = true;
   String? _error;
-  List<SchoolClass> _classes = [];
   List<ExamDefinition> _exams = [];
   List<PastPaper> _items = [];
 
@@ -47,9 +45,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       _error = null;
     });
     try {
-      final classes = (await _courses.listTeacherSelectedClasses())
-          .where((c) => c.isActive)
-          .toList(growable: false);
       List<ExamDefinition> exams = const [];
       try {
         exams = await ExamCatalogService().getExams();
@@ -59,7 +54,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       final papers = await _papers.list(includeUnpublished: true);
       if (!mounted) return;
       setState(() {
-        _classes = classes;
         _exams = exams;
         _items = papers;
         _loading = false;
@@ -74,10 +68,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
   }
 
   Future<void> _add() async {
-    if (_classes.isEmpty) {
-      _message(_fr ? 'Aucune salle ne vous est affectée.' : 'No classroom is assigned to you.');
-      return;
-    }
     final subjectFr = TextEditingController();
     final subjectEn = TextEditingController();
     final yearCtl = TextEditingController(text: '${DateTime.now().year - 1}');
@@ -85,7 +75,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     String? examId;
     String kind = 'subject';
     PlatformFile? file;
-    final selected = <String>{};
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -100,7 +89,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
                   DropdownButtonFormField<String?>(
                     isExpanded: true,
                     initialValue: examId,
-                    decoration: InputDecoration(labelText: _fr ? 'Examen' : 'Exam'),
+                    decoration: InputDecoration(labelText: _fr ? 'Examen (obligatoire)' : 'Exam (required)'),
                     items: [
                       DropdownMenuItem<String?>(value: null, child: Text(_fr ? 'Autre / non précisé' : 'Other / not specified')),
                       ..._exams.map((e) => DropdownMenuItem<String?>(value: e.id, child: Text(e.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis))),
@@ -123,16 +112,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
                     onChanged: (v) => refresh(() => kind = v ?? 'subject'),
                   ),
                   const SizedBox(height: 12),
-                  Align(alignment: Alignment.centerLeft, child: Text(_fr ? 'Salles destinataires (obligatoire)' : 'Recipient classrooms (required)', style: const TextStyle(fontWeight: FontWeight.w700))),
-                  ..._classes.map((room) => CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: selected.contains(room.id),
-                    title: Text(room.displayName),
-                    onChanged: (v) => refresh(() {
-                      if (v == true) { selected.add(room.id); } else { selected.remove(room.id); }
-                    }),
-                  )),
                   OutlinedButton.icon(
                     onPressed: () async {
                       final result = await FilePicker.platform.pickFiles(
@@ -147,7 +126,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
                     icon: const Icon(Icons.attach_file),
                     label: Text(file?.name ?? (_fr ? 'Choisir un PDF ou une image' : 'Choose a PDF or image')),
                   ),
-                  Text(_fr ? 'Le document sera publié uniquement dans les salles sélectionnées.' : 'The document will be published only to the selected classrooms.'),
+                  Text(_fr ? 'Tous les élèves préparant cet examen pourront consulter cette annale.' : 'All students preparing this exam will be able to access this paper.'),
                 ],
               ),
             ),
@@ -156,8 +135,8 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
             TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext,
-                file != null && file!.bytes != null && yearCtl.text.trim().isNotEmpty &&
-                subjectFr.text.trim().isNotEmpty && selected.isNotEmpty),
+                file != null && file!.bytes != null && examId != null &&
+                yearCtl.text.trim().isNotEmpty && subjectFr.text.trim().isNotEmpty),
               child: Text(_fr ? 'Envoyer' : 'Upload'),
             ),
           ],
@@ -171,15 +150,6 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       return;
     }
     try {
-      final subsystemValues = _classes.where((c) => selected.contains(c.id)).map((c) => c.subsystem.name).toSet();
-      if (subsystemValues.length != 1) {
-        _message(_fr ? 'Sélectionnez des salles d’un seul sous-système par épreuve.' : 'Select classrooms from only one subsystem per paper.');
-        return;
-      }
-      // Make the selected compatible classrooms active for this teacher before
-      // inserting target rows. The database independently validates subsystem
-      // and sector, and storage/RLS requires an active class_teachers relation.
-      await _courses.authorizeTeacherClasses(selected.toList(growable: false));
       await _papers.create(
         file: file!,
         year: year,
@@ -187,12 +157,10 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
         subjectEn: subjectEn.text.trim(),
         kind: kind,
         examId: examId,
-        subsystem: subsystemValues.first,
         session: sessionCtl.text.trim(),
-        classIds: selected.toList(growable: false),
       );
       if (!mounted) return;
-      _message(_fr ? 'Épreuve envoyée aux salles sélectionnées.' : 'Exam paper sent to selected classrooms.');
+      _message(_fr ? 'Annale publiée pour les candidats de l’examen choisi.' : 'Past paper published for candidates of the selected exam.');
       await _load();
     } catch (e) {
       _message('${_fr ? 'Échec de l’envoi' : 'Upload failed'}: $e');
