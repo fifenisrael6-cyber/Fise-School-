@@ -33,6 +33,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   final Set<String> _selectedIds = <String>{};
   List<SchoolClass> _allClasses = const [];
   List<Subject> _subjects = const [];
+  final Map<String, Set<String>> _subjectClassIds = <String, Set<String>>{};
   Subject? _subject;
   bool _loadingSubjects = false;
 
@@ -54,7 +55,16 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       .where((c) => _selectedIds.contains(c.id))
       .toList(growable: false);
 
-  void _notify() => widget.onChanged(_selectedClasses, _subject);
+  void _notify() {
+    final subject = _subject;
+    final classes = subject == null
+        ? _selectedClasses
+        : _selectedClasses
+            .where((schoolClass) =>
+                _subjectClassIds[subject.id]?.contains(schoolClass.id) ?? false)
+            .toList(growable: false);
+    widget.onChanged(classes, subject);
+  }
 
   Future<void> _toggleClass(SchoolClass schoolClass, bool selected) async {
     setState(() {
@@ -73,6 +83,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     if (classes.isEmpty) {
       setState(() {
         _subjects = const [];
+        _subjectClassIds.clear();
         _subject = null;
       });
       _notify();
@@ -82,17 +93,14 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     setState(() => _loadingSubjects = true);
 
     try {
-      Map<String, Subject>? common;
+      final byId = <String, Subject>{};
+      final subjectClassIds = <String, Set<String>>{};
       for (final schoolClass in classes) {
         final list = await _service.listSubjectsForClass(schoolClass.id);
-        final byId = {for (final s in list) s.id: s};
-        if (common == null) {
-          common = byId;
-        } else {
-          common = {
-            for (final entry in common.entries)
-              if (byId.containsKey(entry.key)) entry.key: entry.value,
-          };
+        for (final subject in list) {
+          byId[subject.id] = subject;
+          subjectClassIds.putIfAbsent(subject.id, () => <String>{})
+              .add(schoolClass.id);
         }
       }
 
@@ -100,9 +108,15 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         return;
       }
 
-      final subjects = (common ?? <String, Subject>{}).values.toList();
+      final subjects = byId.values.toList()
+        ..sort((a, b) => a
+            .labelFor(widget.locale.languageCode)
+            .compareTo(b.labelFor(widget.locale.languageCode)));
       setState(() {
         _subjects = subjects;
+        _subjectClassIds
+          ..clear()
+          ..addAll(subjectClassIds);
         if (_subject != null && !subjects.any((s) => s.id == _subject!.id)) {
           _subject = null;
         }
@@ -233,6 +247,11 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final compatibleSubjectClassCount = _subject == null
+        ? 0
+        : _selectedIds.where(
+            (id) => _subjectClassIds[_subject!.id]?.contains(id) ?? false,
+          ).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -293,8 +312,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
           Text(_fr ? 'Sélectionnez d’abord au moins une salle.' : 'Select at least one classroom first.')
         else if (_subjects.isEmpty)
           Text(_fr
-              ? 'Aucune matière commune à ces salles. Choisissez des salles du même sous-système ou ajoutez une matière.'
-              : 'No common subject for these classrooms. Pick classrooms of the same subsystem or add a subject.')
+              ? 'Aucune matière du programme n’est disponible pour ces salles. Vérifiez les affectations de matières.'
+              : 'No curriculum subjects are available for these classrooms. Check their subject assignments.')
         else
           DropdownButtonFormField<String>(
             key: ValueKey('${_subject?.id}-${_subjects.length}'),
@@ -315,6 +334,15 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
               _notify();
             },
           ),
+        if (_subject != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _fr
+                ? 'Cette matière figure au programme de $compatibleSubjectClassCount salle(s) sélectionnée(s). La publication sera limitée à ces salles.'
+                : 'This subject is in the curriculum of $compatibleSubjectClassCount selected classroom(s). Publishing will be limited to those classrooms.',
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ],
       ],
     );
   }
