@@ -6,6 +6,7 @@ import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 import 'create_assignment_page.dart';
 import 'qcm_builder_page.dart';
+import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
@@ -117,6 +118,120 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         return Colors.grey;
       default:
         return Colors.orange.shade800;
+    }
+  }
+
+  Future<void> _editAssignment(Assignment assignment) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TeacherQcmEditPage(
+          locale: widget.locale,
+          assignment: assignment,
+        ),
+      ),
+    );
+    if (changed == true && mounted) setState(_reload);
+  }
+
+  Future<void> _deleteAssignment(Assignment assignment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
+        content: Text(_fr
+          ? 'Cette action supprimera le QCM et ses données associées si les règles de la base l’autorisent.'
+          : 'This deletes the quiz and related data if permitted by the database rules.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteAssignment(assignment.id);
+      if (mounted) {
+        setState(_reload);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr ? 'QCM supprimé.' : 'Quiz deleted.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
+      );
+    }
+  }
+
+  Future<void> _showResults(Assignment assignment) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('assignment_submissions')
+          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct)')
+          .eq('assignment_id', assignment.id);
+      var correct = 0;
+      var incorrect = 0;
+      var answered = 0;
+      final participants = <Map<String, dynamic>>[];
+      for (final raw in rows) {
+        final row = Map<String, dynamic>.from(raw);
+        final answers = (row['assignment_answers'] as List? ?? const [])
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item));
+        var studentCorrect = 0;
+        var studentIncorrect = 0;
+        for (final answer in answers) {
+          if (answer['is_correct'] == true) {
+            correct++;
+            studentCorrect++;
+            answered++;
+          } else if (answer['is_correct'] == false) {
+            incorrect++;
+            studentIncorrect++;
+            answered++;
+          }
+        }
+        if (row['status'] == 'submitted' || row['status'] == 'corrected') {
+          participants.add({...row, 'correct_count': studentCorrect, 'incorrect_count': studentIncorrect});
+        }
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_fr ? 'Résultats du QCM' : 'Quiz results'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('${_fr ? 'Participants ayant remis' : 'Submitted participants'} : ${participants.length}'),
+                Text('${_fr ? 'Bonnes réponses' : 'Correct answers'} : $correct'),
+                Text('${_fr ? 'Mauvaises réponses' : 'Incorrect answers'} : $incorrect'),
+                if (answered == 0) Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_fr ? 'Aucune réponse corrigée disponible pour le moment.' : 'No graded answers available yet.'),
+                ),
+                const Divider(),
+                for (final participant in participants)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${_fr ? 'Élève' : 'Student'} · ${participant['student_id']}'),
+                    subtitle: Text('${_fr ? 'Bonnes' : 'Correct'} : ${participant['correct_count']} · ${_fr ? 'Mauvaises' : 'Incorrect'} : ${participant['incorrect_count']}'),
+                    trailing: participant['score'] == null ? null : Text('${participant['score']} / ${assignment.maxScore}'),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_fr ? 'Fermer' : 'Close'))],
+        ),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Impossible de charger les résultats' : 'Could not load results'}: $error')),
+      );
     }
   }
 
@@ -322,23 +437,33 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     ),
                   ),
                   isThreeLine: true,
-                  trailing: Container(
-                    constraints: const BoxConstraints(maxWidth: 92),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _statusColor(assignment.status).withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _statusLabel(assignment.status),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _statusColor(assignment.status),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
+                  trailing: PopupMenuButton<String>(
+                    tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
+                    onSelected: (action) {
+                      if (action == 'results') _showResults(assignment);
+                      if (action == 'edit') _editAssignment(assignment);
+                      if (action == 'delete') _deleteAssignment(assignment);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
+                      PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier titre / consignes' : 'Edit title / instructions')),
+                      PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
+                    ],
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 92),
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _statusColor(assignment.status).withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _statusLabel(assignment.status),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _statusColor(assignment.status),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),

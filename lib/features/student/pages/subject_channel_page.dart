@@ -12,6 +12,7 @@ import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
+import 'chapter_quiz_page.dart';
 
 class _FeedItem {
   final DateTime date;
@@ -351,6 +352,26 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           if (body.isNotEmpty) ...[
             const SizedBox(height: 8),
             SelectableText(body),
+          ],
+          if ((item['chapter_id']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChapterQuizPage(
+                      locale: widget.locale,
+                      chapterId: item['chapter_id'].toString(),
+                      chapterTitle: chapter.isNotEmpty ? chapter : title,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text(_fr ? 'Quiz intelligent' : 'Smart quiz'),
+              ),
+            ),
           ],
         ],
       ),
