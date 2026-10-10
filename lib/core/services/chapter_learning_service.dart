@@ -187,12 +187,40 @@ class ChapterLearningService {
   }
 
   Future<List<ChapterQuiz>> listQuizzes(String chapterId) async {
-    final rows = await _client
+    var rows = await _client
         .from('chapter_quizzes')
         .select()
         .eq('chapter_id', chapterId)
         .eq('is_published', true)
         .order('position');
+
+    // Official content and teacher-authored quizzes use the same chapter flow.
+    // If no published quiz exists, ask the authenticated student-only Edge
+    // Function to generate one from the chapter's published text. This is
+    // additive: existing quizzes are never overwritten or regenerated.
+    if ((rows as List).isEmpty && _client.auth.currentUser != null) {
+      try {
+        final response = await _client.functions.invoke(
+          'chapter-quiz',
+          body: {'chapter_id': chapterId},
+        );
+        final data = response.data;
+        if (data is Map && data['error'] != null) {
+          throw StateError(data['error'].toString());
+        }
+        rows = await _client
+            .from('chapter_quizzes')
+            .select()
+            .eq('chapter_id', chapterId)
+            .eq('is_published', true)
+            .order('position');
+      } catch (error) {
+        // Keep the chapter readable if AI is unavailable or its source text is
+        // too short. The next visit can retry without changing existing data.
+        debugPrint('Smart chapter quiz unavailable: $error');
+      }
+    }
+
     return List<Map<String, dynamic>>.from(rows)
         .map(ChapterQuiz.fromMap)
         .toList();
