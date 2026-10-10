@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/photo_service.dart';
+import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
@@ -43,6 +44,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   final CourseService _service = CourseService();
   final ResourceService _resources = ResourceService();
   final PhotoService _photos = PhotoService();
+  final SmartCourseService _smart = SmartCourseService();
   final ImagePicker _imagePicker = ImagePicker();
 
   final _title = TextEditingController();
@@ -171,6 +173,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     var published = 0;
     final errors = <String>[];
+    final indexingFailures = <String>[];
 
     for (final schoolClass in _classes) {
       try {
@@ -188,7 +191,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
         for (var i = 0; i < _attachments.length; i++) {
           final attachment = _attachments[i];
-          await _resources.uploadResource(
+          final resource = await _resources.uploadResource(
             courseId: course.id,
             file: PlatformFile(
               name: attachment.name,
@@ -200,6 +203,16 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             titleFr: attachment.name,
             titleEn: attachment.name,
           );
+          // Photos attached while creating a course must enter the same
+          // indexing flow as photos added later from the resource library.
+          // Approval remains explicit in the resource details before AI use.
+          if (attachment.resourceType == 'image') {
+            try {
+              await _smart.reindexResource(resource.id);
+            } catch (_) {
+              indexingFailures.add('${schoolClass.displayName}: ${attachment.name}');
+            }
+          }
         }
         published++;
       } catch (error) {
@@ -219,6 +232,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       if (published == 0) {
         return;
       }
+    } else if (indexingFailures.isNotEmpty && status == 'published') {
+      _snack(_fr
+          ? 'Cours publié dans $published classe(s), mais l’indexation de ${indexingFailures.length} photo(s) a échoué. Réessayez depuis les ressources du cours.'
+          : 'Course published to $published classroom(s), but ${indexingFailures.length} photo(s) could not be indexed. Retry from course resources.');
     } else {
       _snack(status == 'published'
           ? (_fr ? 'Cours publié dans $published classe(s).' : 'Course published in $published class(es).')
