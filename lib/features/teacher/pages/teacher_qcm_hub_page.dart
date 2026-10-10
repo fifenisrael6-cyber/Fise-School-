@@ -6,6 +6,7 @@ import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 import 'create_assignment_page.dart';
 import 'qcm_builder_page.dart';
+import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
@@ -121,71 +122,15 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   }
 
   Future<void> _editAssignment(Assignment assignment) async {
-    final title = TextEditingController(text: assignment.titleFor(widget.locale));
-    final instructions = TextEditingController(text: assignment.instructionsFor(widget.locale) ?? '');
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_fr ? 'Modifier le QCM' : 'Edit quiz'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: title, decoration: InputDecoration(labelText: _fr ? 'Titre' : 'Title')),
-            const SizedBox(height: 10),
-            TextField(controller: instructions, minLines: 2, maxLines: 4,
-              decoration: InputDecoration(labelText: _fr ? 'Consignes' : 'Instructions')),
-          ]),
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TeacherQcmEditPage(
+          locale: widget.locale,
+          assignment: assignment,
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_fr ? 'Annuler' : 'Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Enregistrer' : 'Save')),
-        ],
       ),
     );
-    if (saved != true) {
-      title.dispose();
-      instructions.dispose();
-      return;
-    }
-    if (title.text.trim().isEmpty) {
-      title.dispose();
-      instructions.dispose();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr ? 'Le titre est obligatoire.' : 'A title is required.')),
-      );
-      return;
-    }
-    try {
-      await _service.saveAssignment(
-        id: assignment.id,
-        courseId: assignment.courseId,
-        subjectId: assignment.subjectId,
-        lessonId: assignment.lessonId,
-        teacherId: assignment.teacherId,
-        classId: assignment.classId,
-        titleFr: widget.locale.languageCode == 'fr' ? title.text.trim() : assignment.titleFr,
-        titleEn: widget.locale.languageCode == 'en' ? title.text.trim() : assignment.titleEn,
-        instructionsFr: widget.locale.languageCode == 'fr' ? instructions.text.trim() : assignment.instructionsFr,
-        instructionsEn: widget.locale.languageCode == 'en' ? instructions.text.trim() : assignment.instructionsEn,
-        dueAt: assignment.dueAt,
-        status: assignment.status,
-        maxScore: assignment.maxScore,
-      );
-      if (mounted) {
-        setState(_reload);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'QCM modifié.' : 'Quiz updated.')),
-        );
-      }
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_fr ? 'Modification impossible' : 'Update failed'}: $error')),
-      );
-    } finally {
-      title.dispose();
-      instructions.dispose();
-    }
+    if (changed == true && mounted) setState(_reload);
   }
 
   Future<void> _deleteAssignment(Assignment assignment) async {
