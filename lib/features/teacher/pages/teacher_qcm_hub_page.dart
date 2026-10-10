@@ -244,8 +244,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         future: _assignmentsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const ListView(
-              physics: AlwaysScrollableScrollPhysics(),
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 SizedBox(height: 180),
                 Center(child: CircularProgressIndicator()),
