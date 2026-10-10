@@ -9,6 +9,7 @@ import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'lesson_page.dart';
+import 'generated_course_quiz_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
   final Locale locale;
@@ -179,6 +180,31 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
                 _buildCourseHeader(isEnglish),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _offlineMode
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => GeneratedCourseQuizPage(
+                                  locale: widget.locale,
+                                  profile: widget.profile,
+                                  course: widget.course,
+                                ),
+                              ),
+                            ),
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                    label: Text(isEnglish ? 'Generate a course quiz' : 'Générer un QCM du cours'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF166534),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
                   Container(
