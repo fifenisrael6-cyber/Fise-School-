@@ -41,7 +41,6 @@ class _StudentMainPageState extends State<StudentMainPage> {
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
-        ProgressPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -58,7 +57,6 @@ class _StudentMainPageState extends State<StudentMainPage> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.insights_outlined), selectedIcon: const Icon(Icons.insights), label: fr ? 'Progression' : 'Progress'),
           NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
           NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
@@ -96,6 +94,12 @@ class _StudentHome extends StatelessWidget {
           const SizedBox(height: 16),
           _RoomCard(profile: profile, locale: locale),
           const SizedBox(height: 14),
+          _QuickCard(
+            icon: Icons.insights_outlined,
+            title: fr ? 'Progression' : 'Progress',
+            subtitle: fr ? 'Consulte ta progression scolaire.' : 'View your learning progress.',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(locale: locale, profile: profile))),
+          ),
           _QuickCard(
             icon: Icons.history_edu_rounded,
             title: fr ? 'Annales d\'examens' : 'Past exam papers',
