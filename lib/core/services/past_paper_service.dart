@@ -65,7 +65,7 @@ class PastPaperService {
       throw StateError('Fichier illisible ou vide.');
     }
     final path =
-        '${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
+        '${user.id}/${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
     await _client.storage.from(bucket).uploadBinary(
           path,
           bytes,
