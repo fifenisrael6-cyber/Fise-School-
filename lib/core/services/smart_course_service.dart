@@ -171,7 +171,7 @@ class SmartCourseService {
     );
   }
 
-  Future<void> reindexPdf(String resourceId) async {
+  Future<void> reindexResource(String resourceId) async {
     final response = await _client.functions.invoke(
       'index-course-file',
       body: {'resource_id': resourceId},
