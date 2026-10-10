@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_access_code_service.dart';
+import '../../../core/services/group_message_service.dart';
+import '../../../core/services/private_message_service.dart';
 import '../../../models/user_profile.dart';
 import '../../messages/pages/messages_hub_page.dart';
 
@@ -54,17 +56,33 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     });
 
     try {
-      final classId = widget.classId;
-      if (classId == null || classId.trim().isEmpty) {
-        throw StateError('Student classroom is not configured.');
+      final normalizedCode = code.toUpperCase();
+      if (!RegExp(r'^FISE-[A-Z0-9-]{3,}$').hasMatch(normalizedCode)) {
+        throw ArgumentError('Code invalide');
       }
-      final valid = await _service.validateAccessCode(code, classId);
-      if (!valid) {
-        throw StateError('Invalid or unauthorized access code.');
+
+      // Inscrire l'élève dans la salle associée au code, puis déverrouiller
+      // la messagerie privée avec ce même code.
+      await _service.joinClassWithAccessCode(normalizedCode);
+      final privateService = PrivateMessageService();
+      final unlocked = await privateService.unlockTeacher(normalizedCode);
+      if (!unlocked) {
+        throw StateError('Code invalide ou enseignant non autorisé pour cette classe.');
+      }
+
+      // Ajouter l'élève aux groupes existants de l'enseignant. Si le code est
+      // valide mais qu'aucun groupe n'a encore été créé, l'accès à la messagerie
+      // privée reste disponible.
+      try {
+        await GroupMessageService().joinWithCode(normalizedCode);
+      } catch (groupError) {
+        final groupMessage = groupError.toString().toLowerCase();
+        final noGroupsYet = groupMessage.contains('no message group exists') ||
+            groupMessage.contains('aucun groupe');
+        if (!noGroupsYet) rethrow;
       }
 
       if (!mounted) return;
-
       widget.onSuccess();
       Navigator.of(context).pop();
       Navigator.of(context).push(
