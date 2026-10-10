@@ -50,7 +50,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   @override
   void initState() {
     super.initState();
-    _classesFuture = _courseService.listTeacherClasses(widget.profile.id);
+    _classesFuture = _courseService.listTeacherCompatibleClasses();
   }
 
   @override
@@ -169,13 +169,20 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     if (value == null) {
       return;
     }
-    final courses = await _courseService.listTeacherCourses(widget.profile.id);
-    if (!mounted) {
-      return;
+    try {
+      await _courseService.authorizeTeacherClasses([value.id]);
+      final courses = await _courseService.listTeacherCourses(widget.profile.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _courses = courses.where((c) => c.classId == value.id && c.status != 'archived').toList(growable: false);
+      });
+    } catch (error) {
+      if (mounted) {
+        _showMessage('${_isEnglish ? 'Unable to access this classroom' : 'Accès à cette salle impossible'}: $error');
+      }
     }
-    setState(() {
-      _courses = courses.where((c) => c.classId == value.id && c.status != 'archived').toList(growable: false);
-    });
   }
 
   Future<void> _selectCourse(Course? value) async {
