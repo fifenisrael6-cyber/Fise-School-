@@ -95,7 +95,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                         const Divider(),
                         ...all.map((schoolClass) => CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: Text(schoolClass.displayName),
+                          title: Text('${all.indexOf(schoolClass) + 1}. ${schoolClass.displayName}'),
                           subtitle: Text(schoolClass.name),
                           value: draft.contains(schoolClass.id),
                           onChanged: (value) => refreshDialog(() {
