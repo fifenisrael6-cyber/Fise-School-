@@ -7,6 +7,7 @@ import '../../../core/services/gemini_service.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../ai/pages/ai_page.dart';
+import 'generated_course_quiz_page.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 
@@ -219,6 +220,29 @@ class _LessonPageState extends State<LessonPage> {
           profile: widget.profile,
           lessonContext: lessonContext,
           initialPrompt: prompt,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGeneratedQuiz() async {
+    if (content == null && summary == null && objectives == null && examples == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isEnglish
+              ? 'This lesson has no readable text to generate a reliable quiz.'
+              : 'Cette leçon ne contient pas de texte lisible pour générer un QCM fiable.'),
+        ),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => GeneratedCourseQuizPage(
+          locale: widget.locale,
+          profile: widget.profile,
+          course: widget.course,
+          lesson: widget.lesson,
         ),
       ),
     );
@@ -801,6 +825,21 @@ class _LessonPageState extends State<LessonPage> {
               icon: Icons.summarize_rounded,
             ),
           _buildAiCard(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _openGeneratedQuiz,
+              icon: const Icon(Icons.auto_awesome_rounded),
+              label: Text(isEnglish ? 'Generate an automatic quiz' : 'Générer un QCM automatique'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF166534),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           const SizedBox(height: 8),
           Row(
             children: [
