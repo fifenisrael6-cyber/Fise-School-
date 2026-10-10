@@ -130,7 +130,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     Text(
-                      quiz?.labelFor(widget.locale) ?? widget.chapterTitle,
+                      quiz?.labelFor(widget.locale.languageCode) ?? widget.chapterTitle,
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 6),
