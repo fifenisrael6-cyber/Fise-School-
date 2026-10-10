@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Génération et correction sécurisées des QCM à partir d'une leçon publiée.
+/// Génération et correction sécurisées des QCM à partir d'un cours ou d'une leçon publiée.
 /// Les bonnes réponses ne sont jamais conservées dans le cache local.
 class GeneratedCourseQuizService {
   GeneratedCourseQuizService({SupabaseClient? client})
