@@ -44,7 +44,7 @@ class _TeacherSmartProgressPageState extends State<TeacherSmartProgressPage> {
       _error = null;
     });
     try {
-      final classes = await _courses.listTeacherClasses(widget.profile.id);
+      final classes = await _courses.listTeacherCompatibleClasses();
       if (!mounted) {
         return;
       }
@@ -72,6 +72,9 @@ class _TeacherSmartProgressPageState extends State<TeacherSmartProgressPage> {
       setState(() => _loading = true);
     }
     try {
+      // The teacher may select any room in their own subsystem/sector. Activate
+      // this one room before reading its roster and progress, not every room.
+      await _courses.authorizeTeacherClasses([classId]);
       final results = await Future.wait([
         _smart.getTeacherClassDetail(classId),
         _smart.getTeacherSubjectDetail(classId),
@@ -128,7 +131,7 @@ class _TeacherSmartProgressPageState extends State<TeacherSmartProgressPage> {
           : _error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)))
               : _classes.isEmpty
-                  ? Center(child: Text(_fr ? 'Aucune classe affectée.' : 'No assigned class.'))
+                  ? Center(child: Text(_fr ? 'Aucune salle compatible avec votre sous-système et votre secteur.' : 'No classroom matches your subsystem and sector.'))
                   : RefreshIndicator(
                       onRefresh: () => _loadClassData(_classId!),
                       child: ListView(
