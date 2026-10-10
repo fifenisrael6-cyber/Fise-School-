@@ -12,6 +12,7 @@ import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
+import 'generated_course_quiz_page.dart';
 
 class _FeedItem {
   final DateTime date;
@@ -179,7 +180,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           final teacherMedia = items
               .where((item) => item.course != null && !_isOfficialCourse(item.course!))
               .toList();
-          final quizzes = items.where((item) => item.assignment != null).toList();
+          final quizzes = items;
 
           return TabBarView(
             children: [
@@ -191,9 +192,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 teacherMedia,
                 _fr ? 'Aucune photo ou vidéo partagée par l’enseignant pour le moment.' : 'No photos or videos shared by the teacher yet.',
               ),
-              _feedList(
+              _quizList(
                 quizzes,
-                _fr ? 'Aucun QCM publié dans cette matière pour le moment.' : 'No quiz has been published for this subject yet.',
+                _fr
+                    ? 'Les QCM sont générés automatiquement à partir des cours publiés. Aucun cours n’est disponible pour cette matière.'
+                    : 'Quizzes are generated automatically from published courses. No course is available for this subject yet.',
               ),
             ],
           );
@@ -238,6 +241,34 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 if (_offlineMode) _offlineBanner(),
                 ...items.map((item) => item.course != null
                     ? _coursePost(item.course!)
+                    : _quizPost(item.assignment!)),
+              ],
+            ),
+    );
+  }
+
+  Widget _quizList(List<_FeedItem> items, String emptyMessage) {
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: items.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(24),
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.22),
+                const Icon(Icons.auto_awesome_rounded, size: 54, color: Color(0xFF166534)),
+                const SizedBox(height: 12),
+                Text(emptyMessage, textAlign: TextAlign.center),
+              ],
+            )
+          : ListView(
+              reverse: true,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
+              children: [
+                if (_offlineMode) _offlineBanner(),
+                ...items.map((item) => item.course != null
+                    ? _courseQuizPost(item.course!)
                     : _quizPost(item.assignment!)),
               ],
             ),
@@ -343,6 +374,24 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               );
             },
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GeneratedCourseQuizPage(
+                    locale: widget.locale,
+                    profile: widget.profile,
+                    course: course,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.auto_awesome_rounded),
+              label: Text(_fr ? 'Générer un QCM automatique' : 'Generate automatic quiz'),
+            ),
+          ),
           if (course.curriculumId != null)
             Align(
               alignment: Alignment.centerLeft,
@@ -361,6 +410,53 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 label: Text(_fr ? 'Voir les leçons' : 'View lessons'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _courseQuizPost(Course course) {
+    return _bubble(
+      date: course.publishedAt ?? DateTime.now(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, size: 18, color: Color(0xFF166534)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _fr ? 'QCM automatique' : 'Automatic quiz',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            course.labelFor(widget.locale.languageCode),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(_fr
+              ? 'Les questions sont préparées à partir du texte du cours et des ressources validées.'
+              : 'Questions are prepared from the course text and approved resources.'),
+          const SizedBox(height: 8),
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GeneratedCourseQuizPage(
+                  locale: widget.locale,
+                  profile: widget.profile,
+                  course: course,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text(_fr ? 'Générer le QCM' : 'Generate quiz'),
+          ),
         ],
       ),
     );
