@@ -257,22 +257,17 @@ class CourseService {
   /// Toutes les salles actives compatibles avec le sous-système et le secteur
   /// du profil enseignant. Le filtrage est aussi appliqué côté base de données.
   Future<List<SchoolClass>> listTeacherCompatibleClasses() async {
-    final result = await _client.rpc('list_compatible_teacher_classes');
-    final ids = (result as List)
-        .map((row) => (row as Map)['id']?.toString())
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    if (ids.isEmpty) return const <SchoolClass>[];
-    final rows = await _client
-        .from('school_classes')
-        .select()
-        .inFilter('id', ids)
-        .eq('is_active', true)
-        .order('display_name');
-    return rows
-        .map((row) => SchoolClass.fromMap(Map<String, dynamic>.from(row)))
+    // Do not fetch the returned IDs through school_classes afterwards:
+    // RLS intentionally hides rooms the teacher has not selected yet, which
+    // reduced a compatible-room list to the one already assigned room.
+    // The security-definer RPC returns only active rooms compatible with the
+    // authenticated teacher's subsystem and sector, including full metadata.
+    final result = await _client.rpc('list_compatible_teacher_class_details');
+    return (result as List)
+        .map((row) => SchoolClass.fromMap(
+              Map<String, dynamic>.from(row as Map),
+            ))
+        .where((schoolClass) => schoolClass.isActive)
         .toList(growable: false);
   }
 
