@@ -11,11 +11,12 @@ class GeneratedCourseQuizService {
 
   final SupabaseClient _client;
 
-  String _cacheKey(String lessonId, String language) =>
-      "fise_generated_quiz_v1:${_client.auth.currentUser?.id ?? 'anonymous'}:$lessonId:$language";
+  String _cacheKey(String courseId, String? lessonId, String language) =>
+      "fise_generated_quiz_v1:${_client.auth.currentUser?.id ?? 'anonymous'}:$courseId:${lessonId ?? 'course'}:$language";
 
   Future<Map<String, dynamic>> generate({
-    required String lessonId,
+    required String courseId,
+    String? lessonId,
     required String language,
   }) async {
     try {
@@ -23,7 +24,8 @@ class GeneratedCourseQuizService {
         'course-quiz',
         body: {
           'action': 'generate',
-          'lesson_id': lessonId,
+          'course_id': courseId,
+          if (lessonId != null) 'lesson_id': lessonId,
           'language': language == 'en' ? 'en' : 'fr',
         },
       );
@@ -33,7 +35,7 @@ class GeneratedCourseQuizService {
       }
       final safeData = Map<String, dynamic>.from(data)..remove('corrections');
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey(lessonId, language), jsonEncode(safeData));
+      await prefs.setString(_cacheKey(courseId, lessonId, language), jsonEncode(safeData));
       return safeData;
     } catch (_) {
       final prefs = await SharedPreferences.getInstance();
