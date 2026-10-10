@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/grade_service.dart';
+import '../../../core/services/pedagogy_service.dart';
 import '../../../models/grades.dart';
 import '../../../models/user_profile.dart';
 
@@ -72,7 +73,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
     try {
       final classes = widget.asAdmin
           ? await _service.listAllClasses()
-          : await _service.listTeacherClasses(widget.profile!.id);
+          : await CourseService().listTeacherCompatibleClasses();
       final periods = await _service.listPeriods();
       if (!mounted) {
         return;
@@ -105,6 +106,9 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
       return;
     }
     try {
+      if (!widget.asAdmin) {
+        await CourseService().authorizeTeacherClasses([id]);
+      }
       final subjects = await _service.listClassSubjects(id);
       if (!mounted) {
         return;
