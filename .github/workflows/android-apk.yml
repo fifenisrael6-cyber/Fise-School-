@@ -4,7 +4,7 @@ name: Build Android apk
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, work/whatsapp-chat-no-build-20261010b]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
