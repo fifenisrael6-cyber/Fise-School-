@@ -17,8 +17,9 @@ class _FeedItem {
   final DateTime date;
   final Course? course;
   final Assignment? assignment;
+  final Map<String, dynamic>? chapterContent;
 
-  const _FeedItem({required this.date, this.course, this.assignment});
+  const _FeedItem({required this.date, this.course, this.assignment, this.chapterContent});
 }
 
 /// Fil d'une matière : cours publiés, documents, photos et QCM de l'enseignant,
@@ -75,6 +76,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       subjectId: widget.subject.id,
     );
 
+    final chapterContent = await _courses.listStudentChapterContent(
+      widget.profile.id,
+      subjectId: widget.subject.id,
+    );
+
     var assignments = const <Assignment>[];
     try {
       assignments = await _assignments.listStudentAssignments(
@@ -91,6 +97,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final items = <_FeedItem>[
       for (final course in courses)
         _FeedItem(date: course.publishedAt ?? DateTime.fromMillisecondsSinceEpoch(0), course: course),
+      for (final content in chapterContent)
+        _FeedItem(
+          date: DateTime.tryParse(content['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+          chapterContent: content,
+        ),
       for (final assignment in assignments)
         _FeedItem(
           date: assignment.publishedAt ?? assignment.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
@@ -174,7 +185,8 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           }
           final items = snapshot.data ?? const <_FeedItem>[];
           final officialCourses = items
-              .where((item) => item.course != null && _isOfficialCourse(item.course!))
+              .where((item) => item.chapterContent != null ||
+                  (item.course != null && _isOfficialCourse(item.course!)))
               .toList();
           final teacherMedia = items
               .where((item) => item.course != null && !_isOfficialCourse(item.course!))
@@ -236,9 +248,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               padding: const EdgeInsets.all(12),
               children: [
                 if (_offlineMode) _offlineBanner(),
-                ...items.map((item) => item.course != null
-                    ? _coursePost(item.course!)
-                    : _quizPost(item.assignment!)),
+                ...items.map((item) => item.chapterContent != null
+                    ? _chapterContentPost(item.chapterContent!)
+                    : item.course != null
+                        ? _coursePost(item.course!)
+                        : _quizPost(item.assignment!)),
               ],
             ),
     );
@@ -296,6 +310,51 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     } catch (_) {
       return _offline.resourcesForCourse(widget.profile.id, courseId);
     }
+  }
+
+  Widget _chapterContentPost(Map<String, dynamic> item) {
+    final code = widget.locale.languageCode;
+    final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
+            item['title_fr'] ?? item['title_en'] ?? '')
+        .toString()
+        .trim();
+    final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
+            item['body_text_fr'] ?? item['body_text_en'] ?? '')
+        .toString()
+        .trim();
+    final chapter = ((code == 'en' ? item['chapter_title_en'] : item['chapter_title_fr']) ??
+            item['chapter_title_fr'] ?? item['chapter_title_en'] ?? '')
+        .toString()
+        .trim();
+
+    return _bubble(
+      date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title.isEmpty ? (_fr ? 'Cours officiel' : 'Official lesson') : title,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          if (chapter.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(chapter, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF166534))),
+          ],
+          if (body.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SelectableText(body),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _coursePost(Course course) {
