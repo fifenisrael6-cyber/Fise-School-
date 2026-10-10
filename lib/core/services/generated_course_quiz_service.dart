@@ -39,7 +39,7 @@ class GeneratedCourseQuizService {
       return safeData;
     } catch (_) {
       final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_cacheKey(lessonId, language));
+      final cached = prefs.getString(_cacheKey(courseId, lessonId, language));
       if (cached != null) {
         try {
           final value = _asMap(jsonDecode(cached));
