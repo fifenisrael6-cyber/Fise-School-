@@ -8,14 +8,14 @@ class GeneratedCourseQuizPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final Course course;
-  final Lesson lesson;
+  final Lesson? lesson;
 
   const GeneratedCourseQuizPage({
     super.key,
     required this.locale,
     required this.profile,
     required this.course,
-    required this.lesson,
+    this.lesson,
   });
 
   @override
@@ -46,7 +46,8 @@ class _GeneratedCourseQuizPageState extends State<GeneratedCourseQuizPage> {
     });
     try {
       final quiz = await _service.generate(
-        lessonId: widget.lesson.id,
+        courseId: widget.course.id,
+        lessonId: widget.lesson?.id,
         language: _en ? 'en' : 'fr',
       );
       if (!mounted) return;
@@ -92,7 +93,9 @@ class _GeneratedCourseQuizPageState extends State<GeneratedCourseQuizPage> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _en ? widget.lesson.titleEn : widget.lesson.titleFr;
+    final title = _en
+        ? (widget.lesson?.titleEn ?? widget.course.titleEn)
+        : (widget.lesson?.titleFr ?? widget.course.titleFr);
     final questions = (_quiz?['questions'] as List? ?? const [])
         .whereType<Map>()
         .map((row) => row.map((key, value) => MapEntry(key.toString(), value)))
