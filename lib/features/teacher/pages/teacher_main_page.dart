@@ -7,6 +7,7 @@ import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_smart_progress_page.dart';
 import 'grades_entry_page.dart';
+import 'teacher_past_papers_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
   final Locale locale;
@@ -38,6 +39,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
       TeacherSmartProgressPage(locale: widget.locale, profile: widget.profile),
+      TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
     ];
 
@@ -66,6 +68,11 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
             icon: const Icon(Icons.insights_outlined),
             selectedIcon: const Icon(Icons.insights),
             label: fr ? 'Progression' : 'Progress',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.history_edu_outlined),
+            selectedIcon: const Icon(Icons.history_edu),
+            label: fr ? 'Annales' : 'Exam papers',
           ),
           NavigationDestination(
             icon: const Icon(Icons.person_outline),
@@ -117,6 +124,23 @@ class _TeacherHome extends StatelessWidget {
             style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 16),
+          _TeacherAction(
+            icon: Icons.quiz_outlined,
+            title: 'QCM',
+            subtitle: fr
+                ? 'Les QCM sont générés automatiquement à partir des cours publiés. Vous n’avez pas à les créer manuellement.'
+                : 'Quizzes are generated automatically from published courses. You do not need to create them manually.',
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('QCM'),
+                content: Text(fr
+                    ? 'Les élèves génèrent leurs QCM depuis les cours accessibles dans leur classe. Publiez vos cours et ressources dans l’onglet Cours.'
+                    : 'Students generate quizzes from courses available to their classroom. Publish your lessons and resources in the Courses tab.'),
+                actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(fr ? 'Compris' : 'Got it'))],
+              ),
+            ),
+          ),
           _TeacherAction(
             icon: Icons.grading_rounded,
             title: fr ? 'Notes' : 'Marks',
