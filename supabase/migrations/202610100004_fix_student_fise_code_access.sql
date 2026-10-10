@@ -158,4 +158,71 @@ $$;
 revoke all on function public.join_message_group(text) from public, anon;
 grant execute on function public.join_message_group(text) to authenticated;
 
+-- Use the same FISE- normalization for private-message access.
+-- The stored database value is the suffix, while the app sends FISE-SUFFIX.
+create or replace function public.unlock_teacher_private_messages(p_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_student uuid := (select auth.uid());
+  v_code text := regexp_replace(upper(trim(coalesce(p_code, ''))), '^FISE-', '');
+  v_teacher uuid;
+  v_class uuid;
+  v_code_id text;
+begin
+  if v_student is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if not exists (
+    select 1 from public.profiles
+    where id = v_student and role = 'student'
+  ) then
+    raise exception 'Only students can unlock a teacher';
+  end if;
+
+  if length(v_code) < 3 or v_code ~ '\\s' or v_code !~ '^[A-Z0-9-]+
+ then
+    return false;
+  end if;
+
+  select t.id, t.teacher_id, t.class_id::uuid
+    into v_code_id, v_teacher, v_class
+  from public.teacher_access_codes t
+  join public.school_classes c on c.id = t.class_id
+  where regexp_replace(upper(trim(t.code)), '^FISE-', '') = v_code
+    and t.is_active = true
+    and c.is_active = true
+  order by t.created_at desc
+  limit 1;
+
+  if v_code_id is null or v_teacher is null or v_class is null then
+    return false;
+  end if;
+
+  if not exists (
+    select 1 from public.class_students cs
+    where cs.student_id = v_student
+      and cs.class_id = v_class
+      and cs.is_active = true
+  ) then
+    return false;
+  end if;
+
+  insert into public.teacher_access_memberships
+    (student_id, teacher_id, class_id, access_code_id)
+  values (v_student, v_teacher, v_class, v_code_id)
+  on conflict (student_id, teacher_id, class_id)
+  do update set access_code_id = excluded.access_code_id;
+
+  return true;
+end;
+$;
+
+revoke all on function public.unlock_teacher_private_messages(text) from public, anon;
+grant execute on function public.unlock_teacher_private_messages(text) to authenticated;
+
 notify pgrst, 'reload schema';
