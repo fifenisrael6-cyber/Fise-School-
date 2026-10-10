@@ -184,9 +184,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: _offlineMode
-                        ? null
-                        : () => Navigator.of(context).push(
+                    onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => GeneratedCourseQuizPage(
                                   locale: widget.locale,
