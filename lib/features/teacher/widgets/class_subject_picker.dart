@@ -45,7 +45,9 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   }
 
   Future<void> _loadFollowedClasses() async {
-    _classesFuture = _service.listTeacherSelectedClasses().then((list) {
+    _classesFuture = (widget.includeCompatibleClasses
+        ? _service.listTeacherCompatibleClasses()
+        : _service.listTeacherSelectedClasses()).then((list) {
       _allClasses = list;
       return list;
     });
