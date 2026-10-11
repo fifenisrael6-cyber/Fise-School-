@@ -19,28 +19,6 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Ensure Android library plugins use the same Android SDK as the app.
-subprojects {
-    plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.gradle.LibraryExtension> {
-            compileSdk = 36
-        }
-    }
-
-    // Fallback for printing: add Android API classes if AGP omits android.jar
-    // from this plugin's Java compiler classpath.
-    if (name == "printing") {
-        tasks.withType<JavaCompile>().configureEach {
-            val sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
-            if (sdkRoot != null) {
-                val androidJar = file("$sdkRoot/platforms/android-36/android.jar")
-                if (androidJar.exists()) {
-                    classpath = files(classpath, androidJar)
-                }
-            }
-        }
-    }
-}
 
 // The Android library plugin (notably receive_sharing_intent) configures its
 // Java compile tasks to target 11 while Kotlin targets 17. Apply this after all
@@ -52,6 +30,18 @@ gradle.projectsEvaluated {
         configuredProject.tasks.withType<JavaCompile>().configureEach {
             sourceCompatibility = JavaVersion.VERSION_17.toString()
             targetCompatibility = JavaVersion.VERSION_17.toString()
+
+            // The printing plugin's Java task currently lacks Android framework
+            // classes. Add the installed API jar after plugin task configuration.
+            if (configuredProject.name == "printing") {
+                val sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+                if (sdkRoot != null) {
+                    val androidJar = configuredProject.file("$sdkRoot/platforms/android-36/android.jar")
+                    if (androidJar.exists()) {
+                        classpath = files(classpath, androidJar)
+                    }
+                }
+            }
         }
     }
 }
