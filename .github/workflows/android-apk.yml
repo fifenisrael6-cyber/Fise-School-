@@ -2,6 +2,7 @@
 # Triggered again after pinning receive_sharing_intent to 1.8.1.
 # Trigger Android build for the latest Fise School changes.
 # Retry requested by the project owner.
+# Rebuild after pinning Android Gradle Plugin 8.13.2 and Gradle 8.13 compatibility.
 name: Build Android apk
 
 on:
