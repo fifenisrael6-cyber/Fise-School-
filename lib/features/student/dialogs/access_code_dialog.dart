@@ -54,14 +54,9 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     });
 
     try {
-      final classId = widget.classId;
-      if (classId == null || classId.trim().isEmpty) {
-        throw StateError('Student classroom is not configured.');
-      }
-      final valid = await _service.validateAccessCode(code, classId);
-      if (!valid) {
-        throw StateError('Invalid or unauthorized access code.');
-      }
+      // Le code détermine la salle. L'élève n'a donc pas besoin d'avoir
+      // déjà une salle dans son profil pour utiliser ce code.
+      await _service.joinAccessCode(code);
 
       if (!mounted) return;
 
@@ -78,10 +73,11 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          final message = e.toString().toLowerCase();
-          _error = message.contains('invalid') || message.contains('inactive')
-              ? (_isFrench ? 'Code invalide ou non autorisé pour ta salle.' : 'Invalid or unauthorized code for your classroom.')
-              : (_isFrench ? 'Impossible d\'accéder à la messagerie.' : 'Unable to access messaging.');
+          final raw = e.toString().replaceFirst('Bad state: ', '').replaceFirst('StateError: ', '');
+          final knownFrench = raw.startsWith('Ce code') || raw.startsWith('Ton compte') || raw.startsWith('La salle') || raw.startsWith('Seul') || raw.startsWith('Ta session') || raw.startsWith('Impossible');
+          _error = _isFrench && knownFrench
+              ? raw
+              : (_isFrench ? 'Impossible de valider le code. Vérifie-le puis réessaie.' : 'Unable to validate the code. Check it and try again.');
         });
       }
     } finally {
