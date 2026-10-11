@@ -164,7 +164,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
         ],
         withData: true,
       );
@@ -194,12 +194,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video') {
+      if (type != 'image' && type != 'video' && type != 'pdf') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos et les vidéos sont autorisées pour les enseignants.'
-                : 'Teachers can only upload photos and videos.')),
+                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
+                : 'Teachers can upload photos, videos and PDFs.')),
           );
         }
         return;
@@ -218,9 +218,13 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         position: position,
       );
 
-      if (type == 'image') {
+      if (type == 'image' || type == 'pdf') {
         try {
-          await _smart.reindexResource(resource.id);
+          if (type == 'pdf') {
+            await _smart.reindexPdf(resource.id);
+          } else {
+            await _smart.reindexResource(resource.id);
+          }
         } catch (indexError) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -311,6 +315,50 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
 
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _editResourceTitle(CourseResource resource) async {
+    final controller = TextEditingController(text: _resourceTitle(resource));
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Modifier le titre' : 'Edit title'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            labelText: _isFrench ? 'Titre du fichier' : 'File title',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: Text(_isFrench ? 'Enregistrer' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || title.trim().isEmpty || title.trim() == _resourceTitle(resource)) {
+      return;
+    }
+    try {
+      await _service.updateResourceTitle(resourceId: resource.id, title: title);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench ? 'Titre modifié.' : 'Title updated.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
     }
   }
 
@@ -577,6 +625,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     isFrench: _isFrench,
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
+                    onEdit: () => _editResourceTitle(resource),
                     onDelete: () => _deleteResource(resource),
                   );
                 },
@@ -664,6 +713,7 @@ class _ResourceCard extends StatelessWidget {
   final bool isFrench;
   final VoidCallback onOpen;
   final VoidCallback onDetails;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ResourceCard({
@@ -674,6 +724,7 @@ class _ResourceCard extends StatelessWidget {
     required this.isFrench,
     required this.onOpen,
     required this.onDetails,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -747,6 +798,10 @@ class _ResourceCard extends StatelessWidget {
                       onDetails();
                       break;
 
+                    case 'edit':
+                      onEdit();
+                      break;
+
                     case 'delete':
                       onDelete();
                       break;
@@ -770,6 +825,16 @@ class _ResourceCard extends StatelessWidget {
                         const Icon(Icons.info_outline_rounded),
                         const SizedBox(width: 10),
                         Text(isFrench ? 'Détails' : 'Details'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit_outlined),
+                        const SizedBox(width: 10),
+                        Text(isFrench ? 'Modifier le titre' : 'Edit title'),
                       ],
                     ),
                   ),
@@ -876,8 +941,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               isFrench
-                  ? 'Ajoutez une photo ou une vidéo.'
-                  : 'Add a photo or video.',
+                  ? 'Ajoutez une photo, une vidéo ou un PDF.'
+                  : 'Add a photo, video or PDF.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.black54),
             ),
