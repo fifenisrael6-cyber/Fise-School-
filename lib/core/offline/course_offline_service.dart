@@ -157,10 +157,13 @@ class CourseOfflineService {
     final resources = await _resources.listForCourse(course.id);
     final lessons = await LessonService().listCourseLessons(course.id);
     await OfflineRepository().saveLessons(lessons);
-    // Cache the published QCM/devoirs attached to this course so the existing
-    // offline repository can answer them without a network connection.
+    // Cache both directly linked QCMs and older QCMs associated with this
+    // course's subject. The course page filters the cached results by class
+    // and course, so unrelated assignments are never displayed there.
     try {
-      await AssignmentService().listStudentAssignments(studentId: userId, courseId: course.id);
+      final assignments = AssignmentService();
+      await assignments.listStudentAssignments(studentId: userId, courseId: course.id);
+      await assignments.listStudentAssignments(studentId: userId, subjectId: course.subjectId);
     } catch (_) {
       // Resource downloads and course caching must continue even if one QCM fails.
     }
