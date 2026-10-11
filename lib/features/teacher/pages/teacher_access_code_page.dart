@@ -22,11 +22,12 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   final TextEditingController _codeController = TextEditingController();
   List<TeacherAccessCode> _codes = [];
   bool _loading = true;
+  bool _saving = false;
   String? _error;
-  TeacherAccessCode? _selectedCode;
   bool _isEditing = false;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
+
   @override
   void initState() {
     super.initState();
@@ -40,86 +41,62 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   }
 
   Future<void> _loadCodes() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final codes = await _service.getTeacherAccessCodes(widget.profile.id);
-      if (mounted) {
-        setState(() {
-          _codes = codes;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = _isFrench
-              ? 'Erreur lors du chargement des codes.'
-              : 'Error loading codes.';
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _codes = codes;
+        _loading = false;
+        // If no code exists, show the manual creation form immediately.
+        _isEditing = codes.isEmpty;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = _isFrench
+            ? 'Impossible de charger le code. Vérifiez votre connexion.'
+            : 'Unable to load the code. Check your connection.';
+        _loading = false;
+      });
     }
   }
 
-  Future<void> _updateCode() async {
-    if (_selectedCode == null || _codeController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isFrench ? 'Veuillez entrer un code.' : 'Please enter a code.',
-          ),
-        ),
-      );
+  Future<void> _saveCode() async {
+    final value = _codeController.text.trim();
+    if (value.isEmpty) {
+      _showMessage(_isFrench
+          ? 'Choisissez votre propre code avant d’enregistrer.'
+          : 'Enter the code you want to use.');
       return;
     }
 
+    setState(() => _saving = true);
     try {
-      await _service.updateAccessCode(
-        _selectedCode!.id,
-        _codeController.text.trim(),
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFrench ? 'Code mis à jour.' : 'Code updated.',
-            ),
-          ),
-        );
-        _codeController.clear();
-        setState(() => _isEditing = false);
-        _loadCodes();
-      }
+      final sharedCode = await _service.setMySharedCode(value);
+      if (!mounted) return;
+      _codeController.clear();
+      _showMessage(_isFrench
+          ? 'Votre code unique $sharedCode est enregistré pour la messagerie, les groupes et les paiements.'
+          : 'Your shared code $sharedCode is saved for private messages, groups, and payments.');
+      await _loadCodes();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFrench
-                  ? 'Erreur: ${e.toString()}'
-                  : 'Error: ${e.toString()}',
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Bad state: ', '');
+      _showMessage(message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _copyToClipboard(String code) {
+  void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isFrench
-              ? 'Code copié: $code'
-              : 'Code copied: $code',
-        ),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -128,7 +105,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isFrench ? 'Code d\'accès unique' : 'Access code',
+          _isFrench ? 'Mon code unique' : 'My shared code',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         backgroundColor: const Color(0xFF166534),
@@ -137,9 +114,10 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Text(_error!),
-                )
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_error!, textAlign: TextAlign.center),
+                ))
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -156,145 +134,119 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                           children: [
                             Text(
                               _isFrench
-                                  ? 'Votre code d\'accès unique'
-                                  : 'Your unique access code',
+                                  ? 'Un seul code pour les trois services'
+                                  : 'One code for all three services',
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                fontSize: 17,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            if (_codes.isNotEmpty)
-                              ..._codes.map((code) => _buildCodeCard(code))
+                            const SizedBox(height: 8),
+                            Text(_isFrench
+                                ? 'Créez vous-même votre code. Le même code sert à la messagerie privée, aux groupes et aux paiements. Le système ne génère pas de code à votre place.'
+                                : 'Choose your own code. The same code is used for private messages, groups, and payments. The system will not generate one for you.'),
+                            const SizedBox(height: 16),
+                            if (_codes.isEmpty)
+                              Text(_isFrench
+                                  ? 'Vous n’avez pas encore de code.'
+                                  : 'You have not created a code yet.')
                             else
-                              Text(
-                                _isFrench
-                                    ? 'Aucun code d\'accès créé.'
-                                    : 'No access code created yet.',
-                              ),
+                              ..._codes.map((code) => Card(
+                                    child: ListTile(
+                                      leading: const CircleAvatar(
+                                        backgroundColor: Color(0xFF166534),
+                                        child: Icon(Icons.vpn_key_rounded,
+                                            color: Colors.white),
+                                      ),
+                                      title: SelectableText(
+                                        code.displayCode,
+                                        style: const TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                        ),
+                                      ),
+                                      subtitle: Text(_isFrench
+                                          ? 'Code commun : messagerie, groupes et paiement'
+                                          : 'Shared code: messaging, groups, and payments'),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.copy_rounded),
+                                        tooltip: _isFrench ? 'Copier' : 'Copy',
+                                        onPressed: () => _showMessage(
+                                          _isFrench
+                                              ? 'Code à copier : ${code.displayCode}'
+                                              : 'Code to copy: ${code.displayCode}',
+                                        ),
+                                      ),
+                                    ),
+                                  )),
                           ],
                         ),
                       ),
                       const SizedBox(height: 20),
-                      if (_isEditing) ...
-                        _buildEditForm()
-                      else
-                        Center(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() => _isEditing = true);
-                              _codeController.clear();
-                              _selectedCode = _codes.isNotEmpty ? _codes.first : null;
-                            },
-                            icon: const Icon(Icons.edit_rounded),
-                            label: Text(
-                              _isFrench ? 'Modifier le code' : 'Edit code',
+                      if (_isEditing)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  _codes.isEmpty
+                                      ? (_isFrench ? 'Créer mon code' : 'Create my code')
+                                      : (_isFrench ? 'Modifier mon code' : 'Change my code'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _codeController,
+                                  textCapitalization: TextCapitalization.characters,
+                                  autocorrect: false,
+                                  decoration: InputDecoration(
+                                    labelText: _isFrench ? 'Code choisi par vous' : 'Your chosen code',
+                                    hintText: 'EXEMPLE123',
+                                    prefixText: 'FISE-',
+                                    helperText: _isFrench
+                                        ? '3 à 40 caractères : lettres, chiffres, - ou _.'
+                                        : '3–40 characters: letters, numbers, - or _.',
+                                    border: const OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                FilledButton(
+                                  onPressed: _saving ? null : _saveCode,
+                                  child: _saving
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : Text(_isFrench ? 'Enregistrer le même code partout' : 'Save the shared code'),
+                                ),
+                                if (_codes.isNotEmpty)
+                                  TextButton(
+                                    onPressed: () => setState(() => _isEditing = false),
+                                    child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+                                  ),
+                              ],
                             ),
                           ),
+                        )
+                      else
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            _codeController.clear();
+                            setState(() => _isEditing = true);
+                          },
+                          icon: const Icon(Icons.edit_rounded),
+                          label: Text(_isFrench ? 'Choisir un autre code' : 'Choose another code'),
                         ),
-                      const SizedBox(height: 16),
-                      Center(
-                        child: Text(
-                          _isFrench
-                              ? 'Les élèves doivent saisir ce code pour pouvoir vous contacter en messagerie privée.'
-                              : 'Students must enter this code to message you privately.',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
                     ],
                   ),
                 ),
     );
-  }
-
-  Widget _buildCodeCard(TeacherAccessCode code) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFF166534),
-          child: const Icon(
-            Icons.vpn_key_rounded,
-            color: Colors.white,
-          ),
-        ),
-        title: Text(
-          code.displayCode,
-          style: const TextStyle(
-            fontFamily: 'monospace',
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-        subtitle: Text(
-          _isFrench
-              ? 'Créé le ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}'
-              : 'Created ${code.createdAt.day}/${code.createdAt.month}/${code.createdAt.year}',
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.copy_rounded),
-          onPressed: () => _copyToClipboard(code.displayCode),
-          tooltip: _isFrench ? 'Copier' : 'Copy',
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildEditForm() {
-    return [
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _isFrench ? 'Modifier le code' : 'Edit code',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _codeController,
-                decoration: InputDecoration(
-                  labelText: _isFrench ? 'Nouveau code' : 'New code',
-                  hintText: _isFrench
-                      ? 'Ex: fise123ABC'
-                      : 'Ex: fise123ABC',
-                  prefixText: 'fise',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _isEditing = false);
-                      _codeController.clear();
-                    },
-                    child: Text(_isFrench ? 'Annuler' : 'Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: _updateCode,
-                    child: Text(_isFrench ? 'Enregistrer' : 'Save'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    ];
   }
 }
