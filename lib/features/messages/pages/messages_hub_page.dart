@@ -15,8 +15,9 @@ import 'private_messages_page.dart';
 class MessagesHubPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
-  const MessagesHubPage({super.key, required this.locale, required this.profile});
+  const MessagesHubPage({super.key, required this.locale, required this.profile, this.initialSharedAttachments = const []});
 
   @override
   State<MessagesHubPage> createState() => _MessagesHubPageState();
@@ -64,6 +65,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           locale: widget.locale,
           profile: widget.profile,
           group: group,
+          initialAttachment: widget.initialSharedAttachments.isEmpty ? null : widget.initialSharedAttachments.first,
         ),
       ),
     );
@@ -372,6 +374,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                       builder: (_) => PrivateMessagesPage(
                         locale: widget.locale,
                         profile: widget.profile,
+                        initialAttachment: widget.initialSharedAttachments.isEmpty ? null : widget.initialSharedAttachments.first,
                       ),
                     ),
                   ),
