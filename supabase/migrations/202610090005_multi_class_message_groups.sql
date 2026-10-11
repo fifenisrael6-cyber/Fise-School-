@@ -80,7 +80,7 @@ begin
 
   return v_id;
 end;
-$;
+$$;
 
 -- Existing invite codes remain useful, but cannot bypass classroom targeting
 -- when a group has one or more classroom targets.
@@ -89,7 +89,7 @@ returns uuid
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_group public.message_groups%rowtype;
   v_role text;
@@ -126,7 +126,7 @@ begin
 
   return v_group.id;
 end;
-$;
+$$;
 
 revoke all on function public.create_message_group(text, uuid[]) from public, anon;
 grant execute on function public.create_message_group(text, uuid[]) to authenticated;
