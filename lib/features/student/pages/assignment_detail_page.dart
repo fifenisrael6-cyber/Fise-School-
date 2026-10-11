@@ -613,62 +613,42 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   Widget _buildAnswerWidget(AssignmentQuestion question) {
     final enabled = _isDraftSubmission && !_isClosed;
 
-    if (question.isQcm) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: question.options.map((option) {
-            return RadioListTile<String>(
-              value: option,
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(option, style: const TextStyle(height: 1.35)),
-            );
-          }).toList(),
-        ),
-      );
-    }
-
-    if (question.isTrueFalse) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: [
-            RadioListTile<String>(
-              value: 'true',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'True' : 'Vrai'),
+    if (question.isQcm || question.isTrueFalse) {
+      final options = question.isQcm
+          ? question.options
+          : <String>[_isEnglish ? 'True' : 'Vrai', _isEnglish ? 'False' : 'Faux'];
+      final selected = _selectedAnswers[question.id];
+      final hasCorrection = (question.correctAnswer ?? '').trim().isNotEmpty;
+      return Column(
+        children: [
+          RadioGroup<String>(
+            groupValue: selected,
+            onChanged: (value) {
+              if (!enabled || value == null) return;
+              setState(() => _selectedAnswers[question.id] = value);
+            },
+            child: Column(
+              children: options.map((option) {
+                final isCorrect = hasCorrection && _isCorrectAnswer(question, option);
+                final isSelected = selected != null && _normalizeAnswer(selected) == _normalizeAnswer(option);
+                final isWrongSelected = isSelected && hasCorrection && !isCorrect;
+                return RadioListTile<String>(
+                  value: option,
+                  enabled: enabled,
+                  activeColor: const Color(0xFF166534),
+                  contentPadding: EdgeInsets.zero,
+                  tileColor: isCorrect ? const Color(0xFFE8F5E9) : (isWrongSelected ? const Color(0xFFFFEBEE) : null),
+                  title: Text(option, style: const TextStyle(height: 1.35)),
+                  secondary: isCorrect
+                      ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                      : (isWrongSelected ? const Icon(Icons.cancel, color: Color(0xFFC62828)) : null),
+                );
+              }).toList(),
             ),
-            RadioListTile<String>(
-              value: 'false',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'False' : 'Faux'),
-            ),
-          ],
-        ),
+          ),
+          if (selected != null && hasCorrection)
+            _buildImmediateFeedback(_isCorrectAnswer(question, selected)),
+        ],
       );
     }
 
@@ -700,6 +680,45 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           borderSide: const BorderSide(color: Color(0xFF166534)),
         ),
       ),
+    );
+  }
+
+  String _normalizeAnswer(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\\s+'), ' ');
+
+  bool _isCorrectAnswer(AssignmentQuestion question, String answer) {
+    final correct = question.correctAnswer?.trim();
+    if (correct == null || correct.isEmpty) return false;
+    final a = _normalizeAnswer(answer);
+    final c = _normalizeAnswer(correct);
+    if (a == c) return true;
+    if (question.isTrueFalse) {
+      const truthy = ['true', 'vrai', '1', 'yes', 'oui'];
+      return truthy.contains(a) == truthy.contains(c);
+    }
+    return false;
+  }
+
+  Widget _buildImmediateFeedback(bool correct) {
+    final color = correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: correct ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Icon(correct ? Icons.check_circle : Icons.cancel, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(
+          correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect. The correct answer is marked in green.' : 'Mauvaise réponse. La bonne réponse est indiquée en vert.'),
+          style: TextStyle(color: color, fontWeight: FontWeight.w700),
+        )),
+      ]),
     );
   }
 
