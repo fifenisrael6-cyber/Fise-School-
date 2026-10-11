@@ -825,6 +825,20 @@ class ResourceService {
     }
   }
 
+  Future<void> updateResourceTitle({
+    required String resourceId,
+    required String title,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) {
+      throw ArgumentError('Le titre ne peut pas être vide.');
+    }
+    await _client
+        .from('course_resources')
+        .update({'title_fr': cleanTitle, 'title_en': cleanTitle})
+        .eq('id', resourceId);
+  }
+
   Future<void> deleteResource(CourseResource resource) async {
     try {
       await _client.storage.from(bucket).remove([resource.storagePath]);
