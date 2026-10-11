@@ -229,7 +229,7 @@ class CourseService {
           .from('chapter_content_items')
           .select('id, chapter_id, content_type, title_fr, title_en, body_text_fr, body_text_en, position, created_at')
           .inFilter('chapter_id', chapterById.keys.toList(growable: false))
-          .eq('content_type', 'course')
+          .inFilter('content_type', ['course', 'lesson', 'text'])
           .eq('is_published', true)
           .order('position');
       return itemRows.map((raw) {
