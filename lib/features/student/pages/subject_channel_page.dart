@@ -84,10 +84,19 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
     var assignments = const <Assignment>[];
     try {
-      assignments = await _assignments.listStudentAssignments(
+      // Some teacher-created QCMs are linked to a course but have no
+      // subject_id of their own. Fetch only assignments visible to this
+      // student (RLS still applies), then include those linked to one of the
+      // published courses already loaded for this subject.
+      final visibleAssignments = await _assignments.listStudentAssignments(
         studentId: widget.profile.id,
-        subjectId: widget.subject.id,
       );
+      final subjectCourseIds = courses.map((course) => course.id).toSet();
+      assignments = visibleAssignments.where((assignment) {
+        return assignment.subjectId == widget.subject.id ||
+            (assignment.courseId != null &&
+                subjectCourseIds.contains(assignment.courseId));
+      }).toList(growable: false);
     } catch (_) {
       assignments = const <Assignment>[];
     }
