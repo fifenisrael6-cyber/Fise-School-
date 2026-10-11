@@ -130,8 +130,20 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         setState(() => _contactsFuture = _service.listContacts());
         _showMessage(_isFrench ? 'Enseignant autorisé. Vous pouvez maintenant ouvrir la conversation.' : 'Teacher unlocked. You can now open the conversation.');
       }
-    } catch (error) {
-      if (mounted) _showMessage('${_isFrench ? 'Impossible de valider le code' : 'Could not validate code'}: $error');
+    } on PostgrestException catch (error) {
+      if (mounted) {
+        final raw = error.message.toLowerCase();
+        final message = raw.contains('invalid') || raw.contains('inactive')
+            ? (_isFrench ? 'Ce code est invalide ou n’est plus actif.' : 'This code is invalid or no longer active.')
+            : raw.contains('already assigned') || raw.contains('another classroom')
+                ? (_isFrench ? 'Ton compte est déjà rattaché à une autre salle. Contacte ton établissement.' : 'Your account is already assigned to another classroom. Contact your school.')
+                : raw.contains('classroom') || raw.contains('salle')
+                    ? (_isFrench ? 'La salle associée à ce code n’est pas disponible.' : 'The classroom associated with this code is unavailable.')
+                    : (_isFrench ? 'Impossible de valider le code. Vérifie ta connexion puis réessaie.' : 'Unable to validate the code. Check your connection and try again.');
+        _showMessage(message);
+      }
+    } catch (_) {
+      if (mounted) _showMessage(_isFrench ? 'Impossible de valider le code. Réessaie plus tard.' : 'Unable to validate the code. Try again later.');
     }
   }
 
