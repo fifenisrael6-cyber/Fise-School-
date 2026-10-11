@@ -398,23 +398,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                               label: Text(_fr ? 'Copier' : 'Copy'),
                             ),
                             const SizedBox(width: 8),
-                            TextButton.icon(
-                              onPressed: () async {
-                                try {
-                                  final code = await _service.regenerateCode(widget.group.id);
-                                  setSheetState(() => _inviteCode = code);
-                                  if (mounted) {
-                                    setState(() {});
-                                  }
-                                } catch (error) {
-                                  if (mounted) {
-                                    _snack('$error');
-                                  }
-                                }
-                              },
-                              icon: const Icon(Icons.refresh_rounded, size: 18),
-                              label: Text(_fr ? 'Nouveau code' : 'New code'),
-                            ),
+
                           ],
                         ),
                       ],
@@ -574,6 +558,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       minLines: 2,
                        maxLines: 8,
                       textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: _attachment != null
                             ? (_viewOnce
@@ -786,14 +771,36 @@ class _GroupRemoteAudioMessage extends StatefulWidget {
 class _GroupRemoteAudioMessageState extends State<_GroupRemoteAudioMessage> {
   final AudioPlayer _player = AudioPlayer();
   StreamSubscription<void>? _completed;
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
   bool _playing = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _completed = _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playing = false);
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _position = _duration;
+        });
+      }
     });
+    _durationSubscription = _player.onDurationChanged.listen((value) {
+      if (mounted) setState(() => _duration = value);
+    });
+    _positionSubscription = _player.onPositionChanged.listen((value) {
+      if (mounted) setState(() => _position = value);
+    });
+  }
+
+  String _formatDuration(Duration value) {
+    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = value.inHours;
+    return hours > 0 ? '${hours.toString().padLeft(2, '0')}:$minutes:$seconds' : '$minutes:$seconds';
   }
 
   Future<void> _toggle() async {
@@ -801,6 +808,10 @@ class _GroupRemoteAudioMessageState extends State<_GroupRemoteAudioMessage> {
       await _player.pause();
       if (mounted) setState(() => _playing = false);
       return;
+    }
+    if (_position >= _duration && _duration > Duration.zero) {
+      await _player.seek(Duration.zero);
+      if (mounted) setState(() => _position = Duration.zero);
     }
     if (mounted) setState(() => _playing = true);
     try {
@@ -818,23 +829,50 @@ class _GroupRemoteAudioMessageState extends State<_GroupRemoteAudioMessage> {
   @override
   void dispose() {
     unawaited(_completed?.cancel());
+    unawaited(_durationSubscription?.cancel());
+    unawaited(_positionSubscription?.cancel());
     unawaited(_player.dispose());
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      IconButton(
-        onPressed: _toggle,
-        icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+  Widget build(BuildContext context) {
+    final total = _duration.inMilliseconds;
+    final current = _position.inMilliseconds.clamp(0, total > 0 ? total : 1);
+    return SizedBox(
+      width: 230,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: _toggle,
+            icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(widget.isFrench ? 'Message vocal' : 'Voice message',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: total > 0 ? current / total : 0,
+                  minHeight: 3,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${_formatDuration(_position)} / ${_duration == Duration.zero ? '--:--' : _formatDuration(_duration)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      Text(widget.isFrench ? 'Message vocal' : 'Voice message'),
-    ],
-  );
+    );
+  }
 }
-
 class _GroupAttachmentViewer extends StatefulWidget {
   final String url;
   final String name;

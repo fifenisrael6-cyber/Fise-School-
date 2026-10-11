@@ -498,9 +498,12 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                     },
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Row(
+          SafeArea(
+            top: false,
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton(
@@ -564,10 +567,11 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                               ? 'Écrire un message...'
                               : 'Write a message...'),
                       border: const OutlineInputBorder(),
+                      isDense: true,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 IconButton.filled(
                   tooltip: _isFrench ? 'Envoyer' : 'Send',
                   onPressed: _sending ? null : _send,
@@ -579,7 +583,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                         )
                       : const Icon(Icons.send_rounded),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -948,14 +953,36 @@ class _RemoteAudioMessage extends StatefulWidget {
 class _RemoteAudioMessageState extends State<_RemoteAudioMessage> {
   final AudioPlayer _player = AudioPlayer();
   StreamSubscription<void>? _completed;
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
   bool _playing = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _completed = _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _playing = false);
+      if (mounted) {
+        setState(() {
+          _playing = false;
+          _position = _duration;
+        });
+      }
     });
+    _durationSubscription = _player.onDurationChanged.listen((value) {
+      if (mounted) setState(() => _duration = value);
+    });
+    _positionSubscription = _player.onPositionChanged.listen((value) {
+      if (mounted) setState(() => _position = value);
+    });
+  }
+
+  String _formatDuration(Duration value) {
+    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = value.inHours;
+    return hours > 0 ? '${hours.toString().padLeft(2, '0')}:$minutes:$seconds' : '$minutes:$seconds';
   }
 
   Future<void> _toggle() async {
@@ -963,6 +990,10 @@ class _RemoteAudioMessageState extends State<_RemoteAudioMessage> {
       await _player.pause();
       if (mounted) setState(() => _playing = false);
       return;
+    }
+    if (_position >= _duration && _duration > Duration.zero) {
+      await _player.seek(Duration.zero);
+      if (mounted) setState(() => _position = Duration.zero);
     }
     if (mounted) setState(() => _playing = true);
     try {
@@ -980,21 +1011,47 @@ class _RemoteAudioMessageState extends State<_RemoteAudioMessage> {
   @override
   void dispose() {
     unawaited(_completed?.cancel());
+    unawaited(_durationSubscription?.cancel());
+    unawaited(_positionSubscription?.cancel());
     unawaited(_player.dispose());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: _toggle,
-          icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
-        ),
-        Text(widget.isFrench ? 'Message vocal' : 'Voice message'),
-      ],
+    final total = _duration.inMilliseconds;
+    final current = _position.inMilliseconds.clamp(0, total > 0 ? total : 1);
+    return SizedBox(
+      width: 230,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: _toggle,
+            icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(widget.isFrench ? 'Message vocal' : 'Voice message',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: total > 0 ? current / total : 0,
+                  minHeight: 3,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${_formatDuration(_position)} / ${_duration == Duration.zero ? '--:--' : _formatDuration(_duration)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
