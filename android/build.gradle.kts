@@ -19,6 +19,15 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Ensure Android library plugins use the same Android SDK as the app.
+subprojects {
+    plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.gradle.LibraryExtension> {
+            compileSdk = 36
+        }
+    }
+}
+
 // The Android library plugin (notably receive_sharing_intent) configures its
 // Java compile tasks to target 11 while Kotlin targets 17. Apply this after all
 // project build scripts have configured their variants so the Java target is
