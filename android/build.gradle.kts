@@ -26,6 +26,20 @@ subprojects {
             compileSdk = 36
         }
     }
+
+    // Fallback for printing: add Android API classes if AGP omits android.jar
+    // from this plugin's Java compiler classpath.
+    if (name == "printing") {
+        tasks.withType<JavaCompile>().configureEach {
+            val sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+            if (sdkRoot != null) {
+                val androidJar = file("$sdkRoot/platforms/android-36/android.jar")
+                if (androidJar.exists()) {
+                    classpath = files(classpath, androidJar)
+                }
+            }
+        }
+    }
 }
 
 // The Android library plugin (notably receive_sharing_intent) configures its
