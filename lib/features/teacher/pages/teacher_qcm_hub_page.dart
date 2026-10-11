@@ -12,11 +12,13 @@ import 'teacher_qcm_edit_page.dart';
 class TeacherQcmHubPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final bool embedded;
 
   const TeacherQcmHubPage({
     super.key,
     required this.locale,
     required this.profile,
+    this.embedded = false,
   });
 
   @override
@@ -243,30 +245,40 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
+    final tabs = TabBar(
+      controller: _tabController,
+      tabs: [
+        Tab(
+          icon: const Icon(Icons.add_task_rounded),
+          text: _fr ? 'Créer / envoyer' : 'Create / send',
+        ),
+        Tab(
+          icon: const Icon(Icons.assignment_rounded),
+          text: _fr ? 'Mes QCM' : 'My quizzes',
+        ),
+      ],
+    );
+    final tabView = TabBarView(
+      controller: _tabController,
+      children: [
+        _buildCreateTab(),
+        _buildAssignmentsTab(),
+      ],
+    );
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Material(color: Theme.of(context).colorScheme.surface, child: tabs),
+          Expanded(child: tabView),
+        ],
+      );
+    }
     return Scaffold(
-        appBar: AppBar(
-          title: Text(_fr ? 'Espace QCM' : 'Quiz workspace'),
-          bottom: TabBar(
-            controller: _tabController,
-            tabs: [
-              Tab(
-                icon: const Icon(Icons.add_task_rounded),
-                text: _fr ? 'Créer / envoyer' : 'Create / send',
-              ),
-              Tab(
-                icon: const Icon(Icons.assignment_rounded),
-                text: _fr ? 'Mes QCM' : 'My quizzes',
-              ),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildCreateTab(),
-            _buildAssignmentsTab(),
-          ],
-        ),
+      appBar: AppBar(
+        title: Text(_fr ? 'Espace QCM' : 'Quiz workspace'),
+        bottom: tabs,
+      ),
+      body: tabView,
     );
   }
 
