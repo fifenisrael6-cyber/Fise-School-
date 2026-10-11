@@ -95,7 +95,7 @@ class TeacherAccessCodeService {
     try {
       final response = await _client.rpc(
         'join_teacher_access_code',
-        params: {'p_code': _normalizeCode(code)},
+        params: {'p_code': code.trim()},
       );
       if (response is List && response.isNotEmpty) return;
       if (response is Map && response['teacher_id'] != null) return;
