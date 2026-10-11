@@ -28,11 +28,13 @@ class _CourseAttachment {
 class CreateCoursePage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
   const CreateCoursePage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialSharedAttachments = const [],
   });
 
   @override
@@ -53,6 +55,28 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   bool _saving = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+
+  @override
+  void initState() {
+    super.initState();
+    for (final attachment in widget.initialSharedAttachments) {
+      final mime = attachment.mimeType.toLowerCase();
+      final type = mime.startsWith('image/')
+          ? 'image'
+          : mime.startsWith('video/')
+              ? 'video'
+              : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
+                  ? 'pdf'
+                  : null;
+      if (type != null) {
+        _attachments.add(_CourseAttachment(
+          name: attachment.name,
+          bytes: attachment.bytes,
+          resourceType: type,
+        ));
+      }
+    }
+  }
 
   @override
   void dispose() {
