@@ -303,7 +303,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Photos et vidéos' : 'Photos and videos',
+            _fr ? 'Photos, vidéos et PDF' : 'Photos, videos and PDFs',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
