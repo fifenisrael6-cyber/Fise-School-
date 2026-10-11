@@ -149,7 +149,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           isScrollable: true,
           tabs: [
             Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.menu_book_rounded)),
-            Tab(text: _fr ? 'Photos et vidéos' : 'Photos and videos', icon: const Icon(Icons.perm_media_rounded)),
+            Tab(text: _fr ? 'Médias de l’enseignant' : 'Teacher media', icon: const Icon(Icons.perm_media_rounded)),
             Tab(text: _fr ? 'QCM' : 'Quizzes', icon: const Icon(Icons.quiz_rounded)),
           ],
         ),
@@ -202,7 +202,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               ),
               _feedList(
                 teacherMedia,
-                _fr ? 'Aucune photo ou vidéo partagée par l’enseignant pour le moment.' : 'No photos or videos shared by the teacher yet.',
+                _fr ? 'Aucune photo, vidéo ou PDF partagé par l’enseignant pour le moment.' : 'No photos, videos or PDFs shared by the teacher yet.',
               ),
               _feedList(
                 quizzes,
