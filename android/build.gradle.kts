@@ -19,12 +19,11 @@ subprojects {
     project.evaluationDependsOn(":app")
 
     // Keep Java compilation aligned with Kotlin JVM 17 across Android plugins.
-    // receive_sharing_intent otherwise compiles Kotlin for 17 but Java for 11.
-    afterEvaluate {
-        tasks.withType<JavaCompile>().configureEach {
-            sourceCompatibility = JavaVersion.VERSION_17.toString()
-            targetCompatibility = JavaVersion.VERSION_17.toString()
-        }
+    // Configure lazily; afterEvaluate fails when a plugin has already evaluated
+    // the project (as happens with receive_sharing_intent in this build).
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = JavaVersion.VERSION_17.toString()
+        targetCompatibility = JavaVersion.VERSION_17.toString()
     }
 }
 
