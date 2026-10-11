@@ -29,12 +29,10 @@ class SharedMediaDestinationPage extends StatelessWidget {
     final options = <_Destination>[
       if (isTeacher) _Destination('courses', Icons.menu_book_rounded,
           _fr ? 'Cours et ressources' : 'Courses and resources',
-          _fr ? 'Ajouter aux médias d’une classe' : 'Add to a classroom resource'),
+          _fr ? 'Créer un cours avec le média partagé' : 'Create a course with the shared media'),
       if (isTeacher) _Destination('annals', Icons.history_edu_rounded,
           _fr ? 'Annales d’examens' : 'Past exam papers',
           _fr ? 'Sujet ou corrigé d’examen' : 'Exam paper or answer key'),
-      if (isTeacher) _Destination('qcm', Icons.quiz_rounded, 'QCM',
-          _fr ? 'Espace de création des quiz' : 'Quiz creation workspace'),
       _Destination('private', Icons.person_rounded,
           _fr ? 'Messagerie privée' : 'Private messages',
           _fr ? 'Envoyer à une personne' : 'Send to one person'),
