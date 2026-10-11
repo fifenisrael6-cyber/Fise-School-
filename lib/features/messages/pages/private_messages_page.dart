@@ -43,6 +43,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   final AudioRecorder _recorder = AudioRecorder();
   bool _recordingVoice = false;
   Timer? _voiceLimitTimer;
+  final Stopwatch _voiceStopwatch = Stopwatch();
+  Timer? _voiceTicker;
+  Duration _voiceElapsed = Duration.zero;
   RealtimeChannel? _channel;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
@@ -84,6 +87,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     _composer.dispose();
     _channel?.unsubscribe();
     _voiceLimitTimer?.cancel();
+    _voiceTicker?.cancel();
+    _voiceStopwatch.stop();
     unawaited(_recorder.dispose());
     super.dispose();
   }
@@ -217,6 +222,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     if (_recordingVoice) {
       _voiceLimitTimer?.cancel();
       _voiceLimitTimer = null;
+      _voiceTicker?.cancel();
+      _voiceTicker = null;
+      _voiceStopwatch.stop();
       try {
         final path = await _recorder.stop();
         if (path == null) {
@@ -255,7 +263,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         const RecordConfig(encoder: AudioEncoder.aacLc),
         path: path,
       );
-      if (mounted) setState(() => _recordingVoice = true);
+      _voiceStopwatch.reset();
+      _voiceStopwatch.start();
+      _voiceTicker?.cancel();
+      _voiceTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || !_recordingVoice) return;
+        setState(() => _voiceElapsed = _voiceStopwatch.elapsed);
+      });
+      if (mounted) setState(() { _recordingVoice = true; _voiceElapsed = Duration.zero; });
       _voiceLimitTimer?.cancel();
       _voiceLimitTimer = Timer(const Duration(minutes: 40), () {
         if (!mounted || !_recordingVoice) return;
@@ -396,6 +411,12 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     );
   }
 
+
+  String _formatElapsed(Duration value) {
+    final minutes = value.inMinutes.toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 
   String _formatTime(DateTime value) {
     final local = value.toLocal();
@@ -554,7 +575,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: _recordingVoice
-                          ? (_isFrench ? 'Enregistrement vocal en cours…' : 'Recording voice message…')
+                          ? '${_isFrench ? 'Enregistrement vocal' : 'Recording voice message'} • ${_formatElapsed(_voiceElapsed)}'
                           : _attachment != null
                           ? (_viewOnce
                               ? (_isFrench
