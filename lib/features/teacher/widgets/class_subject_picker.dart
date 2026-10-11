@@ -109,7 +109,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                             } else {
                               draft.remove(schoolClass.id);
                             }
-                          });
+                          }),
+                          );
                         }),
                       ],
                     ),
