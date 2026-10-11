@@ -794,6 +794,21 @@ class _GroupRemoteAudioMessageState extends State<_GroupRemoteAudioMessage> {
     _positionSubscription = _player.onPositionChanged.listen((value) {
       if (mounted) setState(() => _position = value);
     });
+    unawaited(_prepareDuration());
+  }
+
+  /// Load the audio source without starting playback so its total duration is
+  /// visible as soon as the voice message appears in the conversation.
+  Future<void> _prepareDuration() async {
+    try {
+      await _player.setSourceUrl(widget.url);
+      final duration = await _player.getDuration();
+      if (mounted && duration != null && duration > Duration.zero) {
+        setState(() => _duration = duration);
+      }
+    } catch (_) {
+      // The message remains playable; the duration will be filled when playback starts.
+    }
   }
 
   String _formatDuration(Duration value) {
