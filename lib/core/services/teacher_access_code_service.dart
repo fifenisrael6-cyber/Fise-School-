@@ -7,7 +7,6 @@ class TeacherAccessCodeService {
   TeacherAccessCodeService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  /// Récupère le code d'accès de l'enseignant pour une classe
   Future<TeacherAccessCode?> getAccessCodeForClass(
     String teacherId,
     String classId,
@@ -18,79 +17,72 @@ class TeacherAccessCodeService {
           .select()
           .eq('teacher_id', teacherId)
           .eq('class_id', classId)
+          .eq('is_active', true)
           .maybeSingle();
-
-      if (response == null) {
-        return null;
-      }
-
-      return TeacherAccessCode.fromMap(response);
+      return response == null ? null : TeacherAccessCode.fromMap(response);
     } catch (_) {
       return null;
     }
   }
 
-  /// Crée ou récupère le code d'accès pour une classe
+  /// Saves the code chosen manually by the teacher and synchronizes payment.
+  Future<String> setMySharedCode(String code) async {
+    final clean = _normalizeCode(code);
+    _validateCode(clean);
+    try {
+      final result = await _client.rpc(
+        'set_teacher_shared_code',
+        params: {'p_code': clean},
+      );
+      if (result == null || result.toString().trim().isEmpty) {
+        throw StateError('Impossible d’enregistrer ce code.');
+      }
+      return result.toString();
+    } on PostgrestException catch (error) {
+      throw StateError(_friendlyTeacherError(error.message));
+    }
+  }
+
+  /// Legacy compatibility: no code is generated automatically anymore.
   Future<TeacherAccessCode> getOrCreateAccessCode(
     String teacherId,
     String classId,
     String? suggestedCode,
   ) async {
-    var existing = await getAccessCodeForClass(teacherId, classId);
-
-    if (existing != null) {
+    final existing = await getAccessCodeForClass(teacherId, classId);
+    if (existing != null && (suggestedCode == null || suggestedCode.trim().isEmpty)) {
       return existing;
     }
-
-    // Générer un code si non fourni
-    final code = _normalizeCode(suggestedCode ?? _generateCode());
-
-    if (code.isEmpty) {
-      throw ArgumentError('Code cannot be empty');
+    if (suggestedCode == null || suggestedCode.trim().isEmpty) {
+      throw StateError('Choisis toi-même ton code unique avant de continuer.');
     }
-
-    // Valider le format
-    _validateCode(code);
-
-    final now = DateTime.now();
-    final newCode = TeacherAccessCode(
-      id: '${teacherId}_${classId}_${now.millisecondsSinceEpoch}',
-      teacherId: teacherId,
-      code: code,
-      classId: classId,
-      createdAt: now,
-      isActive: true,
-    );
-
-    await _client.from('teacher_access_codes').insert(newCode.toMap());
-
-    return newCode;
+    await setMySharedCode(suggestedCode);
+    final updated = await getAccessCodeForClass(teacherId, classId);
+    if (updated == null) {
+      throw StateError('Le code a été enregistré, mais la salle doit être vérifiée.');
+    }
+    return updated;
   }
 
-  /// Met à jour le code d'accès
+  /// Older screens may call this method; the canonical shared-code RPC is used.
   Future<TeacherAccessCode> updateAccessCode(
     String accessCodeId,
     String newCode,
   ) async {
-    _validateCode(newCode);
-
-    final cleanCode = _normalizeCode(newCode);
-
-    final response = await _client
+    await setMySharedCode(newCode);
+    final user = _client.auth.currentUser;
+    if (user == null) throw StateError('Session expirée.');
+    final rows = await _client
         .from('teacher_access_codes')
-        .update({
-          'code': cleanCode,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', accessCodeId)
         .select()
-        .single();
-
-    return TeacherAccessCode.fromMap(response);
+        .eq('teacher_id', user.id)
+        .eq('is_active', true)
+        .order('created_at')
+        .limit(1);
+    if (rows.isEmpty) throw StateError('Code introuvable après enregistrement.');
+    return TeacherAccessCode.fromMap(rows.first);
   }
 
-  /// Rattache l'élève à la salle du code valide, puis autorise l'accès enseignant.
-  /// La salle existante n'est jamais remplacée automatiquement.
   Future<void> joinAccessCode(String code) async {
     try {
       final response = await _client.rpc(
@@ -99,42 +91,18 @@ class TeacherAccessCodeService {
       );
       if (response is List && response.isNotEmpty) return;
       if (response is Map && response['teacher_id'] != null) return;
-      throw StateError('Code invalide ou inactif.');
+      throw StateError('Ce code est invalide ou n’est plus actif.');
     } on PostgrestException catch (error) {
-      throw StateError(_friendlyError(error.message));
+      throw StateError(_friendlyStudentError(error.message));
     }
   }
 
-  String _friendlyError(String message) {
-    final value = message.toLowerCase();
-    if (value.contains('invalid') || value.contains('inactive')) {
-      return 'Ce code est invalide ou n’est plus actif.';
-    }
-    if (value.contains('already assigned') || value.contains('another classroom')) {
-      return 'Ton compte est déjà rattaché à une autre salle. Contacte ton établissement pour vérifier ton affectation.';
-    }
-    if (value.contains('classroom') && value.contains('unavailable')) {
-      return 'La salle associée à ce code n’est plus disponible.';
-    }
-    if (value.contains('only students')) {
-      return 'Seul un compte élève peut utiliser ce code.';
-    }
-    if (value.contains('authentication')) {
-      return 'Ta session a expiré. Reconnecte-toi puis réessaie.';
-    }
-    return 'Impossible de valider ce code pour le moment. Vérifie ta connexion ou contacte ton enseignant.';
-  }
-
-  /// Vérifie le code sans modifier l'inscription de l'élève.
-  Future<bool> validateAccessCode(
-    String code,
-    String studentClassId,
-  ) async {
+  Future<bool> validateAccessCode(String code, String studentClassId) async {
     try {
       final response = await _client.rpc(
         'validate_teacher_access_code',
         params: {
-          'p_code': _normalizeCode(code),
+          'p_code': code.trim(),
           'p_class_id': studentClassId,
         },
       );
@@ -144,24 +112,18 @@ class TeacherAccessCodeService {
     }
   }
 
-  /// Récupère tous les codes d'accès de l'enseignant
   Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
-    try {
-      final response = await _client
-          .from('teacher_access_codes')
-          .select()
-          .eq('teacher_id', teacherId)
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+    final response = await _client
+        .from('teacher_access_codes')
+        .select()
+        .eq('teacher_id', teacherId)
+        .eq('is_active', true)
+        .order('created_at', ascending: true);
+    return (response as List)
+        .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
+        .toList();
   }
 
-  /// Désactive un code d'accès
   Future<void> deactivateAccessCode(String accessCodeId) async {
     await _client
         .from('teacher_access_codes')
@@ -169,28 +131,46 @@ class TeacherAccessCodeService {
         .eq('id', accessCodeId);
   }
 
-  /// Génère un code aléatoire
-  String _generateCode() {
-    final value = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    return 'fise${value.substring(value.length > 8 ? value.length - 8 : 0).toUpperCase()}';
-  }
-
   String _normalizeCode(String value) {
-    var clean = value.trim();
-    if (clean.toLowerCase().startsWith('fise')) {
-      clean = clean.substring(4);
-    }
+    var clean = value.trim().toUpperCase();
+    if (clean.startsWith('FISE-')) clean = clean.substring(5);
+    else if (clean.startsWith('FISE')) clean = clean.substring(4);
     return clean.trim();
   }
 
-  /// Valide le format du code
   void _validateCode(String code) {
-    final cleanCode = code.replaceAll('fise', '').trim();
-    if (cleanCode.isEmpty || cleanCode.length < 3) {
-      throw ArgumentError('Code must be at least 3 characters long');
+    if (code.length < 3 || code.length > 40 ||
+        !RegExp(r'^[A-Z0-9_-]+$').hasMatch(code)) {
+      throw ArgumentError('Le code doit contenir de 3 à 40 lettres, chiffres, tirets ou tirets bas.');
     }
-    if (!RegExp(r'^[a-zA-Z0-9_-]*$').hasMatch(cleanCode)) {
-      throw ArgumentError('Code can only contain letters, numbers, underscore and hyphen');
+  }
+
+  String _friendlyTeacherError(String message) {
+    final value = message.toLowerCase();
+    if (value.contains('already used') || value.contains('unique')) {
+      return 'Ce code est déjà utilisé. Choisis un autre code.';
     }
+    if (value.contains('no classroom') || value.contains('classroom')) {
+      return 'Aucune salle n’est associée à ton compte enseignant. Contacte l’administration.';
+    }
+    if (value.contains('only teachers')) return 'Seul un compte enseignant peut créer ce code.';
+    if (value.contains('authentication')) return 'Ta session a expiré. Reconnecte-toi.';
+    return 'Impossible d’enregistrer le code. Vérifie les informations et réessaie.';
+  }
+
+  String _friendlyStudentError(String message) {
+    final value = message.toLowerCase();
+    if (value.contains('invalid') || value.contains('inactive')) {
+      return 'Ce code est invalide ou n’est plus actif.';
+    }
+    if (value.contains('already assigned') || value.contains('another classroom')) {
+      return 'Ton compte est déjà rattaché à une autre salle. Contacte ton établissement.';
+    }
+    if (value.contains('classroom') && value.contains('unavailable')) {
+      return 'La salle associée à ce code n’est plus disponible.';
+    }
+    if (value.contains('only students')) return 'Seul un compte élève peut utiliser ce code.';
+    if (value.contains('authentication')) return 'Ta session a expiré. Reconnecte-toi.';
+    return 'Impossible de valider ce code. Vérifie ta connexion ou contacte ton enseignant.';
   }
 }
