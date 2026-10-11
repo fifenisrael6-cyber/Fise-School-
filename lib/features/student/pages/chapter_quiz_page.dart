@@ -79,6 +79,16 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         _checkingAnswers.remove(question.id);
         _instantFeedback[question.id] = feedback;
       });
+      final correct = feedback['is_correct'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(correct
+              ? (_fr ? 'Bonne réponse !' : 'Correct answer!')
+              : (_fr ? 'Mauvaise réponse.' : 'Incorrect answer.')),
+          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _checkingAnswers.remove(question.id));
