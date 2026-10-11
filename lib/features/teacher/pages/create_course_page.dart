@@ -230,7 +230,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           contentFr: null,
           contentEn: null,
           smartLessonEnabled: false,
-          status: status,
+          // Keep the course hidden from students while attachments are pending.
+          status: 'draft',
         );
 
         for (var i = 0; i < _attachments.length; i++) {
@@ -246,6 +247,21 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             position: i,
             titleFr: attachment.name,
             titleEn: attachment.name,
+          );
+        }
+
+        if (status == 'published') {
+          await _service.saveCourse(
+            id: course.id,
+            subjectId: _subject!.id,
+            teacherId: widget.profile.id,
+            classId: schoolClass.id,
+            titleFr: title,
+            titleEn: title,
+            contentFr: null,
+            contentEn: null,
+            smartLessonEnabled: false,
+            status: 'published',
           );
         }
         published++;
