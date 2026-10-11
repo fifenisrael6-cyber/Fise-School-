@@ -22,6 +22,18 @@ class SharedMediaDestinationPage extends StatelessWidget {
 
   bool get _fr => locale.languageCode == 'fr';
 
+  bool get _annalsAcceptFiles => files.every((file) {
+        final mime = (file.mimeType ?? '').toLowerCase();
+        final name = file.path.toLowerCase();
+        return mime.startsWith('image/') ||
+            mime == 'application/pdf' ||
+            name.endsWith('.pdf') ||
+            name.endsWith('.jpg') ||
+            name.endsWith('.jpeg') ||
+            name.endsWith('.png') ||
+            name.endsWith('.webp');
+      });
+
   @override
   Widget build(BuildContext context) {
     final isTeacher = profile.role.toLowerCase() == 'teacher' ||
@@ -30,7 +42,7 @@ class SharedMediaDestinationPage extends StatelessWidget {
       if (isTeacher) _Destination('courses', Icons.menu_book_rounded,
           _fr ? 'Cours et ressources' : 'Courses and resources',
           _fr ? 'Créer un cours avec le média partagé' : 'Create a course with the shared media'),
-      if (isTeacher) _Destination('annals', Icons.history_edu_rounded,
+      if (isTeacher && _annalsAcceptFiles) _Destination('annals', Icons.history_edu_rounded,
           _fr ? 'Annales d’examens' : 'Past exam papers',
           _fr ? 'Sujet ou corrigé d’examen' : 'Exam paper or answer key'),
       _Destination('private', Icons.person_rounded,
