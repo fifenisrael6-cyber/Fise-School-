@@ -28,11 +28,13 @@ class _CourseAttachment {
 class CreateCoursePage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
   const CreateCoursePage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialSharedAttachments = const [],
   });
 
   @override
@@ -53,6 +55,28 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   bool _saving = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+
+  @override
+  void initState() {
+    super.initState();
+    for (final attachment in widget.initialSharedAttachments) {
+      final mime = attachment.mimeType.toLowerCase();
+      final type = mime.startsWith('image/')
+          ? 'image'
+          : mime.startsWith('video/')
+              ? 'video'
+              : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
+                  ? 'pdf'
+                  : null;
+      if (type != null) {
+        _attachments.add(_CourseAttachment(
+          name: attachment.name,
+          bytes: attachment.bytes,
+          resourceType: type,
+        ));
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -105,6 +129,29 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     setState(() => _attachments.addAll(added));
   }
 
+  Future<void> _pickPdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le PDF sélectionné.' : 'Unable to read the selected PDF.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _attachments.add(_CourseAttachment(
+        name: file.name,
+        bytes: bytes,
+        resourceType: 'pdf',
+      ));
+    });
+  }
+
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -150,8 +197,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
     if (_attachments.isEmpty) {
       _snack(_fr
-          ? 'Ajoutez au moins une photo ou une vidéo.'
-          : 'Add at least one photo or video.');
+          ? 'Ajoutez au moins une photo, une vidéo ou un PDF.'
+          : 'Add at least one photo, video or PDF.');
       return;
     }
 
@@ -275,12 +322,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Les enseignants partagent ici uniquement des photos et des vidéos. Les cours écrits et les PDF sont publiés par l’administration.'
-                : 'Teachers can share photos and videos here. Written lessons and PDFs are published by the administration.'),
+                ? 'Partagez des photos, des vidéos et des PDF dans la salle choisie.'
+                : 'Share photos, videos and PDFs with the selected classroom.'),
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Photos et vidéos' : 'Photos and videos',
+            _fr ? 'Photos, vidéos et PDF' : 'Photos, videos and PDFs',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -302,6 +349,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 avatar: const Icon(Icons.videocam_rounded, size: 18),
                 label: Text(_fr ? 'Choisir une vidéo' : 'Choose a video'),
                 onPressed: _saving ? null : _pickVideo,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                label: Text(_fr ? 'Choisir un PDF' : 'Choose a PDF'),
+                onPressed: _saving ? null : _pickPdf,
               ),
             ],
           ),

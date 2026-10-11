@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/services/photo_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'create_course_page.dart';
@@ -10,11 +11,13 @@ import 'teacher_resource_page.dart';
 class TeacherCoursesPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
   const TeacherCoursesPage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialSharedAttachments = const [],
   });
 
   @override
@@ -43,7 +46,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       context,
       MaterialPageRoute(
         builder: (_) =>
-            CreateCoursePage(locale: widget.locale, profile: widget.profile),
+            CreateCoursePage(locale: widget.locale, profile: widget.profile, initialSharedAttachments: widget.initialSharedAttachments),
       ),
     );
 

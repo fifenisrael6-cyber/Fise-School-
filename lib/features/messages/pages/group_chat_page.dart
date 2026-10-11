@@ -21,12 +21,14 @@ class GroupChatPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final MessageGroup group;
+  final PickedAttachment? initialAttachment;
 
   const GroupChatPage({
     super.key,
     required this.locale,
     required this.profile,
     required this.group,
+    this.initialAttachment,
   });
 
   @override
@@ -59,6 +61,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void initState() {
     super.initState();
     _inviteCode = widget.group.inviteCode;
+    _attachment = widget.initialAttachment;
     _load();
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')

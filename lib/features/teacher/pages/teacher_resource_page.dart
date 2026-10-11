@@ -164,7 +164,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
         ],
         withData: true,
       );
@@ -194,12 +194,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video') {
+      if (type != 'image' && type != 'video' && type != 'pdf') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos et les vidéos sont autorisées pour les enseignants.'
-                : 'Teachers can only upload photos and videos.')),
+                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
+                : 'Teachers can upload photos, videos and PDFs.')),
           );
         }
         return;
@@ -218,9 +218,13 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         position: position,
       );
 
-      if (type == 'image') {
+      if (type == 'image' || type == 'pdf') {
         try {
-          await _smart.reindexResource(resource.id);
+          if (type == 'pdf') {
+            await _smart.reindexPdf(resource.id);
+          } else {
+            await _smart.reindexResource(resource.id);
+          }
         } catch (indexError) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -311,6 +315,98 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
 
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _editResourceTitle(CourseResource resource) async {
+    final controller = TextEditingController(text: _resourceTitle(resource));
+    final title = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Modifier le titre' : 'Edit title'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            labelText: _isFrench ? 'Titre du fichier' : 'File title',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: Text(_isFrench ? 'Enregistrer' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || title.trim().isEmpty || title.trim() == _resourceTitle(resource)) {
+      return;
+    }
+    try {
+      await _service.updateResourceTitle(resourceId: resource.id, title: title);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench ? 'Titre modifié.' : 'Title updated.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+
+  Future<void> _replaceResourceFile(CourseResource resource) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+          'mp4', 'mov', 'avi', 'mkv', 'webm',
+        ],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (file.bytes == null || file.bytes!.isEmpty) {
+        throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
+      }
+      final type = _detectResourceType(file);
+      if (type != 'image' && type != 'video' && type != 'pdf') {
+        throw Exception(_isFrench
+            ? 'Choisissez une photo, une vidéo ou un PDF.'
+            : 'Choose a photo, video or PDF.');
+      }
+      await _service.replaceResourceFile(
+        resource: resource,
+        file: file,
+        resourceType: type,
+      );
+      if (type == 'pdf' || type == 'image') {
+        try {
+          if (type == 'pdf') {
+            await _smart.reindexPdf(resource.id);
+          } else {
+            await _smart.reindexResource(resource.id);
+          }
+        } catch (_) {
+          // Keep the uploaded replacement even if optional AI indexing fails.
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench ? 'Fichier remplacé.' : 'File replaced.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
     }
   }
 
@@ -577,6 +673,8 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     isFrench: _isFrench,
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
+                    onEdit: () => _editResourceTitle(resource),
+                    onReplace: () => _replaceResourceFile(resource),
                     onDelete: () => _deleteResource(resource),
                   );
                 },
@@ -664,6 +762,8 @@ class _ResourceCard extends StatelessWidget {
   final bool isFrench;
   final VoidCallback onOpen;
   final VoidCallback onDetails;
+  final VoidCallback onEdit;
+  final VoidCallback onReplace;
   final VoidCallback onDelete;
 
   const _ResourceCard({
@@ -674,6 +774,8 @@ class _ResourceCard extends StatelessWidget {
     required this.isFrench,
     required this.onOpen,
     required this.onDetails,
+    required this.onEdit,
+    required this.onReplace,
     required this.onDelete,
   });
 
@@ -747,6 +849,14 @@ class _ResourceCard extends StatelessWidget {
                       onDetails();
                       break;
 
+                    case 'edit':
+                      onEdit();
+                      break;
+
+                    case 'replace':
+                      onReplace();
+                      break;
+
                     case 'delete':
                       onDelete();
                       break;
@@ -770,6 +880,26 @@ class _ResourceCard extends StatelessWidget {
                         const Icon(Icons.info_outline_rounded),
                         const SizedBox(width: 10),
                         Text(isFrench ? 'Détails' : 'Details'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit_outlined),
+                        const SizedBox(width: 10),
+                        Text(isFrench ? 'Modifier le titre' : 'Edit title'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'replace',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.swap_horiz_rounded),
+                        const SizedBox(width: 10),
+                        Text(isFrench ? 'Remplacer le fichier' : 'Replace file'),
                       ],
                     ),
                   ),
@@ -876,8 +1006,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               isFrench
-                  ? 'Ajoutez une photo ou une vidéo.'
-                  : 'Add a photo or video.',
+                  ? 'Ajoutez une photo, une vidéo ou un PDF.'
+                  : 'Add a photo, video or PDF.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.black54),
             ),

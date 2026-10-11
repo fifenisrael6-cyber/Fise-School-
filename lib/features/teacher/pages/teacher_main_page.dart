@@ -32,12 +32,8 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
     final pages = [
-      _TeacherHome(
-        locale: widget.locale,
-        profile: widget.profile,
-      ),
+      _TeacherHomeTabs(locale: widget.locale, profile: widget.profile),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
-      TeacherQcmHubPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
       TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -60,11 +56,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
             label: fr ? 'Cours' : 'Courses',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.quiz_outlined),
-            selectedIcon: const Icon(Icons.quiz),
-            label: fr ? 'QCM' : 'Quizzes',
-          ),
-          NavigationDestination(
             icon: const Icon(Icons.chat_bubble_outline),
             selectedIcon: const Icon(Icons.chat_bubble),
             label: fr ? 'Messagerie' : 'Messages',
@@ -85,62 +76,77 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
   }
 }
 
-class _TeacherHome extends StatelessWidget {
+class _TeacherHomeTabs extends StatelessWidget {
   final Locale locale;
   final UserProfile profile;
-  const _TeacherHome({
-    required this.locale,
-    required this.profile,
-  });
+
+  const _TeacherHomeTabs({required this.locale, required this.profile});
 
   @override
   Widget build(BuildContext context) {
     final fr = locale.languageCode == 'fr';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Fise School',
-          style: TextStyle(fontWeight: FontWeight.w800),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: fr ? 'Paramètres' : 'Settings',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
+              ),
+            ),
+          ],
+          bottom: TabBar(
+            tabs: [
+              Tab(icon: const Icon(Icons.home_outlined), text: fr ? 'Accueil' : 'Home'),
+              Tab(icon: const Icon(Icons.quiz_outlined), text: fr ? 'QCM' : 'Quizzes'),
+            ],
+          ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: fr ? 'Paramètres' : 'Settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SettingsPage(locale: locale, profile: profile),
-              ),
-            ),
-          ),
-        ],
+        body: TabBarView(
+          children: [
+            _TeacherHomeContent(locale: locale, profile: profile),
+            TeacherQcmHubPage(locale: locale, profile: profile, embedded: true),
+          ],
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          Text(
-            '${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}',
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 16),
-          _TeacherAction(
-            icon: Icons.grading_rounded,
-            title: fr ? 'Notes' : 'Marks',
-            subtitle: fr
-                ? 'Saisir les notes de vos élèves par matière et période.'
-                : 'Enter students’ marks by subject and period.',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => GradesEntryPage(locale: locale, profile: profile),
-              ),
-            ),
-          ),
+    );
+  }
+}
 
+class _TeacherHomeContent extends StatelessWidget {
+  final Locale locale;
+  final UserProfile profile;
 
-        ],
-      ),
+  const _TeacherHomeContent({required this.locale, required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final fr = locale.languageCode == 'fr';
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Text(
+          '${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}',
+          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 16),
+        _TeacherAction(
+          icon: Icons.grading_rounded,
+          title: fr ? 'Notes' : 'Marks',
+          subtitle: fr
+              ? 'Saisir les notes de vos élèves par matière et période.'
+              : 'Enter students’ marks by subject and period.',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => GradesEntryPage(locale: locale, profile: profile)),
+          ),
+        ),
+      ],
     );
   }
 }
