@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
+import '../../../core/services/photo_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
 import '../../../models/user_profile.dart';
@@ -11,11 +12,13 @@ import '../../../models/user_profile.dart';
 class TeacherPastPapersPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
   const TeacherPastPapersPage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialSharedAttachments = const [],
   });
 
   @override
@@ -65,14 +68,20 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     }
   }
 
-  Future<void> _add() async {
+  Future<void> _add({PickedAttachment? initialAttachment}) async {
     final subjectFr = TextEditingController();
     final subjectEn = TextEditingController();
     final yearCtl = TextEditingController(text: '${DateTime.now().year - 1}');
     final sessionCtl = TextEditingController();
     String? examId;
     String kind = 'subject';
-    PlatformFile? file;
+    PlatformFile? file = initialAttachment == null
+        ? null
+        : PlatformFile(
+            name: initialAttachment.name,
+            size: initialAttachment.bytes.length,
+            bytes: initialAttachment.bytes,
+          );
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -182,7 +191,11 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     return Scaffold(
       appBar: AppBar(title: Text(_fr ? 'Annales d’examens' : 'Past exam papers')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _add,
+        onPressed: () => _add(
+          initialAttachment: widget.initialSharedAttachments.isEmpty
+              ? null
+              : widget.initialSharedAttachments.first,
+        ),
         icon: const Icon(Icons.upload_file_rounded),
         label: Text(_fr ? 'Envoyer une épreuve' : 'Upload paper'),
       ),
