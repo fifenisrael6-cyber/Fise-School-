@@ -362,6 +362,54 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
     }
   }
 
+  Future<void> _replaceResourceFile(CourseResource resource) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+          'mp4', 'mov', 'avi', 'mkv', 'webm',
+        ],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (file.bytes == null || file.bytes!.isEmpty) {
+        throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
+      }
+      final type = _detectResourceType(file);
+      if (type != 'image' && type != 'video' && type != 'pdf') {
+        throw Exception(_isFrench
+            ? 'Choisissez une photo, une vidéo ou un PDF.'
+            : 'Choose a photo, video or PDF.');
+      }
+      await _service.replaceResourceFile(
+        resource: resource,
+        file: file,
+        resourceType: type,
+      );
+      if (type == 'pdf' || type == 'image') {
+        try {
+          if (type == 'pdf') {
+            await _smart.reindexPdf(resource.id);
+          } else {
+            await _smart.reindexResource(resource.id);
+          }
+        } catch (_) {
+          // Keep the uploaded replacement even if optional AI indexing fails.
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench ? 'Fichier remplacé.' : 'File replaced.')),
+      );
+      await _refresh();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+
   Future<void> _deleteResource(CourseResource resource) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -626,6 +674,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
                     onEdit: () => _editResourceTitle(resource),
+                    onReplace: () => _replaceResourceFile(resource),
                     onDelete: () => _deleteResource(resource),
                   );
                 },
@@ -714,6 +763,7 @@ class _ResourceCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onDetails;
   final VoidCallback onEdit;
+  final VoidCallback onReplace;
   final VoidCallback onDelete;
 
   const _ResourceCard({
@@ -725,6 +775,7 @@ class _ResourceCard extends StatelessWidget {
     required this.onOpen,
     required this.onDetails,
     required this.onEdit,
+    required this.onReplace,
     required this.onDelete,
   });
 
@@ -802,6 +853,10 @@ class _ResourceCard extends StatelessWidget {
                       onEdit();
                       break;
 
+                    case 'replace':
+                      onReplace();
+                      break;
+
                     case 'delete':
                       onDelete();
                       break;
@@ -835,6 +890,16 @@ class _ResourceCard extends StatelessWidget {
                         const Icon(Icons.edit_outlined),
                         const SizedBox(width: 10),
                         Text(isFrench ? 'Modifier le titre' : 'Edit title'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'replace',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.swap_horiz_rounded),
+                        const SizedBox(width: 10),
+                        Text(isFrench ? 'Remplacer le fichier' : 'Replace file'),
                       ],
                     ),
                   ),
