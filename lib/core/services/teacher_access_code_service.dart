@@ -89,6 +89,42 @@ class TeacherAccessCodeService {
     return TeacherAccessCode.fromMap(response);
   }
 
+  /// Rattache l'élève à la salle du code valide, puis autorise l'accès enseignant.
+  /// La salle existante n'est jamais remplacée automatiquement.
+  Future<void> joinAccessCode(String code) async {
+    try {
+      final response = await _client.rpc(
+        'join_teacher_access_code',
+        params: {'p_code': _normalizeCode(code)},
+      );
+      if (response is List && response.isNotEmpty) return;
+      if (response is Map && response['teacher_id'] != null) return;
+      throw StateError('Code invalide ou inactif.');
+    } on PostgrestException catch (error) {
+      throw StateError(_friendlyError(error.message));
+    }
+  }
+
+  String _friendlyError(String message) {
+    final value = message.toLowerCase();
+    if (value.contains('invalid') || value.contains('inactive')) {
+      return 'Ce code est invalide ou n’est plus actif.';
+    }
+    if (value.contains('already assigned') || value.contains('another classroom')) {
+      return 'Ton compte est déjà rattaché à une autre salle. Contacte ton établissement pour vérifier ton affectation.';
+    }
+    if (value.contains('classroom') && value.contains('unavailable')) {
+      return 'La salle associée à ce code n’est plus disponible.';
+    }
+    if (value.contains('only students')) {
+      return 'Seul un compte élève peut utiliser ce code.';
+    }
+    if (value.contains('authentication')) {
+      return 'Ta session a expiré. Reconnecte-toi puis réessaie.';
+    }
+    return 'Impossible de valider ce code pour le moment. Vérifie ta connexion ou contacte ton enseignant.';
+  }
+
   /// Vérifie le code sans modifier l'inscription de l'élève.
   Future<bool> validateAccessCode(
     String code,
