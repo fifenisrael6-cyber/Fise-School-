@@ -219,10 +219,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   bool _isOfficialCourse(Course course) {
     // L'administration rattache ses cours au programme/chapitre et peut
     // publier du texte. Les enseignants publient seulement des médias.
-    return course.curriculumId != null ||
-        course.chapterId != null ||
-        (course.contentFr?.trim().isNotEmpty ?? false) ||
-        (course.contentEn?.trim().isNotEmpty ?? false);
+    // Only curriculum/chapter-linked courses are official. Teacher courses
+    // may also contain text/description, but their photos/PDFs/QCM belong in
+    // the teacher-media feed and must not disappear behind the wrong tab.
+    return course.curriculumId != null || course.chapterId != null;
   }
 
   Widget _feedList(List<_FeedItem> items, String emptyMessage) {
