@@ -321,7 +321,17 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
       await _reload();
       _snack(_fr ? 'Vous avez rejoint le groupe.' : 'You joined the group.');
     } catch (error) {
-      _snack(_fr ? 'Impossible de rejoindre le groupe : $error' : 'Could not join group: $error');
+      final raw = error.toString().toLowerCase();
+      final message = raw.contains('invalid') || raw.contains('not valid')
+          ? (_fr ? 'Ce code est invalide ou n’est plus actif.' : 'This code is invalid or no longer active.')
+          : raw.contains('already assigned') || raw.contains('another classroom')
+              ? (_fr ? 'Ton compte est déjà rattaché à une autre salle. Contacte ton établissement.' : 'Your account is already assigned to another classroom. Contact your school.')
+              : raw.contains('no message group')
+                  ? (_fr ? 'Le code est reconnu, mais ton enseignant n’a pas encore créé de groupe pour cette salle.' : 'The code is valid, but your teacher has not created a group for this classroom yet.')
+                  : raw.contains('classroom') || raw.contains('salle')
+                      ? (_fr ? 'Ce groupe n’est pas associé à ta salle.' : 'This group is not linked to your classroom.')
+                      : (_fr ? 'Impossible de rejoindre le groupe. Vérifie le code et ta connexion.' : 'Unable to join the group. Check the code and your connection.');
+      _snack(message);
     }
   }
 
@@ -388,7 +398,10 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 else if (snapshot.hasError)
                   Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('${snapshot.error}', textAlign: TextAlign.center),
+                    child: Text(
+                      _fr ? 'Impossible de charger les groupes. Vérifie ta connexion puis actualise.' : 'Unable to load groups. Check your connection and refresh.',
+                      textAlign: TextAlign.center,
+                    ),
                   )
                 else if (groups.isEmpty)
                   Padding(
