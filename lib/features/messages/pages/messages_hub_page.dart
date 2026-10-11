@@ -289,8 +289,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           autofocus: true,
           textCapitalization: TextCapitalization.characters,
           decoration: InputDecoration(
-            labelText: _fr ? 'Code donné par votre professeur' : 'Code from your teacher',
-            hintText: 'GRP-XXXXXX',
+            labelText: _fr ? 'Code unique de l’enseignant (privé et groupe)' : 'Teacher code (private and group messages)',
+            hintText: 'FISE-XXXXXX',
             border: const OutlineInputBorder(),
           ),
         ),
