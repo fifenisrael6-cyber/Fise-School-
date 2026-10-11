@@ -256,17 +256,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.camera_alt_rounded),
-              title: Text(${lang} ? 'Prendre une photo' : 'Take a photo'),
+              title: Text(_isFrench ? 'Prendre une photo' : 'Take a photo'),
               onTap: () => Navigator.pop(sheetContext, 'camera'),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_rounded),
-              title: Text(${lang} ? 'Choisir une photo' : 'Choose a photo'),
+              title: Text(_isFrench ? 'Choisir une photo' : 'Choose a photo'),
               onTap: () => Navigator.pop(sheetContext, 'gallery'),
             ),
             ListTile(
               leading: const Icon(Icons.attach_file_rounded),
-              title: Text(${lang} ? 'Fichier ou PDF' : 'File or PDF'),
+              title: Text(_isFrench ? 'Fichier ou PDF' : 'File or PDF'),
               onTap: () => Navigator.pop(sheetContext, 'file'),
             ),
             const SizedBox(height: 8),
