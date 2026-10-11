@@ -92,7 +92,17 @@ using (
     )
   )
 )
-with check (bucket_id = 'course-resources');
+with check (
+  bucket_id = 'course-resources'
+  and (
+    public.is_admin()
+    or exists (
+      select 1 from public.courses c
+      where c.id = (storage.foldername(name))[1]::uuid
+        and c.teacher_id = auth.uid()
+    )
+  )
+);
 
 create policy "course owners delete resources storage"
 on storage.objects for delete to authenticated
