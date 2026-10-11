@@ -148,7 +148,7 @@ as $$
           select 'fise' || lower(trim(t.code))
           from public.teacher_access_codes t
           where t.teacher_id = g.owner_id
-            and t.class_id = g.class_id
+            and t.class_id::text = g.class_id::text
             and t.is_active = true
           order by t.created_at desc
           limit 1
