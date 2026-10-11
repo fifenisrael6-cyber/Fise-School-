@@ -197,12 +197,75 @@ class _GroupChatPageState extends State<GroupChatPage> {
     });
   }
 
+  Future<void> _pickGalleryPhoto() async {
+    final file = await _photoService.pickFromGallery();
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final extension = file.name.toLowerCase().split('.').last;
+    setState(() {
+      _attachment = PickedAttachment(
+        bytes: bytes,
+        name: file.name.isEmpty
+            ? 'photo-${DateTime.now().millisecondsSinceEpoch}.jpg'
+            : file.name,
+        mimeType: extension == 'png'
+            ? 'image/png'
+            : extension == 'webp'
+                ? 'image/webp'
+                : 'image/jpeg',
+      );
+    });
+  }
+
   Future<void> _pickAttachment() async {
     final attachment = await _photoService.pickFile(
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mp3', 'm4a'],
+      allowedExtensions: [
+        'jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mov',
+        'mp3', 'm4a', 'aac', 'txt', 'csv', 'doc', 'docx',
+        'xls', 'xlsx', 'ppt', 'pptx',
+      ],
     );
     if (attachment != null && mounted) {
       setState(() => _attachment = attachment);
+    }
+  }
+
+  Future<void> _chooseAttachment() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: Text(_fr ? 'Prendre une photo' : 'Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: Text(_fr ? 'Choisir une photo' : 'Choose a photo'),
+              onTap: () => Navigator.pop(sheetContext, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file_rounded),
+              title: Text(_fr ? 'Fichier ou PDF' : 'File or PDF'),
+              onTap: () => Navigator.pop(sheetContext, 'file'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'camera') {
+      await _takePhoto();
+    } else if (action == 'gallery') {
+      await _pickGalleryPhoto();
+    } else if (action == 'file') {
+      await _pickAttachment();
     }
   }
 
@@ -536,15 +599,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  IconButton(
-                    tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
-                    onPressed: _sending ? null : _takePhoto,
-                    icon: const Icon(Icons.camera_alt_rounded),
-                  ),
-                  IconButton(
-                    tooltip: _fr ? 'Joindre un fichier' : 'Attach a file',
-                    onPressed: _sending || _recordingVoice ? null : _pickAttachment,
-                    icon: const Icon(Icons.attach_file_rounded),
+                  IconButton.filledTonal(
+                    tooltip: _fr ? 'Ajouter une pièce jointe' : 'Add attachment',
+                    onPressed: _sending || _recordingVoice ? null : _chooseAttachment,
+                    icon: const Icon(Icons.add_rounded),
                   ),
                   IconButton(
                     tooltip: _viewOnce
@@ -579,7 +637,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   Expanded(
                     child: TextField(
                       controller: _composer,
-                      minLines: 2,
+                      minLines: 1,
                        maxLines: 8,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.newline,

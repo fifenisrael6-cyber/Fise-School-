@@ -251,70 +251,15 @@ class CourseService {
     String? subjectId,
   }) async {
     try {
-      final memberships = await _client
-          .from('class_students')
-          .select('class_id')
-          .eq('student_id', studentId)
-          .eq('is_active', true);
-
-      final classIds = memberships
-          .map((row) => row['class_id']?.toString())
-          .whereType<String>()
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false);
-
-      if (classIds.isEmpty) {
-        return const [];
-      }
-
-      // Include the student's exact class and generic level-wide classrooms
-      // (for example "Terminale") only when subsystem, sector and exam level
-      // match. This lets shared official courses reach series-specific classes
-      // without leaking francophone/anglophone or general/technical content.
-      final enrolledRows = await _client
-          .from('school_classes')
-          .select('id, subsystem, sector, exam_level_id')
-          .inFilter('id', classIds)
-          .eq('is_active', true);
-      final enrolledClasses = enrolledRows
-          .map((row) => Map<String, dynamic>.from(row))
-          .toList(growable: false);
-      final levelIds = enrolledClasses
-          .map((row) => row['exam_level_id']?.toString())
-          .whereType<String>()
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false);
-
-      final allowedClassIds = <String>{...classIds};
-      if (levelIds.isNotEmpty) {
-        final genericRows = await _client
-            .from('school_classes')
-            .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
-            .eq('is_active', true)
-            .inFilter('exam_level_id', levelIds);
-        for (final raw in genericRows) {
-          final row = Map<String, dynamic>.from(raw);
-          if (row['series_id'] != null || row['specialty_id'] != null) {
-            continue;
-          }
-          final matchesEnrolledClass = enrolledClasses.any((enrolled) =>
-              enrolled['exam_level_id'] == row['exam_level_id'] &&
-              enrolled['subsystem'] == row['subsystem'] &&
-              enrolled['sector'] == row['sector']);
-          if (matchesEnrolledClass) {
-            final id = row['id']?.toString();
-            if (id != null && id.isNotEmpty) allowedClassIds.add(id);
-          }
-        }
-      }
-
+      // Let the database's student-safe RLS policy decide classroom visibility.
+      // Rebuilding an allow-list from school_classes silently excluded
+      // compatible generic/level-wide rooms that the student cannot SELECT
+      // directly. is_course_student(id) enforces active membership and matching
+      // subsystem/sector before a course can be returned.
       dynamic request = _client
           .from('courses')
           .select()
-          .eq('status', 'published')
-          .inFilter('class_id', allowedClassIds.toList(growable: false));
+          .eq('status', 'published');
 
       if (subjectId != null) {
         request = request.eq('subject_id', subjectId);
@@ -328,11 +273,14 @@ class CourseService {
       await OfflineRepository().saveCourses(courses);
       return courses;
     } catch (_) {
+      // Preserve offline access. The cache remains scoped to this student.
       final cached = await OfflineRepository().getCoursesForStudent(studentId);
       if (subjectId == null) {
         return cached;
       }
-      return cached.where((course) => course.subjectId == subjectId).toList(growable: false);
+      return cached
+          .where((course) => course.subjectId == subjectId)
+          .toList(growable: false);
     }
   }
 
@@ -753,19 +701,26 @@ class ResourceService {
   }) async {
     Uint8List? bytes = file.bytes;
 
-    if (bytes == null) {
+    if (bytes == null || bytes.isEmpty) {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
 
-    final extension = file.extension?.toLowerCase() ?? '';
+    final extension = (file.extension ??
+            (file.name.contains('.') ? file.name.split('.').last : ''))
+        .toLowerCase();
     final safeFileName = file.name.isEmpty ? 'resource' : file.name;
-
+    final storageFileName = safeFileName.replaceAll(
+      RegExp(r'[^A-Za-z0-9._-]'),
+      '_',
+    );
+    final mimeType = _mimeTypeFor(extension) ??
+        (resourceType == 'pdf' ? 'application/pdf' : null);
     final fileId = DateTime.now().microsecondsSinceEpoch;
 
     final storagePath = [
       courseId,
       if (lessonId != null && lessonId.isNotEmpty) lessonId,
-      '$fileId-$safeFileName',
+      '$fileId-$storageFileName',
     ].join('/');
 
     await _client.storage
@@ -773,7 +728,10 @@ class ResourceService {
         .uploadBinary(
           storagePath,
           bytes,
-          fileOptions: const FileOptions(upsert: false),
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: mimeType ?? 'application/octet-stream',
+          ),
         );
 
     final values = <String, dynamic>{
@@ -785,7 +743,7 @@ class ResourceService {
       'position': position,
       'title_fr': (titleFr == null || titleFr.trim().isEmpty) ? safeFileName : titleFr.trim(),
       'title_en': (titleEn == null || titleEn.trim().isEmpty) ? safeFileName : titleEn.trim(),
-      'mime_type': _mimeTypeFor(file.extension),
+      'mime_type': mimeType,
       'file_size': bytes.length,
       if (extension.isNotEmpty) 'file_extension': extension,
     };
@@ -834,24 +792,32 @@ class ResourceService {
     if (bytes == null || bytes.isEmpty) {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
-    final extension = file.extension?.toLowerCase() ?? '';
+    final extension = (file.extension ??
+            (file.name.contains('.') ? file.name.split('.').last : ''))
+        .toLowerCase();
     final safeName = file.name.isEmpty ? 'resource' : file.name;
+    final storageName = safeName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final mimeType = _mimeTypeFor(extension) ??
+        (resourceType == 'pdf' ? 'application/pdf' : null);
     final newPath = [
       resource.courseId,
       if (resource.lessonId != null && resource.lessonId!.isNotEmpty) resource.lessonId!,
-      '${DateTime.now().microsecondsSinceEpoch}-$safeName',
+      '${DateTime.now().microsecondsSinceEpoch}-$storageName',
     ].join('/');
     await _client.storage.from(bucket).uploadBinary(
       newPath,
       bytes,
-      fileOptions: const FileOptions(upsert: false),
+      fileOptions: FileOptions(
+        upsert: false,
+        contentType: mimeType ?? 'application/octet-stream',
+      ),
     );
     try {
       await _client.from('course_resources').update({
         'storage_path': newPath,
         'file_name': safeName,
         'resource_type': resourceType,
-        'mime_type': _mimeTypeFor(extension),
+        'mime_type': mimeType,
         'file_size': bytes.length,
         if (extension.isNotEmpty) 'file_extension': extension,
       }).eq('id', resource.id);

@@ -134,6 +134,53 @@ class PastPaperService {
     }
   }
 
+  Future<void> updateMetadata({
+    required String id,
+    required String examId,
+    required String subsystem,
+    required int year,
+    required String subjectFr,
+    required String subjectEn,
+    required String kind,
+    String? session,
+  }) async {
+    if (examId.trim().isEmpty) {
+      throw ArgumentError('Une annale doit être associée à un examen.');
+    }
+    if (year < 1990 || year > 2100) {
+      throw ArgumentError('Année d’épreuve invalide.');
+    }
+    if (subjectFr.trim().isEmpty) {
+      throw ArgumentError('La matière est obligatoire.');
+    }
+
+    final updated = await _client
+        .from('past_papers')
+        .update({
+          'exam_id': examId,
+          'subsystem': subsystem,
+          'exam_year': year,
+          'session_label': (session == null || session.trim().isEmpty)
+              ? null
+              : session.trim(),
+          'subject_fr': subjectFr.trim(),
+          'subject_en': subjectEn.trim().isEmpty
+              ? subjectFr.trim()
+              : subjectEn.trim(),
+          'kind': kind,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+
+    if (updated == null) {
+      throw StateError(
+        'Modification refusée : vérifiez vos autorisations et le sous-système de l’examen.',
+      );
+    }
+  }
+
   Future<void> delete(PastPaper paper) async {
     await _client.from('past_papers').delete().eq('id', paper.id);
     try {

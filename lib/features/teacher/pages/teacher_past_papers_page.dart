@@ -175,6 +175,141 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     }
   }
 
+  Future<void> _edit(PastPaper paper) async {
+    final subjectFr = TextEditingController(text: paper.subjectFr);
+    final subjectEn = TextEditingController(text: paper.subjectEn);
+    final yearCtl = TextEditingController(text: paper.year.toString());
+    final sessionCtl = TextEditingController(text: paper.session ?? '');
+    String? examId = paper.examId;
+    String kind = paper.kind;
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: Text(_fr ? 'Modifier l’annale' : 'Edit past paper'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String?>(
+                    isExpanded: true,
+                    initialValue: examId,
+                    decoration: InputDecoration(labelText: _fr ? 'Examen' : 'Exam'),
+                    items: _exams.map((e) => DropdownMenuItem<String?>(
+                      value: e.id,
+                      child: Text(e.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (value) => refresh(() => examId = value),
+                  ),
+                  TextField(
+                    controller: yearCtl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: _fr ? 'Année' : 'Year'),
+                  ),
+                  TextField(
+                    controller: sessionCtl,
+                    decoration: InputDecoration(labelText: _fr ? 'Session' : 'Session'),
+                  ),
+                  TextField(controller: subjectFr, decoration: const InputDecoration(labelText: 'Matière (français)')),
+                  TextField(controller: subjectEn, decoration: const InputDecoration(labelText: 'Subject (English)')),
+                  DropdownButtonFormField<String>(
+                    initialValue: kind,
+                    decoration: InputDecoration(labelText: _fr ? 'Type' : 'Type'),
+                    items: [
+                      DropdownMenuItem(value: 'subject', child: Text(_fr ? 'Épreuve / sujet' : 'Exam paper')),
+                      DropdownMenuItem(value: 'correction', child: Text(_fr ? 'Corrigé' : 'Answer key')),
+                    ],
+                    onChanged: (value) => refresh(() => kind = value ?? 'subject'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_fr ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: examId == null || yearCtl.text.trim().isEmpty || subjectFr.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, true),
+              child: Text(_fr ? 'Enregistrer' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final subjectFrValue = subjectFr.text.trim();
+    final subjectEnValue = subjectEn.text.trim();
+    final sessionValue = sessionCtl.text.trim();
+    final year = int.tryParse(yearCtl.text.trim());
+    final subsystem = widget.profile.subsystem ?? paper.subsystem;
+    subjectFr.dispose();
+    subjectEn.dispose();
+    yearCtl.dispose();
+    sessionCtl.dispose();
+
+    if (accepted != true) return;
+    if (examId == null || subsystem == null || year == null || year < 1990 || year > 2100) {
+      _message(_fr
+          ? 'Examen, sous-système ou année invalide. Vérifiez votre profil enseignant.'
+          : 'Invalid exam, subsystem, or year. Check your teacher profile.');
+      return;
+    }
+
+    try {
+      await _papers.updateMetadata(
+        id: paper.id,
+        examId: examId!,
+        subsystem: subsystem,
+        year: year,
+        subjectFr: subjectFrValue,
+        subjectEn: subjectEnValue,
+        kind: kind,
+        session: sessionValue,
+      );
+      _message(_fr ? 'Annale modifiée.' : 'Past paper updated.');
+      await _load();
+    } catch (error) {
+      _message('${_fr ? 'Modification impossible' : 'Update failed'}: $error');
+    }
+  }
+
+  Future<void> _delete(PastPaper paper) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer cette annale ?' : 'Delete this past paper?'),
+        content: Text(_fr
+            ? 'Le fichier et son entrée seront supprimés.'
+            : 'The file and its record will be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    try {
+      await _papers.delete(paper);
+      _message(_fr ? 'Annale supprimée.' : 'Past paper deleted.');
+      await _load();
+    } catch (error) {
+      _message('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error');
+    }
+  }
+
   void _message(String value) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
@@ -217,7 +352,29 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
                               leading: Icon(paper.kind == 'correction' ? Icons.fact_check_outlined : Icons.picture_as_pdf_outlined),
                               title: Text(paper.subjectFor(widget.locale.languageCode)),
                               subtitle: Text('${_examName(paper)} • ${paper.year} • ${paper.fileName}'),
-                              trailing: Icon(paper.isPublished ? Icons.check_circle_outline : Icons.visibility_off_outlined),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(paper.isPublished ? Icons.check_circle_outline : Icons.visibility_off_outlined),
+                                  PopupMenuButton<String>(
+                                    tooltip: _fr ? 'Gérer l’annale' : 'Manage past paper',
+                                    onSelected: (value) {
+                                      if (value == 'edit') _edit(paper);
+                                      if (value == 'delete') _delete(paper);
+                                    },
+                                    itemBuilder: (_) => [
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Text(_fr ? 'Modifier' : 'Edit'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text(_fr ? 'Supprimer' : 'Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ));
                           },
                         ),

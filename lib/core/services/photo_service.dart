@@ -66,6 +66,8 @@ class PhotoService {
         return 'application/pdf';
       case 'mp4':
         return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
       case 'mp3':
       case 'm4a':
       case 'aac':

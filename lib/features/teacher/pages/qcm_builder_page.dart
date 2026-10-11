@@ -185,8 +185,25 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
           );
         }
 
+        final savedQuestions = await _service.listQuestions(assignment.id);
+        if (savedQuestions.length != _questions.length) {
+          throw StateError(
+            _fr
+                ? 'Le QCM n’a pas enregistré toutes ses questions.'
+                : 'The quiz did not save all of its questions.',
+          );
+        }
+
         if (status == 'published') {
           await _service.publishAssignment(assignment.id);
+          final savedAssignment = await _service.getAssignment(assignment.id);
+          if (savedAssignment.status != 'published') {
+            throw StateError(
+              _fr
+                  ? 'La publication du QCM n’a pas été confirmée.'
+                  : 'Quiz publication could not be confirmed.',
+            );
+          }
         }
         done++;
       } catch (error) {
