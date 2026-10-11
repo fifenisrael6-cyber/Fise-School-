@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
@@ -12,6 +13,11 @@ import '../../student/pages/student_main_page.dart';
 import '../../../core/services/push_service.dart';
 import '../../../models/user_profile.dart';
 import '../../teacher/pages/teacher_main_page.dart';
+import '../../teacher/pages/teacher_courses_page.dart';
+import '../../teacher/pages/teacher_past_papers_page.dart';
+import '../../teacher/pages/teacher_qcm_hub_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
+import '../../share/pages/shared_media_destination_page.dart';
 
 class AuthGate extends StatefulWidget {
   final Locale locale;
@@ -35,6 +41,8 @@ class _AuthGateState extends State<AuthGate> {
   int _eventCount = 0;
   StreamSubscription<bool>? _connectivitySubscription;
   String? _syncedStudentId;
+  StreamSubscription<List<SharedMediaFile>>? _sharedMediaSubscription;
+  List<SharedMediaFile>? _sharedFiles;
 
   @override
   void initState() {
@@ -45,11 +53,56 @@ class _AuthGateState extends State<AuthGate> {
       _updateState(state);
     });
     _load();
+    _sharedMediaSubscription = ReceiveSharingIntent.instance
+        .getMediaStream()
+        .listen(_handleSharedMedia, onError: (_) {});
+    ReceiveSharingIntent.instance.getInitialMedia().then(_handleSharedMedia)
+        .catchError((_) {});
     _connectivitySubscription = ConnectivityService().connectionStream.listen((online) {
       if (online && _state.status == SessionStatus.authenticated) {
         _syncStudentOfflineCache(_state.profile!);
       }
     });
+  }
+
+  void _handleSharedMedia(List<SharedMediaFile> files) {
+    final usable = files.where((file) => file.path.trim().isNotEmpty).toList();
+    if (!mounted || usable.isEmpty) return;
+    setState(() => _sharedFiles = usable);
+    ReceiveSharingIntent.instance.reset();
+  }
+
+  Future<void> _openSharedDestination(String destination) async {
+    final files = _sharedFiles;
+    if (files == null || files.isEmpty) return;
+    setState(() => _sharedFiles = null);
+    final profile = _state.profile;
+    if (profile == null) return;
+    Widget? page;
+    switch (destination) {
+      case 'courses':
+        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
+          page = TeacherCoursesPage(locale: widget.locale, profile: profile);
+        }
+        break;
+      case 'annals':
+        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
+          page = TeacherPastPapersPage(locale: widget.locale, profile: profile);
+        }
+        break;
+      case 'qcm':
+        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
+          page = TeacherQcmHubPage(locale: widget.locale, profile: profile);
+        }
+        break;
+      case 'private':
+      case 'groups':
+        page = MessagesHubPage(locale: widget.locale, profile: profile);
+        break;
+    }
+    if (page != null && mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page!));
+    }
   }
 
   Future<void> _load() async {
@@ -106,6 +159,7 @@ class _AuthGateState extends State<AuthGate> {
   void dispose() {
     _subscription?.cancel();
     _connectivitySubscription?.cancel();
+    _sharedMediaSubscription?.cancel();
     super.dispose();
   }
 
@@ -124,6 +178,15 @@ class _AuthGateState extends State<AuthGate> {
         );
 
       case SessionStatus.authenticated:
+        if (_sharedFiles != null && _sharedFiles!.isNotEmpty) {
+          return SharedMediaDestinationPage(
+            locale: widget.locale,
+            profile: _state.profile!,
+            files: _sharedFiles!,
+            onChoose: _openSharedDestination,
+            onCancel: () => setState(() => _sharedFiles = null),
+          );
+        }
         return _authenticatedPage(_state, texts);
 
       case SessionStatus.profileMissing:
