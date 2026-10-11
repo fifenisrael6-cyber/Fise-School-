@@ -106,11 +106,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           decoration: InputDecoration(
             labelText: _isFrench ? 'Code unique de l’enseignant' : 'Teacher access code',
             hintText: 'FISE-…',
-            filled: true,
-                      fillColor: const Color(0xFFF4F6F5),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF166534), width: 1.5)),
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
@@ -591,7 +587,11 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                           : (_isFrench
                               ? 'Écrire un message...'
                               : 'Write a message...'),
-                      border: const OutlineInputBorder(),
+                      filled: true,
+                      fillColor: const Color(0xFFF4F6F5),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF166534), width: 1.5)),
                       isDense: true,
                     ),
                   ),
