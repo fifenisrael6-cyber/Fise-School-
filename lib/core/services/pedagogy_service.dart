@@ -825,6 +825,49 @@ class ResourceService {
     }
   }
 
+  Future<void> replaceResourceFile({
+    required CourseResource resource,
+    required PlatformFile file,
+    required String resourceType,
+  }) async {
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+    }
+    final extension = file.extension?.toLowerCase() ?? '';
+    final safeName = file.name.isEmpty ? 'resource' : file.name;
+    final newPath = [
+      resource.courseId,
+      if (resource.lessonId != null && resource.lessonId!.isNotEmpty) resource.lessonId!,
+      '${DateTime.now().microsecondsSinceEpoch}-$safeName',
+    ].join('/');
+    await _client.storage.from(bucket).uploadBinary(
+      newPath,
+      bytes,
+      fileOptions: const FileOptions(upsert: false),
+    );
+    try {
+      await _client.from('course_resources').update({
+        'storage_path': newPath,
+        'file_name': safeName,
+        'resource_type': resourceType,
+        'mime_type': _mimeTypeFor(extension),
+        'file_size': bytes.length,
+        if (extension.isNotEmpty) 'file_extension': extension,
+      }).eq('id', resource.id);
+    } catch (_) {
+      try {
+        await _client.storage.from(bucket).remove([newPath]);
+      } catch (_) {}
+      rethrow;
+    }
+    try {
+      await _client.storage.from(bucket).remove([resource.storagePath]);
+    } catch (_) {
+      // The new file and database reference are already saved.
+    }
+  }
+
   Future<void> updateResourceTitle({
     required String resourceId,
     required String title,
