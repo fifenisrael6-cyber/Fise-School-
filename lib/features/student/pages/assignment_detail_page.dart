@@ -31,6 +31,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   final Map<String, TextEditingController> _answerControllers = {};
   final Map<String, String?> _selectedAnswers = {};
+  final Map<String, Map<String, dynamic>> _qcmFeedback = {};
+  final Set<String> _checkingQcm = {};
 
   bool _loadingSubmission = true;
   bool _saving = false;
@@ -610,65 +612,104 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     );
   }
 
-  Widget _buildAnswerWidget(AssignmentQuestion question) {
-    final enabled = _isDraftSubmission && !_isClosed;
-
-    if (question.isQcm) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: question.options.map((option) {
-            return RadioListTile<String>(
-              value: option,
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(option, style: const TextStyle(height: 1.35)),
-            );
-          }).toList(),
+  Future<void> _checkAssignmentQcmAnswer(
+    AssignmentQuestion question,
+    String selectedOption,
+  ) async {
+    try {
+      final feedback = await _service.checkQcmAnswer(
+        questionId: question.id,
+        selectedOption: selectedOption,
+      );
+      if (!mounted) return;
+      setState(() {
+        _checkingQcm.remove(question.id);
+        _qcmFeedback[question.id] = feedback;
+      });
+      final correct = feedback['is_correct'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect answer.' : 'Mauvaise réponse.')),
+          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _checkingQcm.remove(question.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEnglish
+              ? 'Unable to check this answer. Check your connection.'
+              : 'Impossible de vérifier cette réponse. Vérifie ta connexion.'),
         ),
       );
     }
+  }
 
-    if (question.isTrueFalse) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
+  Widget _buildAnswerWidget(AssignmentQuestion question) {
+    final enabled = _isDraftSubmission && !_isClosed;
 
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: [
-            RadioListTile<String>(
-              value: 'true',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'True' : 'Vrai'),
+    if (question.isQcm || question.isTrueFalse) {
+      final options = question.isQcm
+          ? question.options
+          : <String>[_isEnglish ? 'True' : 'Vrai', _isEnglish ? 'False' : 'Faux'];
+      final selected = _selectedAnswers[question.id];
+      final feedback = _qcmFeedback[question.id];
+      final correctOption = feedback?['correct_option']?.toString();
+      final hasFeedback = feedback != null;
+      return Column(
+        children: [
+          RadioGroup<String>(
+            groupValue: selected,
+            onChanged: (value) {
+              if (!enabled || value == null) return;
+              setState(() {
+                _selectedAnswers[question.id] = value;
+                _qcmFeedback.remove(question.id);
+                _checkingQcm.add(question.id);
+              });
+              _saveAnswer(question);
+              _checkAssignmentQcmAnswer(question, value);
+            },
+            child: Column(
+              children: options.map((option) {
+                final isCorrect = hasFeedback &&
+                    correctOption != null &&
+                    _normalizeAnswer(correctOption) == _normalizeAnswer(option);
+                final isSelected = selected != null &&
+                    _normalizeAnswer(selected) == _normalizeAnswer(option);
+                final isWrongSelected = hasFeedback && isSelected &&
+                    feedback['is_correct'] != true;
+                return RadioListTile<String>(
+                  value: option,
+                  enabled: enabled && !_checkingQcm.contains(question.id),
+                  activeColor: const Color(0xFF166534),
+                  contentPadding: EdgeInsets.zero,
+                  tileColor: isCorrect
+                      ? const Color(0xFFE8F5E9)
+                      : (isWrongSelected ? const Color(0xFFFFEBEE) : null),
+                  title: Text(option, style: const TextStyle(height: 1.35)),
+                  secondary: _checkingQcm.contains(question.id)
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : (isCorrect
+                          ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                          : (isWrongSelected
+                              ? const Icon(Icons.cancel, color: Color(0xFFC62828))
+                              : null)),
+                );
+              }).toList(),
             ),
-            RadioListTile<String>(
-              value: 'false',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'False' : 'Faux'),
-            ),
-          ],
-        ),
+          ),
+          if (selected != null && hasFeedback)
+            _buildImmediateFeedback(feedback['is_correct'] == true),
+        ],
       );
     }
 
@@ -700,6 +741,32 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           borderSide: const BorderSide(color: Color(0xFF166534)),
         ),
       ),
+    );
+  }
+
+  String _normalizeAnswer(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Widget _buildImmediateFeedback(bool correct) {
+    final color = correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: correct ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Icon(correct ? Icons.check_circle : Icons.cancel, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(
+          correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect. The correct answer is marked in green.' : 'Mauvaise réponse. La bonne réponse est indiquée en vert.'),
+          style: TextStyle(color: color, fontWeight: FontWeight.w700),
+        )),
+      ]),
     );
   }
 
