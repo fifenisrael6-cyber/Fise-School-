@@ -18,11 +18,13 @@ import '../../../core/services/photo_service.dart';
 class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final PickedAttachment? initialAttachment;
 
   const PrivateMessagesPage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialAttachment,
   });
 
   @override
@@ -54,6 +56,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   void initState() {
     super.initState();
     _contactsFuture = _service.listContacts();
+    _attachment = widget.initialAttachment;
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
         final row = payload.newRecord;
