@@ -31,6 +31,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   final Map<String, TextEditingController> _answerControllers = {};
   final Map<String, String?> _selectedAnswers = {};
+  final Map<String, Map<String, dynamic>> _qcmFeedback = {};
+  final Set<String> _checkingQcm = {};
 
   bool _loadingSubmission = true;
   bool _saving = false;
@@ -610,6 +612,43 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     );
   }
 
+  Future<void> _checkAssignmentQcmAnswer(
+    AssignmentQuestion question,
+    String selectedOption,
+  ) async {
+    try {
+      final feedback = await _service.checkQcmAnswer(
+        questionId: question.id,
+        selectedOption: selectedOption,
+      );
+      if (!mounted) return;
+      setState(() {
+        _checkingQcm.remove(question.id);
+        _qcmFeedback[question.id] = feedback;
+      });
+      final correct = feedback['is_correct'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect answer.' : 'Mauvaise réponse.')),
+          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _checkingQcm.remove(question.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEnglish
+              ? 'Unable to check this answer. Check your connection.'
+              : 'Impossible de vérifier cette réponse. Vérifie ta connexion.'),
+        ),
+      );
+    }
+  }
+
   Widget _buildAnswerWidget(AssignmentQuestion question) {
     final enabled = _isDraftSubmission && !_isClosed;
 
@@ -618,36 +657,58 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           ? question.options
           : <String>[_isEnglish ? 'True' : 'Vrai', _isEnglish ? 'False' : 'Faux'];
       final selected = _selectedAnswers[question.id];
-      final hasCorrection = (question.correctAnswer ?? '').trim().isNotEmpty;
+      final feedback = _qcmFeedback[question.id];
+      final correctOption = feedback?['correct_option']?.toString();
+      final hasFeedback = feedback != null;
       return Column(
         children: [
           RadioGroup<String>(
             groupValue: selected,
             onChanged: (value) {
               if (!enabled || value == null) return;
-              setState(() => _selectedAnswers[question.id] = value);
+              setState(() {
+                _selectedAnswers[question.id] = value;
+                _qcmFeedback.remove(question.id);
+                _checkingQcm.add(question.id);
+              });
+              _saveAnswer(question);
+              _checkAssignmentQcmAnswer(question, value);
             },
             child: Column(
               children: options.map((option) {
-                final isCorrect = hasCorrection && _isCorrectAnswer(question, option);
-                final isSelected = selected != null && _normalizeAnswer(selected) == _normalizeAnswer(option);
-                final isWrongSelected = isSelected && hasCorrection && !isCorrect;
+                final isCorrect = hasFeedback &&
+                    correctOption != null &&
+                    _normalizeAnswer(correctOption) == _normalizeAnswer(option);
+                final isSelected = selected != null &&
+                    _normalizeAnswer(selected) == _normalizeAnswer(option);
+                final isWrongSelected = hasFeedback && isSelected &&
+                    feedback['is_correct'] != true;
                 return RadioListTile<String>(
                   value: option,
-                  enabled: enabled,
+                  enabled: enabled && !_checkingQcm.contains(question.id),
                   activeColor: const Color(0xFF166534),
                   contentPadding: EdgeInsets.zero,
-                  tileColor: isCorrect ? const Color(0xFFE8F5E9) : (isWrongSelected ? const Color(0xFFFFEBEE) : null),
+                  tileColor: isCorrect
+                      ? const Color(0xFFE8F5E9)
+                      : (isWrongSelected ? const Color(0xFFFFEBEE) : null),
                   title: Text(option, style: const TextStyle(height: 1.35)),
-                  secondary: isCorrect
-                      ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
-                      : (isWrongSelected ? const Icon(Icons.cancel, color: Color(0xFFC62828)) : null),
+                  secondary: _checkingQcm.contains(question.id)
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : (isCorrect
+                          ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                          : (isWrongSelected
+                              ? const Icon(Icons.cancel, color: Color(0xFFC62828))
+                              : null)),
                 );
               }).toList(),
             ),
           ),
-          if (selected != null && hasCorrection)
-            _buildImmediateFeedback(_isCorrectAnswer(question, selected)),
+          if (selected != null && hasFeedback)
+            _buildImmediateFeedback(feedback['is_correct'] == true),
         ],
       );
     }
