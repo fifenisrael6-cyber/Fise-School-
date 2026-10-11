@@ -1,4 +1,5 @@
 # Relaunch Android build for the latest Fise School changes.
+# Triggered again after pinning receive_sharing_intent to 1.8.1.
 # Trigger Android build for the latest Fise School changes.
 name: Build Android apk
 
