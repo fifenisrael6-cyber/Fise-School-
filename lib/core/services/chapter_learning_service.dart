@@ -301,6 +301,26 @@ class ChapterLearningService {
     return <String, dynamic>{};
   }
 
+  Future<Map<String, dynamic>> checkQuizAnswer({
+    required String quizId,
+    required String questionId,
+    required int selectedOptionIndex,
+  }) async {
+    final result = await _client.rpc(
+      'check_chapter_quiz_answer',
+      params: {
+        'p_quiz_id': quizId,
+        'p_question_id': questionId,
+        'p_selected_option_index': selectedOptionIndex,
+      },
+    );
+    if (result is Map) return Map<String, dynamic>.from(result);
+    if (result is List && result.isNotEmpty && result.first is Map) {
+      return Map<String, dynamic>.from(result.first as Map);
+    }
+    throw StateError('La correction n’a retourné aucun résultat.');
+  }
+
   Future<dynamic> submitQuiz({
     required String quizId,
     required Map<String, int> answers,
