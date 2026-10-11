@@ -15,7 +15,6 @@ declare
   v_class uuid;
   v_code_id text;
   v_class_row public.school_classes%rowtype;
-  v_existing_class uuid;
 begin
   if v_user is null then
     raise exception 'Authentication required';
@@ -58,13 +57,12 @@ begin
   end if;
 
   -- If an active membership exists, it must already be this classroom.
-  select cs.class_id into v_existing_class
-  from public.class_students cs
-  where cs.student_id = v_user and cs.is_active = true
-  order by cs.joined_at desc nulls last
-  limit 1;
-
-  if v_existing_class is not null and v_existing_class <> v_class then
+  if exists (
+    select 1 from public.class_students cs
+    where cs.student_id = v_user
+      and cs.is_active = true
+      and cs.class_id <> v_class
+  ) then
     raise exception 'Student already assigned to another classroom';
   end if;
 
