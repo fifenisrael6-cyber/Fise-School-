@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/notification_service.dart';
@@ -280,11 +281,32 @@ class _UnreadNotificationIcon extends StatefulWidget {
 class _UnreadNotificationIconState extends State<_UnreadNotificationIcon> {
   final NotificationService _service = NotificationService();
   late Future<int> _countFuture;
+  RealtimeChannel? _notificationsChannel;
 
   @override
   void initState() {
     super.initState();
     _countFuture = _service.unreadCount(widget.userId);
+    _notificationsChannel = Supabase.instance.client
+        .channel('dashboard-unread-${widget.userId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: widget.userId,
+          ),
+          callback: (_) => _refreshCount(),
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _notificationsChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _refreshCount() async {
