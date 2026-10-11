@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
+import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
+import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
@@ -28,12 +31,14 @@ class CourseDetailPage extends StatefulWidget {
 
 class _CourseDetailPageState extends State<CourseDetailPage> {
   final LessonService _lessonService = LessonService();
+  final AssignmentService _assignmentService = AssignmentService();
   final CourseOfflineService _offline = CourseOfflineService();
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _connectionSubscription;
   bool _offlineMode = false;
 
   late Future<List<Lesson>> _lessonsFuture;
+  late Future<List<Assignment>> _qcmsFuture;
 
   String get _courseTitle {
     return widget.locale.languageCode == 'en'
@@ -57,6 +62,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   void initState() {
     super.initState();
     _loadLessons();
+    _qcmsFuture = _loadQcms();
     _prepareOffline();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
@@ -89,9 +95,43 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     _lessonsFuture = _lessonService.listCourseLessons(widget.course.id);
   }
 
+  Future<List<Assignment>> _loadQcms() async {
+    try {
+      // Load both explicitly linked QCMs and older subject-level QCMs that
+      // target this exact class. This preserves existing published QCMs while
+      // new ones gain a direct course link whenever the match is unambiguous.
+      final linked = await _assignmentService.listStudentAssignments(
+        studentId: widget.profile.id,
+        courseId: widget.course.id,
+      );
+      final subjectAssignments = await _assignmentService.listStudentAssignments(
+        studentId: widget.profile.id,
+        subjectId: widget.course.subjectId,
+      );
+      final candidates = <String, Assignment>{
+        for (final assignment in [...linked, ...subjectAssignments])
+          assignment.id: assignment,
+      };
+      return candidates.values.where((assignment) {
+        if (assignment.courseId == widget.course.id) return true;
+        return assignment.courseId == null &&
+            widget.course.classId != null &&
+            assignment.classId == widget.course.classId &&
+            assignment.subjectId == widget.course.subjectId;
+      }).toList(growable: false);
+    } catch (_) {
+      // QCM loading must never prevent the course or its lessons from opening.
+      return const <Assignment>[];
+    }
+  }
+
   Future<void> _refresh() async {
-    setState(_loadLessons);
+    setState(() {
+      _loadLessons();
+      _qcmsFuture = _loadQcms();
+    });
     await _lessonsFuture;
+    await _qcmsFuture;
   }
 
   Future<void> _openLesson(Lesson lesson) async {
@@ -251,6 +291,79 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                         Text(isEnglish ? 'Course files' : 'Fichiers du cours', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         ...resources.map((resource) => OfflineResourceTile(locale: widget.locale, profile: widget.profile, resource: resource)),
+                      ],
+                    );
+                  },
+                ),
+                FutureBuilder<List<Assignment>>(
+                  future: _qcmsFuture,
+                  builder: (context, qcmSnapshot) {
+                    final qcms = qcmSnapshot.data ?? const <Assignment>[];
+                    if (qcms.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            const Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                isEnglish ? 'Course QCMs' : 'QCM du cours',
+                                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE4F2E9),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${qcms.length}',
+                                style: const TextStyle(color: Color(0xFF166534), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ...qcms.map((assignment) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+                          ),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Color(0xFFE4F2E9),
+                              child: Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
+                            ),
+                            title: Text(
+                              assignment.titleFor(widget.locale),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: Text(
+                              assignment.instructionsFor(widget.locale) ??
+                                  (isEnglish ? 'Open and answer this QCM' : 'Ouvrez et répondez à ce QCM'),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () async {
+                              await Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => AssignmentDetailPage(
+                                    locale: widget.locale,
+                                    profile: widget.profile,
+                                    assignment: assignment,
+                                  ),
+                                ),
+                              );
+                              if (mounted) setState(() => _qcmsFuture = _loadQcms());
+                            },
+                          ),
+                        )),
                       ],
                     );
                   },
