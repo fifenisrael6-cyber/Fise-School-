@@ -59,7 +59,15 @@ begin
       select g.*
       from public.message_groups g
       where g.owner_id = v_teacher_id
-        and g.class_id = v_class_id
+        and (
+          g.class_id = v_class_id
+          or exists (
+            select 1
+            from public.message_group_classrooms gc
+            where gc.group_id = g.id
+              and gc.class_id = v_class_id
+          )
+        )
       order by g.created_at, g.id
     loop
       insert into public.message_group_members (group_id, user_id, role)
