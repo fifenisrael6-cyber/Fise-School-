@@ -17,7 +17,6 @@ import '../../../models/user_profile.dart';
 import '../../teacher/pages/teacher_main_page.dart';
 import '../../teacher/pages/teacher_courses_page.dart';
 import '../../teacher/pages/teacher_past_papers_page.dart';
-import '../../teacher/pages/teacher_qcm_hub_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../share/pages/shared_media_destination_page.dart';
 
@@ -105,11 +104,6 @@ class _AuthGateState extends State<AuthGate> {
       case 'annals':
         if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
           page = TeacherPastPapersPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
-        }
-        break;
-      case 'qcm':
-        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
-          page = TeacherQcmHubPage(locale: widget.locale, profile: profile);
         }
         break;
       case 'private':
