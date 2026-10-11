@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
+import '../../../core/services/photo_service.dart';
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/sync_service.dart';
 import '../../admin/pages/admin_dashboard_page.dart';
@@ -78,16 +80,31 @@ class _AuthGateState extends State<AuthGate> {
     setState(() => _sharedFiles = null);
     final profile = _state.profile;
     if (profile == null) return;
+    final attachments = <PickedAttachment>[];
+    for (final file in files) {
+      try {
+        final bytes = await File(file.path).readAsBytes();
+        if (bytes.isEmpty) continue;
+        final name = file.path.split('/').last;
+        final mime = (file.mimeType?.trim().isNotEmpty == true)
+            ? file.mimeType!.trim()
+            : _mimeTypeFromName(name);
+        attachments.add(PickedAttachment(bytes: bytes, name: name, mimeType: mime));
+      } catch (_) {
+        // Ignore an unreadable item but continue processing the other shared files.
+      }
+    }
+    if (attachments.isEmpty || !mounted) return;
     Widget? page;
     switch (destination) {
       case 'courses':
         if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
-          page = TeacherCoursesPage(locale: widget.locale, profile: profile);
+          page = TeacherCoursesPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
         }
         break;
       case 'annals':
         if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
-          page = TeacherPastPapersPage(locale: widget.locale, profile: profile);
+          page = TeacherPastPapersPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
         }
         break;
       case 'qcm':
@@ -97,11 +114,26 @@ class _AuthGateState extends State<AuthGate> {
         break;
       case 'private':
       case 'groups':
-        page = MessagesHubPage(locale: widget.locale, profile: profile);
+        page = MessagesHubPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
         break;
     }
     if (page != null && mounted) {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page!));
+    }
+  }
+
+  String _mimeTypeFromName(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    switch (ext) {
+      case 'jpg': case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'webp': return 'image/webp';
+      case 'gif': return 'image/gif';
+      case 'mp4': return 'video/mp4';
+      case 'mov': return 'video/quicktime';
+      case 'webm': return 'video/webm';
+      case 'pdf': return 'application/pdf';
+      default: return 'application/octet-stream';
     }
   }
 
