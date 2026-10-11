@@ -747,24 +747,6 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   String _normalizeAnswer(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
-  bool _isCorrectAnswer(AssignmentQuestion question, String answer) {
-    final correct = question.correctAnswer?.trim();
-    if (correct == null || correct.isEmpty) return false;
-    final a = _normalizeAnswer(answer);
-    final c = _normalizeAnswer(correct);
-    if (a == c) return true;
-    final correctIndex = int.tryParse(c);
-    if (question.isQcm && correctIndex != null &&
-        correctIndex >= 0 && correctIndex < question.options.length) {
-      return _normalizeAnswer(question.options[correctIndex]) == a;
-    }
-    if (question.isTrueFalse) {
-      const truthy = ['true', 'vrai', '1', 'yes', 'oui'];
-      return truthy.contains(a) == truthy.contains(c);
-    }
-    return false;
-  }
-
   Widget _buildImmediateFeedback(bool correct) {
     final color = correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
     return Container(
