@@ -132,16 +132,7 @@ class _DashboardScaffold extends StatelessWidget {
       appBar: AppBar(
         title: Text(title),
         actions: [
-          IconButton(
-            tooltip: texts.notifications,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NotificationsPage(locale: locale, userId: profile.id),
-              ),
-            ),
-            icon: _UnreadNotificationIcon(userId: profile.id),
-          ),
+          _UnreadNotificationIcon(userId: profile.id, locale: locale),
           IconButton(
             tooltip: texts.search,
             onPressed: () => Navigator.push(
@@ -272,7 +263,12 @@ class _DashboardItem {
 /// Displays the current unread notification count on the dashboard bell.
 class _UnreadNotificationIcon extends StatefulWidget {
   final String userId;
-  const _UnreadNotificationIcon({required this.userId});
+  final Locale locale;
+
+  const _UnreadNotificationIcon({
+    required this.userId,
+    required this.locale,
+  });
 
   @override
   State<_UnreadNotificationIcon> createState() => _UnreadNotificationIconState();
@@ -311,45 +307,72 @@ class _UnreadNotificationIconState extends State<_UnreadNotificationIcon> {
 
   Future<void> _refreshCount() async {
     final future = _service.unreadCount(widget.userId);
-    if (mounted) setState(() => _countFuture = future);
+    if (mounted) {
+      setState(() => _countFuture = future);
+    }
+    try {
+      await future;
+    } catch (_) {
+      // Keep the notifications button usable if the count query temporarily fails.
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationsPage(
+          locale: widget.locale,
+          userId: widget.userId,
+        ),
+      ),
+    );
+    if (mounted) {
+      await _refreshCount();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<int>(
-      future: _countFuture,
-      builder: (context, snapshot) {
-        final count = snapshot.data ?? 0;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(Icons.notifications_none_rounded),
-            if (count > 0)
-              Positioned(
-                right: -7,
-                top: -7,
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white, width: 1),
-                  ),
-                  child: Text(
-                    count > 99 ? '99+' : '$count',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+    final countFuture = _countFuture;
+    return IconButton(
+      tooltip: AppTexts(widget.locale).notifications,
+      onPressed: _openNotifications,
+      icon: FutureBuilder<int>(
+        future: countFuture,
+        builder: (context, snapshot) {
+          final count = snapshot.data ?? 0;
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.notifications_none_rounded),
+              if (count > 0)
+                Positioned(
+                  right: -7,
+                  top: -7,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white, width: 1),
+                    ),
+                    child: Text(
+                      count > 99 ? '99+' : '$count',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }

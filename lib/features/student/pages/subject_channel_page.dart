@@ -312,14 +312,23 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   }
 
   Future<List<CourseResource>> _loadResources(String courseId) async {
+    List<CourseResource> resources;
     try {
-      final resources = await _resources.listForCourse(courseId);
-      // Keep the offline cache warm without making the online page depend on it.
-      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: await _courses.getCourse(courseId)));
-      return resources;
+      resources = await _resources.listForCourse(courseId);
     } catch (_) {
+      // Offline mode is a fallback for a failed remote resource read only.
       return _offline.resourcesForCourse(widget.profile.id, courseId);
     }
+
+    // Warming the offline cache is a separate best-effort task. Its failure
+    // must never throw away photos/PDFs that were already fetched successfully.
+    try {
+      final course = await _courses.getCourse(courseId);
+      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: course));
+    } catch (_) {
+      // Keep the live resource list visible.
+    }
+    return resources;
   }
 
   Widget _chapterContentPost(Map<String, dynamic> item) {

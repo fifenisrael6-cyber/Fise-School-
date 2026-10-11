@@ -15,6 +15,7 @@ class AssignmentService {
     String? lessonId,
     String? subjectId,
   }) async {
+    List<Assignment> assignments;
     try {
       // Let Supabase RLS determine which published assignments belong to this
       // student. This uses the same is_student_in_class policy as the database
@@ -33,25 +34,12 @@ class AssignmentService {
         request = request.eq('subject_id', subjectId);
       }
       final rows = await request.order('due_at', ascending: true);
-      final assignments = rows
+      assignments = rows
           .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
-
-      final offline = OfflineRepository();
-      for (final assignment in assignments) {
-        await offline.saveAssignment(assignment, studentId);
-        try {
-          await offline.saveAssignmentQuestions(
-            await listQuestions(assignment.id, studentId: studentId),
-            studentId,
-          );
-        } catch (_) {
-          // Keep the published assignment visible even if its questions
-          // cannot be cached at this moment.
-        }
-      }
-      return assignments;
     } catch (_) {
+      // Fall back only when the remote query failed, not when offline caching
+      // fails after a successful response.
       final cached = await OfflineRepository().getAssignments(studentId);
       return cached
           .where((assignment) =>
@@ -61,33 +49,61 @@ class AssignmentService {
               ['published', 'closed'].contains(assignment.status))
           .toList(growable: false);
     }
+
+    final offline = OfflineRepository();
+    for (final assignment in assignments) {
+      try {
+        await offline.saveAssignment(assignment, studentId);
+      } catch (_) {
+        // Keep using the live QCM even if local storage is unavailable.
+      }
+      try {
+        // listQuestions also treats saving to the offline cache as best-effort.
+        await listQuestions(assignment.id, studentId: studentId);
+      } catch (_) {
+        // An unavailable question cache must not hide the QCM itself.
+      }
+    }
+    return assignments;
   }
 
   Future<Assignment> getAssignment(String id, {String? studentId}) async {
+    Assignment assignment;
     try {
       final row = await _client.from('assignments').select().eq('id', id).single();
-      final assignment = Assignment.fromMap(Map<String, dynamic>.from(row));
-      if (studentId != null) {
-        await OfflineRepository().saveAssignment(assignment, studentId);
-      }
-      return assignment;
+      assignment = Assignment.fromMap(Map<String, dynamic>.from(row));
     } catch (_) {
-      final cached = await OfflineRepository().getAssignments(studentId ?? (_client.auth.currentUser?.id ?? ''), assignmentId: id);
+      final cached = await OfflineRepository().getAssignments(
+        studentId ?? (_client.auth.currentUser?.id ?? ''),
+        assignmentId: id,
+      );
       if (cached.isEmpty) {
         rethrow;
       }
       return cached.first;
     }
+
+    if (studentId != null) {
+      try {
+        await OfflineRepository().saveAssignment(assignment, studentId);
+      } catch (_) {
+        // Use the remote assignment even if offline persistence fails.
+      }
+    }
+    return assignment;
   }
 
   Future<List<AssignmentQuestion>> listQuestions(String assignmentId, {String? studentId}) async {
+    List<AssignmentQuestion> questions;
     try {
-      final rows = await _client.from('assignment_questions').select().eq('assignment_id', assignmentId).order('position', ascending: true);
-      final questions = rows.map((row) => AssignmentQuestion.fromMap(Map<String, dynamic>.from(row))).toList(growable: false);
-      if (studentId != null) {
-        await OfflineRepository().saveAssignmentQuestions(questions, studentId);
-      }
-      return questions;
+      final rows = await _client
+          .from('assignment_questions')
+          .select()
+          .eq('assignment_id', assignmentId)
+          .order('position', ascending: true);
+      questions = rows
+          .map((row) => AssignmentQuestion.fromMap(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
     } catch (_) {
       final userId = studentId ?? _client.auth.currentUser?.id;
       if (userId == null) {
@@ -95,6 +111,15 @@ class AssignmentService {
       }
       return OfflineRepository().getAssignmentQuestions(userId, assignmentId);
     }
+
+    if (studentId != null) {
+      try {
+        await OfflineRepository().saveAssignmentQuestions(questions, studentId);
+      } catch (_) {
+        // A valid remote question list must not be replaced by an empty cache.
+      }
+    }
+    return questions;
   }
 
   Future<AssignmentSubmission?> getStudentSubmission({

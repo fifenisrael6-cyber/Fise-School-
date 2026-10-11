@@ -250,6 +250,7 @@ class CourseService {
     String studentId, {
     String? subjectId,
   }) async {
+    List<Course> courses;
     try {
       // Let the database's student-safe RLS policy decide classroom visibility.
       // Rebuilding an allow-list from school_classes silently excluded
@@ -266,14 +267,12 @@ class CourseService {
       }
 
       final rows = await request.order('updated_at', ascending: false);
-      final courses = rows
+      courses = rows
           .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
-
-      await OfflineRepository().saveCourses(courses);
-      return courses;
     } catch (_) {
-      // Preserve offline access. The cache remains scoped to this student.
+      // Use offline data only when the remote read itself failed. A local
+      // cache write must never replace a successful response with stale data.
       final cached = await OfflineRepository().getCoursesForStudent(studentId);
       if (subjectId == null) {
         return cached;
@@ -282,14 +281,20 @@ class CourseService {
           .where((course) => course.subjectId == subjectId)
           .toList(growable: false);
     }
+
+    try {
+      await OfflineRepository().saveCourses(courses);
+    } catch (_) {
+      // Offline caching is best-effort; the live courses still belong on screen.
+    }
+    return courses;
   }
 
   Future<Course> getCourse(String id) async {
+    Course course;
     try {
       final row = await _client.from('courses').select().eq('id', id).single();
-      final course = Course.fromMap(Map<String, dynamic>.from(row));
-      await OfflineRepository().saveCourse(course);
-      return course;
+      course = Course.fromMap(Map<String, dynamic>.from(row));
     } catch (_) {
       final cached = await OfflineRepository().getCourse(id);
       if (cached == null) {
@@ -297,6 +302,13 @@ class CourseService {
       }
       return cached;
     }
+
+    try {
+      await OfflineRepository().saveCourse(course);
+    } catch (_) {
+      // Do not discard a course fetched successfully from Supabase.
+    }
+    return course;
   }
 
   Future<List<Lesson>> listLessons(String courseId) async {
