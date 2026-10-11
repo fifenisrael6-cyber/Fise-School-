@@ -32,7 +32,6 @@ function splitWords(text: string, target = 700) {
 
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
-    // pdfjs is used only for native text extraction. Scanned PDFs fall back to Gemini below.
     const document = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
     const pages: string[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
@@ -58,9 +57,14 @@ async function transcribeWithGemini(bytes: Uint8Array, mime: string, language: s
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   const base64 = btoa(binary);
+  const isImage = mime.startsWith("image/");
   const prompt = language === "en"
-    ? "Transcribe the educational PDF accurately. Return only the complete readable text, preserving headings, formulas, lists and examples. Do not summarize or invent content."
-    : "Transcris fidèlement le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.";
+    ? (isImage
+      ? "Read the educational image and transcribe all legible text faithfully, preserving headings, formulas, lists, examples and language-specific spelling. Do not summarize or invent content. If a small area is unreadable, omit only that area."
+      : "Transcribe the educational PDF accurately. Return only the complete readable text, preserving headings, formulas, lists and examples. Do not summarize or invent content.")
+    : (isImage
+      ? "Lis l'image pédagogique et transcris fidèlement tout le texte lisible, en conservant titres, formules, listes, exemples et orthographe de la langue étudiée. Ne résume pas et n'invente rien. Si une petite zone est illisible, omets uniquement cette zone."
+      : "Transcris fidèlement le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.");
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
     method: "POST",
@@ -68,7 +72,7 @@ async function transcribeWithGemini(bytes: Uint8Array, mime: string, language: s
     body: JSON.stringify({
       contents: [{ role: "user", parts: [
         { text: prompt },
-        { inline_data: { mime_type: mime || "application/pdf", data: base64 } },
+        { inline_data: { mime_type: mime, data: base64 } },
       ] }],
       generationConfig: { temperature: 0.0 },
     }),
@@ -112,8 +116,12 @@ serve(async (req) => {
       .eq("id", resourceId)
       .single();
     if (resourceError || !resource) return json({ error: "Resource not found." }, 404);
-    if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") {
-      return json({ error: "Only PDF resources are indexed." }, 400);
+
+    const mime = String(resource.mime_type ?? "").toLowerCase().split(";")[0].trim();
+    const isPdf = resource.resource_type === "pdf" || mime === "application/pdf";
+    const isSupportedImage = resource.resource_type === "image" && ["image/jpeg", "image/png", "image/webp"].includes(mime);
+    if (!isPdf && !isSupportedImage) {
+      return json({ error: "Seuls les PDF et les images JPEG, PNG ou WebP peuvent être indexés." }, 415);
     }
 
     const { data: course, error: courseError } = await admin
@@ -133,36 +141,41 @@ serve(async (req) => {
       .eq("is_active", true)
       .maybeSingle();
     const allowedTeacher = !!assignment || course.teacher_id === authData.user.id;
-    if (!isAdmin && !allowedTeacher) {
-      return json({ error: "Not allowed." }, 403);
-    }
+    if (!isAdmin && !allowedTeacher) return json({ error: "Not allowed." }, 403);
 
-    await admin.from("course_resources").update({
+    const { error: pendingError } = await admin.from("course_resources").update({
       index_status: "pending",
       index_error: null,
-      index_preview: null,
-      index_word_count: 0,
-      index_approved: false,
-      indexed_at: null,
     }).eq("id", resourceId);
+    if (pendingError) throw pendingError;
 
     const { data: file, error: fileError } = await admin.storage.from("course-resources").download(resource.storage_path);
-    if (fileError || !file) throw new Error(fileError?.message ?? "Unable to download the PDF.");
+    if (fileError || !file) throw new Error(fileError?.message ?? "Unable to download the resource.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { data: actorProfile } = await userClient.from("profiles").select("preferred_language").eq("id", authData.user.id).maybeSingle();
     const bodyLanguage = body?.language == null ? actorProfile?.preferred_language : body.language;
     const preferredLanguage = String(bodyLanguage ?? "fr") === "en" ? "en" : "fr";
 
-    let text = await extractPdfText(bytes);
-    if (text.replace(/\s+/g, " ").trim().length < 300) {
-      text = await transcribeWithGemini(bytes, resource.mime_type ?? "application/pdf", preferredLanguage, geminiKey);
+    let text = isPdf ? await extractPdfText(bytes) : "";
+    if (isSupportedImage || text.replace(/\s+/g, " ").trim().length < 300) {
+      text = await transcribeWithGemini(bytes, mime || "application/pdf", preferredLanguage, geminiKey);
     }
 
     const chunks = splitWords(text, 700).filter((x) => x.content.trim().length >= 120);
-    if (!chunks.length) throw new Error("No readable educational text was found in the PDF.");
+    if (!chunks.length) throw new Error("No readable educational text was found in the resource.");
 
-    await admin.from("course_chunks").delete().eq("resource_id", resourceId);
-    const rows = chunks.flatMap((chunk, index) => [{
+    // Keep existing indexed chunks until the replacement batch has been prepared.
+    // If inserting the new batch fails, restore the previous rows instead of losing them.
+    const { data: previousChunks, error: previousError } = await admin
+      .from("course_chunks")
+      .select("id,course_id,resource_id,class_id,subject_id,position,title,content,language,created_at")
+      .eq("resource_id", resourceId);
+    if (previousError) throw previousError;
+
+    const { error: deleteError } = await admin.from("course_chunks").delete().eq("resource_id", resourceId);
+    if (deleteError) throw deleteError;
+
+    const rows = chunks.map((chunk, index) => ({
       course_id: course.id,
       resource_id: resourceId,
       class_id: course.class_id,
@@ -171,9 +184,15 @@ serve(async (req) => {
       title: chunk.title,
       content: chunk.content,
       language: preferredLanguage,
-    }]);
+    }));
     const { error: insertError } = await admin.from("course_chunks").insert(rows);
-    if (insertError) throw insertError;
+    if (insertError) {
+      if (previousChunks?.length) {
+        const { error: restoreError } = await admin.from("course_chunks").insert(previousChunks);
+        if (restoreError) console.error("Failed to restore previous course chunks:", restoreError.message);
+      }
+      throw insertError;
+    }
 
     const preview = chunks.slice(0, 2).map((x) => `${x.title}\n${x.content}`).join("\n\n").slice(0, 6000);
     const { error: updateError } = await admin.from("course_resources").update({
@@ -186,7 +205,7 @@ serve(async (req) => {
     }).eq("id", resourceId);
     if (updateError) throw updateError;
 
-    return json({ status: "indexed", resource_id: resourceId, chunks: chunks.length, approved: false });
+    return json({ status: "indexed", resource_id: resourceId, resource_type: isPdf ? "pdf" : "image", chunks: chunks.length, approved: false });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Indexing failed.";
     try {
