@@ -98,7 +98,11 @@ class AssignmentService {
     try {
       final rows = await _client
           .from('assignment_questions')
-          .select()
+          .select(
+            studentId == null
+                ? '*'
+                : 'id,assignment_id,position,question_fr,question_en,question_type,points,options,created_at',
+          )
           .eq('assignment_id', assignmentId)
           .order('position', ascending: true);
       questions = rows
@@ -194,6 +198,24 @@ class AssignmentService {
     }
 
     return AssignmentAnswer.fromMap(Map<String, dynamic>.from(row));
+  }
+
+  Future<Map<String, dynamic>> checkQcmAnswer({
+    required String questionId,
+    required String selectedOption,
+  }) async {
+    final result = await _client.rpc(
+      'check_assignment_qcm_answer',
+      params: {
+        'p_question_id': questionId,
+        'p_selected_option': selectedOption,
+      },
+    );
+    if (result is Map) return Map<String, dynamic>.from(result);
+    if (result is List && result.isNotEmpty && result.first is Map) {
+      return Map<String, dynamic>.from(result.first as Map);
+    }
+    throw StateError('La correction n’a retourné aucun résultat.');
   }
 
   Future<AssignmentAnswer> saveAnswer({
