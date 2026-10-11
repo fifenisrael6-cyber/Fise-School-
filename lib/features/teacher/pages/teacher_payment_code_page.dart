@@ -7,14 +7,18 @@ class TeacherPaymentCodePage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
 
-  const TeacherPaymentCodePage({super.key, required this.locale, required this.profile});
+  const TeacherPaymentCodePage({
+    super.key,
+    required this.locale,
+    required this.profile,
+  });
 
   @override
   State<TeacherPaymentCodePage> createState() => _TeacherPaymentCodePageState();
 }
 
 class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
-  final _service = TeacherPaymentCodeService();
+  final TeacherPaymentCodeService _service = TeacherPaymentCodeService();
   bool _loading = true;
   String? _code;
   int _balance = 0;
@@ -28,48 +32,37 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
   }
 
   Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
     try {
       final existing = await _service.getOwnCode();
-      _balance = await _service.getWalletBalance();
-      if (existing != null && existing['active'] == true) {
-        _code = existing['code']?.toString();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible de charger le code de paiement. Réessayez plus tard.')),
-        );
-      }
-    }
-    if (mounted) {
+      final balance = await _service.getWalletBalance();
+      if (!mounted) return;
+      setState(() {
+        _code = existing != null && existing['active'] == true
+            ? existing['code']?.toString()
+            : null;
+        _balance = balance;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _create() async {
-    setState(() => _loading = true);
-    try {
-      final code = await _service.createOrGetCode();
-      if (mounted) {
-        setState(() => _code = code);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'Impossible de créer le code.' : 'Unable to create the code.')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_fr
+              ? 'Impossible de charger votre code partagé. Réessayez.'
+              : 'Unable to load your shared code. Try again.'),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Code de paiement enseignant' : 'Teacher payment code')),
+      appBar: AppBar(
+        title: Text(_fr ? 'Code unique et paiements' : 'Shared code and payments'),
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -81,28 +74,38 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.qr_code_2_rounded, size: 64, color: Color(0xFF166534)),
+                    const Icon(Icons.qr_code_2_rounded,
+                        size: 64, color: Color(0xFF166534)),
                     const SizedBox(height: 18),
                     Text(
-                      _fr ? 'Votre code unique' : 'Your unique code',
+                      _fr ? 'Votre code unique' : 'Your shared code',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       _fr
-                          ? 'Partagez ce code aux élèves qui souhaitent payer Premium en vous désignant comme enseignant référent. Après un paiement réussi, 200 FCFA sont crédités dans votre portefeuille.'
-                          : 'Share this code with students who choose to pay Premium with you as their teacher. After a successful payment, 200 XAF are credited to your wallet.',
+                          ? 'Le code affiché ici est exactement le même que celui utilisé pour la messagerie privée et les groupes. Créez ou modifiez votre code vous-même dans la page « Code unique ».'
+                          : 'The code shown here is exactly the same one used for private messages and groups. Create or change it yourself on the “Shared code” page.',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
                     else if (_code == null)
-                      FilledButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.add_link_rounded),
-                        label: Text(_fr ? 'Créer mon code' : 'Create my code'),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _fr
+                              ? 'Aucun code partagé n’est encore enregistré. Ouvrez la page « Code unique », choisissez votre propre code, puis revenez ici. Aucun code ne sera généré automatiquement.'
+                              : 'No shared code is registered yet. Open the “Shared code” page and choose your own code, then return here. No code will be generated automatically.',
+                          textAlign: TextAlign.center,
+                        ),
                       )
                     else
                       Container(
@@ -114,10 +117,14 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                         child: SelectableText(
                           _code!,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 2),
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
                         ),
                       ),
-                    if (_code != null) ...[
+                    if (!_loading && _code != null) ...[
                       const SizedBox(height: 18),
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -127,26 +134,28 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF166534)),
+                            const Icon(Icons.account_balance_wallet_outlined,
+                                color: Color(0xFF166534)),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(_fr ? 'Solde enseignant' : 'Teacher balance'),
+                              child: Text(
+                                  _fr ? 'Solde enseignant' : 'Teacher balance'),
                             ),
-                            Text('$_balance XAF', style: const TextStyle(fontWeight: FontWeight.w900)),
+                            Text('$_balance XAF',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
                           ],
                         ),
                       ),
                     ],
-                    if (_code != null) ...[
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await _create();
-                        },
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: Text(_fr ? 'Récupérer mon code' : 'Refresh my code'),
-                      ),
-                    ],
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _loading ? null : _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: Text(_fr
+                          ? 'Actualiser le code et le solde'
+                          : 'Refresh code and balance'),
+                    ),
                   ],
                 ),
               ),
