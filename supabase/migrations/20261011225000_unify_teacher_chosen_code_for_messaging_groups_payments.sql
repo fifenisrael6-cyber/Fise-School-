@@ -154,3 +154,67 @@ $$;
 
 revoke all on function public.sync_group_code_to_teacher_access(uuid) from public, anon;
 grant execute on function public.sync_group_code_to_teacher_access(uuid) to authenticated;
+
+
+-- Make the shared code's displayed format identical in group lists and payments.
+create or replace function public.list_my_message_groups()
+returns table (
+  id uuid,
+  name text,
+  class_id uuid,
+  class_name text,
+  owner_id uuid,
+  invite_code text,
+  member_count bigint,
+  last_body text,
+  last_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    g.id,
+    g.name,
+    g.class_id,
+    c.display_name,
+    g.owner_id,
+    case
+      when g.owner_id <> auth.uid() then null
+      when g.class_id is null then g.invite_code
+      else coalesce(
+        (
+          select 'FISE-' || upper(trim(t.code))
+          from public.teacher_access_codes t
+          where t.teacher_id = g.owner_id
+            and t.class_id::text = g.class_id::text
+            and t.is_active = true
+          order by t.created_at
+          limit 1
+        ),
+        g.invite_code
+      )
+    end,
+    (select count(*) from public.message_group_members m2 where m2.group_id = g.id),
+    (select case
+              when length(trim(lm.body)) > 0 then lm.body
+              else coalesce(lm.attachment_name, 'Pièce jointe')
+            end
+     from public.message_group_messages lm
+     where lm.group_id = g.id
+     order by lm.created_at desc
+     limit 1),
+    (select max(lm.created_at) from public.message_group_messages lm where lm.group_id = g.id)
+  from public.message_groups g
+  join public.message_group_members me
+    on me.group_id = g.id and me.user_id = auth.uid()
+  left join public.school_classes c on c.id = g.class_id
+  order by coalesce(
+    (select max(lm.created_at) from public.message_group_messages lm where lm.group_id = g.id),
+    g.created_at
+  ) desc;
+$$;
+
+revoke all on function public.list_my_message_groups() from public, anon;
+grant execute on function public.list_my_message_groups() to authenticated;
