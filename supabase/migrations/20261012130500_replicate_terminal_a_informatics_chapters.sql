@@ -28,8 +28,4 @@ where source_subject.code = 'informatique'
   )
   and source_curriculum.is_active
   and target.is_active
-on conflict (curriculum_id, position) do update
-set title_fr = excluded.title_fr,
-    title_en = excluded.title_en,
-    is_active = true,
-    updated_at = now();
+on conflict (curriculum_id, position) do nothing;
