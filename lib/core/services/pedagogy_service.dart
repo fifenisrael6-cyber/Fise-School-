@@ -264,7 +264,7 @@ class CourseService {
         final curriculum = curriculumById[curriculumId];
         output.add(<String, dynamic>{
           'id': 'title-only-$chapterId',
-          'chapter_id': chapterId,
+          'chapter_id': '', // title-only syllabus rows do not launch a quiz without lesson content.
           'content_type': 'curriculum_title',
           'title_fr': curriculum?['title_fr'] ?? chapter['title_fr'] ?? '',
           'title_en': curriculum?['title_en'] ?? chapter['title_en'] ?? '',
