@@ -195,13 +195,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       _snack(_fr ? 'Donnez un titre au cours.' : 'Give the course a title.');
       return;
     }
-    if (_attachments.isEmpty) {
-      _snack(_fr
-          ? 'Ajoutez au moins une photo, une vidéo ou un PDF.'
-          : 'Add at least one photo, video or PDF.');
-      return;
-    }
-
     setState(() => _saving = true);
 
     try {
@@ -309,7 +302,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Partager des médias' : 'Share media')),
+      appBar: AppBar(title: Text(_fr ? 'Créer un cours' : 'Create a course')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -329,7 +322,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             controller: _title,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              labelText: _fr ? 'Titre ou légende du média' : 'Media title or caption',
+              labelText: _fr ? 'Titre du cours' : 'Course title',
               border: const OutlineInputBorder(),
             ),
           ),
@@ -338,12 +331,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Partagez des photos, des vidéos et des PDF dans la salle choisie.'
-                : 'Share photos, videos and PDFs with the selected classroom.'),
+                ? 'Le contenu multimédia est facultatif. Vous pouvez publier le cours, puis créer ses leçons et ajouter des PDF, photos ou vidéos depuis la page du cours.'
+                : 'Media attachments are optional. You can publish the course, then create lessons and add PDFs, photos or videos from the course page.'),
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Photos, vidéos et PDF' : 'Photos, videos and PDFs',
+            _fr ? 'Ressources du cours (facultatif)' : 'Course resources (optional)',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -416,7 +409,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_fr ? 'Publier les médias' : 'Publish media'),
+                      : Text(_fr ? 'Publier le cours' : 'Publish course'),
                 ),
               ),
             ],
