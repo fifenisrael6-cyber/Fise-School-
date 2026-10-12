@@ -215,6 +215,22 @@ class CourseService {
     return chapters.toList(growable: false);
   }
 
+  /// Canonical chapter-list catalogs only; legacy curricula must not be used
+  /// to decide where a teacher's media upload is attached.
+  Future<List<Curriculum>> listCatalogCurricula(String subjectId) async {
+    final rows = await _client
+        .from('curricula')
+        .select()
+        .eq('subject_id', subjectId)
+        .eq('is_active', true)
+        .eq('is_catalog_container', true)
+        .order('title_fr');
+
+    return rows
+        .map((row) => Curriculum.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
   Future<List<Curriculum>> listCurricula(String subjectId) async {
     final rows = await _client
         .from('curricula')
