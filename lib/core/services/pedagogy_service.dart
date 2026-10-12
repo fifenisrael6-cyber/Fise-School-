@@ -476,7 +476,59 @@ class CourseService {
               .select()
               .single();
 
-    return Course.fromMap(Map<String, dynamic>.from(row));
+    final savedCourse = Course.fromMap(Map<String, dynamic>.from(row));
+
+    // Once a course is published, request its revision QCM from the secured
+    // Edge Function. Generation is best-effort so a temporary AI/network issue
+    // never rolls back or hides a course that was successfully saved.
+    if (status == 'published' && smartLessonEnabled) {
+      try {
+        await _client.functions.invoke(
+          'course-quiz',
+          body: {
+            'course_id': savedCourse.id,
+            'language': 'fr',
+          },
+        );
+      } catch (_) {
+        // The course remains saved; the student can retry generation later.
+      }
+    }
+
+    return savedCourse;
+  }
+
+  /// Publie un brouillon appartenant à la session connectée.
+  /// Une erreur du QCM IA ne doit jamais annuler la publication.
+  Future<Course> publishCourse(String id) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Session expirée. Reconnectez-vous avant de publier.');
+    }
+
+    final row = await _client
+        .from('courses')
+        .update({
+          'status': 'published',
+          'published_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .eq('teacher_id', userId)
+        .select()
+        .single();
+    final course = Course.fromMap(Map<String, dynamic>.from(row));
+
+    if (course.smartLessonEnabled) {
+      try {
+        await _client.functions.invoke(
+          'course-quiz',
+          body: {'course_id': course.id, 'language': 'fr'},
+        );
+      } catch (_) {
+        // Le cours reste publié même si la génération IA est temporairement indisponible.
+      }
+    }
+    return course;
   }
 
   Future<void> archiveCourse(String id) async {
@@ -717,9 +769,7 @@ class ResourceService {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
 
-    final extension = (file.extension ??
-            (file.name.contains('.') ? file.name.split('.').last : ''))
-        .toLowerCase();
+    final extension = _extensionFor(file);
     final safeFileName = file.name.isEmpty ? 'resource' : file.name;
     final storageFileName = safeFileName.replaceAll(
       RegExp(r'[^A-Za-z0-9._-]'),
@@ -779,6 +829,17 @@ class ResourceService {
     }
   }
 
+  String _extensionFor(PlatformFile file) {
+    final provided = file.extension?.trim().toLowerCase() ?? '';
+    if (provided.isNotEmpty) {
+      return provided.startsWith('.') ? provided.substring(1) : provided;
+    }
+    final name = file.name.trim();
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return '';
+    return name.substring(dot + 1).toLowerCase();
+  }
+
   String? _mimeTypeFor(String? extension) {
     switch ((extension ?? '').toLowerCase()) {
       case 'pdf': return 'application/pdf';
@@ -786,10 +847,15 @@ class ResourceService {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
       case 'mp3': return 'audio/mpeg';
+      case 'wav': return 'audio/wav';
       case 'm4a': return 'audio/mp4';
       case 'aac': return 'audio/aac';
+      case 'ogg': return 'audio/ogg';
       case 'mp4': return 'video/mp4';
       case 'mov': return 'video/quicktime';
+      case 'webm': return 'video/webm';
+      case 'avi': return 'video/x-msvideo';
+      case 'mkv': return 'video/x-matroska';
       case 'txt': return 'text/plain';
       default: return null;
     }
@@ -804,9 +870,7 @@ class ResourceService {
     if (bytes == null || bytes.isEmpty) {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
-    final extension = (file.extension ??
-            (file.name.contains('.') ? file.name.split('.').last : ''))
-        .toLowerCase();
+    final extension = _extensionFor(file);
     final safeName = file.name.isEmpty ? 'resource' : file.name;
     final storageName = safeName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final mimeType = _mimeTypeFor(extension) ??

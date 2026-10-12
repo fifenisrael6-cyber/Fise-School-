@@ -6,6 +6,7 @@ import '../../../core/services/photo_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'create_course_page.dart';
+import 'teacher_lessons_page.dart';
 import 'teacher_resource_page.dart';
 
 class TeacherCoursesPage extends StatefulWidget {
@@ -65,6 +66,53 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       return;
     }
     setState(_reload);
+  }
+
+  Future<void> _manageLessons(Course course) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherLessonsPage(
+      locale: widget.locale, profile: widget.profile, course: course,
+    )));
+    if (!mounted) return;
+    setState(_reload);
+  }
+
+  Future<void> _publishCourse(Course course) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Publier le cours ?' : 'Publish course?'),
+        content: Text(_isFrench
+            ? 'Le cours et les ressources ajoutées seront visibles aux élèves de la classe ciblée.'
+            : 'The course and its uploaded resources will become visible to students in the selected class.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_isFrench ? 'Publier' : 'Publish'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _service.publishCourse(course.id);
+      if (!mounted) return;
+      setState(_reload);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_isFrench ? 'Cours publié avec succès.' : 'Course published successfully.'),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_isFrench
+            ? 'La publication a échoué : $error'
+            : 'Publishing failed: $error'),
+      ));
+    }
   }
 
   Future<void> _archiveCourse(Course course) async {
@@ -132,11 +180,11 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
     final texts = AppTexts(widget.locale);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isFrench ? 'Mes médias de classe' : 'My classroom media')),
+      appBar: AppBar(title: Text(_isFrench ? 'Mes cours et ressources' : 'My courses and resources')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createCourse,
-        icon: const Icon(Icons.perm_media_rounded),
-        label: Text(_isFrench ? 'Partager des médias' : 'Share media'),
+        icon: const Icon(Icons.library_add_rounded),
+        label: Text(_isFrench ? 'Créer un cours' : 'Create a course'),
       ),
       body: FutureBuilder<List<Course>>(
         future: _coursesFuture,
@@ -164,7 +212,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  _isFrench ? 'Aucune photo ou vidéo partagée pour le moment.' : 'No photos or videos shared yet.',
+                  _isFrench ? 'Aucun cours pour le moment. Créez un cours, ajoutez vos leçons et joignez des PDF, photos, vidéos ou audios.' : 'No courses yet. Create a course, add lessons and attach PDFs, photos, videos or audio.',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -187,6 +235,10 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
                   course: course,
                   locale: widget.locale,
                   onResources: () => _manageResources(course),
+                  onLessons: () => _manageLessons(course),
+                  onPublish: course.status == 'draft'
+                      ? () => _publishCourse(course)
+                      : null,
                   onArchive: course.status == 'draft'
                       ? () => _archiveCourse(course)
                       : null,
@@ -205,6 +257,8 @@ class _CourseCard extends StatelessWidget {
   final Course course;
   final Locale locale;
   final VoidCallback onResources;
+  final VoidCallback onLessons;
+  final VoidCallback? onPublish;
   final VoidCallback? onArchive;
   final bool isFrench;
 
@@ -212,6 +266,8 @@ class _CourseCard extends StatelessWidget {
     required this.course,
     required this.locale,
     required this.onResources,
+    required this.onLessons,
+    required this.onPublish,
     required this.onArchive,
     required this.isFrench,
   });
@@ -258,8 +314,8 @@ class _CourseCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               isFrench
-                  ? 'Partagez des photos et des vidéos avec les élèves de la classe sélectionnée.'
-                  : 'Share photos and videos with students in the selected classroom.',
+                  ? 'Publiez vos cours, gérez les leçons et partagez des PDF, photos, vidéos ou fichiers audio avec la classe sélectionnée.'
+                  : 'Publish courses, manage lessons and share PDFs, photos, videos or audio files with the selected class.',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 14),
@@ -267,12 +323,23 @@ class _CourseCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-OutlinedButton.icon(
+                OutlinedButton.icon(
+                  onPressed: onLessons,
+                  icon: const Icon(Icons.menu_book_rounded),
+                  label: Text(isFrench ? 'Leçons' : 'Lessons'),
+                ),
+                OutlinedButton.icon(
                   onPressed: onResources,
                   icon: const Icon(Icons.attach_file_rounded),
-                  label: Text(isFrench ? 'Photos / vidéos' : 'Photos / videos'),
+                  label: Text(isFrench ? 'Ressources PDF / médias' : 'PDF / media resources'),
                 ),
-if (onArchive != null)
+                if (onPublish != null)
+                  FilledButton.icon(
+                    onPressed: onPublish,
+                    icon: const Icon(Icons.publish_rounded),
+                    label: Text(isFrench ? 'Publier' : 'Publish'),
+                  ),
+                if (onArchive != null)
                   IconButton(
                     onPressed: onArchive,
                     tooltip: isFrench ? 'Archiver' : 'Archive',

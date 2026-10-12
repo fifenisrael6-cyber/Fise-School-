@@ -102,6 +102,32 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
       return;
     }
 
+    final titleFr = _titleFrController.text.trim();
+    final titleEn = _titleEnController.text.trim();
+    final contentFr = _contentFrController.text.trim();
+    final contentEn = _contentEnController.text.trim();
+    final frenchPairIncomplete =
+        (titleFr.isNotEmpty || contentFr.isNotEmpty) &&
+        (titleFr.isEmpty || contentFr.isEmpty);
+    final englishPairIncomplete =
+        (titleEn.isNotEmpty || contentEn.isNotEmpty) &&
+        (titleEn.isEmpty || contentEn.isEmpty);
+    if ((titleFr.isEmpty || contentFr.isEmpty) &&
+        (titleEn.isEmpty || contentEn.isEmpty) ||
+        frenchPairIncomplete ||
+        englishPairIncomplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFrench
+                ? 'Complétez au moins le titre et le contenu dans une même langue (français ou anglais).'
+                : 'Enter both the title and content in at least one language (French or English).',
+          ),
+        ),
+      );
+      return;
+    }
+
     final minutes = int.tryParse(_minutesController.text.trim());
 
     if (minutes == null || minutes <= 0) {
@@ -338,16 +364,26 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
               ),
             ),
             const SizedBox(height: 16),
-            _field(controller: _titleFrController, label: 'Titre français'),
-            _field(controller: _titleEnController, label: 'English title'),
+            _field(
+              controller: _titleFrController,
+              label: 'Titre français',
+              required: false,
+            ),
+            _field(
+              controller: _titleEnController,
+              label: 'English title',
+              required: false,
+            ),
             _field(
               controller: _contentFrController,
               label: 'Contenu français',
+              required: false,
               maxLines: 8,
             ),
             _field(
               controller: _contentEnController,
               label: 'English content',
+              required: false,
               maxLines: 8,
             ),
             _field(

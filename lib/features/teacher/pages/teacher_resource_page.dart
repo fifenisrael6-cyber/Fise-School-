@@ -118,7 +118,16 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
   }
 
   String _detectResourceType(PlatformFile file) {
-    final extension = file.extension?.toLowerCase() ?? '';
+    // Sur Android, certains fournisseurs renvoient une extension null alors
+    // que le nom du fichier finit bien par ".pdf".
+    final providedExtension = file.extension?.trim() ?? '';
+    final name = file.name.trim();
+    final filenameExtension = name.contains('.') ? name.split('.').last : '';
+    final extension = (providedExtension.isNotEmpty
+            ? providedExtension
+            : filenameExtension)
+        .replaceFirst(RegExp(r'^\.'), '')
+        .toLowerCase();
 
     switch (extension) {
       case 'pdf':
@@ -164,7 +173,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf', 'mp3', 'wav', 'm4a', 'aac', 'ogg',
         ],
         withData: true,
       );
@@ -194,12 +203,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
-                : 'Teachers can upload photos, videos and PDFs.')),
+                ? 'Les photos, vidéos, fichiers audio et PDF sont autorisés.'
+                : 'Photos, videos, audio files and PDFs are supported.')),
           );
         }
         return;
