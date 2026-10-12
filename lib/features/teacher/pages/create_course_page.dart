@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -65,9 +66,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ? 'image'
           : mime.startsWith('video/')
               ? 'video'
-              : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
-                  ? 'pdf'
-                  : null;
+              : mime.startsWith('audio/')
+                  ? 'audio'
+                  : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
+                      ? 'pdf'
+                      : null;
       if (type != null) {
         _attachments.add(_CourseAttachment(
           name: attachment.name,
@@ -152,6 +155,28 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     });
   }
 
+  Future<void> _pickAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'amr', 'wma'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    var bytes = file.bytes;
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try { bytes = await File(file.path!).readAsBytes(); } catch (_) {}
+    }
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le fichier audio.' : 'Unable to read the audio file.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _attachments.add(_CourseAttachment(
+      name: file.name, bytes: bytes!, resourceType: 'audio',
+    )));
+  }
+
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -163,7 +188,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
     final file = result.files.single;
     final bytes = file.bytes;
-    if (bytes == null) {
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire la vidéo.' : 'Unable to read the video.');
       return;
     }
     if (!mounted) {
@@ -180,7 +206,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     });
   }
 
-  Future<void> _save(String status) async {
+  Future<void> _save() async {
     final title = _title.text.trim();
 
     if (_classes.isEmpty) {
@@ -197,8 +223,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
     if (_attachments.isEmpty) {
       _snack(_fr
-          ? 'Ajoutez au moins une photo, une vidéo ou un PDF.'
-          : 'Add at least one photo, video or PDF.');
+          ? 'Ajoutez au moins une photo, une vidéo, un PDF ou un fichier audio.'
+          : 'Add at least one photo, video, PDF or audio file.');
       return;
     }
 
@@ -216,7 +242,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
 
-    var published = 0;
+    var saved = 0;
     final errors = <String>[];
 
     for (final schoolClass in _classes) {
@@ -250,21 +276,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           );
         }
 
-        if (status == 'published') {
-          await _service.saveCourse(
-            id: course.id,
-            subjectId: _subject!.id,
-            teacherId: widget.profile.id,
-            classId: schoolClass.id,
-            titleFr: title,
-            titleEn: title,
-            contentFr: null,
-            contentEn: null,
-            smartLessonEnabled: false,
-            status: 'published',
-          );
-        }
-        published++;
+        // Teachers may upload media, but only the administrator publishes
+        // official courses and lessons. Keep teacher-created media courses draft.
+        saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
       }
@@ -279,13 +293,13 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       _snack(
         '${_fr ? 'Erreur' : 'Error'} (${errors.length}/${_classes.length})\n${errors.first}',
       );
-      if (published == 0) {
+      if (saved == 0) {
         return;
       }
     } else {
-      _snack(status == 'published'
-          ? (_fr ? 'Cours publié dans $published classe(s).' : 'Course published in $published class(es).')
-          : (_fr ? 'Brouillon enregistré.' : 'Draft saved.'));
+      _snack(_fr
+          ? 'Médias envoyés dans $saved classe(s). En attente de publication par l’administration.'
+          : 'Media sent to $saved classroom(s). Waiting for administrator publication.');
     }
 
     Navigator.pop(context, true);
@@ -338,12 +352,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Partagez des photos, des vidéos et des PDF dans la salle choisie.'
-                : 'Share photos, videos and PDFs with the selected classroom.'),
+                ? 'Partagez des photos, vidéos, PDF et fichiers audio. La publication du cours reste réservée à l’administration.'
+                : 'Share photos, videos, PDFs and audio. Course publication is reserved for administrators.'),
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Photos, vidéos et PDF' : 'Photos, videos and PDFs',
+            _fr ? 'Photos, vidéos, PDF et audio' : 'Photos, videos, PDFs and audio',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -370,6 +384,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 avatar: const Icon(Icons.picture_as_pdf_rounded, size: 18),
                 label: Text(_fr ? 'Choisir un PDF' : 'Choose a PDF'),
                 onPressed: _saving ? null : _pickPdf,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.audiotrack_rounded, size: 18),
+                label: Text(_fr ? 'Choisir un audio' : 'Choose audio'),
+                onPressed: _saving ? null : _pickAudio,
               ),
             ],
           ),
@@ -402,21 +421,21 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _saving ? null : () => _save('draft'),
+                  onPressed: _saving ? null : _save,
                   child: Text(_fr ? 'Enregistrer' : 'Save'),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: _saving ? null : () => _save('published'),
+                  onPressed: _saving ? null : _save,
                   child: _saving
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_fr ? 'Publier les médias' : 'Publish media'),
+                      : Text(_fr ? 'Envoyer les médias' : 'Send media'),
                 ),
               ),
             ],

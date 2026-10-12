@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
@@ -151,6 +154,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       case 'm4a':
       case 'aac':
       case 'ogg':
+      case 'oga':
+      case 'opus':
+      case 'flac':
+      case 'amr':
+      case '3gp':
+      case 'wma':
         return 'audio';
 
       default:
@@ -165,6 +174,8 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
           'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac',
+          'amr', '3gp', 'wma',
         ],
         withData: true,
       );
@@ -174,32 +185,37 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final file = result.files.first;
-
-      if (file.bytes == null || file.bytes!.isEmpty) {
-        if (!mounted) {
-          return;
+      var bytes = file.bytes;
+      if ((bytes == null || bytes.isEmpty) && file.path != null) {
+        try {
+          bytes = await File(file.path!).readAsBytes();
+        } catch (_) {
+          // Show a clear error below if Android's document provider is unreadable.
         }
-
+      }
+      if (bytes == null || bytes.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFrench
-                  ? 'Impossible de lire le fichier sélectionné.'
-                  : 'Unable to read the selected file.',
-            ),
-          ),
+          SnackBar(content: Text(_isFrench
+              ? 'Impossible de lire le fichier. Essayez de le sélectionner depuis le stockage du téléphone.'
+              : 'Unable to read the file. Try selecting it from phone storage.')),
         );
-
         return;
       }
+      final usableFile = PlatformFile(
+        name: file.name,
+        size: bytes.length,
+        bytes: bytes,
+        path: file.path,
+      );
 
-      final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      final type = _detectResourceType(usableFile);
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
-                : 'Teachers can upload photos, videos and PDFs.')),
+                ? 'Formats autorisés : photos, vidéos, PDF et fichiers audio.'
+                : 'Allowed formats: photos, videos, PDFs and audio files.')),
           );
         }
         return;
@@ -213,7 +229,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       final resource = await _service.uploadResource(
         courseId: widget.course.id,
         lessonId: widget.lesson?.id,
-        file: file,
+        file: usableFile,
         resourceType: type,
         position: position,
       );
@@ -286,35 +302,40 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
   Future<void> _openResource(CourseResource resource) async {
     try {
       final url = await _service.createSignedUrl(resource.storagePath);
+      if (!mounted) return;
 
-      if (!mounted) {
-        return;
-      }
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(_resourceTitle(resource)),
-            content: SelectableText(url),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-                child: Text(_isFrench ? 'Fermer' : 'Close'),
+      // Preview images in-app. Open PDFs, audio and video with Android's
+      // registered viewer so the teacher can verify the actual uploaded file.
+      if (resource.resourceType == 'image') {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: InteractiveViewer(
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_isFrench ? 'Image impossible à afficher.' : 'Unable to display image.'),
+                ),
               ),
-            ],
-          );
-        },
-      );
-    } catch (e) {
-      if (!mounted) {
+            ),
+          ),
+        );
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench
+              ? 'Aucune application ne peut ouvrir ce fichier.'
+              : 'No application can open this file.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -369,23 +390,34 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         allowedExtensions: const [
           'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
           'mp4', 'mov', 'avi', 'mkv', 'webm',
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'amr', '3gp', 'wma',
         ],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
       final file = result.files.single;
-      if (file.bytes == null || file.bytes!.isEmpty) {
+      var bytes = file.bytes;
+      if ((bytes == null || bytes.isEmpty) && file.path != null) {
+        try { bytes = await File(file.path!).readAsBytes(); } catch (_) {}
+      }
+      if (bytes == null || bytes.isEmpty) {
         throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
       }
-      final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      final usableFile = PlatformFile(name: file.name, size: bytes.length, bytes: bytes, path: file.path);
+      final type = _detectResourceType(usableFile);
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         throw Exception(_isFrench
-            ? 'Choisissez une photo, une vidéo ou un PDF.'
-            : 'Choose a photo, video or PDF.');
+            ? 'Choisissez une photo, une vidéo, un PDF ou un fichier audio.'
+            : 'Choose a photo, video, PDF or audio file.');
       }
       await _service.replaceResourceFile(
         resource: resource,
-        file: file,
+        file: PlatformFile(
+          name: file.name,
+          size: bytes.length,
+          bytes: bytes,
+          path: file.path,
+        ),
         resourceType: type,
       );
       if (type == 'pdf' || type == 'image') {
@@ -673,6 +705,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     isFrench: _isFrench,
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
+                    canManage: resource.uploadedBy == widget.profile.id,
                     onEdit: () => _editResourceTitle(resource),
                     onReplace: () => _replaceResourceFile(resource),
                     onDelete: () => _deleteResource(resource),
@@ -760,6 +793,7 @@ class _ResourceCard extends StatelessWidget {
   final String typeLabel;
   final IconData icon;
   final bool isFrench;
+  final bool canManage;
   final VoidCallback onOpen;
   final VoidCallback onDetails;
   final VoidCallback onEdit;
@@ -772,6 +806,7 @@ class _ResourceCard extends StatelessWidget {
     required this.typeLabel,
     required this.icon,
     required this.isFrench,
+    required this.canManage,
     required this.onOpen,
     required this.onDetails,
     required this.onEdit,
@@ -883,7 +918,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'edit',
                     child: Row(
                       children: [
@@ -893,7 +928,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'replace',
                     child: Row(
                       children: [
@@ -903,7 +938,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'delete',
                     child: Row(
                       children: [

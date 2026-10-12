@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -711,10 +712,18 @@ class ResourceService {
     String? titleFr,
     String? titleEn,
   }) async {
+    // Some Android document providers return a path but no in-memory bytes.
+    // Read the selected file as a fallback rather than failing the upload.
     Uint8List? bytes = file.bytes;
-
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {
+        // Report a clear error below; never mark an unreadable file as uploaded.
+      }
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
 
     final extension = (file.extension ??
@@ -749,6 +758,7 @@ class ResourceService {
     final values = <String, dynamic>{
       'course_id': courseId,
       'lesson_id': lessonId,
+      'uploaded_by': _client.auth.currentUser?.id,
       'storage_path': storagePath,
       'file_name': safeFileName,
       'resource_type': resourceType,
@@ -786,10 +796,22 @@ class ResourceService {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
       case 'mp3': return 'audio/mpeg';
+      case 'wav': return 'audio/wav';
       case 'm4a': return 'audio/mp4';
       case 'aac': return 'audio/aac';
+      case 'ogg': case 'oga': return 'audio/ogg';
+      case 'opus': return 'audio/opus';
+      case 'flac': return 'audio/flac';
+      case 'amr': return 'audio/amr';
+      case '3gp': return 'video/3gpp';
+      case 'wma': return 'audio/x-ms-wma';
       case 'mp4': return 'video/mp4';
       case 'mov': return 'video/quicktime';
+      case 'avi': return 'video/x-msvideo';
+      case 'mkv': return 'video/x-matroska';
+      case 'webm': return 'video/webm';
+      case 'gif': return 'image/gif';
+      case 'bmp': return 'image/bmp';
       case 'txt': return 'text/plain';
       default: return null;
     }
@@ -800,9 +822,16 @@ class ResourceService {
     required PlatformFile file,
     required String resourceType,
   }) async {
-    final bytes = file.bytes;
+    Uint8List? bytes = file.bytes;
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {
+        // Report a clear error below; do not replace the existing resource.
+      }
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
     final extension = (file.extension ??
             (file.name.contains('.') ? file.name.split('.').last : ''))
@@ -824,15 +853,23 @@ class ResourceService {
         contentType: mimeType ?? 'application/octet-stream',
       ),
     );
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      await _client.storage.from(bucket).remove([newPath]);
+      throw StateError('You must be signed in to replace a resource.');
+    }
     try {
-      await _client.from('course_resources').update({
+      final updated = await _client.from('course_resources').update({
         'storage_path': newPath,
         'file_name': safeName,
         'resource_type': resourceType,
         'mime_type': mimeType,
         'file_size': bytes.length,
         if (extension.isNotEmpty) 'file_extension': extension,
-      }).eq('id', resource.id);
+      }).eq('id', resource.id).eq('uploaded_by', currentUserId).select('id');
+      if (updated.isEmpty) {
+        throw StateError('You can only replace a resource you uploaded.');
+      }
     } catch (_) {
       try {
         await _client.storage.from(bucket).remove([newPath]);
@@ -854,17 +891,40 @@ class ResourceService {
     if (cleanTitle.isEmpty) {
       throw ArgumentError('Le titre ne peut pas être vide.');
     }
-    await _client
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw StateError('You must be signed in to edit a resource.');
+    }
+    final updated = await _client
         .from('course_resources')
         .update({'title_fr': cleanTitle, 'title_en': cleanTitle})
-        .eq('id', resourceId);
+        .eq('id', resourceId)
+        .eq('uploaded_by', currentUserId)
+        .select('id');
+    if (updated.isEmpty) {
+      throw StateError('You can only edit a resource you uploaded.');
+    }
   }
 
   Future<void> deleteResource(CourseResource resource) async {
-    try {
-      await _client.storage.from(bucket).remove([resource.storagePath]);
-    } finally {
-      await _client.from('course_resources').delete().eq('id', resource.id);
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw StateError('You must be signed in to delete a resource.');
     }
+    if (resource.uploadedBy != currentUserId) {
+      throw StateError('You can only delete a resource you uploaded.');
+    }
+    // Delete the row first under RLS. Do not remove the file if the row
+    // deletion is rejected; that would leave a live reference to a missing file.
+    final deleted = await _client
+        .from('course_resources')
+        .delete()
+        .eq('id', resource.id)
+        .eq('uploaded_by', currentUserId)
+        .select('id');
+    if (deleted.isEmpty) {
+      throw StateError('You can only delete a resource you uploaded.');
+    }
+    await _client.storage.from(bucket).remove([resource.storagePath]);
   }
 }
