@@ -705,6 +705,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     isFrench: _isFrench,
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
+                    canManage: resource.uploadedBy == widget.profile.id,
                     onEdit: () => _editResourceTitle(resource),
                     onReplace: () => _replaceResourceFile(resource),
                     onDelete: () => _deleteResource(resource),
@@ -792,6 +793,7 @@ class _ResourceCard extends StatelessWidget {
   final String typeLabel;
   final IconData icon;
   final bool isFrench;
+  final bool canManage;
   final VoidCallback onOpen;
   final VoidCallback onDetails;
   final VoidCallback onEdit;
@@ -804,6 +806,7 @@ class _ResourceCard extends StatelessWidget {
     required this.typeLabel,
     required this.icon,
     required this.isFrench,
+    required this.canManage,
     required this.onOpen,
     required this.onDetails,
     required this.onEdit,
@@ -915,7 +918,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'edit',
                     child: Row(
                       children: [
@@ -925,7 +928,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'replace',
                     child: Row(
                       children: [
@@ -935,7 +938,7 @@ class _ResourceCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem<String>(
+                  if (canManage) PopupMenuItem<String>(
                     value: 'delete',
                     child: Row(
                       children: [
