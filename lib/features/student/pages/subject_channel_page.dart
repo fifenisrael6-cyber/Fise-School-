@@ -59,6 +59,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _chapterFocused => widget.chapterId != null;
+  bool get _firstRollout =>
+      (widget.profile.subsystem ?? '').toLowerCase() == 'francophone' &&
+      (widget.profile.sector ?? '').toLowerCase() == 'general';
 
   @override
   void initState() {
@@ -229,9 +232,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         subtitle: Text(
-                          _fr
-                              ? '${chapters.length} chapitre(s). Chaque page regroupe les cours publiés par l’administration, les médias partagés, les exercices et le QCM intelligent.'
-                              : '${chapters.length} chapter(s). Each page groups admin-published lessons, shared media, exercises and the smart quiz.',
+                          _firstRollout
+                              ? (_fr
+                                  ? '${chapters.length} chapitre(s). Chaque page regroupe les cours publiés par l’administration, les médias partagés, les exercices et le QCM intelligent.'
+                                  : '${chapters.length} chapter(s). Each page groups admin-published lessons, shared media, exercises and the smart quiz.')
+                              : (_fr
+                                  ? '${chapters.length} titre(s). Ouvre un chapitre pour consulter les contenus disponibles.'
+                                  : '${chapters.length} title(s). Open a chapter to view available content.'),
                         ),
                       ),
                     ),
@@ -369,7 +376,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   : 'No photo, video or PDF shared by a teacher for this chapter yet.',
             ),
           );
-          if (focused) {
+          if (focused && _firstRollout) {
             tabChildren.add(
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
