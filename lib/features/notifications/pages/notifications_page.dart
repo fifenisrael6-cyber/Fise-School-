@@ -66,6 +66,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     return Scaffold(
       appBar: AppBar(
+        title: FutureBuilder<List<AppNotification>>(
+          future: _future,
+          builder: (context, snapshot) {
+            final unread = (snapshot.data ?? const <AppNotification>[])
+                .where((item) => !item.isRead).length;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text(widget.locale.languageCode == 'en' ? 'Notifications' : 'Notifications')),
+                if (unread > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.error,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      unread > 99 ? '99+' : '$unread',
+                      style: TextStyle(color: Theme.of(context).colorScheme.onError, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
         actions: [
           IconButton(tooltip: widget.locale.languageCode == 'en' ? 'Delete all' : 'Tout supprimer', icon: const Icon(Icons.delete_sweep_outlined), onPressed: _deleteAll),
           TextButton(onPressed: _markAll, child: Text(texts.markAllRead)),
