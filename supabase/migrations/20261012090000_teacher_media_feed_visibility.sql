@@ -1,5 +1,5 @@
 -- Make teacher-shared media visible without publishing an official course.
--- Teacher media are draft, curriculum/chapter-free course records with resources.
+-- Teacher media use the existing required curriculum/chapter links; identify them by draft status and attached resources.
 -- Official courses/lessons remain administrator-published.
 
 create or replace function public.is_course_media_student(target_course_id uuid)
@@ -18,8 +18,6 @@ as $$
      and cs.is_active
     where c.id = target_course_id
       and c.status = 'draft'
-      and c.curriculum_id is null
-      and c.chapter_id is null
       and c.class_id is not null
       and exists (
         select 1
