@@ -786,10 +786,15 @@ class ResourceService {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
       case 'mp3': return 'audio/mpeg';
+      case 'wav': return 'audio/wav';
       case 'm4a': return 'audio/mp4';
       case 'aac': return 'audio/aac';
+      case 'ogg': return 'audio/ogg';
       case 'mp4': return 'video/mp4';
       case 'mov': return 'video/quicktime';
+      case 'webm': return 'video/webm';
+      case 'avi': return 'video/x-msvideo';
+      case 'mkv': return 'video/x-matroska';
       case 'txt': return 'text/plain';
       default: return null;
     }
