@@ -4,6 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../models/notification.dart';
+import '../../../core/services/pedagogy_service.dart';
+import '../../../models/pedagogy.dart';
+import '../../../models/user_profile.dart';
+import '../../student/pages/course_detail_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   final Locale locale;
@@ -64,6 +68,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          IconButton(tooltip: widget.locale.languageCode == 'en' ? 'Delete all' : 'Tout supprimer', icon: const Icon(Icons.delete_sweep_outlined), onPressed: _deleteAll),
           TextButton(onPressed: _markAll, child: Text(texts.markAllRead)),
         ],
       ),
@@ -96,23 +101,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text('${item.body}\n${_formatTime(item.createdAt)}'),
                 isThreeLine: true,
-                onTap: () async {
-                  try {
-                    await _service.markRead(item.id, userId: widget.userId);
-                    if (mounted) {
-                      setState(() => _future = _service.listForUser(widget.userId));
-                    }
-                  } catch (_) {
-                    if (mounted) {
-                      final message = widget.locale.languageCode == 'en'
-                          ? 'Could not mark this notification as read. Please retry.'
-                          : 'Impossible de marquer cette notification comme lue. Réessayez.';
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(message)),
-                      );
-                    }
-                  }
-                },
+                trailing: IconButton(tooltip: widget.locale.languageCode == 'en' ? 'Delete' : 'Supprimer', icon: const Icon(Icons.delete_outline), onPressed: () => _deleteOne(item)),
+                onTap: () => _openNotification(item),
               );
             },
           );
@@ -135,6 +125,63 @@ class _NotificationsPageState extends State<NotificationsPage> {
   String _formatTime(DateTime value) {
     final local = value.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+
+  Future<void> _openNotification(AppNotification item) async {
+    try {
+      if (!item.isRead) {
+        await _service.markRead(item.id, userId: widget.userId);
+        if (mounted) setState(() => _future = _service.listForUser(widget.userId));
+      }
+      if (item.targetType == 'course' && item.targetId != null && mounted) {
+        final client = Supabase.instance.client;
+        final row = await client.from('profiles').select().eq('id', widget.userId).single();
+        final profile = UserProfile.fromMap(Map<String, dynamic>.from(row));
+        final course = await CourseService().getCourse(item.targetId!);
+        if (!mounted) return;
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => CourseDetailPage(locale: widget.locale, profile: profile, course: course),
+        ));
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        widget.locale.languageCode == 'en' ? 'Could not open destination: $error' : 'Impossible d’ouvrir le contenu notifié : $error',
+      )));
+    }
+  }
+
+  Future<void> _deleteOne(AppNotification item) async {
+    try {
+      await _service.deleteOne(item.id, userId: widget.userId);
+      if (mounted) setState(() => _future = _service.listForUser(widget.userId));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  Future<void> _deleteAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(widget.locale.languageCode == 'en' ? 'Delete all notifications?' : 'Supprimer toutes les notifications ?'),
+        content: Text(widget.locale.languageCode == 'en' ? 'This only deletes your notifications.' : 'Cela supprime uniquement vos notifications.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(widget.locale.languageCode == 'en' ? 'Cancel' : 'Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(widget.locale.languageCode == 'en' ? 'Delete all' : 'Tout supprimer')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteAll(widget.userId);
+      if (mounted) setState(() => _future = _service.listForUser(widget.userId));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   Future<void> _markAll() async {
