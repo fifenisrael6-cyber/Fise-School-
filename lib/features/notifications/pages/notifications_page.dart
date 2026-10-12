@@ -5,7 +5,6 @@ import '../../../core/localization/app_texts.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../models/notification.dart';
 import '../../../core/services/pedagogy_service.dart';
-import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../../student/pages/course_detail_page.dart';
 
