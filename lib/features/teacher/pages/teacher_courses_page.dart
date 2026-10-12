@@ -183,7 +183,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       appBar: AppBar(title: Text(_isFrench ? 'Mes cours et ressources' : 'My courses and resources')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createCourse,
-        icon: const Icon(Icons.add_book_rounded),
+        icon: const Icon(Icons.library_add_rounded),
         label: Text(_isFrench ? 'Créer un cours' : 'Create a course'),
       ),
       body: FutureBuilder<List<Course>>(
