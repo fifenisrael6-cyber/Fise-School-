@@ -164,7 +164,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf', 'mp3', 'wav', 'm4a', 'aac', 'ogg',
         ],
         withData: true,
       );
@@ -194,12 +194,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
-                : 'Teachers can upload photos, videos and PDFs.')),
+                ? 'Les photos, vidéos, fichiers audio et PDF sont autorisés.'
+                : 'Photos, videos, audio files and PDFs are supported.')),
           );
         }
         return;
