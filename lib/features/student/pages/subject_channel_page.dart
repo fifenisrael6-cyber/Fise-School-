@@ -233,12 +233,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   }
 
   bool _isOfficialCourse(Course course) {
-    // L'administration rattache ses cours au programme/chapitre et peut
-    // publier du texte. Les enseignants publient seulement des médias.
-    // Only curriculum/chapter-linked courses are official. Teacher courses
-    // may also contain text/description, but their photos/PDFs/QCM belong in
-    // the teacher-media feed and must not disappear behind the wrong tab.
-    return course.curriculumId != null || course.chapterId != null;
+    // Teacher media are saved as drafts while awaiting administrator review.
+    // They also need curriculum/chapter links for the database schema, so
+    // curriculumId/chapterId alone cannot identify an official lesson.
+    // Only published, curriculum-linked courses belong in the official tab.
+    return course.status == 'published' &&
+        (course.curriculumId != null || course.chapterId != null);
   }
 
   Widget _feedList(List<_FeedItem> items, String emptyMessage) {
