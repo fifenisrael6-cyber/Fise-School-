@@ -476,7 +476,26 @@ class CourseService {
               .select()
               .single();
 
-    return Course.fromMap(Map<String, dynamic>.from(row));
+    final savedCourse = Course.fromMap(Map<String, dynamic>.from(row));
+
+    // Once a course is published, request its revision QCM from the secured
+    // Edge Function. Generation is best-effort so a temporary AI/network issue
+    // never rolls back or hides a course that was successfully saved.
+    if (status == 'published' && smartLessonEnabled) {
+      try {
+        await _client.functions.invoke(
+          'course-quiz',
+          body: {
+            'course_id': savedCourse.id,
+            'language': 'fr',
+          },
+        );
+      } catch (_) {
+        // The course remains saved; the student can retry generation later.
+      }
+    }
+
+    return savedCourse;
   }
 
   Future<void> archiveCourse(String id) async {
