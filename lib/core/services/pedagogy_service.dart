@@ -758,6 +758,7 @@ class ResourceService {
     final values = <String, dynamic>{
       'course_id': courseId,
       'lesson_id': lessonId,
+      'uploaded_by': _client.auth.currentUser?.id,
       'storage_path': storagePath,
       'file_name': safeFileName,
       'resource_type': resourceType,
@@ -852,15 +853,23 @@ class ResourceService {
         contentType: mimeType ?? 'application/octet-stream',
       ),
     );
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      await _client.storage.from(bucket).remove([newPath]);
+      throw StateError('You must be signed in to replace a resource.');
+    }
     try {
-      await _client.from('course_resources').update({
+      final updated = await _client.from('course_resources').update({
         'storage_path': newPath,
         'file_name': safeName,
         'resource_type': resourceType,
         'mime_type': mimeType,
         'file_size': bytes.length,
         if (extension.isNotEmpty) 'file_extension': extension,
-      }).eq('id', resource.id);
+      }).eq('id', resource.id).eq('uploaded_by', currentUserId).select('id');
+      if (updated.isEmpty) {
+        throw StateError('You can only replace a resource you uploaded.');
+      }
     } catch (_) {
       try {
         await _client.storage.from(bucket).remove([newPath]);
@@ -882,17 +891,40 @@ class ResourceService {
     if (cleanTitle.isEmpty) {
       throw ArgumentError('Le titre ne peut pas être vide.');
     }
-    await _client
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw StateError('You must be signed in to edit a resource.');
+    }
+    final updated = await _client
         .from('course_resources')
         .update({'title_fr': cleanTitle, 'title_en': cleanTitle})
-        .eq('id', resourceId);
+        .eq('id', resourceId)
+        .eq('uploaded_by', currentUserId)
+        .select('id');
+    if (updated.isEmpty) {
+      throw StateError('You can only edit a resource you uploaded.');
+    }
   }
 
   Future<void> deleteResource(CourseResource resource) async {
-    try {
-      await _client.storage.from(bucket).remove([resource.storagePath]);
-    } finally {
-      await _client.from('course_resources').delete().eq('id', resource.id);
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      throw StateError('You must be signed in to delete a resource.');
     }
+    if (resource.uploadedBy != currentUserId) {
+      throw StateError('You can only delete a resource you uploaded.');
+    }
+    // Delete the row first under RLS. Do not remove the file if the row
+    // deletion is rejected; that would leave a live reference to a missing file.
+    final deleted = await _client
+        .from('course_resources')
+        .delete()
+        .eq('id', resource.id)
+        .eq('uploaded_by', currentUserId)
+        .select('id');
+    if (deleted.isEmpty) {
+      throw StateError('You can only delete a resource you uploaded.');
+    }
+    await _client.storage.from(bucket).remove([resource.storagePath]);
   }
 }
