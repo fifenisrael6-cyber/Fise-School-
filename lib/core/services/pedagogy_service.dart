@@ -498,6 +498,39 @@ class CourseService {
     return savedCourse;
   }
 
+  /// Publie un brouillon appartenant à la session connectée.
+  /// Une erreur du QCM IA ne doit jamais annuler la publication.
+  Future<Course> publishCourse(String id) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Session expirée. Reconnectez-vous avant de publier.');
+    }
+
+    final row = await _client
+        .from('courses')
+        .update({
+          'status': 'published',
+          'published_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .eq('teacher_id', userId)
+        .select()
+        .single();
+    final course = Course.fromMap(Map<String, dynamic>.from(row));
+
+    if (course.smartLessonEnabled) {
+      try {
+        await _client.functions.invoke(
+          'course-quiz',
+          body: {'course_id': course.id, 'language': 'fr'},
+        );
+      } catch (_) {
+        // Le cours reste publié même si la génération IA est temporairement indisponible.
+      }
+    }
+    return course;
+  }
+
   Future<void> archiveCourse(String id) async {
     await _client.from('courses').update({'status': 'archived'}).eq('id', id);
   }

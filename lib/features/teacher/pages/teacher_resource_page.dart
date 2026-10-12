@@ -118,7 +118,16 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
   }
 
   String _detectResourceType(PlatformFile file) {
-    final extension = file.extension?.toLowerCase() ?? '';
+    // Sur Android, certains fournisseurs renvoient une extension null alors
+    // que le nom du fichier finit bien par ".pdf".
+    final providedExtension = file.extension?.trim() ?? '';
+    final name = file.name.trim();
+    final filenameExtension = name.contains('.') ? name.split('.').last : '';
+    final extension = (providedExtension.isNotEmpty
+            ? providedExtension
+            : filenameExtension)
+        .replaceFirst(RegExp(r'^\.'), '')
+        .toLowerCase();
 
     switch (extension) {
       case 'pdf':
