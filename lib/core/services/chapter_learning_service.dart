@@ -41,11 +41,9 @@ class ChapterLearningService {
     final matching = curriculumRows.where((row) {
       bool matchesOptionalId(String key, String? profileId) {
         final curriculumId = row[key]?.toString();
-        return curriculumId == null ||
-            curriculumId.isEmpty ||
-            profileId == null ||
-            profileId.isEmpty ||
-            curriculumId == profileId;
+        if (curriculumId == null || curriculumId.isEmpty) return true;
+        if (profileId == null || profileId.isEmpty) return false;
+        return curriculumId == profileId;
       }
 
       return matchesOptionalId('exam_level_id', profile.examLevelId) &&

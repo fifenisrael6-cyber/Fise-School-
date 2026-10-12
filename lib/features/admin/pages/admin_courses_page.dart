@@ -106,7 +106,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
 
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
-      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,is_active').eq('is_active', true).order('display_name'),
+      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active').eq('is_active', true).order('display_name'),
     );
     if (!mounted) {
       return;
@@ -133,6 +133,37 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     bool published = true;
     bool saving = false;
 
+    Future<List<Map<String, dynamic>>> loadCurriculaForSelectedClass(
+      String subjectId,
+    ) async {
+      final rows = List<Map<String, dynamic>>.from(
+        await _client
+            .from('curricula')
+            .select()
+            .eq('subject_id', subjectId)
+            .eq('is_active', true)
+            .order('title_fr'),
+      );
+      final classroom = selectedClass;
+      if (classroom == null) return const <Map<String, dynamic>>[];
+
+      bool matchesOptionalContext(Map<String, dynamic> curriculum, String key) {
+        final requiredValue = curriculum[key]?.toString();
+        if (requiredValue == null || requiredValue.isEmpty) return true;
+        return requiredValue == classroom[key]?.toString();
+      }
+
+      return rows.where((curriculum) {
+        if (curriculum['subsystem'] != classroom['subsystem'] ||
+            curriculum['sector'] != classroom['sector']) {
+          return false;
+        }
+        return matchesOptionalContext(curriculum, 'exam_level_id') &&
+            matchesOptionalContext(curriculum, 'series_id') &&
+            matchesOptionalContext(curriculum, 'specialty_id');
+      }).toList(growable: false);
+    }
+
     Future<void> loadSubjects(StateSetter setDialog) async {
       final rows = await _client.from('class_subjects').select('subject_id,subjects(id,name_fr,name_en,code)').eq('class_id', selectedClass!['id']).eq('is_active', true).order('position');
       subjects = List<Map<String, dynamic>>.from(rows);
@@ -142,7 +173,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       selectedCurriculum = null;
       selectedChapter = null;
       if (selectedSubject != null) {
-        curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', selectedSubject!['id']).eq('is_active', true).order('title_fr'));
+        curricula = await loadCurriculaForSelectedClass(selectedSubject!['id'].toString());
         selectedCurriculum = curricula.isEmpty ? null : curricula.first;
         if (selectedCurriculum != null) {
           chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position'));
@@ -185,7 +216,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                       items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
                       onChanged: saving ? null : (value) async {
                         selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
-                        if (value != null) { curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', value['id']).eq('is_active', true).order('title_fr')); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
+                        if (value != null) { curricula = await loadCurriculaForSelectedClass(value['id'].toString()); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
                         setDialog(() {});
                       },
                     ),

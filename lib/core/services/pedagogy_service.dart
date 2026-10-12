@@ -188,10 +188,14 @@ class CourseService {
 
       final curriculumRows = await _client
           .from('curricula')
-          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+          .select('id, title_fr, title_en, subsystem, sector, exam_level_id, series_id, specialty_id')
           .eq('subject_id', subjectId)
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('created_at');
+      final curriculumById = <String, Map<String, dynamic>>{};
       final curriculumIds = <String>{};
+      final curriculumOrder = <String, int>{};
+      var nextCurriculumOrder = 0;
       for (final raw in curriculumRows) {
         final curriculum = Map<String, dynamic>.from(raw);
         final matches = classes.any((schoolClass) {
@@ -208,7 +212,11 @@ class CourseService {
           return true;
         });
         final id = curriculum['id']?.toString();
-        if (matches && id != null && id.isNotEmpty) curriculumIds.add(id);
+        if (matches && id != null && id.isNotEmpty) {
+          curriculumIds.add(id);
+          curriculumById[id] = curriculum;
+          curriculumOrder[id] = nextCurriculumOrder++;
+        }
       }
       if (curriculumIds.isEmpty) return const <Map<String, dynamic>>[];
 
@@ -218,28 +226,104 @@ class CourseService {
           .inFilter('curriculum_id', curriculumIds.toList(growable: false))
           .eq('is_active', true)
           .order('position');
+      final orderedChapterRows = List<Map<String, dynamic>>.from(chapterRows);
+      orderedChapterRows.sort((a, b) {
+        final aCurriculum = curriculumOrder[a['curriculum_id']?.toString() ?? ''] ?? 0;
+        final bCurriculum = curriculumOrder[b['curriculum_id']?.toString() ?? ''] ?? 0;
+        final byCurriculum = aCurriculum.compareTo(bCurriculum);
+        if (byCurriculum != 0) return byCurriculum;
+        final aPosition = (a['position'] as num?)?.toInt() ?? 0;
+        final bPosition = (b['position'] as num?)?.toInt() ?? 0;
+        return aPosition.compareTo(bPosition);
+      });
       final chapterById = <String, Map<String, dynamic>>{};
-      for (final raw in chapterRows) {
+      for (final raw in orderedChapterRows) {
         final chapter = Map<String, dynamic>.from(raw);
         final id = chapter['id']?.toString();
         if (id != null) chapterById[id] = chapter;
       }
-      if (chapterById.isEmpty) return const <Map<String, dynamic>>[];
-
-      final itemRows = await _client
+      final itemRows = chapterById.isEmpty
+          ? const <Map<String, dynamic>>[]
+          : await _client
           .from('chapter_content_items')
           .select('id, chapter_id, content_type, title_fr, title_en, body_text_fr, body_text_en, position, created_at')
           .inFilter('chapter_id', chapterById.keys.toList(growable: false))
           .inFilter('content_type', ['course', 'lesson', 'text'])
           .eq('is_published', true)
           .order('position');
-      return itemRows.map((raw) {
+
+      final itemsByChapter = <String, List<Map<String, dynamic>>>{};
+      final output = <Map<String, dynamic>>[];
+      for (final raw in itemRows) {
         final item = Map<String, dynamic>.from(raw);
-        final chapter = chapterById[item['chapter_id']?.toString()];
+        final chapterId = item['chapter_id']?.toString() ?? '';
+        final chapter = chapterById[chapterId];
+        final curriculumId = chapter?['curriculum_id']?.toString() ?? '';
+        final curriculum = curriculumById[curriculumId];
         item['chapter_title_fr'] = chapter?['title_fr'];
         item['chapter_title_en'] = chapter?['title_en'];
-        return item;
-      }).toList(growable: false);
+        item['module_title_fr'] = curriculum?['title_fr'];
+        item['module_title_en'] = curriculum?['title_en'];
+        item['is_title_only'] = false;
+        itemsByChapter.putIfAbsent(chapterId, () => <Map<String, dynamic>>[]).add(item);
+        output.add(item);
+      }
+
+      // The official syllabus is title-only at this stage. Include each module
+      // and chapter even when the admin has not yet published lesson content.
+      var titleSortOrder = 0;
+      final curriculaWithChapters = <String>{
+        for (final chapter in chapterById.values)
+          chapter['curriculum_id']?.toString() ?? '',
+      };
+      for (final chapter in chapterById.values) {
+        final chapterId = chapter['id']?.toString() ?? '';
+        if (chapterId.isEmpty || (itemsByChapter[chapterId]?.isNotEmpty ?? false)) continue;
+        final curriculumId = chapter['curriculum_id']?.toString() ?? '';
+        final curriculum = curriculumById[curriculumId];
+        output.add(<String, dynamic>{
+          'id': 'title-only-$chapterId',
+          'chapter_id': '', // Title-only syllabus entries do not launch a quiz.
+          'content_type': 'curriculum_title',
+          'title_fr': curriculum?['title_fr'] ?? chapter['title_fr'] ?? '',
+          'title_en': curriculum?['title_en'] ?? chapter['title_en'] ?? '',
+          'body_text_fr': null,
+          'body_text_en': null,
+          'created_at': null,
+          'chapter_title_fr': chapter['title_fr'],
+          'chapter_title_en': chapter['title_en'],
+          'module_title_fr': curriculum?['title_fr'] ?? '',
+          'module_title_en': curriculum?['title_en'] ?? '',
+          'sort_order': titleSortOrder++,
+          'is_title_only': true,
+        });
+      }
+
+      // Some verified programmes publish module titles before chapter headings
+      // have been transcribed. Show the verified module without inventing chapters.
+      for (final curriculumId in curriculumById.keys) {
+        if (curriculaWithChapters.contains(curriculumId)) continue;
+        final curriculum = curriculumById[curriculumId]!;
+        final titleFr = curriculum['title_fr']?.toString() ?? '';
+        final titleEn = curriculum['title_en']?.toString() ?? '';
+        output.add(<String, dynamic>{
+          'id': 'module-only-$curriculumId',
+          'chapter_id': '',
+          'content_type': 'curriculum_title',
+          'title_fr': titleFr,
+          'title_en': titleEn,
+          'body_text_fr': null,
+          'body_text_en': null,
+          'created_at': null,
+          'chapter_title_fr': '',
+          'chapter_title_en': '',
+          'module_title_fr': titleFr,
+          'module_title_en': titleEn,
+          'sort_order': titleSortOrder++,
+          'is_title_only': true,
+        });
+      }
+      return output;
     } catch (_) {
       // Keep teacher courses, media and QCM available if official content
       // is temporarily unavailable or the student is offline.
