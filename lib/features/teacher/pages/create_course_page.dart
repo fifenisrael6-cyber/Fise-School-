@@ -267,21 +267,22 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 (c.specialtyId == null ? 0 : 1);
             return specificity(b).compareTo(specificity(a));
           });
-        if (matchingCurricula.isEmpty) {
-          throw StateError(_fr
-              ? 'Aucun programme officiel ne correspond à ${schoolClass.displayName} pour cette matière. Demandez à l’administration de vérifier le programme.'
-              : 'No official curriculum matches ${schoolClass.displayName} for this subject. Ask the administrator to check the curriculum.');
-        }
-        final curriculum = matchingCurricula.first;
-        final chapters = await _service.listChapters(curriculum.id);
-        if (chapters.isEmpty) {
-          throw StateError(_fr
-              ? 'Aucun chapitre n’existe dans le programme de ${schoolClass.displayName}. L’administration doit créer les chapitres avant le partage.'
-              : 'No chapter exists in the curriculum for ${schoolClass.displayName}. An administrator must create chapters before sharing.');
+        // A media post does not require an official curriculum. When one
+        // exists, keep the existing curriculum and first-chapter behavior.
+        final Curriculum? curriculum =
+            matchingCurricula.isEmpty ? null : matchingCurricula.first;
+        var chapters = <CourseChapter>[];
+        if (curriculum != null) {
+          chapters = await _service.listChapters(curriculum.id);
+          if (chapters.isEmpty) {
+            throw StateError(_fr
+                ? 'Aucun chapitre n’existe dans le programme de ${schoolClass.displayName}. L’administration doit créer les chapitres avant le partage.'
+                : 'No chapter exists in the curriculum for ${schoolClass.displayName}. An administrator must create chapters before sharing.');
+          }
         }
         final course = await _service.saveCourse(
-          curriculumId: curriculum.id,
-          chapterId: chapters.first.id,
+          curriculumId: curriculum?.id,
+          chapterId: chapters.isEmpty ? null : chapters.first.id,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
