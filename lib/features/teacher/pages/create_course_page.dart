@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -65,9 +66,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ? 'image'
           : mime.startsWith('video/')
               ? 'video'
-              : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
-                  ? 'pdf'
-                  : null;
+              : mime.startsWith('audio/')
+                  ? 'audio'
+                  : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
+                      ? 'pdf'
+                      : null;
       if (type != null) {
         _attachments.add(_CourseAttachment(
           name: attachment.name,
@@ -137,7 +140,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
-    final bytes = file.bytes;
+    final bytes = await _readPickedBytes(file);
     if (bytes == null || bytes.isEmpty) {
       _snack(_fr ? 'Impossible de lire le PDF sélectionné.' : 'Unable to read the selected PDF.');
       return;
@@ -152,6 +155,31 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     });
   }
 
+  Future<Uint8List?> _readPickedBytes(PlatformFile file) async {
+    final bytes = file.bytes;
+    if (bytes != null && bytes.isNotEmpty) return bytes;
+    final path = file.path;
+    if (path == null || path.isEmpty) return null;
+    try { return await File(path).readAsBytes(); } catch (_) { return null; }
+  }
+
+  Future<void> _pickAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = await _readPickedBytes(file);
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le fichier audio.' : 'Unable to read the audio file.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _attachments.add(_CourseAttachment(name: file.name, bytes: bytes, resourceType: 'audio')));
+  }
+
   Future<void> _pickVideo() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -162,8 +190,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
     final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
+    final bytes = await _readPickedBytes(file);
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire la vidéo sélectionnée.' : 'Unable to read the selected video.');
       return;
     }
     if (!mounted) {
@@ -197,8 +226,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
     if (_attachments.isEmpty) {
       _snack(_fr
-          ? 'Ajoutez au moins une photo, une vidéo ou un PDF.'
-          : 'Add at least one photo, video or PDF.');
+          ? 'Ajoutez au moins une photo, vidéo, PDF ou fichier audio.'
+          : 'Add at least one photo, video, PDF or audio file.');
       return;
     }
 
@@ -338,12 +367,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Partagez des photos, des vidéos et des PDF dans la salle choisie.'
-                : 'Share photos, videos and PDFs with the selected classroom.'),
+                ? 'Partagez des photos, vidéos, PDF et fichiers audio dans la salle choisie.'
+                : 'Share photos, videos, PDFs and audio files with the selected classroom.'),
           ),
           const SizedBox(height: 16),
           Text(
-            _fr ? 'Photos, vidéos et PDF' : 'Photos, videos and PDFs',
+            _fr ? 'Photos, vidéos, PDF et audio' : 'Photos, videos, PDFs and audio',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
@@ -370,6 +399,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 avatar: const Icon(Icons.picture_as_pdf_rounded, size: 18),
                 label: Text(_fr ? 'Choisir un PDF' : 'Choose a PDF'),
                 onPressed: _saving ? null : _pickPdf,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.audiotrack_rounded, size: 18),
+                label: Text(_fr ? 'Choisir un audio' : 'Choose audio'),
+                onPressed: _saving ? null : _pickAudio,
               ),
             ],
           ),
