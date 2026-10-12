@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -158,6 +160,14 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
     }
   }
 
+  Future<PlatformFile> _fileWithBytes(PlatformFile file) async {
+    if (file.bytes != null && file.bytes!.isNotEmpty) return file;
+    final path = file.path;
+    if (path == null || path.isEmpty) return file;
+    final bytes = await File(path).readAsBytes();
+    return PlatformFile(name: file.name, size: bytes.length, path: path, bytes: bytes);
+  }
+
   Future<void> _pickAndUpload() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -165,6 +175,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         allowedExtensions: const [
           'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
           'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac',
         ],
         withData: true,
       );
@@ -173,7 +184,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         return;
       }
 
-      final file = result.files.first;
+      final file = await _fileWithBytes(result.files.first);
 
       if (file.bytes == null || file.bytes!.isEmpty) {
         if (!mounted) {
@@ -194,12 +205,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isFrench
-                ? 'Seules les photos, vidéos et PDF sont autorisés pour les enseignants.'
-                : 'Teachers can upload photos, videos and PDFs.')),
+                ? 'Formats autorisés : photos, vidéos, PDF et audio.'
+                : 'Allowed formats: photos, videos, PDFs and audio.')),
           );
         }
         return;
@@ -368,12 +379,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         type: FileType.custom,
         allowedExtensions: const [
           'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm',
+          'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac',
         ],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      final file = await _fileWithBytes(result.files.single);
       if (file.bytes == null || file.bytes!.isEmpty) {
         throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
       }
