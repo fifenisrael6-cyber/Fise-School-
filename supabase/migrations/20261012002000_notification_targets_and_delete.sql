@@ -70,3 +70,31 @@ $function$;
 
 revoke all on function public.notify_course_resource_added() from public;
 revoke all on function public.notify_course_resource_added() from anon, authenticated;
+
+-- Keep the existing teacher ownership checks while allowing all requested
+-- course media types. Previously this trigger rejected PDF and audio uploads.
+create or replace function public.enforce_teacher_course_media_only()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_teacher_id uuid;
+begin
+  if public.is_admin() then
+    return new;
+  end if;
+
+  select teacher_id into v_teacher_id
+  from public.courses
+  where id = new.course_id;
+
+  if v_teacher_id = auth.uid()
+     and new.resource_type not in ('image', 'video', 'pdf', 'audio') then
+    raise exception 'Teacher course resources may only be photos, videos, PDFs or audio';
+  end if;
+
+  return new;
+end;
+$function$;
