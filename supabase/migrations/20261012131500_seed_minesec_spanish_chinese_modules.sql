@@ -52,13 +52,20 @@ begin
     insert into public.curricula
       (subject_id, subsystem, sector, exam_level_id, title_fr, title_en,
        description_fr, description_en, is_active)
-    values
-      (v_subject_id, 'francophone', 'general', v_level_id,
-       'Module ' || item.module_no || ' : ' || item.module_fr,
-       'Module ' || item.module_no || ': ' || item.module_en,
-       'Intitulé relevé du programme officiel MINESEC. Source : ' || item.source_url,
-       'Title from the official MINESEC syllabus. Source: ' || item.source_url,
-       true)
-    on conflict do nothing;
+    select
+      v_subject_id, 'francophone', 'general', v_level_id,
+      'Module ' || item.module_no || ' : ' || item.module_fr,
+      'Module ' || item.module_no || ': ' || item.module_en,
+      'Intitulé relevé du programme officiel MINESEC. Source : ' || item.source_url,
+      'Title from the official MINESEC syllabus. Source: ' || item.source_url,
+      true
+    where not exists (
+      select 1 from public.curricula existing
+      where existing.subject_id = v_subject_id
+        and existing.exam_level_id = v_level_id
+        and existing.series_id is null
+        and existing.specialty_id is null
+        and existing.title_fr = 'Module ' || item.module_no || ' : ' || item.module_fr
+    );
   end loop;
 end $$;
