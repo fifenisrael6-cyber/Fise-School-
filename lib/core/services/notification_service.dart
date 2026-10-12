@@ -59,4 +59,25 @@ class NotificationService {
         .eq('is_read', false)
         .select('id');
   }
+
+  Future<void> deleteOne(String id, {required String userId}) async {
+    final deleted = await _client
+        .from('notifications')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select('id');
+    if (deleted.isEmpty) {
+      throw StateError('La notification n’a pas pu être supprimée.');
+    }
+  }
+
+  Future<void> deleteAll(String userId) async {
+    await _client
+        .from('notifications')
+        .delete()
+        .eq('user_id', userId)
+        .select('id');
+  }
 }
+
