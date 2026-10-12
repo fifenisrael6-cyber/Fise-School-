@@ -80,7 +80,13 @@ class _GeneratedCourseQuizPageState extends State<GeneratedCourseQuizPage> {
             final id = question['id']?.toString() ?? '';
             final prompt = question['prompt']?.toString() ?? '';
             final options = (question['options'] as List? ?? const []).map((v) => v.toString()).toList();
-            final correction = _corrections?.where((row) => row['questionId']?.toString() == id).firstOrNull;
+            Map<String, dynamic>? correction;
+            for (final row in _corrections ?? const <Map<String, dynamic>>[]) {
+              if (row['questionId']?.toString() == id) {
+                correction = row;
+                break;
+              }
+            }
             final correctIndex = (correction?['correctIndex'] as num?)?.toInt();
             return Card(
               margin: const EdgeInsets.only(bottom: 14),
