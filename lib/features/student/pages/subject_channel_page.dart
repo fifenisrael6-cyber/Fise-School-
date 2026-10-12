@@ -59,6 +59,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _chapterFocused => widget.chapterId != null;
+  bool get _firstRollout =>
+      widget.subject.subsystem.name == 'francophone' &&
+      widget.subject.sector.name == 'general';
 
   @override
   void initState() {
@@ -229,9 +232,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         subtitle: Text(
-                          _fr
-                              ? '${chapters.length} titre(s). Chaque chapitre ouvre sa propre page ; les cours et médias seront ajoutés plus tard.'
-                              : '${chapters.length} title(s). Each chapter opens its own page; lessons and media will be added later.',
+                          _firstRollout
+                              ? (_fr
+                                  ? '${chapters.length} chapitre(s). Chaque page regroupe les cours publiés par l’administration, les médias partagés, les exercices et le QCM intelligent.'
+                                  : '${chapters.length} chapter(s). Each page groups admin-published lessons, shared media, exercises and the smart quiz.')
+                              : (_fr
+                                  ? '${chapters.length} titre(s). Ouvre un chapitre pour consulter les contenus disponibles.'
+                                  : '${chapters.length} title(s). Open a chapter to view available content.'),
                         ),
                       ),
                     ),
@@ -369,14 +376,47 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   : 'No photo, video or PDF shared by a teacher for this chapter yet.',
             ),
           );
-          tabChildren.add(
-            _feedList(
-              quizzes,
-              _fr
-                  ? 'Aucun QCM publié pour ce chapitre pour le moment.'
-                  : 'No quiz published for this chapter yet.',
-            ),
-          );
+          if (focused && _firstRollout) {
+            tabChildren.add(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChapterQuizPage(
+                            locale: widget.locale,
+                            chapterId: widget.chapterId!,
+                            chapterTitle: widget.chapterTitle ?? widget.subject.labelFor(code),
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: Text(_fr ? 'Ouvrir le QCM intelligent du chapitre' : 'Open this chapter’s smart quiz'),
+                    ),
+                  ),
+                  Expanded(
+                    child: _feedList(
+                      quizzes,
+                      _fr
+                          ? 'Aucun QCM manuel publié pour ce chapitre. Le QCM intelligent peut être généré à partir du cours publié.'
+                          : 'No manual quiz has been published for this chapter. The smart quiz can be generated from its published lesson.',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            tabChildren.add(
+              _feedList(
+                quizzes,
+                _fr ? 'Aucun QCM publié pour cette matière pour le moment.' : 'No quiz published for this subject yet.',
+              ),
+            );
+          }
 
           return TabBarView(children: tabChildren);
         },

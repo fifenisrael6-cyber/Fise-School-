@@ -12,6 +12,10 @@ class ClassSubjectPicker extends StatefulWidget {
   final Locale locale;
   final String teacherId;
   final bool includeCompatibleClasses;
+  /// Restricts this picker to the first rollout: francophone general education.
+  final bool francophoneGeneralOnly;
+  /// Media must be attached to one exact class/chapter during the first rollout.
+  final bool singleClassSelection;
   final void Function(List<SchoolClass> classes, Subject? subject) onChanged;
 
   const ClassSubjectPicker({
@@ -19,6 +23,8 @@ class ClassSubjectPicker extends StatefulWidget {
     required this.locale,
     required this.teacherId,
     this.includeCompatibleClasses = false,
+    this.francophoneGeneralOnly = false,
+    this.singleClassSelection = false,
     required this.onChanged,
   });
 
@@ -44,10 +50,16 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     _loadFollowedClasses();
   }
 
+  List<SchoolClass> _filterClasses(List<SchoolClass> classes) {
+    if (!widget.francophoneGeneralOnly) return classes;
+    return classes.where((c) => c.subsystem.name == 'francophone' && c.sector.name == 'general').toList(growable: false);
+  }
+
   Future<void> _loadFollowedClasses() async {
     _classesFuture = _service.listTeacherSelectedClasses().then((list) {
-      _allClasses = list;
-      return list;
+      final filtered = _filterClasses(list);
+      _allClasses = filtered;
+      return filtered;
     });
     if (mounted) setState(() {});
   }
@@ -56,7 +68,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     List<SchoolClass> all;
     Set<String> existing;
     try {
-      all = await _service.listTeacherCompatibleClasses();
+      all = _filterClasses(await _service.listTeacherCompatibleClasses());
       existing = await _service.listTeacherFollowedClassIds();
     } catch (error) {
       _snack('${_fr ? 'Impossible de charger les salles' : 'Unable to load classrooms'}: $error');
@@ -149,6 +161,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   Future<void> _toggleClass(SchoolClass schoolClass, bool selected) async {
     setState(() {
       if (selected) {
+        if (widget.singleClassSelection) _selectedIds.clear();
         _selectedIds.add(schoolClass.id);
       } else {
         _selectedIds.remove(schoolClass.id);

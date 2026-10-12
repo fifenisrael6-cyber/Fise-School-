@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_courses_page.dart';
+import 'admin_chapter_content_page.dart';
 
 class AdminPedagogyPage extends StatelessWidget {
   final Locale locale;
@@ -36,6 +37,22 @@ class AdminPedagogyPage extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => AdminCoursesPage(locale: locale),
+                ),
+              );
+            },
+          ),
+
+          _buildModule(
+            context,
+            icon: Icons.auto_stories_rounded,
+            title: _isFrench ? 'Contenu de chaque chapitre' : 'Content inside each chapter',
+            subtitle: _isFrench
+                ? 'Choisir une salle francophone générale, une matière et un chapitre pour rédiger, modifier, publier ou supprimer les cours et leçons.'
+                : 'Choose a francophone general classroom, subject and chapter to create, edit, publish or delete lessons.',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminChapterContentPage(locale: locale),
                 ),
               );
             },

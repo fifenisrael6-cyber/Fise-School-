@@ -24,8 +24,7 @@ class _CourseAttachment {
   });
 }
 
-/// Création d'un cours : l'enseignant choisit la ou les classes, la matière,
-/// écrit son cours et joint un PDF, une photo ou des images.
+/// Partage de médias par chapitre. Première étape limitée à l'enseignement général francophone.
 class CreateCoursePage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
@@ -52,6 +51,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
   List<SchoolClass> _classes = const [];
   Subject? _subject;
+  Curriculum? _curriculum;
+  List<CourseChapter> _chapters = const [];
+  CourseChapter? _chapter;
+  bool _loadingChapters = false;
   final List<_CourseAttachment> _attachments = [];
   bool _saving = false;
 
@@ -85,6 +88,41 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   void dispose() {
     _title.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadChapters() async {
+    final classes = _classes;
+    final subject = _subject;
+    setState(() {
+      _curriculum = null;
+      _chapters = const [];
+      _chapter = null;
+      _loadingChapters = classes.length == 1 && subject != null;
+    });
+    if (classes.length != 1 || subject == null) return;
+    final schoolClass = classes.single;
+    try {
+      final matches = (await _service.listCatalogCurricula(subject.id)).where((c) =>
+        c.subsystem.name == 'francophone' && c.sector.name == 'general' &&
+        c.subsystem == schoolClass.subsystem && c.sector == schoolClass.sector &&
+        (c.examLevelId == null || c.examLevelId == schoolClass.examLevelId) &&
+        (c.seriesId == null || c.seriesId == schoolClass.seriesId) &&
+        (c.specialtyId == null || c.specialtyId == schoolClass.specialtyId)
+      ).toList()..sort((a, b) {
+        int specificity(Curriculum c) => (c.examLevelId == null ? 0 : 1) + (c.seriesId == null ? 0 : 1) + (c.specialtyId == null ? 0 : 1);
+        return specificity(b).compareTo(specificity(a));
+      });
+      final curriculum = matches.isEmpty ? null : matches.first;
+      final chapters = curriculum == null ? <CourseChapter>[] : await _service.listChapters(curriculum.id);
+      if (!mounted) return;
+      setState(() {
+        _curriculum = curriculum; _chapters = chapters; _chapter = null; _loadingChapters = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadingChapters = false);
+      _snack((_fr ? 'Impossible de charger les chapitres' : 'Unable to load chapters') + ': ' + error.toString());
+    }
   }
 
   void _snack(String message) {
@@ -220,6 +258,14 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       _snack(_fr ? 'Choisissez la matière.' : 'Choose the subject.');
       return;
     }
+    if (_classes.length != 1) {
+      _snack(_fr ? 'Choisissez une seule salle pour associer le média au bon chapitre.' : 'Choose exactly one classroom to attach media to the correct chapter.');
+      return;
+    }
+    if (_curriculum == null || _chapter == null) {
+      _snack(_fr ? 'Choisissez un chapitre avant l’envoi.' : 'Choose a chapter before uploading.');
+      return;
+    }
     if (title.isEmpty) {
       _snack(_fr ? 'Donnez un titre au cours.' : 'Give the course a title.');
       return;
@@ -250,39 +296,16 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     for (final schoolClass in _classes) {
       try {
-        // courses requires curriculum_id and chapter_id. Resolve the official
-        // curriculum that matches this class before creating a media post.
-        final matchingCurricula = (await _service.listCurricula(_subject!.id))
-            .where((curriculum) =>
-                curriculum.subsystem == schoolClass.subsystem &&
-                curriculum.sector == schoolClass.sector &&
-                (curriculum.examLevelId == null || curriculum.examLevelId == schoolClass.examLevelId) &&
-                (curriculum.seriesId == null || curriculum.seriesId == schoolClass.seriesId) &&
-                (curriculum.specialtyId == null || curriculum.specialtyId == schoolClass.specialtyId))
-            .toList()
-          ..sort((a, b) {
-            int specificity(Curriculum c) =>
-                (c.examLevelId == null ? 0 : 1) +
-                (c.seriesId == null ? 0 : 1) +
-                (c.specialtyId == null ? 0 : 1);
-            return specificity(b).compareTo(specificity(a));
-          });
-        // A media post does not require an official curriculum. When one
-        // exists, keep the existing curriculum and first-chapter behavior.
-        final Curriculum? curriculum =
-            matchingCurricula.isEmpty ? null : matchingCurricula.first;
-        var chapters = <CourseChapter>[];
-        if (curriculum != null) {
-          chapters = await _service.listChapters(curriculum.id);
-          if (chapters.isEmpty) {
-            throw StateError(_fr
-                ? 'Aucun chapitre n’existe dans le programme de ${schoolClass.displayName}. L’administration doit créer les chapitres avant le partage.'
-                : 'No chapter exists in the curriculum for ${schoolClass.displayName}. An administrator must create chapters before sharing.');
-          }
+        // The first rollout is limited to francophone general education.
+        // Never silently attach media to the first chapter.
+        final curriculum = _curriculum!;
+        final chapter = _chapter!;
+        if (schoolClass.subsystem.name != 'francophone' || schoolClass.sector.name != 'general' || curriculum.id != chapter.curriculumId) {
+          throw StateError(_fr ? 'Le chapitre choisi ne correspond pas à cette salle.' : 'The selected chapter does not match this classroom.');
         }
         final course = await _service.saveCourse(
-          curriculumId: curriculum?.id,
-          chapterId: chapters.isEmpty ? null : chapters.first.id,
+          curriculumId: curriculum.id,
+          chapterId: chapter.id,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
@@ -366,13 +389,35 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             locale: widget.locale,
             teacherId: widget.profile.id,
             includeCompatibleClasses: true,
+            francophoneGeneralOnly: true,
+            singleClassSelection: true,
             onChanged: (classes, subject) {
               setState(() {
                 _classes = classes;
                 _subject = subject;
+                _curriculum = null; _chapters = const []; _chapter = null;
               });
+              _loadChapters();
             },
           ),
+          const SizedBox(height: 16),
+          Text(_fr ? 'Chapitre' : 'Chapter', style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (_loadingChapters)
+            const LinearProgressIndicator()
+          else if (_classes.isEmpty || _subject == null)
+            Text(_fr ? 'Choisissez d’abord une salle et une matière.' : 'Choose a classroom and subject first.')
+          else if (_chapters.isEmpty)
+            Text(_fr ? 'Aucun chapitre disponible pour cette matière et cette salle. Demandez à l’administration de créer le catalogue.' : 'No chapter is available for this subject and classroom. Ask the administrator to create the catalog.')
+          else
+            DropdownButtonFormField<String>(
+              key: ValueKey('chapter-${_curriculum?.id}-${_chapter?.id}'),
+              initialValue: _chapter?.id,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: _fr ? 'Choisir le chapitre obligatoire' : 'Choose the required chapter', border: const OutlineInputBorder()),
+              items: _chapters.map((chapter) => DropdownMenuItem<String>(value: chapter.id, child: Text('${chapter.position}. ${chapter.labelFor(widget.locale.languageCode)}', overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: (id) => setState(() { _chapter = _chapters.firstWhere((chapter) => chapter.id == id); }),
+            ),
           const SizedBox(height: 20),
           TextField(
             controller: _title,
@@ -387,8 +432,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Partagez des photos, vidéos, PDF et fichiers audio dans la salle choisie.'
-                : 'Share photos, videos, PDFs and audio files with the selected classroom.'),
+                ? 'Choisissez une salle, une matière puis un chapitre avant d’envoyer vos médias. Cette première étape concerne uniquement l’enseignement général francophone.'
+                : 'Choose a classroom, subject and chapter before uploading media. This first rollout covers francophone general education only.'),
           ),
           const SizedBox(height: 16),
           Text(
