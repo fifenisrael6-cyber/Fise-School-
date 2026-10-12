@@ -117,7 +117,7 @@ SELECT p.curriculum_id,trim(p.title_fr),trim(p.title_fr),
  CASE WHEN p.verification_status='verified'
       THEN 'Heading transcribed from the cited MINESEC curriculum source. No lesson content is prefilled.'
       ELSE 'Heading captured or proposed for structure; verify the exact class/series match. No lesson content is prefilled.' END,
- p.new_position,TRUE,p.verification_status,p.source_url,p.source_title
+ p.new_position,TRUE,p.verification_status::public.catalog_verification_status,p.source_url,p.source_title
 FROM positioned p;
 
 
