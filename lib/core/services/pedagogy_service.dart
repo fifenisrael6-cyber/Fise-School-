@@ -131,6 +131,90 @@ class CourseService {
     );
   }
 
+  /// Chapter-title pages available to a student for the subject in their active classroom.
+  /// Only the canonical catalogue containers for the student's exact class context
+  /// are considered. This reads titles only; it does not create courses or media.
+  Future<List<CourseChapter>> listStudentCatalogChapters(
+    String studentId, {
+    required String subjectId,
+  }) async {
+    final memberships = await _client
+        .from('class_students')
+        .select('class_id')
+        .eq('student_id', studentId)
+        .eq('is_active', true);
+    final classIds = memberships
+        .map((row) => row['class_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (classIds.isEmpty) return const <CourseChapter>[];
+
+    final classRows = await _client
+        .from('school_classes')
+        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+        .inFilter('id', classIds)
+        .eq('is_active', true);
+    if (classRows.isEmpty) return const <CourseChapter>[];
+
+    final curriculumRows = await _client
+        .from('curricula')
+        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+        .eq('subject_id', subjectId)
+        .eq('is_catalog_container', true)
+        .eq('is_active', true);
+
+    bool sameContextValue(Object? left, Object? right) =>
+        left?.toString() == right?.toString();
+
+    final matchingCurriculumIds = <String>{};
+    for (final rawCurriculum in curriculumRows) {
+      final curriculum = Map<String, dynamic>.from(rawCurriculum);
+      final matchesClass = classRows.any((rawClass) {
+        final schoolClass = Map<String, dynamic>.from(rawClass);
+        return curriculum['subsystem'] == schoolClass['subsystem'] &&
+            curriculum['sector'] == schoolClass['sector'] &&
+            sameContextValue(curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
+            sameContextValue(curriculum['series_id'], schoolClass['series_id']) &&
+            sameContextValue(curriculum['specialty_id'], schoolClass['specialty_id']);
+      });
+      final id = curriculum['id']?.toString();
+      if (matchesClass && id != null && id.isNotEmpty) {
+        matchingCurriculumIds.add(id);
+      }
+    }
+    if (matchingCurriculumIds.isEmpty) return const <CourseChapter>[];
+
+    final chapterRows = await _client
+        .from('course_chapters')
+        .select()
+        .inFilter('curriculum_id', matchingCurriculumIds.toList(growable: false))
+        .eq('is_active', true)
+        .order('position');
+
+    final seenTitles = <String>{};
+    final chapters = <CourseChapter>[];
+    for (final raw in chapterRows) {
+      try {
+        final chapter = CourseChapter.fromMap(Map<String, dynamic>.from(raw));
+        final normalizedTitle = chapter.titleFr.trim().toLowerCase();
+        if (normalizedTitle.isNotEmpty && seenTitles.add(normalizedTitle)) {
+          chapters.add(chapter);
+        }
+      } catch (_) {
+        // One invalid title must not hide all the other chapter pages.
+      }
+    }
+    chapters.sort((a, b) {
+      final byPosition = a.position.compareTo(b.position);
+      return byPosition != 0
+          ? byPosition
+          : a.titleFr.toLowerCase().compareTo(b.titleFr.toLowerCase());
+    });
+    return chapters.toList(growable: false);
+  }
+
   Future<List<Curriculum>> listCurricula(String subjectId) async {
     final rows = await _client
         .from('curricula')
