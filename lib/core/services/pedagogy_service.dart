@@ -259,8 +259,10 @@ class CourseService {
       // subsystem/sector before a course can be returned.
       dynamic request = _client
           .from('courses')
-          .select()
-          .eq('status', 'published');
+          .select();
+      // Do not filter to published on the client: RLS also exposes draft
+      // teacher-media posts with resources to students enrolled in that class.
+      // Official course publication remains restricted by database policy.
 
       if (subjectId != null) {
         request = request.eq('subject_id', subjectId);
