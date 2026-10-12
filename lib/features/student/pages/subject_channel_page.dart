@@ -344,6 +344,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             item['title_fr'] ?? item['title_en'] ?? '')
         .toString()
         .trim();
+    final moduleTitle = ((code == 'en' ? item['module_title_en'] : item['module_title_fr']) ??
+            item['module_title_fr'] ?? item['module_title_en'] ?? '')
+        .toString()
+        .trim();
     final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
             item['body_text_fr'] ?? item['body_text_en'] ?? '')
         .toString()
@@ -370,6 +374,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               ),
             ],
           ),
+          if (moduleTitle.isNotEmpty && moduleTitle != title) ...[
+            const SizedBox(height: 5),
+            Text(moduleTitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF166534))),
+          ],
           if (chapter.isNotEmpty) ...[
             const SizedBox(height: 5),
             Text(chapter, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF166534))),
