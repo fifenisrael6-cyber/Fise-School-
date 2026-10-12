@@ -258,10 +258,13 @@ class CourseService {
       // compatible generic/level-wide rooms that the student cannot SELECT
       // directly. is_course_student(id) enforces active membership and matching
       // subsystem/sector before a course can be returned.
+      // RLS exposes published official courses and only those draft courses
+      // that are teacher-media posts shared with this student's active class.
+      // Do not hard-filter to published here: it hides every teacher media post
+      // before its resources can be rendered.
       dynamic request = _client
           .from('courses')
-          .select()
-          .eq('status', 'published');
+          .select();
 
       if (subjectId != null) {
         request = request.eq('subject_id', subjectId);
