@@ -228,9 +228,9 @@ class CourseService {
         final id = chapter['id']?.toString();
         if (id != null) chapterById[id] = chapter;
       }
-      if (chapterById.isEmpty) return const <Map<String, dynamic>>[];
-
-      final itemRows = await _client
+      final itemRows = chapterById.isEmpty
+          ? const <Map<String, dynamic>>[]
+          : await _client
           .from('chapter_content_items')
           .select('id, chapter_id, content_type, title_fr, title_en, body_text_fr, body_text_en, position, created_at')
           .inFilter('chapter_id', chapterById.keys.toList(growable: false))
@@ -257,6 +257,10 @@ class CourseService {
 
       // The official syllabus is title-only at this stage. Include each module
       // and chapter even when the admin has not yet published lesson content.
+      final curriculaWithChapters = <String>{
+        for (final chapter in chapterById.values)
+          chapter['curriculum_id']?.toString() ?? '',
+      };
       for (final chapter in chapterById.values) {
         final chapterId = chapter['id']?.toString() ?? '';
         if (chapterId.isEmpty || (itemsByChapter[chapterId]?.isNotEmpty ?? false)) continue;
@@ -264,7 +268,7 @@ class CourseService {
         final curriculum = curriculumById[curriculumId];
         output.add(<String, dynamic>{
           'id': 'title-only-$chapterId',
-          'chapter_id': '', // title-only syllabus rows do not launch a quiz without lesson content.
+          'chapter_id': '', // Title-only syllabus entries do not launch a quiz.
           'content_type': 'curriculum_title',
           'title_fr': curriculum?['title_fr'] ?? chapter['title_fr'] ?? '',
           'title_en': curriculum?['title_en'] ?? chapter['title_en'] ?? '',
@@ -275,6 +279,30 @@ class CourseService {
           'chapter_title_en': chapter['title_en'],
           'module_title_fr': curriculum?['title_fr'] ?? '',
           'module_title_en': curriculum?['title_en'] ?? '',
+          'is_title_only': true,
+        });
+      }
+
+      // Some verified programmes publish module titles before chapter headings
+      // have been transcribed. Show the verified module without inventing chapters.
+      for (final curriculumId in curriculumById.keys) {
+        if (curriculaWithChapters.contains(curriculumId)) continue;
+        final curriculum = curriculumById[curriculumId]!;
+        final titleFr = curriculum['title_fr']?.toString() ?? '';
+        final titleEn = curriculum['title_en']?.toString() ?? '';
+        output.add(<String, dynamic>{
+          'id': 'module-only-$curriculumId',
+          'chapter_id': '',
+          'content_type': 'curriculum_title',
+          'title_fr': titleFr,
+          'title_en': titleEn,
+          'body_text_fr': null,
+          'body_text_en': null,
+          'created_at': null,
+          'chapter_title_fr': '',
+          'chapter_title_en': '',
+          'module_title_fr': titleFr,
+          'module_title_en': titleEn,
           'is_title_only': true,
         });
       }
