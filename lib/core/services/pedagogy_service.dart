@@ -832,7 +832,7 @@ class ResourceService {
   String _extensionFor(PlatformFile file) {
     final provided = file.extension?.trim().toLowerCase() ?? '';
     if (provided.isNotEmpty) {
-      return provided.replaceFirst(RegExp(r'^\\.'), '');
+      return provided.replaceFirst(RegExp(r'^\.), '');
     }
     final name = file.name.trim();
     final dot = name.lastIndexOf('.');
