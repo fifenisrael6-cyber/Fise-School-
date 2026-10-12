@@ -77,10 +77,17 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       subjectId: widget.subject.id,
     );
 
-    final chapterContent = await _courses.listStudentChapterContent(
-      widget.profile.id,
-      subjectId: widget.subject.id,
-    );
+    // Official chapter content is an independent source. If its query fails,
+    // keep already-loaded teacher media and QCM visible instead of hiding the feed.
+    var chapterContent = <Map<String, dynamic>>[];
+    try {
+      chapterContent = await _courses.listStudentChapterContent(
+        widget.profile.id,
+        subjectId: widget.subject.id,
+      );
+    } catch (_) {
+      chapterContent = <Map<String, dynamic>>[];
+    }
 
     var assignments = const <Assignment>[];
     try {

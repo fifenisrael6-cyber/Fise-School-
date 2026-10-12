@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -259,8 +260,10 @@ class CourseService {
       // subsystem/sector before a course can be returned.
       dynamic request = _client
           .from('courses')
-          .select()
-          .eq('status', 'published');
+          .select();
+      // Do not filter to published on the client: RLS also exposes draft
+      // teacher-media posts with resources to students enrolled in that class.
+      // Official course publication remains restricted by database policy.
 
       if (subjectId != null) {
         request = request.eq('subject_id', subjectId);
@@ -712,9 +715,11 @@ class ResourceService {
     String? titleEn,
   }) async {
     Uint8List? bytes = file.bytes;
-
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try { bytes = await File(file.path!).readAsBytes(); } catch (_) {}
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
 
     final extension = (file.extension ??
@@ -786,6 +791,12 @@ class ResourceService {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
       case 'mp3': return 'audio/mpeg';
+      case 'oga': return 'audio/ogg';
+      case 'amr': return 'audio/amr';
+      case '3gp': return 'video/3gpp';
+      case 'wma': return 'audio/x-ms-wma';
+      case 'gif': return 'image/gif';
+      case 'bmp': return 'image/bmp';
       case 'wav': return 'audio/wav';
       case 'm4a': return 'audio/mp4';
       case 'aac': return 'audio/aac';
@@ -807,9 +818,12 @@ class ResourceService {
     required PlatformFile file,
     required String resourceType,
   }) async {
-    final bytes = file.bytes;
+    Uint8List? bytes = file.bytes;
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try { bytes = await File(file.path!).readAsBytes(); } catch (_) {}
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
     final extension = (file.extension ??
             (file.name.contains('.') ? file.name.split('.').last : ''))

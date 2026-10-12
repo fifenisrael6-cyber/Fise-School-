@@ -209,7 +209,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     });
   }
 
-  Future<void> _save(String status) async {
+  Future<void> _save() async {
     final title = _title.text.trim();
 
     if (_classes.isEmpty) {
@@ -245,12 +245,43 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
 
-    var published = 0;
+    var saved = 0;
     final errors = <String>[];
 
     for (final schoolClass in _classes) {
       try {
+        // courses requires curriculum_id and chapter_id. Resolve the official
+        // curriculum that matches this class before creating a media post.
+        final matchingCurricula = (await _service.listCurricula(_subject!.id))
+            .where((curriculum) =>
+                curriculum.subsystem == schoolClass.subsystem &&
+                curriculum.sector == schoolClass.sector &&
+                (curriculum.examLevelId == null || curriculum.examLevelId == schoolClass.examLevelId) &&
+                (curriculum.seriesId == null || curriculum.seriesId == schoolClass.seriesId) &&
+                (curriculum.specialtyId == null || curriculum.specialtyId == schoolClass.specialtyId))
+            .toList()
+          ..sort((a, b) {
+            int specificity(Curriculum c) =>
+                (c.examLevelId == null ? 0 : 1) +
+                (c.seriesId == null ? 0 : 1) +
+                (c.specialtyId == null ? 0 : 1);
+            return specificity(b).compareTo(specificity(a));
+          });
+        if (matchingCurricula.isEmpty) {
+          throw StateError(_fr
+              ? 'Aucun programme officiel ne correspond à ${schoolClass.displayName} pour cette matière. Demandez à l’administration de vérifier le programme.'
+              : 'No official curriculum matches ${schoolClass.displayName} for this subject. Ask the administrator to check the curriculum.');
+        }
+        final curriculum = matchingCurricula.first;
+        final chapters = await _service.listChapters(curriculum.id);
+        if (chapters.isEmpty) {
+          throw StateError(_fr
+              ? 'Aucun chapitre n’existe dans le programme de ${schoolClass.displayName}. L’administration doit créer les chapitres avant le partage.'
+              : 'No chapter exists in the curriculum for ${schoolClass.displayName}. An administrator must create chapters before sharing.');
+        }
         final course = await _service.saveCourse(
+          curriculumId: curriculum.id,
+          chapterId: chapters.first.id,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
@@ -279,21 +310,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           );
         }
 
-        if (status == 'published') {
-          await _service.saveCourse(
-            id: course.id,
-            subjectId: _subject!.id,
-            teacherId: widget.profile.id,
-            classId: schoolClass.id,
-            titleFr: title,
-            titleEn: title,
-            contentFr: null,
-            contentEn: null,
-            smartLessonEnabled: false,
-            status: 'published',
-          );
-        }
-        published++;
+        // Teacher uploads remain draft media posts; only administration
+        // publishes official courses and lessons.
+        saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
       }
@@ -308,13 +327,13 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       _snack(
         '${_fr ? 'Erreur' : 'Error'} (${errors.length}/${_classes.length})\n${errors.first}',
       );
-      if (published == 0) {
+      if (saved == 0) {
         return;
       }
     } else {
-      _snack(status == 'published'
-          ? (_fr ? 'Cours publié dans $published classe(s).' : 'Course published in $published class(es).')
-          : (_fr ? 'Brouillon enregistré.' : 'Draft saved.'));
+      _snack(_fr
+          ? 'Médias envoyés dans $saved classe(s). En attente de publication par l’administration.'
+          : 'Media sent to $saved classroom(s). Waiting for administrator publication.');
     }
 
     Navigator.pop(context, true);
@@ -436,21 +455,21 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _saving ? null : () => _save('draft'),
+                  onPressed: _saving ? null : _save,
                   child: Text(_fr ? 'Enregistrer' : 'Save'),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: _saving ? null : () => _save('published'),
+                  onPressed: _saving ? null : _save,
                   child: _saving
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(_fr ? 'Publier les médias' : 'Publish media'),
+                      : Text(_fr ? 'Envoyer les médias' : 'Send media'),
                 ),
               ),
             ],
