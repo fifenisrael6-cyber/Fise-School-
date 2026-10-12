@@ -301,11 +301,7 @@ begin
       (curriculum_id, title_fr, title_en, position, is_active)
     values
       (v_curriculum_id, item.title_fr, item.title_en, item.position, true)
-    on conflict (curriculum_id, position) do update
-    set title_fr = excluded.title_fr,
-        title_en = excluded.title_en,
-        is_active = true,
-        updated_at = now();
+    on conflict (curriculum_id, position) do nothing;
 
     v_curriculum_id := null;
   end loop;
