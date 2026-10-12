@@ -17,7 +17,6 @@ SET is_catalog_container = true,
         ELSE 'MINESEC — Programmes officiels du sous-système francophone'
       END)
 FROM public.subjects s
-LEFT JOIN public.exam_levels el ON el.id IS NOT NULL
 WHERE cu.subject_id = s.id
   AND cu.subsystem = s.subsystem
   AND cu.sector = s.sector
