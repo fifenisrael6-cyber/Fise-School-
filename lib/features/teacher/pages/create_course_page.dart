@@ -222,7 +222,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           titleEn: title,
           contentFr: null,
           contentEn: null,
-          smartLessonEnabled: false,
+          smartLessonEnabled: true,
           // Keep the course hidden from students while attachments are pending.
           status: 'draft',
         );
@@ -253,7 +253,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             titleEn: title,
             contentFr: null,
             contentEn: null,
-            smartLessonEnabled: false,
+            smartLessonEnabled: true,
             status: 'published',
           );
         }
