@@ -245,7 +245,7 @@ class CourseResource {
       fileName,
       titleFr,
       titleEn;
-  final String? lessonId, mimeType;
+  final String? lessonId, mimeType, uploadedBy;
   final int? fileSize, position, indexWordCount;
   final String indexStatus, indexError, indexPreview;
   final bool indexApproved;
@@ -260,6 +260,7 @@ class CourseResource {
     required this.titleEn,
     this.lessonId,
     this.mimeType,
+    this.uploadedBy,
     this.fileSize,
     this.position,
     this.indexStatus = 'pending',
@@ -274,6 +275,7 @@ class CourseResource {
     id: map['id'] as String,
     courseId: map['course_id'] as String,
     lessonId: map['lesson_id'] as String?,
+    uploadedBy: map['uploaded_by'] as String?,
     resourceType: map['resource_type'] as String,
     storagePath: map['storage_path'] as String,
     fileName: map['file_name'] as String,
