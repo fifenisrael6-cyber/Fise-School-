@@ -77,10 +77,18 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       subjectId: widget.subject.id,
     );
 
-    final chapterContent = await _courses.listStudentChapterContent(
-      widget.profile.id,
-      subjectId: widget.subject.id,
-    );
+    // Official chapter content is an independent feed source. If its query
+    // fails (for example, an RLS/schema mismatch), do not let it hide teacher
+    // media that was successfully uploaded and stored in course_resources.
+    var chapterContent = <Map<String, dynamic>>[];
+    try {
+      chapterContent = await _courses.listStudentChapterContent(
+        widget.profile.id,
+        subjectId: widget.subject.id,
+      );
+    } catch (_) {
+      chapterContent = <Map<String, dynamic>>[];
+    }
 
     var assignments = const <Assignment>[];
     try {
