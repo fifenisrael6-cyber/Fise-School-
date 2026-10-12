@@ -821,9 +821,16 @@ class ResourceService {
     required PlatformFile file,
     required String resourceType,
   }) async {
-    final bytes = file.bytes;
+    Uint8List? bytes = file.bytes;
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {
+        // Report a clear error below; do not replace the existing resource.
+      }
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
     final extension = (file.extension ??
             (file.name.contains('.') ? file.name.split('.').last : ''))
