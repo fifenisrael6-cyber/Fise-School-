@@ -60,8 +60,8 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _chapterFocused => widget.chapterId != null;
   bool get _firstRollout =>
-      (widget.profile.subsystem ?? '').toLowerCase() == 'francophone' &&
-      (widget.profile.sector ?? '').toLowerCase() == 'general';
+      widget.subject.subsystem.name == 'francophone' &&
+      widget.subject.sector.name == 'general';
 
   @override
   void initState() {
