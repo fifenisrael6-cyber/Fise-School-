@@ -769,9 +769,7 @@ class ResourceService {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
 
-    final extension = (file.extension ??
-            (file.name.contains('.') ? file.name.split('.').last : ''))
-        .toLowerCase();
+    final extension = _extensionFor(file);
     final safeFileName = file.name.isEmpty ? 'resource' : file.name;
     final storageFileName = safeFileName.replaceAll(
       RegExp(r'[^A-Za-z0-9._-]'),
@@ -831,6 +829,17 @@ class ResourceService {
     }
   }
 
+  String _extensionFor(PlatformFile file) {
+    final provided = file.extension?.trim().toLowerCase() ?? '';
+    if (provided.isNotEmpty) {
+      return provided.replaceFirst(RegExp(r'^\\.'), '');
+    }
+    final name = file.name.trim();
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return '';
+    return name.substring(dot + 1).toLowerCase();
+  }
+
   String? _mimeTypeFor(String? extension) {
     switch ((extension ?? '').toLowerCase()) {
       case 'pdf': return 'application/pdf';
@@ -861,9 +870,7 @@ class ResourceService {
     if (bytes == null || bytes.isEmpty) {
       throw Exception('Le fichier sélectionné ne contient aucune donnée.');
     }
-    final extension = (file.extension ??
-            (file.name.contains('.') ? file.name.split('.').last : ''))
-        .toLowerCase();
+    final extension = _extensionFor(file);
     final safeName = file.name.isEmpty ? 'resource' : file.name;
     final storageName = safeName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final mimeType = _mimeTypeFor(extension) ??
