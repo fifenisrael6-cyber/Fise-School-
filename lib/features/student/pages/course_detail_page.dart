@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
@@ -12,6 +13,7 @@ import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
+import 'generated_course_quiz_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
   final Locale locale;
@@ -39,6 +41,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   late Future<List<Lesson>> _lessonsFuture;
   late Future<List<Assignment>> _qcmsFuture;
+  late Future<Map<String, dynamic>?> _generatedQcmFuture;
 
   String get _courseTitle {
     return widget.locale.languageCode == 'en'
@@ -63,6 +66,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     super.initState();
     _loadLessons();
     _qcmsFuture = _loadQcms();
+    _generatedQcmFuture = _loadGeneratedQcm();
     _prepareOffline();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
@@ -93,6 +97,33 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   void _loadLessons() {
     _lessonsFuture = _lessonService.listCourseLessons(widget.course.id);
+  }
+
+  Future<Map<String, dynamic>?> _loadGeneratedQcm() async {
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'course-quiz',
+        body: {
+          'course_id': widget.course.id,
+          'language': widget.locale.languageCode == 'en' ? 'en' : 'fr',
+        },
+      );
+      final data = Map<String, dynamic>.from(response.data as Map);
+      if (data['error'] != null || data['quizId'] == null) return null;
+      final questions = (data['questions'] as List? ?? const [])
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList(growable: false);
+      if (questions.isEmpty) return null;
+      return {
+        'quizId': data['quizId'].toString(),
+        'title': data['title']?.toString() ??
+            (widget.locale.languageCode == 'en' ? 'Revision QCM' : 'QCM de révision'),
+        'questions': questions,
+      };
+    } catch (_) {
+      // A missing/short course or temporary AI failure must not hide the course.
+      return null;
+    }
   }
 
   Future<List<Assignment>> _loadQcms() async {
@@ -129,6 +160,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     setState(() {
       _loadLessons();
       _qcmsFuture = _loadQcms();
+      _generatedQcmFuture = _loadGeneratedQcm();
     });
     await _lessonsFuture;
     await _qcmsFuture;
@@ -292,6 +324,39 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                         const SizedBox(height: 8),
                         ...resources.map((resource) => OfflineResourceTile(locale: widget.locale, profile: widget.profile, resource: resource)),
                       ],
+                    );
+                  },
+                ),
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: _generatedQcmFuture,
+                  builder: (context, snapshot) {
+                    final generated = snapshot.data;
+                    if (generated == null) return const SizedBox.shrink();
+                    final questions = generated['questions'] as List<Map<String, dynamic>>;
+                    final title = generated['title'] as String;
+                    return Card(
+                      margin: const EdgeInsets.only(top: 18, bottom: 10),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFE4F2E9),
+                          child: Icon(Icons.auto_awesome, color: Color(0xFF166534)),
+                        ),
+                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text(isEnglish
+                            ? 'Automatically generated from this course'
+                            : 'Généré automatiquement à partir de ce cours'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => GeneratedCourseQuizPage(
+                              locale: widget.locale,
+                              quizId: generated['quizId'] as String,
+                              title: title,
+                              questions: questions,
+                            ),
+                          ),
+                        ),
+                      ),
                     );
                   },
                 ),
