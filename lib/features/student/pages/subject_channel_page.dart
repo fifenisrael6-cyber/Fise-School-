@@ -126,9 +126,21 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         ),
     ];
 
-    // Du plus récent au plus ancien : la liste est affichée à l'envers
-    // pour que le plus récent soit en bas, comme dans une conversation.
-    items.sort((a, b) => b.date.compareTo(a.date));
+    // Official title-only syllabus cards stay together at the top in the
+    // original module/chapter order. Teacher posts and quizzes keep their
+    // existing newest-to-oldest chat ordering.
+    items.sort((a, b) {
+      final aSyllabusTitle = a.chapterContent?['is_title_only'] == true;
+      final bSyllabusTitle = b.chapterContent?['is_title_only'] == true;
+      if (aSyllabusTitle && bSyllabusTitle) {
+        final aOrder = (a.chapterContent?['sort_order'] as num?)?.toInt() ?? 0;
+        final bOrder = (b.chapterContent?['sort_order'] as num?)?.toInt() ?? 0;
+        return bOrder.compareTo(aOrder);
+      }
+      if (aSyllabusTitle) return 1;
+      if (bSyllabusTitle) return -1;
+      return b.date.compareTo(a.date);
+    });
     return items;
   }
 
@@ -288,7 +300,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _bubble({required Widget child, required DateTime date}) {
+  Widget _bubble({required Widget child, required DateTime date, bool showDate = true}) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -304,14 +316,16 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             child,
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                _formatDate(date),
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+            if (showDate) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  _formatDate(date),
+                  style: const TextStyle(fontSize: 10, color: Colors.black45),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -359,6 +373,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
     return _bubble(
       date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
+      showDate: item['is_title_only'] != true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
