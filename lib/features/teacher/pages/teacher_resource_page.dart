@@ -185,26 +185,31 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final file = result.files.first;
-
-      if (file.bytes == null || file.bytes!.isEmpty) {
-        if (!mounted) {
-          return;
+      var bytes = file.bytes;
+      if ((bytes == null || bytes.isEmpty) && file.path != null) {
+        try {
+          bytes = await File(file.path!).readAsBytes();
+        } catch (_) {
+          // Show a clear error below if Android's document provider is unreadable.
         }
-
+      }
+      if (bytes == null || bytes.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFrench
-                  ? 'Impossible de lire le fichier sélectionné.'
-                  : 'Unable to read the selected file.',
-            ),
-          ),
+          SnackBar(content: Text(_isFrench
+              ? 'Impossible de lire le fichier. Essayez de le sélectionner depuis le stockage du téléphone.'
+              : 'Unable to read the file. Try selecting it from phone storage.')),
         );
-
         return;
       }
+      final usableFile = PlatformFile(
+        name: file.name,
+        size: bytes.length,
+        bytes: bytes,
+        path: file.path,
+      );
 
-      final type = _detectResourceType(file);
+      final type = _detectResourceType(usableFile);
       if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -407,7 +412,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
       await _service.replaceResourceFile(
         resource: resource,
-        file: file,
+        file: PlatformFile(
+          name: file.name,
+          size: bytes.length,
+          bytes: bytes,
+          path: file.path,
+        ),
         resourceType: type,
       );
       if (type == 'pdf' || type == 'image') {
