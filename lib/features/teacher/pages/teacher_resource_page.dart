@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
@@ -297,28 +298,12 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
   Future<void> _openResource(CourseResource resource) async {
     try {
       final url = await _service.createSignedUrl(resource.storagePath);
-
-      if (!mounted) {
-        return;
+      final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench ? 'Impossible d’ouvrir ce média.' : 'Unable to open this media.')),
+        );
       }
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(_resourceTitle(resource)),
-            content: SelectableText(url),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-                child: Text(_isFrench ? 'Fermer' : 'Close'),
-              ),
-            ],
-          );
-        },
-      );
     } catch (e) {
       if (!mounted) {
         return;
