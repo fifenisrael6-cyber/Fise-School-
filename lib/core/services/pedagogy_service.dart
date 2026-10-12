@@ -190,9 +190,12 @@ class CourseService {
           .from('curricula')
           .select('id, title_fr, title_en, subsystem, sector, exam_level_id, series_id, specialty_id')
           .eq('subject_id', subjectId)
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('created_at');
       final curriculumById = <String, Map<String, dynamic>>{};
       final curriculumIds = <String>{};
+      final curriculumOrder = <String, int>{};
+      var nextCurriculumOrder = 0;
       for (final raw in curriculumRows) {
         final curriculum = Map<String, dynamic>.from(raw);
         final matches = classes.any((schoolClass) {
@@ -212,6 +215,7 @@ class CourseService {
         if (matches && id != null && id.isNotEmpty) {
           curriculumIds.add(id);
           curriculumById[id] = curriculum;
+          curriculumOrder[id] = nextCurriculumOrder++;
         }
       }
       if (curriculumIds.isEmpty) return const <Map<String, dynamic>>[];
@@ -222,8 +226,18 @@ class CourseService {
           .inFilter('curriculum_id', curriculumIds.toList(growable: false))
           .eq('is_active', true)
           .order('position');
+      final orderedChapterRows = List<Map<String, dynamic>>.from(chapterRows);
+      orderedChapterRows.sort((a, b) {
+        final aCurriculum = curriculumOrder[a['curriculum_id']?.toString() ?? ''] ?? 0;
+        final bCurriculum = curriculumOrder[b['curriculum_id']?.toString() ?? ''] ?? 0;
+        final byCurriculum = aCurriculum.compareTo(bCurriculum);
+        if (byCurriculum != 0) return byCurriculum;
+        final aPosition = (a['position'] as num?)?.toInt() ?? 0;
+        final bPosition = (b['position'] as num?)?.toInt() ?? 0;
+        return aPosition.compareTo(bPosition);
+      });
       final chapterById = <String, Map<String, dynamic>>{};
-      for (final raw in chapterRows) {
+      for (final raw in orderedChapterRows) {
         final chapter = Map<String, dynamic>.from(raw);
         final id = chapter['id']?.toString();
         if (id != null) chapterById[id] = chapter;
@@ -257,6 +271,7 @@ class CourseService {
 
       // The official syllabus is title-only at this stage. Include each module
       // and chapter even when the admin has not yet published lesson content.
+      var titleSortOrder = 0;
       final curriculaWithChapters = <String>{
         for (final chapter in chapterById.values)
           chapter['curriculum_id']?.toString() ?? '',
@@ -279,6 +294,7 @@ class CourseService {
           'chapter_title_en': chapter['title_en'],
           'module_title_fr': curriculum?['title_fr'] ?? '',
           'module_title_en': curriculum?['title_en'] ?? '',
+          'sort_order': titleSortOrder++,
           'is_title_only': true,
         });
       }
@@ -303,6 +319,7 @@ class CourseService {
           'chapter_title_en': '',
           'module_title_fr': titleFr,
           'module_title_en': titleEn,
+          'sort_order': titleSortOrder++,
           'is_title_only': true,
         });
       }
