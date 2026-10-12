@@ -167,7 +167,13 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
                 onChanged: saving ? null : (v) => setSheetState(() => published = v),
                 title: Text(fr ? 'Publier pour les élèves' : 'Publish for students')),
               FilledButton.icon(
-                onPressed: saving || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
+                onPressed: saving ? null : () async {
+                  if (titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(content: Text(fr ? 'Renseignez les deux titres.' : 'Enter both titles.')),
+                    );
+                    return;
+                  }
                   setSheetState(() => saving = true);
                   try {
                     int maxPosition = -1;
