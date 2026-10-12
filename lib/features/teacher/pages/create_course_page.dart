@@ -102,7 +102,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     if (classes.length != 1 || subject == null) return;
     final schoolClass = classes.single;
     try {
-      final matches = (await _service.listCurricula(subject.id)).where((c) =>
+      final matches = (await _service.listCatalogCurricula(subject.id)).where((c) =>
         c.subsystem.name == 'francophone' && c.sector.name == 'general' &&
         c.subsystem == schoolClass.subsystem && c.sector == schoolClass.sector &&
         (c.examLevelId == null || c.examLevelId == schoolClass.examLevelId) &&
