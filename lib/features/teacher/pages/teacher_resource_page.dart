@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
@@ -221,7 +222,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       final resource = await _service.uploadResource(
         courseId: widget.course.id,
         lessonId: widget.lesson?.id,
-        file: file,
+        file: usableFile,
         resourceType: type,
         position: position,
       );
@@ -294,35 +295,40 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
   Future<void> _openResource(CourseResource resource) async {
     try {
       final url = await _service.createSignedUrl(resource.storagePath);
+      if (!mounted) return;
 
-      if (!mounted) {
-        return;
-      }
-
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(_resourceTitle(resource)),
-            content: SelectableText(url),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-                child: Text(_isFrench ? 'Fermer' : 'Close'),
+      // Preview images in-app. Open PDFs, audio and video with Android's
+      // registered viewer so the teacher can verify the actual uploaded file.
+      if (resource.resourceType == 'image') {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => Dialog(
+            child: InteractiveViewer(
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(_isFrench ? 'Image impossible à afficher.' : 'Unable to display image.'),
+                ),
               ),
-            ],
-          );
-        },
-      );
-    } catch (e) {
-      if (!mounted) {
+            ),
+          ),
+        );
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench
+              ? 'Aucune application ne peut ouvrir ce fichier.'
+              : 'No application can open this file.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -377,19 +383,25 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         allowedExtensions: const [
           'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
           'mp4', 'mov', 'avi', 'mkv', 'webm',
+          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'oga', 'opus', 'flac', 'amr', '3gp', 'wma',
         ],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
       final file = result.files.single;
-      if (file.bytes == null || file.bytes!.isEmpty) {
+      var bytes = file.bytes;
+      if ((bytes == null || bytes.isEmpty) && file.path != null) {
+        try { bytes = await File(file.path!).readAsBytes(); } catch (_) {}
+      }
+      if (bytes == null || bytes.isEmpty) {
         throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
       }
-      final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      final usableFile = PlatformFile(name: file.name, size: bytes.length, bytes: bytes, path: file.path);
+      final type = _detectResourceType(usableFile);
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         throw Exception(_isFrench
-            ? 'Choisissez une photo, une vidéo ou un PDF.'
-            : 'Choose a photo, video or PDF.');
+            ? 'Choisissez une photo, une vidéo, un PDF ou un fichier audio.'
+            : 'Choose a photo, video, PDF or audio file.');
       }
       await _service.replaceResourceFile(
         resource: resource,
