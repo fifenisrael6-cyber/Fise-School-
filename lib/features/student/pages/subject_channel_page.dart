@@ -29,12 +29,16 @@ class SubjectChannelPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final Subject subject;
+  final String? chapterId;
+  final String? chapterTitle;
 
   const SubjectChannelPage({
     super.key,
     required this.locale,
     required this.profile,
     required this.subject,
+    this.chapterId,
+    this.chapterTitle,
   });
 
   @override
@@ -51,12 +55,18 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   bool _offlineMode = false;
 
   late Future<List<_FeedItem>> _feedFuture;
+  late Future<List<CourseChapter>> _catalogChaptersFuture;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+  bool get _chapterFocused => widget.chapterId != null;
 
   @override
   void initState() {
     super.initState();
+    _catalogChaptersFuture = _courses.listStudentCatalogChapters(
+      widget.profile.id,
+      subjectId: widget.subject.id,
+    );
     _feedFuture = _load();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
@@ -133,8 +143,15 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   }
 
   Future<void> _refresh() async {
-    setState(() => _feedFuture = _load());
+    setState(() {
+      _feedFuture = _load();
+      _catalogChaptersFuture = _courses.listStudentCatalogChapters(
+        widget.profile.id,
+        subjectId: widget.subject.id,
+      );
+    });
     await _feedFuture;
+    if (!_chapterFocused) await _catalogChaptersFuture;
   }
 
   String _formatDate(DateTime date) {
@@ -146,25 +163,140 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     return '$d/$m/${local.year} $h:$min';
   }
 
+  bool _itemMatchesFocusedChapter(_FeedItem item) {
+    final chapterId = widget.chapterId;
+    if (chapterId == null) return true;
+    if (item.chapterContent != null) {
+      return item.chapterContent!['chapter_id']?.toString() == chapterId;
+    }
+    if (item.course != null) {
+      return item.course!.chapterId == chapterId;
+    }
+    return false;
+  }
+
+  Widget _chapterCatalog() {
+    return FutureBuilder<List<CourseChapter>>(
+      future: _catalogChaptersFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 44),
+              const SizedBox(height: 12),
+              Text(
+                _fr
+                    ? 'Impossible de charger les titres des chapitres. Réessaie en actualisant.'
+                    : 'Could not load chapter titles. Pull down to try again.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          );
+        }
+        final chapters = snapshot.data ?? const <CourseChapter>[];
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: chapters.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.16),
+                    const Icon(Icons.menu_book_outlined, size: 54),
+                    const SizedBox(height: 14),
+                    Text(
+                      _fr
+                          ? 'Les titres des chapitres de cette matière restent à importer et à vérifier dans le programme officiel. Aucun cours ni fichier n’a été ajouté.'
+                          : 'Chapter titles for this subject still need to be imported and checked against the official syllabus. No lesson or file has been added.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                )
+              : ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.bookmarks_outlined, color: Color(0xFF166534)),
+                        title: Text(
+                          _fr ? 'Chapitres de la matière' : 'Subject chapters',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(
+                          _fr
+                              ? '${chapters.length} titre(s). Chaque chapitre ouvre sa propre page ; les cours et médias seront ajoutés plus tard.'
+                              : '${chapters.length} title(s). Each chapter opens its own page; lessons and media will be added later.',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ...chapters.asMap().entries.map((entry) {
+                      final chapter = entry.value;
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFF166534).withValues(alpha: 0.10),
+                            foregroundColor: const Color(0xFF166534),
+                            child: Text('${entry.key + 1}'),
+                          ),
+                          title: Text(
+                            chapter.labelFor(widget.locale.languageCode),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SubjectChannelPage(
+                                locale: widget.locale,
+                                profile: widget.profile,
+                                subject: widget.subject,
+                                chapterId: chapter.id,
+                                chapterTitle: chapter.labelFor(widget.locale.languageCode),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
+    final focused = _chapterFocused;
 
     return DefaultTabController(
-      length: 3,
+      length: focused ? 3 : 4,
       child: Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
         backgroundColor: const Color(0xFF166534),
         foregroundColor: Colors.white,
         title: Text(
-          widget.subject.labelFor(code),
+          widget.chapterTitle ?? widget.subject.labelFor(code),
           style: const TextStyle(fontWeight: FontWeight.w800),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         bottom: TabBar(
           isScrollable: true,
           tabs: [
-            Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.menu_book_rounded)),
+            if (!focused)
+              Tab(text: _fr ? 'Chapitres' : 'Chapters', icon: const Icon(Icons.menu_book_rounded)),
+            Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.auto_stories_rounded)),
             Tab(text: _fr ? 'Médias de l’enseignant' : 'Teacher media', icon: const Icon(Icons.perm_media_rounded)),
             Tab(text: _fr ? 'QCM' : 'Quizzes', icon: const Icon(Icons.quiz_rounded)),
           ],
@@ -201,31 +333,52 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             );
           }
           final items = snapshot.data ?? const <_FeedItem>[];
-          final officialCourses = items
+          final scopedContent = items
+              .where((item) => item.assignment == null && _itemMatchesFocusedChapter(item))
+              .toList();
+          final officialCourses = scopedContent
               .where((item) => item.chapterContent != null ||
                   (item.course != null && _isOfficialCourse(item.course!)))
               .toList();
-          final teacherMedia = items
+          final teacherMedia = scopedContent
               .where((item) => item.course != null && !_isOfficialCourse(item.course!))
               .toList();
-          final quizzes = items.where((item) => item.assignment != null).toList();
+          final focusedCourseIds = scopedContent
+              .where((item) => item.course != null)
+              .map((item) => item.course!.id)
+              .toSet();
+          final quizzes = items.where((item) =>
+              item.assignment != null &&
+              (!focused || focusedCourseIds.contains(item.assignment!.courseId))).toList();
 
-          return TabBarView(
-            children: [
-              _feedList(
-                officialCourses,
-                _fr ? 'Les cours écrits et les PDF publiés par l’administration apparaîtront ici.' : 'Written lessons and PDFs published by the administration will appear here.',
-              ),
-              _feedList(
-                teacherMedia,
-                _fr ? 'Aucune photo, vidéo ou PDF partagé par l’enseignant pour le moment.' : 'No photos, videos or PDFs shared by the teacher yet.',
-              ),
-              _feedList(
-                quizzes,
-                _fr ? 'Aucun QCM publié dans cette matière pour le moment.' : 'No quiz has been published for this subject yet.',
-              ),
-            ],
+          final tabChildren = <Widget>[];
+          if (!focused) tabChildren.add(_chapterCatalog());
+          tabChildren.add(
+            _feedList(
+              officialCourses,
+              _fr
+                  ? 'Aucun cours publié par l’administration pour ce chapitre pour le moment.'
+                  : 'No lesson published by the administrator for this chapter yet.',
+            ),
           );
+          tabChildren.add(
+            _feedList(
+              teacherMedia,
+              _fr
+                  ? 'Aucune photo, vidéo ou PDF partagé par l’enseignant pour ce chapitre pour le moment.'
+                  : 'No photo, video or PDF shared by a teacher for this chapter yet.',
+            ),
+          );
+          tabChildren.add(
+            _feedList(
+              quizzes,
+              _fr
+                  ? 'Aucun QCM publié pour ce chapitre pour le moment.'
+                  : 'No quiz published for this chapter yet.',
+            ),
+          );
+
+          return TabBarView(children: tabChildren);
         },
       ),
       ),
