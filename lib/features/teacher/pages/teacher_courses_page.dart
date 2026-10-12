@@ -150,7 +150,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  texts.pedagogyLoadError,
+                  '${texts.pedagogyLoadError}\n${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),
