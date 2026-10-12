@@ -411,11 +411,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             Text(_fr ? 'Aucun chapitre disponible pour cette matière et cette salle. Demandez à l’administration de créer le catalogue.' : 'No chapter is available for this subject and classroom. Ask the administrator to create the catalog.')
           else
             DropdownButtonFormField<String>(
-              key: ValueKey('chapter-\${_curriculum?.id}-\${_chapter?.id}'),
+              key: ValueKey('chapter-${_curriculum?.id}-${_chapter?.id}'),
               initialValue: _chapter?.id,
               isExpanded: true,
               decoration: InputDecoration(labelText: _fr ? 'Choisir le chapitre obligatoire' : 'Choose the required chapter', border: const OutlineInputBorder()),
-              items: _chapters.map((chapter) => DropdownMenuItem<String>(value: chapter.id, child: Text('\${chapter.position}. \${chapter.labelFor(widget.locale.languageCode)}', overflow: TextOverflow.ellipsis))).toList(),
+              items: _chapters.map((chapter) => DropdownMenuItem<String>(value: chapter.id, child: Text('${chapter.position}. ${chapter.labelFor(widget.locale.languageCode)}', overflow: TextOverflow.ellipsis))).toList(),
               onChanged: (id) => setState(() { _chapter = _chapters.firstWhere((chapter) => chapter.id == id); }),
             ),
           const SizedBox(height: 20),
