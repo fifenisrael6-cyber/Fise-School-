@@ -1,3 +1,4 @@
+# Automatic rebuild trigger after media visibility fixes (2026-10-12).
 # Relaunch Android build for the latest Fise School changes.
 # Triggered again after pinning receive_sharing_intent to 1.8.1.
 # Trigger Android build for the latest Fise School changes.
