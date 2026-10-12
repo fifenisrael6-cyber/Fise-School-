@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -711,10 +712,18 @@ class ResourceService {
     String? titleFr,
     String? titleEn,
   }) async {
+    // Some Android document providers return a path but no in-memory bytes.
+    // Read the selected file as a fallback rather than failing the upload.
     Uint8List? bytes = file.bytes;
-
+    if ((bytes == null || bytes.isEmpty) && file.path != null) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {
+        // Report a clear error below; never mark an unreadable file as uploaded.
+      }
+    }
     if (bytes == null || bytes.isEmpty) {
-      throw Exception('Le fichier sélectionné ne contient aucune donnée.');
+      throw Exception('Impossible de lire le fichier sélectionné. Réessayez depuis le stockage du téléphone.');
     }
 
     final extension = (file.extension ??
@@ -786,10 +795,22 @@ class ResourceService {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
       case 'mp3': return 'audio/mpeg';
+      case 'wav': return 'audio/wav';
       case 'm4a': return 'audio/mp4';
       case 'aac': return 'audio/aac';
+      case 'ogg': case 'oga': return 'audio/ogg';
+      case 'opus': return 'audio/opus';
+      case 'flac': return 'audio/flac';
+      case 'amr': return 'audio/amr';
+      case '3gp': return 'video/3gpp';
+      case 'wma': return 'audio/x-ms-wma';
       case 'mp4': return 'video/mp4';
       case 'mov': return 'video/quicktime';
+      case 'avi': return 'video/x-msvideo';
+      case 'mkv': return 'video/x-matroska';
+      case 'webm': return 'video/webm';
+      case 'gif': return 'image/gif';
+      case 'bmp': return 'image/bmp';
       case 'txt': return 'text/plain';
       default: return null;
     }
