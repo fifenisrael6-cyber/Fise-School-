@@ -124,12 +124,12 @@ matched AS (
   FROM seed
   JOIN public.exam_levels el
     ON el.code = seed.level_code
-   AND el.subsystem = seed.subsystem
-   AND el.sector = seed.sector
+   AND el.subsystem = seed.subsystem::public.catalog_subsystem
+   AND el.sector = seed.sector::public.catalog_sector
    AND el.active = true
   JOIN public.subjects s
-    ON s.subsystem = seed.subsystem
-   AND s.sector = seed.sector
+    ON s.subsystem = seed.subsystem::public.catalog_subsystem
+   AND s.sector = seed.sector::public.catalog_sector
    AND s.is_active = true
    AND (
      (seed.subject_field = 'en' AND lower(trim(s.name_en)) = lower(trim(seed.subject_name)))
@@ -139,8 +139,8 @@ matched AS (
   JOIN public.curricula cu
     ON cu.subject_id = s.id
    AND cu.exam_level_id = el.id
-   AND cu.subsystem = seed.subsystem
-   AND cu.sector = seed.sector
+   AND cu.subsystem = seed.subsystem::public.catalog_subsystem
+   AND cu.sector = seed.sector::public.catalog_sector
    AND cu.is_catalog_container = true
    AND cu.is_active = true
 ),
