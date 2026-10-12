@@ -233,12 +233,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   }
 
   bool _isOfficialCourse(Course course) {
-    // Teacher media are saved as drafts while awaiting administrator review.
-    // They also need curriculum/chapter links for the database schema, so
-    // curriculumId/chapterId alone cannot identify an official lesson.
-    // Only published, curriculum-linked courses belong in the official tab.
-    return course.status == 'published' &&
-        (course.curriculumId != null || course.chapterId != null);
+    // The courses table is the teacher-authored feed. Teacher media may be
+    // published by an earlier app version and still carry curriculum/chapter
+    // IDs, so neither status nor those IDs make a course an official lesson.
+    // Official admin-published chapter lessons are loaded separately from
+    // chapter_content_items above. Keep every courses-table post in media.
+    return false;
   }
 
   Widget _feedList(List<_FeedItem> items, String emptyMessage) {
