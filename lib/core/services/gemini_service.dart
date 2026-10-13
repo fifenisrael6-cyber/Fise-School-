@@ -184,6 +184,43 @@ class GeminiService {
   }
 
   AiServiceException _messageForError(String raw, int? status, bool isFrench) {
+    if (raw == 'AI_REQUEST_TIMEOUT' || status == 504) {
+      return AiServiceException(
+        isFrench
+            ? 'Le serveur IA met trop de temps à répondre. Réessaie dans un instant.'
+            : 'The AI server took too long to respond. Please try again shortly.',
+      );
+    }
+    if (raw == 'AI_QUOTA_EXCEEDED' || status == 429) {
+      return AiServiceException(
+        isFrench
+            ? 'Le service IA a atteint sa limite temporaire. Réessaie plus tard.'
+            : 'The AI service has reached its temporary limit. Please try again later.',
+        retryable: true,
+      );
+    }
+    if (raw == 'AI_PROVIDER_CONFIGURATION_ERROR') {
+      return AiServiceException(
+        isFrench
+            ? 'Le service IA est mal configuré côté serveur. L’administrateur doit vérifier la clé API Gemini.'
+            : 'The AI service is misconfigured on the server. An administrator must check the Gemini API key.',
+        retryable: false,
+      );
+    }
+    if (raw == 'AI_UPSTREAM_NETWORK_ERROR') {
+      return AiServiceException(
+        isFrench
+            ? 'Supabase est joignable, mais le serveur IA ne parvient pas à joindre son fournisseur. Réessaie plus tard.'
+            : 'Supabase is reachable, but the AI server cannot reach its provider. Please try again later.',
+      );
+    }
+    if (raw == 'AI_UPSTREAM_ERROR') {
+      return AiServiceException(
+        isFrench
+            ? 'Le fournisseur IA a échoué côté serveur. Les journaux Supabase indiquent la cause exacte.'
+            : 'The AI provider failed on the server. Supabase logs contain the exact cause.',
+      );
+    }
     if (status == 401 || raw.contains('Invalid or expired session') || raw.contains('Authentication required')) {
       return AiServiceException(
         isFrench ? 'Ta session a expiré. Reconnecte-toi puis réessaie.' : 'Your session expired. Sign in again.',
