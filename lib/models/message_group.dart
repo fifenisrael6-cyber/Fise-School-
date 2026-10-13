@@ -8,6 +8,7 @@ class MessageGroup {
   final int memberCount;
   final String? lastBody;
   final DateTime? lastAt;
+  final int unreadCount;
 
   const MessageGroup({
     required this.id,
@@ -19,6 +20,7 @@ class MessageGroup {
     this.memberCount = 0,
     this.lastBody,
     this.lastAt,
+    this.unreadCount = 0,
   });
 
   factory MessageGroup.fromMap(Map<String, dynamic> map) {
@@ -33,6 +35,7 @@ class MessageGroup {
       memberCount: (map['member_count'] as num?)?.toInt() ?? 0,
       lastBody: map['last_body'] as String?,
       lastAt: last is String ? DateTime.tryParse(last) : null,
+      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
