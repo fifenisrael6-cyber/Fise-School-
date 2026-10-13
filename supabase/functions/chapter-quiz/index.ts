@@ -76,11 +76,12 @@ Deno.serve(async (req: Request) => {
     if (profileError || !profile || !["student", "teacher", "admin"].includes(profile.role)) {
       return json({ error: "Cette fonction est réservée aux élèves, enseignants autorisés et administrateurs." }, 403);
     }
-    const isStudent = profile.role === "student";
     const isTeacher = profile.role === "teacher";
-    const dataClient = isStudent
-      ? userClient
-      : createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const isAdmin = profile.role === "admin";
+    if (!isTeacher && !isAdmin) {
+      return json({ error: "La génération des QCM est déclenchée par la publication d'un cours, pas par l'ouverture d'un chapitre par un élève." }, 403);
+    }
+    const dataClient = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const body = await req.json().catch(() => ({}));
     const chapterId = clean(body?.chapter_id, 80);
@@ -94,7 +95,7 @@ Deno.serve(async (req: Request) => {
         .from("courses")
         .select("id")
         .eq("chapter_id", chapterId)
-        .eq("teacher_id", authData.user.id)
+        .eq("teacher_id", auth.user.id)
         .eq("status", "published")
         .limit(1)
         .maybeSingle();
@@ -102,8 +103,7 @@ Deno.serve(async (req: Request) => {
       if (!ownCourse) return json({ error: "Aucun cours publié de cet enseignant pour ce chapitre." }, 403);
     }
 
-    // Students stay under RLS; authenticated admins and verified course owners
-    // can trigger generation immediately after publishing.
+    // Only authenticated teachers publishing their own course, or admins, can trigger generation.
     const { data: chapter, error: chapterError } = await dataClient
       .from("course_chapters")
       .select("id,title_fr,title_en,curriculum_id")
@@ -112,7 +112,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: existing, error: existingError } = await dataClient
       .from("chapter_quizzes").select("id,title_fr,title_en")
-      .eq("chapter_id", chapterId).eq("is_published", true)
+      .eq("chapter_id", chapterId).eq("is_published", true).is("created_by", null)
       .order("position").limit(1).maybeSingle();
     if (existingError) throw existingError;
     if (existing) return json({ quizId: existing.id, title: existing.title_fr, cached: true });
@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
     // Recheck after generation to avoid duplicate quizzes from concurrent opens.
     const { data: raced } = await dataClient
       .from("chapter_quizzes").select("id,title_fr")
-      .eq("chapter_id", chapterId).eq("is_published", true)
+      .eq("chapter_id", chapterId).eq("is_published", true).is("created_by", null)
       .order("position").limit(1).maybeSingle();
     if (raced) return json({ quizId: raced.id, title: raced.title_fr, cached: true });
 
