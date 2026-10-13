@@ -593,6 +593,26 @@ class CourseService {
   Future<void> archiveCourse(String id) async {
     await _client.from('courses').update({'status': 'archived'}).eq('id', id);
   }
+
+  Future<void> updateCourseTitle({
+    required String id,
+    required String titleFr,
+    required String titleEn,
+  }) async {
+    final fr = titleFr.trim();
+    final en = titleEn.trim();
+    if (fr.isEmpty || en.isEmpty) {
+      throw ArgumentError('Course titles cannot be empty.');
+    }
+    await _client.from('courses').update({
+      'title_fr': fr,
+      'title_en': en,
+    }).eq('id', id);
+  }
+
+  Future<void> deleteCourse(String id) async {
+    await _client.from('courses').delete().eq('id', id);
+  }
 }
 
 class LessonService {
