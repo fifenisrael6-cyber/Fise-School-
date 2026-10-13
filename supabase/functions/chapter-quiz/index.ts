@@ -73,40 +73,58 @@ Deno.serve(async (req: Request) => {
     const { data: profile, error: profileError } = await userClient
       .from("profiles").select("id,role,preferred_language")
       .eq("id", auth.user.id).maybeSingle();
-    if (profileError || !profile || profile.role !== "student") {
-      return json({ error: "Cette fonction est réservée aux élèves." }, 403);
+    if (profileError || !profile || !["student", "admin"].includes(profile.role)) {
+      return json({ error: "Cette fonction est réservée aux élèves et à l’administration." }, 403);
     }
+    const isAdmin = profile.role === "admin";
+    const dataClient = isAdmin
+      ? createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+      : userClient;
 
     const body = await req.json().catch(() => ({}));
     const chapterId = clean(body?.chapter_id, 80);
     if (!chapterId) return json({ error: "chapter_id is required." }, 400);
 
-    // This read is deliberately performed with the student's JWT. RLS must
-    // authorize the student to the chapter and its published contents.
-    const { data: chapter, error: chapterError } = await userClient
+    // Student requests stay under RLS; admins can trigger generation after publishing.
+    const { data: chapter, error: chapterError } = await dataClient
       .from("course_chapters")
       .select("id,title_fr,title_en,curriculum_id")
       .eq("id", chapterId).eq("is_active", true).maybeSingle();
     if (chapterError || !chapter) return json({ error: "Chapitre inaccessible." }, 403);
 
-    const { data: existing, error: existingError } = await userClient
+    const { data: existing, error: existingError } = await dataClient
       .from("chapter_quizzes").select("id,title_fr,title_en")
       .eq("chapter_id", chapterId).eq("is_published", true)
       .order("position").limit(1).maybeSingle();
     if (existingError) throw existingError;
     if (existing) return json({ quizId: existing.id, title: existing.title_fr, cached: true });
 
-    const { data: items, error: itemsError } = await userClient
+    const { data: items, error: itemsError } = await dataClient
       .from("chapter_content_items")
       .select("title_fr,title_en,body_text_fr,body_text_en,position,content_type")
       .eq("chapter_id", chapterId).eq("is_published", true)
       .in("content_type", ["course", "lesson", "text"])
       .order("position").limit(12);
     if (itemsError) throw itemsError;
-    const source = (items ?? []).map((item: any) => [
-      clean(item.title_fr, 200), clean(item.title_en, 200),
-      clean(item.body_text_fr, 5000), clean(item.body_text_en, 5000),
-    ].filter(Boolean).join("\n")).filter(Boolean).join("\n\n").slice(0, 16000);
+    const { data: publishedCourses, error: publishedCoursesError } = await dataClient
+      .from("courses")
+      .select("title_fr,title_en,content_fr,content_en,updated_at")
+      .eq("chapter_id", chapterId)
+      .eq("status", "published")
+      .order("updated_at", { ascending: false })
+      .limit(12);
+    if (publishedCoursesError) throw publishedCoursesError;
+
+    const source = [
+      ...(items ?? []).map((item: any) => [
+        clean(item.title_fr, 200), clean(item.title_en, 200),
+        clean(item.body_text_fr, 5000), clean(item.body_text_en, 5000),
+      ].filter(Boolean).join("\n")),
+      ...(publishedCourses ?? []).map((item: any) => [
+        clean(item.title_fr, 200), clean(item.title_en, 200),
+        clean(item.content_fr, 5000), clean(item.content_en, 5000),
+      ].filter(Boolean).join("\n")),
+    ].filter(Boolean).join("\n\n").slice(0, 16000);
     if (source.replace(/\s/g, "").length < 100) {
       return json({ error: "Le contenu publié de ce chapitre est trop court pour générer un QCM fiable." }, 422);
     }
@@ -129,7 +147,7 @@ Deno.serve(async (req: Request) => {
     const questions = parseQuestions(raw);
 
     // Recheck after generation to avoid duplicate quizzes from concurrent opens.
-    const { data: raced } = await userClient
+    const { data: raced } = await dataClient
       .from("chapter_quizzes").select("id,title_fr")
       .eq("chapter_id", chapterId).eq("is_published", true)
       .order("position").limit(1).maybeSingle();
