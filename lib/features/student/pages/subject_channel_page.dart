@@ -99,25 +99,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       chapterContent = <Map<String, dynamic>>[];
     }
 
-    var assignments = const <Assignment>[];
-    try {
-      // Some teacher-created QCMs are linked to a course but have no
-      // subject_id of their own. Fetch only assignments visible to this
-      // student (RLS still applies), then include those linked to one of the
-      // published courses already loaded for this subject.
-      final visibleAssignments = await _assignments.listStudentAssignments(
-        studentId: widget.profile.id,
-      );
-      final subjectCourseIds = courses.map((course) => course.id).toSet();
-      assignments = visibleAssignments.where((assignment) {
-        return assignment.subjectId == widget.subject.id ||
-            (assignment.courseId != null &&
-                subjectCourseIds.contains(assignment.courseId));
-      }).toList(growable: false);
-    } catch (_) {
-      assignments = const <Assignment>[];
-    }
-
     // Opening a subject is the automatic offline-download trigger.
     unawaited(_offline.enqueueSubject(userId: widget.profile.id, courses: courses));
 
@@ -128,11 +109,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         _FeedItem(
           date: DateTime.tryParse(content['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
           chapterContent: content,
-        ),
-      for (final assignment in assignments)
-        _FeedItem(
-          date: assignment.publishedAt ?? assignment.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
-          assignment: assignment,
         ),
     ];
 
