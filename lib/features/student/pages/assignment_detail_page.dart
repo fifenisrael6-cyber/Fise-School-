@@ -844,43 +844,56 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   Widget _buildSubmissionStatus() {
     final submission = _submission;
-
-    if (submission == null) {
-      return const SizedBox.shrink();
-    }
+    if (submission == null) return const SizedBox.shrink();
 
     final corrected = submission.status == 'corrected';
+    final feedback = submission.feedbackFor(widget.locale)?.trim();
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: corrected ? const Color(0xFFE7F7EC) : const Color(0xFFEAF3FF),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            corrected
-                ? Icons.task_alt_rounded
-                : Icons.check_circle_outline_rounded,
-            color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              corrected
-                  ? (_isEnglish
-                        ? 'Your assignment has been corrected.'
-                        : 'Votre devoir a été corrigé.')
-                  : (_isEnglish
-                        ? 'Your assignment has been submitted.'
-                        : 'Votre devoir a été envoyé.'),
-              style: TextStyle(
+          Row(
+            children: [
+              Icon(
+                corrected ? Icons.task_alt_rounded : Icons.check_circle_outline_rounded,
                 color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
-                fontWeight: FontWeight.w700,
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  corrected
+                      ? (_isEnglish
+                          ? 'Your assignment has been corrected and the result is published.'
+                          : 'Votre devoir est corrigé et le résultat est publié.')
+                      : (_isEnglish
+                          ? 'Your assignment has been submitted. The result will appear after its scheduled release.'
+                          : 'Votre devoir a été envoyé. Le résultat apparaîtra à la date de publication prévue.'),
+                  style: TextStyle(
+                    color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (corrected && submission.score != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              '${_isEnglish ? 'Published score' : 'Note publiée'} : ${submission.score!.toStringAsFixed(2)} / ${widget.assignment.maxScore.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ],
+          if (corrected && feedback != null && feedback.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(feedback, style: const TextStyle(height: 1.4)),
+          ],
         ],
       ),
     );
