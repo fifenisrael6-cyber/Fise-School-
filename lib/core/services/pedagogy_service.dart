@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -589,7 +590,21 @@ class CourseService {
         .eq('id', id)
         .select()
         .single();
-    return Course.fromMap(Map<String, dynamic>.from(row));
+    final publishedCourse = Course.fromMap(Map<String, dynamic>.from(row));
+    final chapterId = row['chapter_id']?.toString().trim() ?? '';
+    if (chapterId.isNotEmpty) {
+      // Generate the chapter QCM from actual published learning content.
+      // A QCM failure must not roll back the successful course publication.
+      try {
+        await _client.functions.invoke(
+          'chapter-quiz',
+          body: {'chapter_id': chapterId},
+        );
+      } catch (error) {
+        debugPrint('Course published, but AI chapter QCM generation failed: $error');
+      }
+    }
+    return publishedCourse;
   }
 
   Future<void> archiveCourse(String id) async {
