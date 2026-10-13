@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
@@ -26,6 +27,7 @@ class MessagesHubPage extends StatefulWidget {
 class _MessagesHubPageState extends State<MessagesHubPage> {
   final GroupMessageService _service = GroupMessageService();
   late Future<List<MessageGroup>> _groupsFuture;
+  RealtimeChannel? _realtime;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isTeacher => widget.profile.role == 'teacher' || widget.profile.role == 'admin';
@@ -34,11 +36,36 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   void initState() {
     super.initState();
     _groupsFuture = _service.listGroups();
+    _realtime = Supabase.instance.client
+        .channel('messages-hub-${widget.profile.id}')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_messages',
+        callback: (_) {
+          if (mounted) setState(() => _groupsFuture = _service.listGroups());
+        },
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        callback: (_) {
+          if (mounted) setState(() => _groupsFuture = _service.listGroups());
+        },
+      )
+      .subscribe();
   }
 
   Future<void> _reload() async {
     setState(() => _groupsFuture = _service.listGroups());
     await _groupsFuture;
+  }
+
+  @override
+  void dispose() {
+    _realtime?.unsubscribe();
+    super.dispose();
   }
 
   void _snack(String message) {
