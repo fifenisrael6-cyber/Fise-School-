@@ -221,14 +221,19 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       return;
     }
 
+    final selected = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+    if (_startsAt != null && !selected.isAfter(_startsAt!)) {
+      _showMessage(_isEnglish ? 'The deadline must be after the opening time.' : 'La date limite doit être après l’ouverture.');
+      return;
+    }
     setState(() {
-      _dueAt = DateTime(
-        pickedDate.year,
-        pickedDate.month,
-        pickedDate.day,
-        pickedTime.hour,
-        pickedTime.minute,
-      );
+      _dueAt = selected;
     });
   }
 
