@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -98,20 +99,18 @@ class CourseService {
     return entries.map((e) => e.subject).toList(growable: false);
   }
 
-  /// Subjects explicitly assigned to one classroom. The table's SELECT RLS
-  /// intentionally limits direct reads to class members/assigned teachers.
-  /// Use the scoped teacher RPC so an authorized teacher can read the selected
-  /// curriculum without weakening table policies or bypassing class scope.
+  /// Subjects explicitly assigned to one classroom. Teachers use this when
+  /// creating content so a subject can never silently come from another room.
   Future<List<Subject>> listSubjectsForClass(String classId) async {
-    final rows = await _client.rpc(
-      'list_teacher_class_subjects',
-      params: {'p_class_id': classId},
-    );
+    final rows = await _client
+        .from('class_subjects')
+        .select('subject_id, is_compulsory, option_group, position, subjects(*)')
+        .eq('class_id', classId)
+        .eq('is_active', true)
+        .order('position');
 
-    return (rows as List)
-        .map((row) => ClassSubjectEntry.fromMap(
-              Map<String, dynamic>.from(row as Map),
-            ).subject)
+    return rows
+        .map((row) => ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row)).subject)
         .toList(growable: false);
   }
 
@@ -589,7 +588,21 @@ class CourseService {
         .eq('id', id)
         .select()
         .single();
-    return Course.fromMap(Map<String, dynamic>.from(row));
+    final publishedCourse = Course.fromMap(Map<String, dynamic>.from(row));
+    final chapterId = row['chapter_id']?.toString().trim() ?? '';
+    if (chapterId.isNotEmpty) {
+      // Generate the chapter QCM from the actual published course/media.
+      // A QCM failure must not roll back a successful course publication.
+      try {
+        await _client.functions.invoke(
+          'chapter-quiz',
+          body: {'chapter_id': chapterId},
+        );
+      } catch (error) {
+        debugPrint('Course published, but AI chapter QCM generation failed: $error');
+      }
+    }
+    return publishedCourse;
   }
 
   Future<void> archiveCourse(String id) async {
