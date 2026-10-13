@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/pedagogy_service.dart';
@@ -38,7 +39,17 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   }
 
   void _reload() {
-    _coursesFuture = _service.listTeacherCourses(widget.profile.id);
+    _coursesFuture = _loadCoursesWithDiagnostics();
+  }
+
+  Future<List<Course>> _loadCoursesWithDiagnostics() async {
+    try {
+      return await _service.listTeacherCourses(widget.profile.id);
+    } catch (error, stackTrace) {
+      debugPrint('[Mes médias de classe] Supabase load failed: $error');
+      debugPrintStack(label: '[Mes médias de classe] stack trace', stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> _createCourse() async {
@@ -150,7 +161,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  texts.pedagogyLoadError,
+                  '${texts.pedagogyLoadError}\n\n${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),
