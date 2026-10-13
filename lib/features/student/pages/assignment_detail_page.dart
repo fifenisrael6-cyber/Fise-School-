@@ -337,7 +337,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   }
 
   bool get _isClosed {
-    return widget.assignment.status == 'closed';
+    final deadline = widget.assignment.dueAt;
+    return widget.assignment.status == 'closed' ||
+        (deadline != null &&
+            !DateTime.now().isBefore(deadline.toLocal()));
   }
 
   bool get _isDraftSubmission {
