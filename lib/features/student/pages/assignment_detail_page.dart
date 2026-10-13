@@ -669,7 +669,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   }
 
   Widget _buildAnswerWidget(AssignmentQuestion question) {
-    final enabled = _isDraftSubmission && !_isClosed;
+    final enabled = _isDraftSubmission && !_isClosed && !_isNotStarted;
 
     if (question.isQcm || question.isTrueFalse) {
       final options = question.isQcm
@@ -875,7 +875,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _saving || _submitting
+                onPressed: _saving || _submitting || _isNotStarted || _isClosed
                     ? null
                     : () => _saveCurrentAnswers(questions),
                 icon: _saving
@@ -891,7 +891,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: _saving || _submitting
+                onPressed: _saving || _submitting || _isNotStarted || _isClosed
                     ? null
                     : () => _submitAssignment(questions),
                 icon: _submitting
