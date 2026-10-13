@@ -161,9 +161,9 @@ Deno.serve(async (req: Request) => {
         }, { onConflict: "submission_id" });
         return json({ error: "AI correction is not configured. The submission is saved; grading will need a retry." }, 503);
       }
-      const configuredModel = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+      const configuredModel = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
       const prompt = `You are a careful school examiner for Cameroon. Grade each student's written answer fairly and conservatively. Use the question, expected answer when present, and maximum points. Do not invent a rubric. Award a number between 0 and max_points. Give concise feedback in French and English. Return JSON only in this exact shape: {"grades":[{"question_id":"...","points_awarded":0,"is_correct":false,"feedback_fr":"...","feedback_en":"..."}]}. Never include a score outside the given maximum. Assignment: ${String(assignment.title_fr ?? assignment.title_en ?? "")}. Written answers: ${JSON.stringify(written)}`;
-      const models = [...new Set([configuredModel, "gemini-2.5-flash"])];
+      const models = [...new Set([configuredModel, "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"])];
       let result: any = null;
       let lastError = "Gemini grading failed.";
       for (const model of models) {
