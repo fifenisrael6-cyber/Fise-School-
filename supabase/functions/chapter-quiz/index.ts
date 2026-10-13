@@ -115,6 +115,19 @@ Deno.serve(async (req: Request) => {
       .limit(12);
     if (publishedCoursesError) throw publishedCoursesError;
 
+    const courseIds = (publishedCourses ?? []).map((course: any) => course.id).filter(Boolean);
+    let indexedChunks: any[] = [];
+    if (courseIds.length > 0) {
+      const { data: chunks, error: chunksError } = await dataClient
+        .from("course_chunks")
+        .select("course_id,title,content,language,position")
+        .in("course_id", courseIds)
+        .order("position")
+        .limit(40);
+      if (chunksError) throw chunksError;
+      indexedChunks = chunks ?? [];
+    }
+
     const source = [
       ...(items ?? []).map((item: any) => [
         clean(item.title_fr, 200), clean(item.title_en, 200),
@@ -123,6 +136,9 @@ Deno.serve(async (req: Request) => {
       ...(publishedCourses ?? []).map((item: any) => [
         clean(item.title_fr, 200), clean(item.title_en, 200),
         clean(item.content_fr, 5000), clean(item.content_en, 5000),
+      ].filter(Boolean).join("\n")),
+      ...indexedChunks.map((chunk: any) => [
+        clean(chunk.title, 200), clean(chunk.content, 5000),
       ].filter(Boolean).join("\n")),
     ].filter(Boolean).join("\n\n").slice(0, 16000);
     if (source.replace(/\s/g, "").length < 100) {
