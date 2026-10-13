@@ -93,7 +93,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
       backgroundColor: const Color(0xFFF5F8F6),
       appBar: AppBar(
         title: Text(
-          _isEnglish ? 'Assignments' : 'Devoirs',
+          _isEnglish ? 'Assessments and exams' : 'Évaluations et examens',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF166534),
@@ -169,7 +169,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isEnglish ? 'Your assignments' : 'Vos devoirs',
+                  _isEnglish ? 'Your assessments' : 'Vos évaluations',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -179,8 +179,8 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                 const SizedBox(height: 4),
                 Text(
                   _isEnglish
-                      ? '$count assignment${count > 1 ? 's' : ''}'
-                      : '$count devoir${count > 1 ? 's' : ''}',
+                      ? '$count assessment${count > 1 ? 's' : ''}'
+                      : '$count évaluation${count > 1 ? 's' : ''}',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.88),
                     fontSize: 14,
@@ -371,15 +371,15 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         const Icon(Icons.assignment_outlined, size: 72, color: Colors.grey),
         const SizedBox(height: 18),
         Text(
-          _isEnglish ? 'No assignments yet' : 'Aucun devoir pour le moment',
+          _isEnglish ? 'No assessments scheduled yet' : 'Aucune évaluation programmée pour le moment',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         Text(
           _isEnglish
-              ? 'Published assignments for your class will appear here.'
-              : 'Les devoirs publiés pour votre classe apparaîtront ici.',
+              ? 'Official exams and assessments scheduled for your class by the administrator will appear here.'
+              : 'Les épreuves et évaluations programmées par l’administration pour votre classe apparaîtront ici.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.black54, height: 1.5),
         ),
@@ -401,8 +401,8 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         const SizedBox(height: 16),
         Text(
           _isEnglish
-              ? 'Unable to load assignments.'
-              : 'Impossible de charger les devoirs.',
+              ? 'Unable to load assessments.'
+              : 'Impossible de charger les évaluations.',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
