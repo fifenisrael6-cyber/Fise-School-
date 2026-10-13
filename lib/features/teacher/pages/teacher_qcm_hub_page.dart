@@ -246,35 +246,61 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     }
   }
 
-  Future<void> _deleteAssignment(Assignment assignment) async {
+  Future<void> _deleteAssignment(
+    Assignment assignment, {
+    required bool forEveryone,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
-        content: Text(_fr
-          ? 'Le QCM sera supprimé même s’il a déjà été diffusé ou réalisé. Les questions, réponses et résultats des élèves associés seront également supprimés. Cette action est irréversible.'
-          : 'This quiz will be deleted even if it has already been published or completed. Its questions, student answers, and results will also be deleted. This cannot be undone.'),
+        title: Text(forEveryone
+            ? (_fr ? 'Supprimer pour tout le monde ?' : 'Delete for everyone?')
+            : (_fr ? 'Supprimer pour moi ?' : 'Delete for me?')),
+        content: Text(forEveryone
+            ? (_fr
+                ? 'Le QCM disparaîtra pour tous les élèves et sera supprimé définitivement avec ses questions et les réponses/résultats associés. Cette action est irréversible.'
+                : 'This quiz will disappear for all students and be permanently deleted with its questions and associated answers/results. This cannot be undone.')
+            : (_fr
+                ? 'Le QCM sera masqué uniquement dans votre espace enseignant. Les élèves et les autres utilisateurs continueront à le voir.'
+                : 'The quiz will be hidden only from your teacher workspace. Students and other users will still see it.')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_fr ? 'Annuler' : 'Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Supprimer' : 'Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
-      await _service.deleteAssignment(assignment.id);
+      if (forEveryone) {
+        await _service.deleteAssignmentForEveryone(
+          assignment.id,
+          teacherId: widget.profile.id,
+        );
+      } else {
+        await _service.hideAssignmentForMe(assignment.id);
+      }
       if (mounted) {
         setState(_reload);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'QCM supprimé.' : 'Quiz deleted.')),
+          SnackBar(
+            content: Text(forEveryone
+                ? (_fr ? 'QCM supprimé pour tout le monde.' : 'Quiz deleted for everyone.')
+                : (_fr ? 'QCM masqué dans votre espace.' : 'Quiz hidden from your workspace.')),
+          ),
         );
       }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
+        );
+      }
     }
   }
 
@@ -634,11 +660,17 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
                     onSelected: (action) {
                       if (action == 'results') _showResults(assignment);
-                      if (action == 'delete') _deleteAssignment(assignment);
+                      if (action == 'delete_me') {
+                        _deleteAssignment(assignment, forEveryone: false);
+                      }
+                      if (action == 'delete_everyone') {
+                        _deleteAssignment(assignment, forEveryone: true);
+                      }
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
-                      PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
+                      PopupMenuItem(value: 'delete_me', child: Text(_fr ? 'Supprimer pour moi' : 'Delete for me')),
+                      PopupMenuItem(value: 'delete_everyone', child: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone')),
                     ],
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 92),
