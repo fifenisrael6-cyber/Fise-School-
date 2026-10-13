@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -269,21 +268,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
   }
 
-  Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    try {
-      final response = await Supabase.instance.client.functions.invoke(
-        'chapter-quiz',
-        body: {'chapter_id': chapterId},
-      );
-      final data = response.data;
-      if (data is Map && data['error'] != null) {
-        debugPrint('AI QCM generation unavailable for $chapterId: ${data['error']}');
-      }
-    } catch (error) {
-      debugPrint('AI QCM generation failed after publication for $chapterId: $error');
-    }
-  }
-
   Future<void> _save() async {
     final title = _title.text.trim();
 
@@ -484,7 +468,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         }
 
         await _service.publishCourse(course.id);
-        unawaited(_generateChapterQuizInBackground(selectedChapterId));
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
