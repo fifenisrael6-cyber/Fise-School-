@@ -202,9 +202,9 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
       if (!mounted) return;
       final subjects = (common ?? <String, Subject>{}).values.toList()
-        ..sort((a, b) => a.nameFor(_fr ? 'fr' : 'en')
+        ..sort((a, b) => a.labelFor(_fr ? 'fr' : 'en')
             .toLowerCase()
-            .compareTo(b.nameFor(_fr ? 'fr' : 'en').toLowerCase()));
+            .compareTo(b.labelFor(_fr ? 'fr' : 'en').toLowerCase()));
       setState(() {
         _subjects = subjects;
         if (_subject != null && !subjects.any((s) => s.id == _subject!.id)) {
