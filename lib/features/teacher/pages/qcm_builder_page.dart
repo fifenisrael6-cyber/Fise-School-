@@ -158,6 +158,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     }
 
     for (final schoolClass in _classes) {
+      String? createdAssignmentId;
       try {
         final matchingCourses = publishedCourses
             .where((course) =>
@@ -178,6 +179,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
           status: 'draft',
           maxScore: _questions.length.toDouble(),
         );
+        createdAssignmentId = assignment.id;
 
         for (var i = 0; i < _questions.length; i++) {
           final draft = _questions[i];
@@ -227,6 +229,21 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         }
         done++;
       } catch (error) {
+        // Do not leave a half-written draft behind when saving its questions
+        // fails. Never remove a QCM that is already confirmed as published.
+        if (createdAssignmentId != null) {
+          try {
+            final partial = await _service.getAssignment(createdAssignmentId);
+            if (partial.status == 'draft') {
+              await _service.deleteAssignmentForEveryone(
+                createdAssignmentId,
+                teacherId: widget.profile.id,
+              );
+            }
+          } catch (_) {
+            // Preserve data if its state cannot be verified safely.
+          }
+        }
         errors.add('${schoolClass.displayName}: $error');
       }
     }
