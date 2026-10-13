@@ -73,19 +73,37 @@ Deno.serve(async (req: Request) => {
     const { data: profile, error: profileError } = await userClient
       .from("profiles").select("id,role,preferred_language")
       .eq("id", auth.user.id).maybeSingle();
-    if (profileError || !profile || !["student", "admin"].includes(profile.role)) {
-      return json({ error: "Cette fonction est réservée aux élèves et à l’administration." }, 403);
+    if (profileError || !profile || !["student", "teacher", "admin"].includes(profile.role)) {
+      return json({ error: "Cette fonction est réservée aux élèves, enseignants autorisés et administrateurs." }, 403);
     }
-    const isAdmin = profile.role === "admin";
-    const dataClient = isAdmin
-      ? createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
-      : userClient;
+    const isStudent = profile.role === "student";
+    const isTeacher = profile.role === "teacher";
+    const dataClient = isStudent
+      ? userClient
+      : createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const body = await req.json().catch(() => ({}));
     const chapterId = clean(body?.chapter_id, 80);
     if (!chapterId) return json({ error: "chapter_id is required." }, 400);
 
-    // Student requests stay under RLS; admins can trigger generation after publishing.
+    // A teacher may trigger generation only for a chapter containing their own
+    // published course/media post. The service role is used only after verifying
+    // the authenticated profile and this ownership constraint.
+    if (isTeacher) {
+      const { data: ownCourse, error: ownCourseError } = await dataClient
+        .from("courses")
+        .select("id")
+        .eq("chapter_id", chapterId)
+        .eq("teacher_id", authData.user.id)
+        .eq("status", "published")
+        .limit(1)
+        .maybeSingle();
+      if (ownCourseError) throw ownCourseError;
+      if (!ownCourse) return json({ error: "Aucun cours publié de cet enseignant pour ce chapitre." }, 403);
+    }
+
+    // Students stay under RLS; authenticated admins and verified course owners
+    // can trigger generation immediately after publishing.
     const { data: chapter, error: chapterError } = await dataClient
       .from("course_chapters")
       .select("id,title_fr,title_en,curriculum_id")
