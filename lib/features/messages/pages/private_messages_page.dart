@@ -470,6 +470,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   ? (_isFrench ? 'Enseignant' : 'Teacher')
                   : (_isFrench ? 'Élève' : 'Student'),
             ),
+            trailing: contact.unreadCount > 0
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF166534),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      contact.unreadCount > 99 ? '99+' : '${contact.unreadCount}',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                    ),
+                  )
+                : null,
             onTap: () => _select(contact),
           );
         },
