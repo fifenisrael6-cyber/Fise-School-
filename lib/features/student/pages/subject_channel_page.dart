@@ -19,6 +19,13 @@ class _FeedItem {
   const _FeedItem({required this.date, this.course, this.chapterContent});
 }
 
+class _ChapterMediaEntry {
+  final Course course;
+  final CourseResource resource;
+
+  const _ChapterMediaEntry({required this.course, required this.resource});
+}
+
 /// Fil d'une matière : cours publiés, documents, photos et QCM de l'enseignant,
 /// affichés comme un canal (le plus récent en bas).
 class SubjectChannelPage extends StatefulWidget {
@@ -51,6 +58,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   late Future<List<_FeedItem>> _feedFuture;
   late Future<List<CourseChapter>> _catalogChaptersFuture;
+  final Map<String, Future<List<_ChapterMediaEntry>>> _chapterMediaFutures = {};
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _chapterFocused => widget.chapterId != null;
@@ -115,6 +123,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   Future<void> _refresh() async {
     setState(() {
+      _chapterMediaFutures.clear();
       _feedFuture = _load();
       _catalogChaptersFuture = _courses.listStudentCatalogChapters(
         widget.profile.id,
@@ -431,35 +440,154 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   }
 
   Widget _feedList(List<_FeedItem> items, String emptyMessage) {
+    final cacheKey = items
+        .map((item) => item.course?.id ?? item.chapterContent?['id']?.toString() ?? '')
+        .join('|');
+    final mediaFuture = _chapterMediaFutures.putIfAbsent(
+      cacheKey,
+      () => _loadChapterMedia(items),
+    );
+
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: items.isEmpty
-          ? ListView(
+      child: FutureBuilder<List<_ChapterMediaEntry>>(
+        future: mediaFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final media = snapshot.data ?? const <_ChapterMediaEntry>[];
+          final folders = <String, List<String>>{
+            'courses': const [],
+            'image': ['image'],
+            'audio': ['audio'],
+            'video': ['video'],
+            'pdf': ['pdf'],
+            'documents': ['document', 'other'],
+          };
+          final labels = <String, String>{
+            'courses': _fr ? 'Cours et leçons' : 'Courses and lessons',
+            'image': _fr ? 'Photos et images' : 'Photos and images',
+            'audio': _fr ? 'Fichiers audio' : 'Audio files',
+            'video': _fr ? 'Vidéos' : 'Videos',
+            'pdf': 'PDF',
+            'documents': _fr ? 'Autres documents' : 'Other documents',
+          };
+          final icons = <String, IconData>{
+            'courses': Icons.menu_book_rounded,
+            'image': Icons.photo_library_outlined,
+            'audio': Icons.audiotrack_rounded,
+            'video': Icons.video_library_outlined,
+            'pdf': Icons.picture_as_pdf_outlined,
+            'documents': Icons.folder_open_rounded,
+          };
+          final folderCounts = <String, int>{
+            'courses': items.length,
+            for (final key in ['image', 'audio', 'video', 'pdf', 'documents'])
+              key: media.where((entry) => folders[key]!.contains(entry.resource.resourceType)).length,
+          };
+
+          if (items.isEmpty && media.isEmpty) {
+            return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(24),
               children: [
                 SizedBox(height: MediaQuery.of(context).size.height * 0.22),
-                Icon(
-                  Icons.menu_book_outlined,
-                  size: 54,
-                  color: Colors.grey.shade500,
-                ),
+                const Icon(Icons.folder_open_rounded, size: 56),
                 const SizedBox(height: 12),
                 Text(emptyMessage, textAlign: TextAlign.center),
               ],
-            )
-          : ListView(
-              reverse: true,
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(12),
-              children: [
-                if (_offlineMode) _offlineBanner(),
-                ...items.map((item) => item.chapterContent != null
-                    ? _chapterContentPost(item.chapterContent!)
-                    : _coursePost(item.course!)),
-              ],
-            ),
+            );
+          }
+
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            children: [
+              if (_offlineMode) _offlineBanner(),
+              Card(
+                elevation: 0,
+                child: ListTile(
+                  leading: const Icon(Icons.folder_copy_outlined, color: Color(0xFF166534), size: 32),
+                  title: Text(_fr ? 'Fichiers du chapitre' : 'Chapter files',
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(_fr
+                      ? 'Ouvre un dossier pour retrouver séparément les cours, photos, audios, vidéos et PDF.'
+                      : 'Open a folder to browse courses, photos, audio, videos and PDFs separately.'),
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...folders.keys.map((key) {
+                final count = folderCounts[key] ?? 0;
+                final children = <Widget>[];
+                if (key == 'courses') {
+                  if (items.isEmpty) {
+                    children.add(ListTile(
+                      title: Text(_fr ? 'Aucun cours publié' : 'No published courses'),
+                    ));
+                  } else {
+                    children.addAll(items.map((item) => item.chapterContent != null
+                        ? _chapterContentPost(item.chapterContent!)
+                        : _coursePost(item.course!, showResources: false)));
+                  }
+                } else {
+                  final files = media.where((entry) =>
+                      folders[key]!.contains(entry.resource.resourceType)).toList();
+                  if (files.isEmpty) {
+                    children.add(ListTile(
+                      leading: const Icon(Icons.info_outline_rounded),
+                      title: Text(_fr ? 'Aucun fichier dans ce dossier' : 'This folder is empty'),
+                    ));
+                  } else {
+                    children.addAll(files.map((entry) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(entry.course.labelFor(_fr ? 'fr' : 'en'),
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          OfflineResourceTile(
+                            locale: widget.locale,
+                            profile: widget.profile,
+                            resource: entry.resource,
+                          ),
+                        ],
+                      ),
+                    )));
+                  }
+                }
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    leading: Icon(icons[key], color: const Color(0xFF166534), size: 28),
+                    title: Text(labels[key]!, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('$count ${_fr ? 'élément(s)' : 'item(s)'}'),
+                    children: children,
+                  ),
+                );
+              }),
+            ],
+          );
+        },
+      ),
     );
+  }
+
+  Future<List<_ChapterMediaEntry>> _loadChapterMedia(List<_FeedItem> items) async {
+    final entries = <_ChapterMediaEntry>[];
+    for (final item in items) {
+      final course = item.course;
+      if (course == null) continue;
+      try {
+        final resources = await _loadResources(course.id);
+        entries.addAll(resources.map((resource) =>
+            _ChapterMediaEntry(course: course, resource: resource)));
+      } catch (_) {
+        // Un fichier indisponible ne doit pas masquer les autres dossiers.
+      }
+    }
+    return entries;
   }
 
   Widget _offlineBanner() {
@@ -590,7 +718,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _coursePost(Course course) {
+  Widget _coursePost(Course course, {bool showResources = true}) {
     final code = widget.locale.languageCode;
     final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
     final description = (code == 'en' ? course.descriptionEn : course.descriptionFr)?.trim();
@@ -620,7 +748,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             const SizedBox(height: 6),
             Text(content),
           ],
-          FutureBuilder<List<CourseResource>>(
+          if (showResources) FutureBuilder<List<CourseResource>>(
             future: _loadResources(course.id),
             builder: (context, snapshot) {
               final resources = snapshot.data ?? const <CourseResource>[];

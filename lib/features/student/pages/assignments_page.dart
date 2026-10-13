@@ -44,6 +44,43 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     await _assignmentsFuture;
   }
 
+  Future<void> _deleteAssignmentForMe(Assignment assignment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isEnglish ? 'Remove this QCM for me?' : 'Supprimer ce QCM pour moi ?'),
+        content: Text(_isEnglish
+            ? 'This QCM will disappear only from your list. The teacher and other students will keep their access.'
+            : 'Ce QCM disparaîtra uniquement de votre liste. L’enseignant et les autres élèves le conserveront.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isEnglish ? 'Cancel' : 'Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_isEnglish ? 'Remove' : 'Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.hideAssignmentForMe(assignment.id);
+      if (!mounted) return;
+      setState(_loadAssignments);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isEnglish ? 'QCM removed from your list.' : 'QCM supprimé de votre liste.')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isEnglish ? 'Unable to remove QCM' : 'Suppression impossible'}: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _openAssignment(Assignment assignment) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -248,9 +285,21 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF166534),
+                  PopupMenuButton<String>(
+                    tooltip: _isEnglish ? 'QCM options' : 'Options du QCM',
+                    onSelected: (value) {
+                      if (value == 'remove') _deleteAssignmentForMe(assignment);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'remove',
+                        child: Text(_isEnglish ? 'Remove for me' : 'Supprimer pour moi'),
+                      ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.more_vert_rounded, color: Color(0xFF166534)),
+                    ),
                   ),
                 ],
               ),
