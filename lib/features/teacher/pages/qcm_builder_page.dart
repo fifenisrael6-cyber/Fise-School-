@@ -233,13 +233,10 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         // fails. Never remove a QCM that is already confirmed as published.
         if (createdAssignmentId != null) {
           try {
-            final partial = await _service.getAssignment(createdAssignmentId);
-            if (partial.status == 'draft') {
-              await _service.deleteAssignmentForEveryone(
-                createdAssignmentId,
-                teacherId: widget.profile.id,
-              );
-            }
+            await _service.deleteDraftAssignmentIfUnpublished(
+              createdAssignmentId,
+              teacherId: widget.profile.id,
+            );
           } catch (_) {
             // Preserve data if its state cannot be verified safely.
           }
