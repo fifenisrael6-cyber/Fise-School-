@@ -132,7 +132,9 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     final instructions = _instructions(assignment);
     final status = assignment['status']?.toString();
     final maxScore = assignment['max_score']?.toString() ?? '';
+    final startsAt = assignment['starts_at']?.toString();
     final dueAt = assignment['due_at']?.toString();
+    final evaluationFileName = assignment['evaluation_file_name']?.toString();
 
     showModalBottomSheet<void>(
       context: context,
@@ -182,12 +184,26 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                if (startsAt != null && startsAt.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.play_arrow_rounded),
+                    title: Text(_isFrench ? 'Début de l’évaluation' : 'Evaluation starts'),
+                    subtitle: Text(_formatDueDate(startsAt)),
+                  ),
                 if (dueAt != null && dueAt.isNotEmpty)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.schedule_rounded),
-                    title: Text(_isFrench ? 'Échéance' : 'Deadline'),
+                    title: Text(_isFrench ? 'Fin de l’évaluation' : 'Evaluation ends'),
                     subtitle: Text(_formatDueDate(dueAt)),
+                  ),
+                if (evaluationFileName != null && evaluationFileName.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.picture_as_pdf_rounded),
+                    title: Text(_isFrench ? 'Épreuve officielle' : 'Official exam paper'),
+                    subtitle: Text(evaluationFileName),
                   ),
                 const SizedBox(height: 8),
                 Text(
