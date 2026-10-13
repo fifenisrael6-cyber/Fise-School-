@@ -3,13 +3,10 @@ import 'dart:async';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
-import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
-import 'assignment_detail_page.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
@@ -17,10 +14,9 @@ import 'chapter_quiz_page.dart';
 class _FeedItem {
   final DateTime date;
   final Course? course;
-  final Assignment? assignment;
   final Map<String, dynamic>? chapterContent;
 
-  const _FeedItem({required this.date, this.course, this.assignment, this.chapterContent});
+  const _FeedItem({required this.date, this.course, this.chapterContent});
 }
 
 /// Fil d'une matière : cours publiés, documents, photos et QCM de l'enseignant,
@@ -47,7 +43,6 @@ class SubjectChannelPage extends StatefulWidget {
 
 class _SubjectChannelPageState extends State<SubjectChannelPage> {
   final CourseService _courses = CourseService();
-  final AssignmentService _assignments = AssignmentService();
   final CourseOfflineService _offline = CourseOfflineService();
   final ResourceService _resources = ResourceService();
   final ConnectivityService _connectivity = ConnectivityService();
@@ -461,9 +456,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 if (_offlineMode) _offlineBanner(),
                 ...items.map((item) => item.chapterContent != null
                     ? _chapterContentPost(item.chapterContent!)
-                    : item.course != null
-                        ? _coursePost(item.course!)
-                        : _quizPost(item.assignment!)),
+                    : _coursePost(item.course!)),
               ],
             ),
     );
@@ -664,61 +657,4 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _quizPost(Assignment assignment) {
-    final due = assignment.dueAt;
-
-    return _bubble(
-      date: assignment.publishedAt ?? assignment.createdAt ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.quiz_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Text(
-                'QCM',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.green.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            assignment.titleFor(widget.locale),
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-          if (due != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${_fr ? 'À rendre avant le' : 'Due'} ${_formatDate(due)}',
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ),
-          const SizedBox(height: 6),
-          FilledButton.tonalIcon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AssignmentDetailPage(
-                  locale: widget.locale,
-                  profile: widget.profile,
-                  assignment: assignment,
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text(
-              assignment.status == 'closed'
-                  ? (_fr ? 'Voir' : 'View')
-                  : (_fr ? 'Répondre au QCM' : 'Answer the quiz'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
