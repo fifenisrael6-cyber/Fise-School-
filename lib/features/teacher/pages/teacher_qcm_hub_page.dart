@@ -141,8 +141,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
       builder: (dialogContext) => AlertDialog(
         title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
         content: Text(_fr
-          ? 'Cette action supprimera le QCM et ses données associées si les règles de la base l’autorisent.'
-          : 'This deletes the quiz and related data if permitted by the database rules.'),
+          ? 'Le QCM sera supprimé même s’il a déjà été diffusé ou réalisé. Les questions, réponses et résultats des élèves associés seront également supprimés. Cette action est irréversible.'
+          : 'This quiz will be deleted even if it has already been published or completed. Its questions, student answers, and results will also be deleted. This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false),
             child: Text(_fr ? 'Annuler' : 'Cancel')),
