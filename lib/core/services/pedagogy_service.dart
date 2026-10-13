@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -593,18 +594,26 @@ class CourseService {
     final publishedCourse = Course.fromMap(Map<String, dynamic>.from(row));
     final chapterId = row['chapter_id']?.toString().trim() ?? '';
     if (chapterId.isNotEmpty) {
-      // Generate the chapter QCM from actual published learning content.
-      // A QCM failure must not roll back the successful course publication.
-      try {
-        await _client.functions.invoke(
-          'chapter-quiz',
-          body: {'chapter_id': chapterId},
-        );
-      } catch (error) {
-        debugPrint('Course published, but AI chapter QCM generation failed: $error');
-      }
+      // Keep course publication fast; generate/update the AI QCM once in the
+      // background. A temporary Gemini failure must not undo publication.
+      unawaited(_generateChapterQuizInBackground(chapterId));
     }
     return publishedCourse;
+  }
+
+  Future<void> _generateChapterQuizInBackground(String chapterId) async {
+    try {
+      final response = await _client.functions.invoke(
+        'chapter-quiz',
+        body: {'chapter_id': chapterId},
+      );
+      final data = response.data;
+      if (data is Map && data['error'] != null) {
+        debugPrint('Course published; AI chapter QCM not ready: ${data['error']}');
+      }
+    } catch (error) {
+      debugPrint('Course published; AI chapter QCM generation failed: $error');
+    }
   }
 
   Future<void> archiveCourse(String id) async {
