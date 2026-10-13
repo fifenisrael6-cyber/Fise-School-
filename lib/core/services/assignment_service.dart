@@ -17,6 +17,14 @@ class AssignmentService {
     String? lessonId,
     String? subjectId,
   }) async {
+    // Publish grades whose administrator-configured release time has arrived.
+    // The RPC is time-gated in Postgres and never exposes unreleased private grades.
+    try {
+      await _client.rpc('publish_due_assignment_results');
+    } catch (_) {
+      // Listing upcoming evaluations must still work if publication has no work to do.
+    }
+
     List<Assignment> assignments;
     try {
       // Let Supabase RLS determine which published assignments belong to this
