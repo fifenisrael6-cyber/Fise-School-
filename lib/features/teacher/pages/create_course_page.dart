@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/photo_service.dart';
@@ -231,6 +232,17 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
 
+    // Fail early if the UI profile is stale or belongs to a different
+    // session. Otherwise the RPC can authorize auth.uid() while the INSERT
+    // writes widget.profile.id, which RLS correctly rejects.
+    final authUser = Supabase.instance.client.auth.currentUser;
+    if (authUser == null || authUser.id != widget.profile.id) {
+      _snack(_fr
+          ? 'Session enseignant incohérente. Déconnectez-vous puis reconnectez-vous avant de partager.'
+          : 'Teacher session mismatch. Sign out and sign in again before sharing.');
+      return;
+    }
+
     setState(() => _saving = true);
 
     try {
@@ -311,7 +323,18 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           );
         }
 
-        // Media become visible to enrolled students as soon as upload completes.
+        // Verify that every resource has a durable database row before
+        // reporting success. Storage upload alone is not a published resource.
+        final persistedResources = await _resources.listForCourse(course.id);
+        if (persistedResources.length < _attachments.length) {
+          throw StateError(_fr
+              ? 'Publication incomplète : ${persistedResources.length}/${_attachments.length} média(s) enregistrés côté serveur.'
+              : 'Incomplete publication: ${persistedResources.length}/${_attachments.length} media record(s) persisted on the server.');
+        }
+
+        // Students' feed policy only exposes published media courses that
+        // have at least one persisted resource, so count this class as saved
+        // only after the metadata is confirmed in Postgres.
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
