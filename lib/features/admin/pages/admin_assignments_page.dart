@@ -281,6 +281,11 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     );
   }
 
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _createScheduledExam() async {
     final currentUser = _client.auth.currentUser;
     if (currentUser == null) {
