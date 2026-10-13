@@ -273,34 +273,30 @@ Deno.serve(async (req: Request) => {
     const titleFr = `QCM intelligent : ${clean(chapter.title_fr, 150)}`;
     const titleEn = `Smart quiz: ${clean(chapter.title_en || chapter.title_fr, 150)}`;
     const targetQuiz = existing ?? raced;
-    let quiz: any;
+    // Keep previous questions intact as an unpublished version. Publish the new
+    // version only after all five questions and answer keys have been saved.
     if (targetQuiz) {
-      const { data: updatedQuiz, error: updateQuizError } = await admin.from("chapter_quizzes").update({
-        title_fr: titleFr,
-        title_en: titleEn,
-        description_fr: "Généré à partir des cours et médias publiés de ce chapitre.",
-        description_en: "Generated from this chapter's published courses and media.",
-        is_published: true,
-      }).eq("id", targetQuiz.id).select("id,title_fr").single();
-      if (updateQuizError || !updatedQuiz) throw updateQuizError ?? new Error("Unable to update generated quiz.");
-      const { error: deleteQuestionsError } = await admin.from("chapter_quiz_questions").delete().eq("quiz_id", targetQuiz.id);
-      if (deleteQuestionsError) throw deleteQuestionsError;
-      quiz = updatedQuiz;
-    } else {
-      const { data: insertedQuiz, error: insertQuizError } = await admin.from("chapter_quizzes").insert({
-        chapter_id: chapterId,
-        title_fr: titleFr,
-        title_en: titleEn,
-        description_fr: "Généré à partir des cours et médias publiés de ce chapitre.",
-        description_en: "Generated from this chapter's published courses and media.",
-        position: 1,
-        is_published: true,
-        created_by: null,
-      }).select("id,title_fr").single();
-      if (insertQuizError || !insertedQuiz) throw insertQuizError ?? new Error("Unable to save generated quiz.");
-      quiz = insertedQuiz;
+      const { error: hidePreviousError } = await admin.from("chapter_quizzes")
+        .update({ is_published: false }).eq("id", targetQuiz.id);
+      if (hidePreviousError) throw hidePreviousError;
     }
 
+    const { data: quiz, error: quizError } = await admin.from("chapter_quizzes").insert({
+      chapter_id: chapterId,
+      title_fr: titleFr,
+      title_en: titleEn,
+      description_fr: "Généré à partir des cours et médias publiés de ce chapitre.",
+      description_en: "Generated from this chapter's published courses and media.",
+      position: 1,
+      is_published: true,
+      created_by: null,
+    }).select("id,title_fr").single();
+    if (quizError || !quiz) {
+      if (targetQuiz) {
+        await admin.from("chapter_quizzes").update({ is_published: true }).eq("id", targetQuiz.id);
+      }
+      throw quizError ?? new Error("Unable to save generated quiz.");
+    }
     try {
       for (const question of questions) {
         const { data: savedQuestion, error: questionError } = await admin
@@ -322,8 +318,11 @@ Deno.serve(async (req: Request) => {
         if (keyError) throw keyError;
       }
     } catch (error) {
-      // Remove only the new quiz if generation was only partially persisted.
+      // Roll back only the incomplete new version; restore the previous valid quiz.
       await admin.from("chapter_quizzes").delete().eq("id", quiz.id);
+      if (targetQuiz) {
+        await admin.from("chapter_quizzes").update({ is_published: true }).eq("id", targetQuiz.id);
+      }
       throw error;
     }
 
