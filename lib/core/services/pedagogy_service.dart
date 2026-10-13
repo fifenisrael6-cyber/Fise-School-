@@ -353,9 +353,13 @@ class CourseService {
         request = request.eq('subject_id', subjectId);
       }
 
-      final rows = await request.order('updated_at', ascending: false);
+      final response = await request.order('updated_at', ascending: false);
+      // A dynamic Supabase query can expose its decoded result as List<dynamic>.
+      // Normalize it to a list and explicitly type every mapped Course.
+      final rows = response is List ? response : const <dynamic>[];
       courses = rows
-          .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+          .whereType<Map>()
+          .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
     } catch (_) {
       // Use offline data only when the remote read itself failed. A local
@@ -429,10 +433,14 @@ class CourseService {
       request = request.eq('status', status);
     }
 
-    final rows = await request.order('updated_at', ascending: false);
+    final response = await request.order('updated_at', ascending: false);
+    // Keep the result typed even though the query builder above is dynamic.
+    // A null, empty, or unexpected non-list response becomes an empty list.
+    final rows = response is List ? response : const <dynamic>[];
 
     return rows
-        .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+        .whereType<Map>()
+        .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
         .toList(growable: false);
   }
 
