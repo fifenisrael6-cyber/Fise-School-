@@ -374,10 +374,10 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
       }
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf') {
+      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
         throw Exception(_isFrench
-            ? 'Choisissez une photo, une vidéo ou un PDF.'
-            : 'Choose a photo, video or PDF.');
+            ? 'Choisissez une photo, une vidéo, un PDF ou un fichier audio.'
+            : 'Choose a photo, video, PDF or audio file.');
       }
       await _service.replaceResourceFile(
         resource: resource,

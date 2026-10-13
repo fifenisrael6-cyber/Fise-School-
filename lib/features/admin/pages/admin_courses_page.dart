@@ -278,6 +278,18 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             contentEn: contentEn.text,
                             status: published ? 'published' : 'draft',
                           );
+                          if (published) {
+                            // Generate the chapter's AI QCM in the background.
+                            // Course publication remains successful if Gemini is temporarily unavailable.
+                            try {
+                              await _client.functions.invoke(
+                                'chapter-quiz',
+                                body: {'chapter_id': selectedChapter!['id'].toString()},
+                              );
+                            } catch (quizError) {
+                              debugPrint('AI QCM generation failed after publication: $quizError');
+                            }
+                          }
                           if (sheetContext.mounted) {
                             Navigator.pop(sheetContext);
                           }

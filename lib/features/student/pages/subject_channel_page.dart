@@ -3,13 +3,10 @@ import 'dart:async';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
-import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
-import 'assignment_detail_page.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
@@ -17,10 +14,9 @@ import 'chapter_quiz_page.dart';
 class _FeedItem {
   final DateTime date;
   final Course? course;
-  final Assignment? assignment;
   final Map<String, dynamic>? chapterContent;
 
-  const _FeedItem({required this.date, this.course, this.assignment, this.chapterContent});
+  const _FeedItem({required this.date, this.course, this.chapterContent});
 }
 
 /// Fil d'une matière : cours publiés, documents, photos et QCM de l'enseignant,
@@ -47,7 +43,6 @@ class SubjectChannelPage extends StatefulWidget {
 
 class _SubjectChannelPageState extends State<SubjectChannelPage> {
   final CourseService _courses = CourseService();
-  final AssignmentService _assignments = AssignmentService();
   final CourseOfflineService _offline = CourseOfflineService();
   final ResourceService _resources = ResourceService();
   final ConnectivityService _connectivity = ConnectivityService();
@@ -99,25 +94,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       chapterContent = <Map<String, dynamic>>[];
     }
 
-    var assignments = const <Assignment>[];
-    try {
-      // Some teacher-created QCMs are linked to a course but have no
-      // subject_id of their own. Fetch only assignments visible to this
-      // student (RLS still applies), then include those linked to one of the
-      // published courses already loaded for this subject.
-      final visibleAssignments = await _assignments.listStudentAssignments(
-        studentId: widget.profile.id,
-      );
-      final subjectCourseIds = courses.map((course) => course.id).toSet();
-      assignments = visibleAssignments.where((assignment) {
-        return assignment.subjectId == widget.subject.id ||
-            (assignment.courseId != null &&
-                subjectCourseIds.contains(assignment.courseId));
-      }).toList(growable: false);
-    } catch (_) {
-      assignments = const <Assignment>[];
-    }
-
     // Opening a subject is the automatic offline-download trigger.
     unawaited(_offline.enqueueSubject(userId: widget.profile.id, courses: courses));
 
@@ -128,11 +104,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         _FeedItem(
           date: DateTime.tryParse(content['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
           chapterContent: content,
-        ),
-      for (final assignment in assignments)
-        _FeedItem(
-          date: assignment.publishedAt ?? assignment.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
-          assignment: assignment,
         ),
     ];
 
@@ -273,13 +244,95 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
+  Widget _aiEvaluations() {
+    if (_chapterFocused) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, size: 36, color: Color(0xFF166534)),
+                  const SizedBox(height: 12),
+                  Text(_fr ? 'QCM généré par l’IA' : 'AI-generated quiz',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text(_fr
+                    ? 'Le QCM est généré à partir du contenu pédagogique publié de ce chapitre. Si la source est trop courte, aucune question ne sera inventée.'
+                    : 'The quiz is generated from this chapter’s published learning content. If the source is too short, no questions will be invented.'),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => ChapterQuizPage(
+                          locale: widget.locale,
+                          chapterId: widget.chapterId!,
+                          chapterTitle: widget.chapterTitle ?? widget.subject.labelFor(widget.locale.languageCode),
+                        ),
+                      )),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text(_fr ? 'Ouvrir le QCM IA' : 'Open AI quiz'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return FutureBuilder<List<CourseChapter>>(
+      future: _catalogChaptersFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(_fr ? 'Impossible de charger les évaluations.' : 'Could not load evaluations.'));
+        }
+        final chapters = snapshot.data ?? const <CourseChapter>[];
+        if (chapters.isEmpty) {
+          return Center(child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(_fr ? 'Aucun chapitre disponible pour les évaluations.' : 'No chapters are available for evaluations.', textAlign: TextAlign.center),
+          ));
+        }
+        return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
+          itemCount: chapters.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final chapter = chapters[index];
+            final title = chapter.labelFor(widget.locale.languageCode);
+            return Card(child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.auto_awesome_rounded)),
+              title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(_fr ? 'QCM généré automatiquement à partir du cours publié' : 'Quiz generated automatically from the published lesson'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => ChapterQuizPage(locale: widget.locale, chapterId: chapter.id, chapterTitle: title),
+              )),
+            ));
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
     final focused = _chapterFocused;
 
     return DefaultTabController(
-      length: focused ? 3 : 4,
+      length: 2,
       child: Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
@@ -294,11 +347,16 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         bottom: TabBar(
           isScrollable: true,
           tabs: [
-            if (!focused)
-              Tab(text: _fr ? 'Chapitres' : 'Chapters', icon: const Icon(Icons.menu_book_rounded)),
-            Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.auto_stories_rounded)),
-            Tab(text: _fr ? 'Médias de l’enseignant' : 'Teacher media', icon: const Icon(Icons.perm_media_rounded)),
-            Tab(text: _fr ? 'QCM' : 'Quizzes', icon: const Icon(Icons.quiz_rounded)),
+            Tab(
+              text: focused
+                  ? (_fr ? 'Cours et médias' : 'Courses & media')
+                  : (_fr ? 'Chapitres' : 'Chapters'),
+              icon: Icon(focused ? Icons.menu_book_rounded : Icons.bookmarks_rounded),
+            ),
+            Tab(
+              text: _fr ? 'Évaluations IA' : 'AI evaluations',
+              icon: const Icon(Icons.auto_awesome_rounded),
+            ),
           ],
         ),
         actions: [
@@ -333,9 +391,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             );
           }
           final items = snapshot.data ?? const <_FeedItem>[];
-          final scopedContent = items
-              .where((item) => item.assignment == null && _itemMatchesFocusedChapter(item))
-              .toList();
+          final scopedContent = items.where(_itemMatchesFocusedChapter).toList();
           final officialCourses = scopedContent
               .where((item) => item.chapterContent != null ||
                   (item.course != null && _isOfficialCourse(item.course!)))
@@ -343,40 +399,20 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           final teacherMedia = scopedContent
               .where((item) => item.course != null && !_isOfficialCourse(item.course!))
               .toList();
-          final focusedCourseIds = scopedContent
-              .where((item) => item.course != null)
-              .map((item) => item.course!.id)
-              .toSet();
-          final quizzes = items.where((item) =>
-              item.assignment != null &&
-              (!focused || focusedCourseIds.contains(item.assignment!.courseId))).toList();
-
           final tabChildren = <Widget>[];
-          if (!focused) tabChildren.add(_chapterCatalog());
-          tabChildren.add(
-            _feedList(
-              officialCourses,
-              _fr
-                  ? 'Aucun cours publié par l’administration pour ce chapitre pour le moment.'
-                  : 'No lesson published by the administrator for this chapter yet.',
-            ),
-          );
-          tabChildren.add(
-            _feedList(
-              teacherMedia,
-              _fr
-                  ? 'Aucune photo, vidéo ou PDF partagé par l’enseignant pour ce chapitre pour le moment.'
-                  : 'No photo, video or PDF shared by a teacher for this chapter yet.',
-            ),
-          );
-          tabChildren.add(
-            _feedList(
-              quizzes,
-              _fr
-                  ? 'Aucun QCM publié pour ce chapitre pour le moment.'
-                  : 'No quiz published for this chapter yet.',
-            ),
-          );
+          if (!focused) {
+            tabChildren.add(_chapterCatalog());
+          } else {
+            tabChildren.add(
+              _feedList(
+                <_FeedItem>[...officialCourses, ...teacherMedia],
+                _fr
+                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
+                    : 'No course or media has been published for this chapter yet.',
+              ),
+            );
+          }
+          tabChildren.add(_aiEvaluations());
 
           return TabBarView(children: tabChildren);
         },
@@ -420,9 +456,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 if (_offlineMode) _offlineBanner(),
                 ...items.map((item) => item.chapterContent != null
                     ? _chapterContentPost(item.chapterContent!)
-                    : item.course != null
-                        ? _coursePost(item.course!)
-                        : _quizPost(item.assignment!)),
+                    : _coursePost(item.course!)),
               ],
             ),
     );
@@ -623,61 +657,4 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _quizPost(Assignment assignment) {
-    final due = assignment.dueAt;
-
-    return _bubble(
-      date: assignment.publishedAt ?? assignment.createdAt ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.quiz_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Text(
-                'QCM',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.green.shade800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            assignment.titleFor(widget.locale),
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-          if (due != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${_fr ? 'À rendre avant le' : 'Due'} ${_formatDate(due)}',
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ),
-          const SizedBox(height: 6),
-          FilledButton.tonalIcon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AssignmentDetailPage(
-                  locale: widget.locale,
-                  profile: widget.profile,
-                  assignment: assignment,
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text(
-              assignment.status == 'closed'
-                  ? (_fr ? 'Voir' : 'View')
-                  : (_fr ? 'Répondre au QCM' : 'Answer the quiz'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
