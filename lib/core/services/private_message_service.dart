@@ -88,8 +88,8 @@ class PrivateMessageService {
   }
 
   Future<void> markConversationDelivered(String senderId) async {
-    // Use the SECURITY DEFINER RPC: private_messages intentionally has no
-    // direct UPDATE policy for clients, so table updates are rejected by RLS.
+    // Use the authorized RPC so delivery receipts share the database's
+    // conversation-access checks rather than relying on direct table updates.
     await _client.rpc(
       'mark_private_messages_delivered',
       params: {'p_sender_id': senderId},
