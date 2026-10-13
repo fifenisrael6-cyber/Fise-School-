@@ -13,6 +13,7 @@ import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
 import 'qcm_builder_page.dart';
+import 'create_assignment_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -152,6 +153,21 @@ class TeacherDashboardPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => TeacherQcmHubPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.assignment_add,
+                      locale.languageCode == 'fr'
+                          ? 'Proposer un exercice d’évaluation'
+                          : 'Propose an assessment exercise',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CreateAssignmentPage(
                             locale: locale,
                             profile: profile,
                           ),
