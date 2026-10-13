@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/assignment.dart';
@@ -276,7 +278,22 @@ class AssignmentService {
         .select()
         .single();
 
+    // Submission is already safely saved. AI grading runs asynchronously and
+    // stores marks in the private table until the configured release time.
+    unawaited(_requestAiCorrection(submissionId));
     return AssignmentSubmission.fromMap(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> _requestAiCorrection(String submissionId) async {
+    try {
+      await _client.functions.invoke(
+        'grade-assignment',
+        body: {'submission_id': submissionId},
+      );
+    } catch (_) {
+      // Never turn a successful submission into a reported send failure.
+      // The saved submission remains available for a grading retry.
+    }
   }
 
   Future<List<Assignment>> listTeacherAssignments({
