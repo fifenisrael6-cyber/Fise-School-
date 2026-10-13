@@ -241,6 +241,84 @@ class CourseService {
         .toList(growable: false);
   }
 
+  /// Returns canonical chapter-title pages for one exact classroom and subject.
+  /// Teacher media must always be attached to a chapter; never silently use the
+  /// first chapter or a curriculum from another class/filière.
+  Future<List<CourseChapter>> listTeacherCatalogChaptersForClass(
+    String classId,
+    String subjectId,
+  ) async {
+    final rawClass = await _client
+        .from('school_classes')
+        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+        .eq('id', classId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+    if (rawClass == null) return const <CourseChapter>[];
+    final schoolClass = Map<String, dynamic>.from(rawClass);
+
+    final curricula = await _client
+        .from('curricula')
+        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+        .eq('subject_id', subjectId)
+        .eq('is_catalog_container', true)
+        .eq('is_active', true);
+
+    final matchingIds = <String>{};
+    for (final raw in curricula) {
+      final curriculum = Map<String, dynamic>.from(raw);
+      final matches = curriculum['subsystem'] == schoolClass['subsystem'] &&
+          curriculum['sector'] == schoolClass['sector'] &&
+          curriculum['exam_level_id'] == schoolClass['exam_level_id'] &&
+          curriculum['series_id'] == schoolClass['series_id'] &&
+          curriculum['specialty_id'] == schoolClass['specialty_id'];
+      final id = curriculum['id']?.toString();
+      if (matches && id != null && id.isNotEmpty) matchingIds.add(id);
+    }
+    if (matchingIds.isEmpty) return const <CourseChapter>[];
+
+    final rows = await _client
+        .from('course_chapters')
+        .select()
+        .inFilter('curriculum_id', matchingIds.toList(growable: false))
+        .eq('is_active', true)
+        .order('position');
+
+    final chapters = <CourseChapter>[];
+    for (final raw in rows) {
+      try {
+        chapters.add(CourseChapter.fromMap(Map<String, dynamic>.from(raw)));
+      } catch (_) {
+        // A malformed catalogue row must not hide valid chapters.
+      }
+    }
+    return chapters;
+  }
+
+  /// Counts active enrollments without returning student identities.
+  Future<int> countActiveStudentsInClass(String classId) async {
+    final rows = await _client
+        .from('class_students')
+        .select('id')
+        .eq('class_id', classId)
+        .eq('is_active', true);
+    return rows.length;
+  }
+
+  /// True only when this authenticated student has an active classroom link.
+  Future<bool> hasActiveStudentClass(String studentId) async {
+    if (_client.auth.currentUser?.id != studentId) {
+      throw StateError('You can only check your own classroom membership.');
+    }
+    final rows = await _client
+        .from('class_students')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('is_active', true);
+    return rows.isNotEmpty;
+  }
+
   /// Official curriculum content stored in chapter_content_items is separate
   /// from teacher-created courses. Load only curricula matching the student's
   /// enrolled class and the currently opened subject; database RLS applies the
@@ -362,15 +440,17 @@ class CourseService {
           .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
     } catch (_) {
-      // Use offline data only when the remote read itself failed. A local
-      // cache write must never replace a successful response with stale data.
+      // Offline cache is a fallback only when it contains something usable.
+      // Returning an empty cache here hid real authentication/RLS/network errors
+      // behind a misleading "no educational content" state.
       final cached = await OfflineRepository().getCoursesForStudent(studentId);
-      if (subjectId == null) {
-        return cached;
-      }
-      return cached
-          .where((course) => course.subjectId == subjectId)
-          .toList(growable: false);
+      final fallback = subjectId == null
+          ? cached
+          : cached
+              .where((course) => course.subjectId == subjectId)
+              .toList(growable: false);
+      if (fallback.isNotEmpty) return fallback;
+      rethrow;
     }
 
     try {
