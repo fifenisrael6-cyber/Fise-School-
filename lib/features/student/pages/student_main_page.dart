@@ -118,7 +118,7 @@ class _StudentHome extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _SmallAction(icon: Icons.assignment_outlined, label: fr ? 'QCM' : 'Quizzes', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignmentsPage(locale: locale, profile: profile))))),
+            Expanded(child: _SmallAction(icon: Icons.assignment_outlined, label: fr ? 'Évaluations' : 'Assessments', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignmentsPage(locale: locale, profile: profile))))),
             const SizedBox(width: 10),
             Expanded(child: _SmallAction(icon: Icons.calendar_month_outlined, label: fr ? 'Emploi du temps' : 'Schedule', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TimetablePage(locale: locale, profile: profile))))),
           ]),
