@@ -91,10 +91,11 @@ begin
     if new.score is distinct from old.score
        or new.corrected_at is distinct from old.corrected_at
        or new.teacher_feedback_fr is distinct from old.teacher_feedback_fr
-       or new.teacher_feedback_en is distinct from old.teacher_feedback_en then
+       or new.teacher_feedback_en is distinct from old.teacher_feedback_en
+       or new.submitted_at is distinct from old.submitted_at then
       raise exception 'Students cannot modify evaluation grades';
     end if;
-    if new.status not in ('draft', 'submitted') then
+    if new.status not in ('draft', 'submitted') or (old.status = 'submitted' and new.status = 'draft') then
       raise exception 'Students cannot mark an evaluation corrected';
     end if;
   end if;
