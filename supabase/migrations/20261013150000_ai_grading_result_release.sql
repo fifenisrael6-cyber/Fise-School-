@@ -104,7 +104,7 @@ $$;
 
 drop trigger if exists protect_student_assignment_grades on public.assignment_submissions;
 create trigger protect_student_assignment_grades
-before update on public.assignment_submissions
+before insert or update on public.assignment_submissions
 for each row execute function public.protect_student_assignment_grades();
 
 -- Do not let a student forge objective marks or feedback in answer rows.
