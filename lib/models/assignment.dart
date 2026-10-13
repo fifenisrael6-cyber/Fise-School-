@@ -4,6 +4,9 @@ class Assignment {
   final String id;
   final String? courseId;
   final String? subjectId;
+  final String? examId;
+  final String? evaluationFilePath;
+  final String? evaluationFileName;
   final String? lessonId;
   final String teacherId;
   final String classId;
@@ -23,6 +26,9 @@ class Assignment {
     required this.id,
     this.courseId,
     this.subjectId,
+    this.examId,
+    this.evaluationFilePath,
+    this.evaluationFileName,
     this.lessonId,
     required this.teacherId,
     required this.classId,
@@ -44,6 +50,9 @@ class Assignment {
       id: map['id'] as String,
       courseId: map['course_id'] as String?,
       subjectId: map['subject_id'] as String?,
+      examId: map['exam_id'] as String?,
+      evaluationFilePath: map['evaluation_file_path'] as String?,
+      evaluationFileName: map['evaluation_file_name'] as String?,
       lessonId: map['lesson_id'] as String?,
       teacherId: map['teacher_id'] as String,
       classId: map['class_id'] as String,
@@ -66,6 +75,9 @@ class Assignment {
       'id': id,
       'course_id': courseId,
       'subject_id': subjectId,
+      'exam_id': examId,
+      'evaluation_file_path': evaluationFilePath,
+      'evaluation_file_name': evaluationFileName,
       'lesson_id': lessonId,
       'teacher_id': teacherId,
       'class_id': classId,
@@ -95,6 +107,9 @@ class Assignment {
     String? id,
     String? courseId,
     String? subjectId,
+    String? examId,
+    String? evaluationFilePath,
+    String? evaluationFileName,
     String? lessonId,
     String? teacherId,
     String? classId,
@@ -114,6 +129,9 @@ class Assignment {
       id: id ?? this.id,
       courseId: courseId ?? this.courseId,
       subjectId: subjectId ?? this.subjectId,
+      examId: examId ?? this.examId,
+      evaluationFilePath: evaluationFilePath ?? this.evaluationFilePath,
+      evaluationFileName: evaluationFileName ?? this.evaluationFileName,
       lessonId: lessonId ?? this.lessonId,
       teacherId: teacherId ?? this.teacherId,
       classId: classId ?? this.classId,
