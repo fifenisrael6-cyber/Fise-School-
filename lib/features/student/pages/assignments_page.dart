@@ -282,6 +282,16 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                     text:
                         '${assignment.maxScore.toStringAsFixed(0)} ${_isEnglish ? 'pts' : 'pts'}',
                   ),
+                  if (assignment.resultsPublishAt != null)
+                    _buildInfoChip(
+                      icon: Icons.visibility_rounded,
+                      text: '${_isEnglish ? 'Results' : 'Résultats'} · ${_formatDueDate(assignment.resultsPublishAt)}',
+                    ),
+                  if (assignment.evaluationFileName != null && assignment.evaluationFileName!.isNotEmpty)
+                    _buildStatusChip(
+                      _isEnglish ? 'Official exam PDF' : 'Épreuve officielle PDF',
+                      const Color(0xFF166534),
+                    ),
                   if (assignment.status == 'closed')
                     _buildStatusChip(
                       _isEnglish ? 'Closed' : 'Fermé',
