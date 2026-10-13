@@ -131,7 +131,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   Future<List<Assignment>> _loadEvaluations() async {
     final subjectId = widget.course.subjectId;
     final classId = widget.course.classId;
-    if (subjectId == null || classId == null) return const <Assignment>[];
+    if (classId == null) return const <Assignment>[];
     try {
       final assignments = await _assignmentService.listStudentAssignments(
         studentId: widget.profile.id,
