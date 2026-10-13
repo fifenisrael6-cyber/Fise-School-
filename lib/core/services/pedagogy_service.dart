@@ -98,18 +98,20 @@ class CourseService {
     return entries.map((e) => e.subject).toList(growable: false);
   }
 
-  /// Subjects explicitly assigned to one classroom. Teachers use this when
-  /// creating content so a subject can never silently come from another room.
+  /// Subjects explicitly assigned to one classroom. The table's SELECT RLS
+  /// intentionally limits direct reads to class members/assigned teachers.
+  /// Use the scoped teacher RPC so an authorized teacher can read the selected
+  /// curriculum without weakening table policies or bypassing class scope.
   Future<List<Subject>> listSubjectsForClass(String classId) async {
-    final rows = await _client
-        .from('class_subjects')
-        .select('subject_id, is_compulsory, option_group, position, subjects(*)')
-        .eq('class_id', classId)
-        .eq('is_active', true)
-        .order('position');
+    final rows = await _client.rpc(
+      'list_teacher_class_subjects',
+      params: {'p_class_id': classId},
+    );
 
-    return rows
-        .map((row) => ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row)).subject)
+    return (rows as List)
+        .map((row) => ClassSubjectEntry.fromMap(
+              Map<String, dynamic>.from(row as Map),
+            ).subject)
         .toList(growable: false);
   }
 
