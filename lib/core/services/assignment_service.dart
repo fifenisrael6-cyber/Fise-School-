@@ -288,11 +288,11 @@ class AssignmentService {
 
     // Submission is already safely saved. AI grading runs asynchronously and
     // stores marks in the private table until the configured release time.
-    unawaited(_requestAiCorrection(submissionId));
+    unawaited(requestAiCorrection(submissionId));
     return AssignmentSubmission.fromMap(Map<String, dynamic>.from(row));
   }
 
-  Future<void> _requestAiCorrection(String submissionId) async {
+  Future<void> requestAiCorrection(String submissionId) async {
     try {
       await _client.functions.invoke(
         'grade-assignment',
