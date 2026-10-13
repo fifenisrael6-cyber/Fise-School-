@@ -336,6 +336,11 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     }
   }
 
+  bool get _isNotStarted {
+    final start = widget.assignment.startsAt;
+    return start != null && DateTime.now().isBefore(start.toLocal());
+  }
+
   bool get _isClosed {
     final deadline = widget.assignment.dueAt;
     return widget.assignment.status == 'closed' ||
@@ -437,7 +442,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                     ),
                     if (questions.isNotEmpty &&
                         _isDraftSubmission &&
-                        !_isClosed)
+                        !_isClosed &&
+                        !_isNotStarted)
                       _buildBottomActions(questions),
                   ],
                 );
@@ -505,10 +511,20 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (widget.assignment.startsAt != null)
+                _buildHeaderChip(
+                  Icons.play_circle_outline_rounded,
+                  '${_isEnglish ? 'Starts' : 'Début'} : ${_formatDueDate(widget.assignment.startsAt)}',
+                ),
               _buildHeaderChip(
                 Icons.calendar_today_rounded,
                 _formatDueDate(widget.assignment.dueAt),
               ),
+              if (_isNotStarted)
+                _buildHeaderChip(
+                  Icons.schedule_rounded,
+                  _isEnglish ? 'Not started yet' : 'Pas encore ouvert',
+                ),
               _buildHeaderChip(
                 Icons.grade_rounded,
                 '${widget.assignment.maxScore.toStringAsFixed(0)} pts',
