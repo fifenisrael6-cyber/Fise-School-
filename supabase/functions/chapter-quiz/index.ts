@@ -48,6 +48,53 @@ function parseQuestions(raw: unknown) {
   });
 }
 
+async function transcribeStoredResource(
+  storageClient: ReturnType<typeof createClient>,
+  resource: any,
+  apiKey: string,
+  language: string,
+): Promise<string> {
+  const resourceType = String(resource?.resource_type ?? "").toLowerCase();
+  const mime = String(resource?.mime_type ?? (resourceType === "pdf" ? "application/pdf" : "image/jpeg")).toLowerCase();
+  const fileSize = Number(resource?.file_size ?? 0);
+  if (!["image", "pdf"].includes(resourceType) || fileSize > 8 * 1024 * 1024) return "";
+  const { data: file, error } = await storageClient.storage.from("course-resources").download(String(resource.storage_path ?? ""));
+  if (error || !file) return "";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!bytes.length || bytes.length > 8 * 1024 * 1024) return "";
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  const base64 = btoa(binary);
+  const prompt = language === "en"
+    ? "Transcribe the educational image or PDF faithfully. Preserve headings, formulas, examples and language-specific spelling. Return only the readable text; do not summarize or invent."
+    : "Transcris fidèlement le document pédagogique. Conserve les titres, formules, exemples et l’orthographe. Retourne uniquement le texte lisible, sans résumé ni invention.";
+  const configuredModel = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
+  const models = [...new Set([configuredModel, "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"])];
+  for (const model of models) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mime, data: base64 } },
+        ] }],
+        generationConfig: { temperature: 0.0, maxOutputTokens: 4096 },
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const text = (result?.candidates?.[0]?.content?.parts ?? []).map((part: any) => part.text ?? "").join("\n").trim();
+      if (text) return text;
+    } else if (![404, 429, 500, 502, 503, 504].includes(response.status)) {
+      break;
+    }
+  }
+  return "";
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
@@ -115,7 +162,6 @@ Deno.serve(async (req: Request) => {
       .eq("chapter_id", chapterId).eq("is_published", true).is("created_by", null)
       .order("position").limit(1).maybeSingle();
     if (existingError) throw existingError;
-    if (existing) return json({ quizId: existing.id, title: existing.title_fr, cached: true });
 
     const { data: items, error: itemsError } = await dataClient
       .from("chapter_content_items")
@@ -135,15 +181,34 @@ Deno.serve(async (req: Request) => {
 
     const courseIds = (publishedCourses ?? []).map((course: any) => course.id).filter(Boolean);
     let indexedChunks: any[] = [];
+    let resourceTexts: string[] = [];
     if (courseIds.length > 0) {
-      const { data: chunks, error: chunksError } = await dataClient
-        .from("course_chunks")
-        .select("course_id,title,content,language,position")
-        .in("course_id", courseIds)
-        .order("position")
-        .limit(40);
+      const [{ data: chunks, error: chunksError }, { data: resources, error: resourcesError }] = await Promise.all([
+        dataClient.from("course_chunks")
+          .select("course_id,title,content,language,position")
+          .in("course_id", courseIds)
+          .order("position")
+          .limit(40),
+        dataClient.from("course_resources")
+          .select("course_id,file_name,resource_type,storage_path,mime_type,file_size,index_status")
+          .in("course_id", courseIds)
+          .in("resource_type", ["image", "pdf"])
+          .limit(12),
+      ]);
       if (chunksError) throw chunksError;
+      if (resourcesError) throw resourcesError;
       indexedChunks = chunks ?? [];
+      // If indexing failed or is still pending, OCR the published photo/PDF
+      // directly for QCM generation instead of silently leaving the chapter empty.
+      const needsOcr = (resources ?? []).filter((resource: any) =>
+        resource.index_status !== "indexed" || indexedChunks.length === 0
+      );
+      for (const resource of needsOcr.slice(0, 8)) {
+        const extracted = await transcribeStoredResource(dataClient, resource, geminiKey, profile.preferred_language === "en" ? "en" : "fr");
+        if (extracted.trim()) {
+          resourceTexts.push(`FICHIER : ${clean(resource.file_name, 200)}\n${clean(extracted, 7000)}`);
+        }
+      }
     }
 
     const source = [
@@ -158,6 +223,7 @@ Deno.serve(async (req: Request) => {
       ...indexedChunks.map((chunk: any) => [
         clean(chunk.title, 200), clean(chunk.content, 5000),
       ].filter(Boolean).join("\n")),
+      ...resourceTexts,
     ].filter(Boolean).join("\n\n").slice(0, 16000);
     if (source.replace(/\s/g, "").length < 100) {
       return json({ error: "Le contenu publié de ce chapitre est trop court pour générer un QCM fiable." }, 422);
@@ -197,27 +263,43 @@ Deno.serve(async (req: Request) => {
       return json({ error: error instanceof Error ? error.message : "AI_INVALID_QUESTIONS" }, 502);
     }
 
-    // Recheck after generation to avoid duplicate quizzes from concurrent opens.
+    // Reuse the chapter's AI quiz but refresh its questions after each course publication.
     const { data: raced } = await dataClient
       .from("chapter_quizzes").select("id,title_fr")
       .eq("chapter_id", chapterId).eq("is_published", true).is("created_by", null)
       .order("position").limit(1).maybeSingle();
-    if (raced) return json({ quizId: raced.id, title: raced.title_fr, cached: true });
 
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const titleFr = `QCM intelligent : ${clean(chapter.title_fr, 150)}`;
     const titleEn = `Smart quiz: ${clean(chapter.title_en || chapter.title_fr, 150)}`;
-    const { data: quiz, error: quizError } = await admin.from("chapter_quizzes").insert({
-      chapter_id: chapterId,
-      title_fr: titleFr,
-      title_en: titleEn,
-      description_fr: "Généré à partir des cours publiés de ce chapitre.",
-      description_en: "Generated from this chapter's published lessons.",
-      position: 1,
-      is_published: true,
-      created_by: null,
-    }).select("id,title_fr").single();
-    if (quizError || !quiz) throw quizError ?? new Error("Unable to save generated quiz.");
+    const targetQuiz = existing ?? raced;
+    let quiz: any;
+    if (targetQuiz) {
+      const { data: updatedQuiz, error: updateQuizError } = await admin.from("chapter_quizzes").update({
+        title_fr: titleFr,
+        title_en: titleEn,
+        description_fr: "Généré à partir des cours et médias publiés de ce chapitre.",
+        description_en: "Generated from this chapter's published courses and media.",
+        is_published: true,
+      }).eq("id", targetQuiz.id).select("id,title_fr").single();
+      if (updateQuizError || !updatedQuiz) throw updateQuizError ?? new Error("Unable to update generated quiz.");
+      const { error: deleteQuestionsError } = await admin.from("chapter_quiz_questions").delete().eq("quiz_id", targetQuiz.id);
+      if (deleteQuestionsError) throw deleteQuestionsError;
+      quiz = updatedQuiz;
+    } else {
+      const { data: insertedQuiz, error: insertQuizError } = await admin.from("chapter_quizzes").insert({
+        chapter_id: chapterId,
+        title_fr: titleFr,
+        title_en: titleEn,
+        description_fr: "Généré à partir des cours et médias publiés de ce chapitre.",
+        description_en: "Generated from this chapter's published courses and media.",
+        position: 1,
+        is_published: true,
+        created_by: null,
+      }).select("id,title_fr").single();
+      if (insertQuizError || !insertedQuiz) throw insertQuizError ?? new Error("Unable to save generated quiz.");
+      quiz = insertedQuiz;
+    }
 
     try {
       for (const question of questions) {
