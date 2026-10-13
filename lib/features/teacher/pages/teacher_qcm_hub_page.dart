@@ -4,8 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
-import 'create_assignment_page.dart';
-import 'qcm_builder_page.dart';
 import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
@@ -36,7 +34,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 1, vsync: this);
     _reload();
     _loadClassNames();
   }
@@ -80,27 +78,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     await _assignmentsFuture;
   }
 
-  Future<void> _openCreator({required bool linkedToCourse}) async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => linkedToCourse
-            ? CreateAssignmentPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              )
-            : QcmBuilderPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              ),
-      ),
-    );
-    if (!mounted) return;
-    if (created == true) {
-      setState(_reload);
-      _tabController.animateTo(1);
-    }
-  }
-
   String _statusLabel(String status) {
     switch (status) {
       case 'published':
@@ -121,18 +98,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
       default:
         return Colors.orange.shade800;
     }
-  }
-
-  Future<void> _editAssignment(Assignment assignment) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => TeacherQcmEditPage(
-          locale: widget.locale,
-          assignment: assignment,
-        ),
-      ),
-    );
-    if (changed == true && mounted) setState(_reload);
   }
 
   Future<void> _deleteAssignment(Assignment assignment) async {
@@ -249,22 +214,12 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
       controller: _tabController,
       tabs: [
         Tab(
-          icon: const Icon(Icons.add_task_rounded),
-          text: _fr ? 'Créer / envoyer' : 'Create / send',
-        ),
-        Tab(
-          icon: const Icon(Icons.assignment_rounded),
-          text: _fr ? 'Mes QCM' : 'My quizzes',
+          icon: const Icon(Icons.auto_awesome_rounded),
+          text: _fr ? 'QCM disponibles' : 'Available quizzes',
         ),
       ],
     );
-    final tabView = TabBarView(
-      controller: _tabController,
-      children: [
-        _buildCreateTab(),
-        _buildAssignmentsTab(),
-      ],
-    );
+    final tabView = _buildAssignmentsTab();
     if (widget.embedded) {
       return Column(
         children: [
@@ -279,88 +234,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         bottom: tabs,
       ),
       body: tabView,
-    );
-  }
-
-  Widget _buildCreateTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.quiz_rounded,
-                  size: 34,
-                  color: Color(0xFF166534),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _fr ? 'Créer et envoyer un QCM' : 'Create and send a quiz',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _fr
-                      ? 'Choisissez les salles compatibles avec votre profil, la matière, les questions et les bonnes réponses, puis publiez le QCM pour les élèves inscrits dans ces salles.'
-                      : 'Choose classrooms compatible with your profile, subject, questions and correct answers, then publish the quiz for students enrolled in those classrooms.',
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _openCreator(linkedToCourse: false),
-                    icon: const Icon(Icons.send_rounded),
-                    label: Text(_fr ? 'Nouveau QCM' : 'New quiz'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.menu_book_rounded,
-                  size: 32,
-                  color: Color(0xFF166534),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _fr ? 'Devoir lié à un cours' : 'Course-linked assignment',
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _fr
-                      ? 'Conservez aussi le parcours existant pour créer un devoir à partir d’un cours et d’une leçon.'
-                      : 'Keep using the existing flow to create an assignment from a course and lesson.',
-                ),
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () => _openCreator(linkedToCourse: true),
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                  label: Text(_fr ? 'Créer un devoir lié' : 'Create linked assignment'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -415,8 +288,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 const SizedBox(height: 12),
                 Text(
                   _fr
-                      ? 'Aucun QCM pour le moment. Créez un QCM dans le premier onglet.'
-                      : 'No quizzes yet. Create one in the first tab.',
+                      ? 'Aucun QCM disponible. Les QCM sont générés automatiquement par l’IA à partir des cours publiés.'
+                      : 'No quizzes available. AI quizzes are generated automatically from published lessons.',
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -453,12 +326,10 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
                     onSelected: (action) {
                       if (action == 'results') _showResults(assignment);
-                      if (action == 'edit') _editAssignment(assignment);
                       if (action == 'delete') _deleteAssignment(assignment);
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
-                      PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier titre / consignes' : 'Edit title / instructions')),
                       PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
                     ],
                     child: Container(
