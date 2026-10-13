@@ -558,12 +558,18 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                       value: chosenSubject,
                       isExpanded: true,
                       decoration: InputDecoration(labelText: _isFrench ? 'Matière commune' : 'Common subject'),
-                      items: commonSubjects.values.toList()
-                        ..sort((a, b) => a.labelFor(widget.locale.languageCode).compareTo(b.labelFor(widget.locale.languageCode))),
+                      items: (commonSubjects.values.toList()
+                            ..sort((a, b) => a.labelFor(widget.locale.languageCode)
+                                .compareTo(b.labelFor(widget.locale.languageCode))))
+                          .map((subject) => DropdownMenuItem<Subject>(
+                                value: subject,
+                                child: Text(subject.labelFor(widget.locale.languageCode),
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
                       onChanged: saving || commonSubjects.isEmpty
                           ? null
                           : (value) => refresh(() => chosenSubject = value),
-                      itemBuilder: null,
                     ),
                     const SizedBox(height: 10),
                     TextField(
