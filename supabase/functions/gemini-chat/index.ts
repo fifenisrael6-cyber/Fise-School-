@@ -252,7 +252,22 @@ Quand l'administrateur demande une leçon complète, utilise ces sections dans c
     }
     return json({ text });
   } catch (error) {
-    console.error("gemini-chat error:", error);
-    return json({ error: "AI_TEMPORARILY_UNAVAILABLE" }, 503);
+    // Keep detailed diagnostics in server logs, but return stable codes that
+    // the app can translate into actionable messages without exposing secrets.
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("gemini-chat error:", detail);
+    if (/timeout|aborted/i.test(detail)) {
+      return json({ error: "AI_REQUEST_TIMEOUT" }, 504);
+    }
+    if (/429|quota|resource exhausted|rate limit/i.test(detail)) {
+      return json({ error: "AI_QUOTA_EXCEEDED" }, 429);
+    }
+    if (/401|403|api.?key|permission denied/i.test(detail)) {
+      return json({ error: "AI_PROVIDER_CONFIGURATION_ERROR" }, 502);
+    }
+    if (/failed to fetch|network|connection|dns|socket/i.test(detail)) {
+      return json({ error: "AI_UPSTREAM_NETWORK_ERROR" }, 502);
+    }
+    return json({ error: "AI_UPSTREAM_ERROR" }, 502);
   }
 });
