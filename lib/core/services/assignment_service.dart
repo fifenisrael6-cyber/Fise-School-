@@ -371,7 +371,15 @@ class AssignmentService {
   }
 
   Future<void> deleteAssignment(String assignmentId) async {
-    await _client.from('assignments').delete().eq('id', assignmentId);
+    final deleted = await _client
+        .from('assignments')
+        .delete()
+        .eq('id', assignmentId)
+        .select('id')
+        .maybeSingle();
+    if (deleted == null) {
+      throw StateError('Suppression refusée : le QCM est introuvable ou vous ne pouvez pas le supprimer.');
+    }
   }
 
   Future<void> publishAssignment(String assignmentId) async {
