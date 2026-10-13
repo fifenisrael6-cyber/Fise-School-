@@ -574,6 +574,22 @@ class CourseService {
     return Course.fromMap(Map<String, dynamic>.from(row));
   }
 
+  /// Publish only after the media rows have been uploaded and verified.
+  /// This avoids notifying students about a course that their media-feed RLS
+  /// cannot expose yet because it has no course_resources rows.
+  Future<Course> publishCourse(String id) async {
+    final row = await _client
+        .from('courses')
+        .update({
+          'status': 'published',
+          'published_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+    return Course.fromMap(Map<String, dynamic>.from(row));
+  }
+
   Future<void> archiveCourse(String id) async {
     await _client.from('courses').update({'status': 'archived'}).eq('id', id);
   }
