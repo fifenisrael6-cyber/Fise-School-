@@ -75,7 +75,7 @@ class AdminDashboardPage extends StatelessWidget {
       ),
       _AdminEntry(
         icon: Icons.assignment_rounded,
-        title: _isFrench ? 'Devoirs' : 'Assignments',
+        title: _isFrench ? 'Évaluations et examens' : 'Assessments and exams',
         builder: (_) => AdminAssignmentsPage(locale: locale),
       ),
       _AdminEntry(
