@@ -291,8 +291,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           contentFr: null,
           contentEn: null,
           smartLessonEnabled: false,
-          // Keep the course hidden from students while attachments are pending.
-          status: 'draft',
+          // Teacher-shared media are published immediately; the administrator can hide or delete them later.
+          status: 'published',
         );
 
         for (var i = 0; i < _attachments.length; i++) {
@@ -311,8 +311,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           );
         }
 
-        // Teacher uploads remain draft media posts; only administration
-        // publishes official courses and lessons.
+        // Media become visible to enrolled students as soon as upload completes.
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
@@ -333,8 +332,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       }
     } else {
       _snack(_fr
-          ? 'Médias envoyés dans $saved classe(s). En attente de publication par l’administration.'
-          : 'Media sent to $saved classroom(s). Waiting for administrator publication.');
+          ? 'Médias publiés dans $saved classe(s).'
+          : 'Media published to $saved classroom(s).');
     }
 
     Navigator.pop(context, true);
