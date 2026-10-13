@@ -58,7 +58,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   late Future<List<_FeedItem>> _feedFuture;
   late Future<List<CourseChapter>> _catalogChaptersFuture;
-  final Map<String, Future<List<CourseResource>>> _resourceFutures = {};
   final Map<String, Future<List<_ChapterMediaEntry>>> _chapterMediaFutures = {};
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -124,7 +123,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   Future<void> _refresh() async {
     setState(() {
-      _resourceFutures.clear();
       _chapterMediaFutures.clear();
       _feedFuture = _load();
       _catalogChaptersFuture = _courses.listStudentCatalogChapters(
