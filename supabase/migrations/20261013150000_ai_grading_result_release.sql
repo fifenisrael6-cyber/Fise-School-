@@ -254,5 +254,6 @@ begin
 end;
 $$;
 
-revoke all on function public.publish_due_assignment_results() from public, anon;\ngrant execute on function public.publish_due_assignment_results() to authenticated;
+revoke all on function public.publish_due_assignment_results() from public, anon;
+grant execute on function public.publish_due_assignment_results() to authenticated;
 grant execute on function public.publish_due_assignment_results() to service_role;
