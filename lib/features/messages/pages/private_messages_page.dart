@@ -148,7 +148,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       await _service.markConversationRead(contact.id);
       final messages = await _service.listConversation(contact.id);
       if (mounted) {
-        setState(() => _messages = messages);
+        setState(() {
+          _messages = messages;
+          _contactsFuture = _service.listContacts();
+        });
       }
     } finally {
       if (mounted) {
