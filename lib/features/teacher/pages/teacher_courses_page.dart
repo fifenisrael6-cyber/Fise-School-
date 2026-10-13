@@ -27,6 +27,7 @@ class TeacherCoursesPage extends StatefulWidget {
 
 class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   final CourseService _service = CourseService();
+  final ResourceService _resources = ResourceService();
 
   late Future<List<Course>> _coursesFuture;
 
@@ -76,6 +77,75 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       return;
     }
     setState(_reload);
+  }
+
+  Future<void> _editCourseTitle(Course course) async {
+    final frController = TextEditingController(text: course.titleFr);
+    final enController = TextEditingController(text: course.titleEn);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Modifier la publication' : 'Edit post'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: frController, decoration: const InputDecoration(labelText: 'Titre français')),
+          const SizedBox(height: 12),
+          TextField(controller: enController, decoration: const InputDecoration(labelText: 'English title')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_isFrench ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_isFrench ? 'Enregistrer' : 'Save')),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      frController.dispose();
+      enController.dispose();
+      return;
+    }
+    try {
+      await _service.updateCourseTitle(id: course.id, titleFr: frController.text, titleEn: enController.text);
+      if (mounted) {
+        setState(_reload);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isFrench ? 'Publication modifiée.' : 'Post updated.')));
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      frController.dispose();
+      enController.dispose();
+    }
+  }
+
+  Future<void> _deleteCourse(Course course) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Supprimer cette publication ?' : 'Delete this post?'),
+        content: Text(_isFrench
+          ? 'La publication et tous ses fichiers multimédias seront supprimés définitivement.'
+          : 'This post and all its media files will be permanently deleted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_isFrench ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_isFrench ? 'Supprimer' : 'Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resources = await _resources.listForCourse(course.id);
+      for (final resource in resources) {
+        await _resources.deleteResource(resource);
+      }
+      await _service.deleteCourse(course.id);
+      if (!mounted) return;
+      setState(_reload);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isFrench ? 'Publication supprimée.' : 'Post deleted.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_isFrench ? 'Suppression incomplète' : 'Delete incomplete'}: $error')),
+      );
+    }
   }
 
   Future<void> _archiveCourse(Course course) async {
@@ -198,6 +268,8 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
                   course: course,
                   locale: widget.locale,
                   onResources: () => _manageResources(course),
+                  onEdit: () => _editCourseTitle(course),
+                  onDelete: () => _deleteCourse(course),
                   onArchive: course.status == 'draft'
                       ? () => _archiveCourse(course)
                       : null,
@@ -216,6 +288,8 @@ class _CourseCard extends StatelessWidget {
   final Course course;
   final Locale locale;
   final VoidCallback onResources;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
   final VoidCallback? onArchive;
   final bool isFrench;
 
@@ -223,6 +297,8 @@ class _CourseCard extends StatelessWidget {
     required this.course,
     required this.locale,
     required this.onResources,
+    required this.onEdit,
+    required this.onDelete,
     required this.onArchive,
     required this.isFrench,
   });
@@ -282,6 +358,16 @@ OutlinedButton.icon(
                   onPressed: onResources,
                   icon: const Icon(Icons.attach_file_rounded),
                   label: Text(isFrench ? 'Photos / vidéos' : 'Photos / videos'),
+                ),
+                IconButton(
+                  onPressed: onEdit,
+                  tooltip: isFrench ? 'Modifier' : 'Edit',
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  onPressed: onDelete,
+                  tooltip: isFrench ? 'Supprimer' : 'Delete',
+                  icon: const Icon(Icons.delete_outline_rounded),
                 ),
 if (onArchive != null)
                   IconButton(
