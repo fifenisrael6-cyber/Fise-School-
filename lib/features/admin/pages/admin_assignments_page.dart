@@ -1,5 +1,13 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/services/admin_school_service.dart';
+import '../../../core/services/exam_catalog_service.dart';
+import '../../../core/services/pedagogy_service.dart';
+import '../../../models/exam_catalog.dart';
+import '../../../models/pedagogy.dart';
+import '../../../models/school_class.dart';
 
 class AdminAssignmentsPage extends StatefulWidget {
   final Locale locale;
@@ -28,7 +36,7 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
         .from('assignments')
         .select(
           'id,course_id,lesson_id,teacher_id,class_id,title_fr,title_en,'
-          'instructions_fr,instructions_en,due_at,status,max_score,created_at',
+          'instructions_fr,instructions_en,starts_at,due_at,status,max_score,exam_id,subject_id,evaluation_file_name,created_at',
         )
         .order('created_at', ascending: false);
 
@@ -124,7 +132,9 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     final instructions = _instructions(assignment);
     final status = assignment['status']?.toString();
     final maxScore = assignment['max_score']?.toString() ?? '';
+    final startsAt = assignment['starts_at']?.toString();
     final dueAt = assignment['due_at']?.toString();
+    final evaluationFileName = assignment['evaluation_file_name']?.toString();
 
     showModalBottomSheet<void>(
       context: context,
@@ -174,12 +184,26 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                   ],
                 ),
                 const SizedBox(height: 8),
+                if (startsAt != null && startsAt.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.play_arrow_rounded),
+                    title: Text(_isFrench ? 'Début de l’évaluation' : 'Evaluation starts'),
+                    subtitle: Text(_formatDueDate(startsAt)),
+                  ),
                 if (dueAt != null && dueAt.isNotEmpty)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.schedule_rounded),
-                    title: Text(_isFrench ? 'Échéance' : 'Deadline'),
+                    title: Text(_isFrench ? 'Fin de l’évaluation' : 'Evaluation ends'),
                     subtitle: Text(_formatDueDate(dueAt)),
+                  ),
+                if (evaluationFileName != null && evaluationFileName.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.picture_as_pdf_rounded),
+                    title: Text(_isFrench ? 'Épreuve officielle' : 'Official exam paper'),
+                    subtitle: Text(evaluationFileName),
                   ),
                 const SizedBox(height: 8),
                 Text(
@@ -273,16 +297,388 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     );
   }
 
-  void _showComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isFrench
-              ? 'La création des exercices sera reliée au formulaire existant.'
-              : 'Exercise creation will be connected to the existing form.',
-        ),
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _createScheduledExam() async {
+    final currentUser = _client.auth.currentUser;
+    if (currentUser == null) {
+      _snack(_isFrench ? 'Connectez-vous comme administrateur.' : 'Sign in as an administrator.');
+      return;
+    }
+
+    late final List<SchoolClass> rooms;
+    late final List<ExamDefinition> exams;
+    try {
+      rooms = (await AdminSchoolService().listClasses())
+          .where((room) => room.isActive)
+          .toList(growable: false);
+      exams = await ExamCatalogService().getExams();
+    } catch (error) {
+      _snack('${_isFrench ? 'Impossible de charger les classes et examens' : 'Unable to load classes and exams'}: $error');
+      return;
+    }
+    if (!mounted) return;
+    if (rooms.isEmpty || exams.isEmpty) {
+      _snack(_isFrench
+          ? 'Ajoutez d’abord les classes et examens dans le catalogue.'
+          : 'Add classrooms and exams to the catalogue first.');
+      return;
+    }
+
+    final titleFrController = TextEditingController();
+    final titleEnController = TextEditingController();
+    final instructionsController = TextEditingController();
+    final chosenRoomIds = <String>{};
+    final courseService = CourseService();
+    Map<String, Subject> commonSubjects = <String, Subject>{};
+    Subject? chosenSubject;
+    ExamDefinition? chosenExam;
+    PlatformFile? selectedPdf;
+    DateTime startsAt = DateTime.now().add(const Duration(minutes: 5));
+    DateTime dueAt = DateTime.now().add(const Duration(hours: 1));
+    bool saving = false;
+    String? localError;
+
+    Map<String, SchoolClass> expandedCohort() {
+      final targets = <String, SchoolClass>{};
+      for (final chosen in rooms.where((room) => chosenRoomIds.contains(room.id))) {
+        targets[chosen.id] = chosen;
+        if (chosen.examLevelId == null) continue;
+        for (final candidate in rooms) {
+          if (candidate.academicYearId == chosen.academicYearId &&
+              candidate.subsystem == chosen.subsystem &&
+              candidate.sector == chosen.sector &&
+              candidate.examLevelId == chosen.examLevelId) {
+            targets[candidate.id] = candidate;
+          }
+        }
+      }
+      return targets;
+    }
+
+    Future<void> refreshCommonSubjects(StateSetter refresh) async {
+      if (chosenRoomIds.isEmpty) {
+        refresh(() {
+          commonSubjects = <String, Subject>{};
+          chosenSubject = null;
+        });
+        return;
+      }
+      try {
+        final cohort = expandedCohort().values.toList(growable: false);
+        Map<String, Subject>? intersection;
+        for (final room in cohort) {
+          final subjects = await courseService.listSubjectsForClass(room.id);
+          final byId = <String, Subject>{for (final subject in subjects) subject.id: subject};
+          intersection = intersection == null
+              ? byId
+              : <String, Subject>{
+                  for (final entry in intersection.entries)
+                    if (byId.containsKey(entry.key)) entry.key: entry.value,
+                };
+        }
+        refresh(() {
+          commonSubjects = intersection ?? <String, Subject>{};
+          if (chosenSubject != null && !commonSubjects.containsKey(chosenSubject!.id)) {
+            chosenSubject = null;
+          }
+          localError = null;
+        });
+      } catch (error) {
+        refresh(() => localError = '${_isFrench ? 'Chargement des matières impossible' : 'Unable to load subjects'}: $error');
+      }
+    }
+
+    Future<DateTime?> chooseDateTime(
+      BuildContext dialogContext,
+      DateTime initial,
+    ) async {
+      final date = await showDatePicker(
+        context: dialogContext,
+        initialDate: initial,
+        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+        lastDate: DateTime.now().add(const Duration(days: 3650)),
+      );
+      if (date == null || !dialogContext.mounted) return null;
+      final time = await showTimePicker(
+        context: dialogContext,
+        initialTime: TimeOfDay.fromDateTime(initial),
+      );
+      if (time == null) return null;
+      return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    }
+
+    final created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !saving,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) {
+          Future<void> saveExam() async {
+            final titleFr = titleFrController.text.trim();
+            final titleEn = titleEnController.text.trim().isEmpty
+                ? titleFr
+                : titleEnController.text.trim();
+            if (chosenExam == null ||
+                chosenSubject == null ||
+                chosenRoomIds.isEmpty ||
+                titleFr.isEmpty ||
+                selectedPdf?.bytes == null ||
+                selectedPdf!.bytes!.isEmpty) {
+              refresh(() => localError = _isFrench
+                  ? 'Choisissez l’examen, les salles, la matière, un titre et un PDF valide.'
+                  : 'Choose the exam, classrooms, subject, a title and a valid PDF.');
+              return;
+            }
+            if (!dueAt.isAfter(startsAt)) {
+              refresh(() => localError = _isFrench
+                  ? 'La fin doit être postérieure au début.'
+                  : 'The end time must be after the start time.');
+              return;
+            }
+
+            final targets = <SchoolClass>[];
+            try {
+              for (final room in expandedCohort().values) {
+                final subjects = await courseService.listSubjectsForClass(room.id);
+                if (subjects.any((subject) => subject.id == chosenSubject!.id)) {
+                  targets.add(room);
+                }
+              }
+            } catch (error) {
+              refresh(() => localError = '${_isFrench ? 'Vérification des matières impossible' : 'Unable to verify subjects'}: $error');
+              return;
+            }
+            if (targets.isEmpty) {
+              refresh(() => localError = _isFrench
+                  ? 'Aucune salle destinataire ne possède cette matière.'
+                  : 'No target classroom has this subject.');
+              return;
+            }
+
+            refresh(() {
+              saving = true;
+              localError = null;
+            });
+            final safeName = selectedPdf!.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+            final path = '${currentUser.id}/${DateTime.now().millisecondsSinceEpoch}/$safeName';
+            final createdIds = <String>[];
+            var uploaded = false;
+            try {
+              await _client.storage.from('assignment-files').uploadBinary(
+                path,
+                selectedPdf!.bytes!,
+                fileOptions: const FileOptions(
+                  contentType: 'application/pdf',
+                  upsert: false,
+                ),
+              );
+              uploaded = true;
+
+              for (final room in targets) {
+                final row = await _client.from('assignments').insert({
+                  'course_id': null,
+                  'lesson_id': null,
+                  'teacher_id': currentUser.id,
+                  'class_id': room.id,
+                  'subject_id': chosenSubject!.id,
+                  'exam_id': chosenExam!.id,
+                  'title_fr': titleFr,
+                  'title_en': titleEn,
+                  'instructions_fr': instructionsController.text.trim(),
+                  'instructions_en': instructionsController.text.trim(),
+                  'starts_at': startsAt.toUtc().toIso8601String(),
+                  'due_at': dueAt.toUtc().toIso8601String(),
+                  'status': 'draft',
+                  'max_score': 20,
+                }).select('id').single();
+                createdIds.add(row['id'].toString());
+              }
+
+              for (final id in createdIds) {
+                await _client.from('assignments').update({
+                  'evaluation_file_path': path,
+                  'evaluation_file_name': selectedPdf!.name,
+                  'published_at': DateTime.now().toUtc().toIso8601String(),
+                  'status': 'published',
+                }).eq('id', id);
+              }
+
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop(true);
+            } catch (error) {
+              for (final id in createdIds) {
+                try {
+                  await _client.from('assignments').delete().eq('id', id);
+                } catch (_) {}
+              }
+              if (uploaded) {
+                try {
+                  await _client.storage.from('assignment-files').remove([path]);
+                } catch (_) {}
+              }
+              refresh(() {
+                saving = false;
+                localError = '${_isFrench ? 'Publication annulée' : 'Publication failed'}: $error';
+              });
+            }
+          }
+
+          String formatDateTime(DateTime value) {
+            final local = value.toLocal();
+            return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+          }
+
+          return AlertDialog(
+            title: Text(_isFrench ? 'Programmer une épreuve officielle' : 'Schedule an official exam'),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<ExamDefinition>(
+                      value: chosenExam,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: _isFrench ? 'Examen / diplôme' : 'Exam / qualification'),
+                      items: exams.map((exam) => DropdownMenuItem(
+                        value: exam,
+                        child: Text(exam.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                      onChanged: saving ? null : (value) => refresh(() => chosenExam = value),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(_isFrench
+                        ? 'Sélectionnez une ou plusieurs salles. Les filières du même niveau sont ensuite vérifiées automatiquement.'
+                        : 'Select one or more classrooms. Streams in the same level are then checked automatically.'),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 210),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: rooms.map((room) => CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: chosenRoomIds.contains(room.id),
+                          title: Text(room.displayName),
+                          onChanged: saving ? null : (value) async {
+                            refresh(() {
+                              if (value == true) {
+                                chosenRoomIds.add(room.id);
+                              } else {
+                                chosenRoomIds.remove(room.id);
+                              }
+                            });
+                            await refreshCommonSubjects(refresh);
+                          },
+                        )).toList(),
+                      ),
+                    ),
+                    DropdownButtonFormField<Subject>(
+                      value: chosenSubject,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: _isFrench ? 'Matière commune' : 'Common subject'),
+                      items: (commonSubjects.values.toList()
+                            ..sort((a, b) => a.labelFor(widget.locale.languageCode)
+                                .compareTo(b.labelFor(widget.locale.languageCode))))
+                          .map((subject) => DropdownMenuItem<Subject>(
+                                value: subject,
+                                child: Text(subject.labelFor(widget.locale.languageCode),
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: saving || commonSubjects.isEmpty
+                          ? null
+                          : (value) => refresh(() => chosenSubject = value),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: titleFrController,
+                      decoration: InputDecoration(labelText: _isFrench ? 'Titre de l’épreuve' : 'Exam title'),
+                    ),
+                    TextField(
+                      controller: titleEnController,
+                      decoration: InputDecoration(labelText: _isFrench ? 'Titre anglais (facultatif)' : 'English title (optional)'),
+                    ),
+                    TextField(
+                      controller: instructionsController,
+                      maxLines: 2,
+                      decoration: InputDecoration(labelText: _isFrench ? 'Consignes (facultatif)' : 'Instructions (optional)'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: saving ? null : () async {
+                        final picked = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: const ['pdf'],
+                          withData: true,
+                        );
+                        if (picked != null && picked.files.isNotEmpty && dialogContext.mounted) {
+                          refresh(() {
+                            selectedPdf = picked.files.single;
+                            localError = null;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.picture_as_pdf_rounded),
+                      label: Text(selectedPdf?.name ??
+                          (_isFrench ? 'Choisir le PDF officiel' : 'Choose official PDF')),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: saving ? null : () async {
+                        final picked = await chooseDateTime(dialogContext, startsAt);
+                        if (picked != null && dialogContext.mounted) refresh(() => startsAt = picked);
+                      },
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text('${_isFrench ? 'Début' : 'Starts'} : ${formatDateTime(startsAt)}'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: saving ? null : () async {
+                        final picked = await chooseDateTime(dialogContext, dueAt);
+                        if (picked != null && dialogContext.mounted) refresh(() => dueAt = picked);
+                      },
+                      icon: const Icon(Icons.stop_rounded),
+                      label: Text('${_isFrench ? 'Fin' : 'Ends'} : ${formatDateTime(dueAt)}'),
+                    ),
+                    if (localError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(localError!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.of(dialogContext).pop(false),
+                child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: saving ? null : saveExam,
+                icon: saving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.publish_rounded),
+                label: Text(_isFrench ? 'Programmer et publier' : 'Schedule and publish'),
+              ),
+            ],
+          );
+        },
       ),
     );
+
+    titleFrController.dispose();
+    titleEnController.dispose();
+    instructionsController.dispose();
+    if (created == true && mounted) {
+      setState(() {
+        _assignmentsFuture = _fetchAssignments();
+      });
+      _snack(_isFrench
+          ? 'Épreuve programmée et publiée dans les salles compatibles.'
+          : 'Exam scheduled and published to compatible classrooms.');
+    }
   }
 
   @override
@@ -302,9 +698,9 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showComingSoon,
+        onPressed: _createScheduledExam,
         icon: const Icon(Icons.add_rounded),
-        label: Text(_isFrench ? 'Nouvel exercice' : 'New exercise'),
+        label: Text(_isFrench ? 'Programmer une épreuve' : 'Schedule an exam'),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _assignmentsFuture,

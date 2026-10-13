@@ -158,9 +158,9 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   }
 
   Future<void> _reloadSubjects() async {
-    final classes = _selectedClasses;
+    final selected = _selectedClasses;
 
-    if (classes.isEmpty) {
+    if (selected.isEmpty) {
       setState(() {
         _subjects = const [];
         _subject = null;
@@ -172,10 +172,24 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     setState(() => _loadingSubjects = true);
 
     try {
+      // Selecting one classroom identifies its whole school-level cohort.
+      // This lets a teacher publish to common-subject classrooms without
+      // manually checking every series in the same level.
+      final compatible = await _service.listTeacherCompatibleClasses();
+      final candidates = <SchoolClass>{...selected};
+      for (final chosen in selected) {
+        if (chosen.examLevelId == null) continue;
+        candidates.addAll(compatible.where((candidate) =>
+            candidate.academicYearId == chosen.academicYearId &&
+            candidate.subsystem == chosen.subsystem &&
+            candidate.sector == chosen.sector &&
+            candidate.examLevelId == chosen.examLevelId));
+      }
+
       Map<String, Subject>? common;
-      for (final schoolClass in classes) {
+      for (final schoolClass in candidates) {
         final list = await _service.listSubjectsForClass(schoolClass.id);
-        final byId = {for (final s in list) s.id: s};
+        final byId = {for (final subject in list) subject.id: subject};
         if (common == null) {
           common = byId;
         } else {
@@ -186,11 +200,11 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         }
       }
 
-      if (!mounted) {
-        return;
-      }
-
-      final subjects = (common ?? <String, Subject>{}).values.toList();
+      if (!mounted) return;
+      final subjects = (common ?? <String, Subject>{}).values.toList()
+        ..sort((a, b) => a.labelFor(_fr ? 'fr' : 'en')
+            .toLowerCase()
+            .compareTo(b.labelFor(_fr ? 'fr' : 'en').toLowerCase()));
       setState(() {
         _subjects = subjects;
         if (_subject != null && !subjects.any((s) => s.id == _subject!.id)) {
@@ -199,14 +213,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       });
       _notify();
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       _snack('${_fr ? 'Chargement impossible' : 'Unable to load'}: $error');
     } finally {
-      if (mounted) {
-        setState(() => _loadingSubjects = false);
-      }
+      if (mounted) setState(() => _loadingSubjects = false);
     }
   }
 

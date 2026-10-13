@@ -306,9 +306,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
 
-    // Fail early if the UI profile is stale or belongs to a different
-    // session. Otherwise the RPC can authorize auth.uid() while the INSERT
-    // writes widget.profile.id, which RLS correctly rejects.
     final authUser = Supabase.instance.client.auth.currentUser;
     if (authUser == null || authUser.id != widget.profile.id) {
       _snack(_fr
@@ -319,26 +316,107 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     setState(() => _saving = true);
 
+    List<SchoolClass> targets;
     try {
+      // Expand the chosen level to the compatible rooms in the same academic
+      // year. A room receives the media only when the selected subject exists
+      // in its own class_subjects catalogue.
+      final compatible = await _service.listTeacherCompatibleClasses();
+      final byId = <String, SchoolClass>{for (final room in _classes) room.id: room};
+      for (final chosen in _classes) {
+        if (chosen.examLevelId == null) continue;
+        for (final candidate in compatible) {
+          if (candidate.academicYearId == chosen.academicYearId &&
+              candidate.subsystem == chosen.subsystem &&
+              candidate.sector == chosen.sector &&
+              candidate.examLevelId == chosen.examLevelId) {
+            byId[candidate.id] = candidate;
+          }
+        }
+      }
+
+      final candidates = byId.values.toList(growable: false);
+      targets = <SchoolClass>[];
+      for (final candidate in candidates) {
+        final subjects = await _service.listSubjectsForClass(candidate.id);
+        if (subjects.any((subject) => subject.id == _subject!.id)) {
+          targets.add(candidate);
+        }
+      }
+      if (targets.isEmpty) {
+        throw StateError(_fr
+            ? 'Aucune salle ne possède cette matière dans son programme.'
+            : 'No classroom has this subject in its curriculum.');
+      }
+
       await _service.authorizeTeacherClasses(
-        _classes.map((schoolClass) => schoolClass.id).toList(growable: false),
+        targets.map((room) => room.id).toList(growable: false),
       );
     } catch (error) {
       if (mounted) {
         setState(() => _saving = false);
-        _snack('${_fr ? 'Accès aux salles refusé' : 'Classroom access denied'}: $error');
+        _snack('${_fr ? 'Accès ou diffusion des salles refusé' : 'Classroom access or distribution denied'}: $error');
       }
       return;
+    }
+
+    CourseChapter? referenceChapter;
+    for (final chosen in _classes) {
+      final chosenId = _selectedChapterByClass[chosen.id];
+      if (chosenId == null) continue;
+      for (final chapter in _chaptersByClass[chosen.id] ?? const <CourseChapter>[]) {
+        if (chapter.id == chosenId) {
+          referenceChapter = chapter;
+          break;
+        }
+      }
+      if (referenceChapter != null) break;
     }
 
     var saved = 0;
     final errors = <String>[];
 
-    for (final schoolClass in _classes) {
+    for (final schoolClass in targets) {
       try {
-        final Curriculum? curriculum = _curriculumByClass[schoolClass.id];
-        final chapters = _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
-        final selectedChapterId = _selectedChapterByClass[schoolClass.id];
+        Curriculum? curriculum = _curriculumByClass[schoolClass.id];
+        List<CourseChapter> chapters =
+            _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
+        String? selectedChapterId = _selectedChapterByClass[schoolClass.id];
+
+        if (!_curriculumByClass.containsKey(schoolClass.id)) {
+          final curricula = await _service.listCurricula(_subject!.id);
+          final matches = curricula.where((item) =>
+              item.subsystem == schoolClass.subsystem &&
+              item.sector == schoolClass.sector &&
+              (item.examLevelId == null || item.examLevelId == schoolClass.examLevelId) &&
+              (item.seriesId == null || item.seriesId == schoolClass.seriesId) &&
+              (item.specialtyId == null || item.specialtyId == schoolClass.specialtyId)).toList()
+            ..sort((a, b) {
+              int specificity(Curriculum value) =>
+                  (value.examLevelId == null ? 0 : 1) +
+                  (value.seriesId == null ? 0 : 1) +
+                  (value.specialtyId == null ? 0 : 1);
+              return specificity(b).compareTo(specificity(a));
+            });
+          curriculum = matches.isEmpty ? null : matches.first;
+          chapters = curriculum == null
+              ? const <CourseChapter>[]
+              : await _service.listChapters(curriculum.id);
+          if (referenceChapter != null) {
+            final wantedFr = referenceChapter.titleFr.trim().toLowerCase();
+            final wantedEn = referenceChapter.titleEn.trim().toLowerCase();
+            final matching = chapters.where((chapter) =>
+                chapter.titleFr.trim().toLowerCase() == wantedFr ||
+                chapter.titleEn.trim().toLowerCase() == wantedEn).toList();
+            if (matching.isEmpty) {
+              throw StateError(_fr
+                  ? 'Le chapitre commun « ${referenceChapter.titleFr} » n’existe pas dans cette salle.'
+                  : 'The shared chapter “${referenceChapter.titleEn}” is unavailable in this classroom.');
+            }
+            selectedChapterId = matching.first.id;
+          }
+        }
+
         if (curriculum != null && chapters.isNotEmpty && selectedChapterId == null) {
           throw StateError(_fr
               ? 'Choisissez un chapitre pour ${schoolClass.displayName}.'
@@ -349,6 +427,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               ? 'Aucun chapitre disponible pour ${schoolClass.displayName}.'
               : 'No chapter is available for ${schoolClass.displayName}.');
         }
+
         final course = await _service.saveCourse(
           curriculumId: curriculum?.id,
           chapterId: selectedChapterId,
@@ -360,9 +439,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           contentFr: null,
           contentEn: null,
           smartLessonEnabled: false,
-          // Keep the course invisible until all media and metadata are saved.
-          // Publishing first triggers student notifications before the feed's
-          // RLS predicate can see a course_resources row.
           status: 'draft',
         );
 
@@ -382,8 +458,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           );
         }
 
-        // Verify that every resource has a durable database row before
-        // reporting success. Storage upload alone is not a published resource.
         final persistedResources = await _resources.listForCourse(course.id);
         if (persistedResources.length < _attachments.length) {
           throw StateError(_fr
@@ -391,8 +465,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               : 'Incomplete publication: ${persistedResources.length}/${_attachments.length} media record(s) persisted on the server.');
         }
 
-        // Index readable PDF/image text before publishing so the AI QCM can
-        // use the actual educational source instead of inventing questions.
         for (final resource in persistedResources) {
           if (resource.resourceType != 'pdf' && resource.resourceType != 'image') continue;
           try {
@@ -406,8 +478,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           }
         }
 
-        // Publish only after every resource is durable. Once published, ask
-        // the AI to prepare this chapter's QCM in the background.
         await _service.publishCourse(course.id);
         if (selectedChapterId != null) {
           unawaited(_generateChapterQuizInBackground(selectedChapterId));
@@ -418,22 +488,18 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       }
     }
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _saving = false);
 
     if (errors.isNotEmpty) {
       _snack(
-        '${_fr ? 'Erreur' : 'Error'} (${errors.length}/${_classes.length})\n${errors.first}',
+        '${_fr ? 'Erreur' : 'Error'} (${errors.length}/${targets.length})\n${errors.first}',
       );
-      if (saved == 0) {
-        return;
-      }
+      if (saved == 0) return;
     } else {
       _snack(_fr
-          ? 'Médias publiés dans $saved classe(s).'
-          : 'Media published to $saved classroom(s).');
+          ? 'Médias publiés automatiquement dans $saved salle(s) partageant cette matière.'
+          : 'Media automatically published to $saved classrooms sharing this subject.');
     }
 
     Navigator.pop(context, true);

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
@@ -348,6 +350,53 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
             !DateTime.now().isBefore(deadline.toLocal()));
   }
 
+  Future<void> _openOfficialExamPdf() async {
+    final path = widget.assignment.evaluationFilePath;
+    if (path == null || path.trim().isEmpty || _isNotStarted || _isClosed) {
+      return;
+    }
+    try {
+      final url = await Supabase.instance.client.storage
+          .from('assignment-files')
+          .createSignedUrl(path, 900);
+      final opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isEnglish
+              ? 'Unable to open the exam PDF.'
+              : 'Impossible d’ouvrir le PDF de l’épreuve.'),
+        ));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${_isEnglish ? 'Exam PDF unavailable' : 'PDF de l’épreuve indisponible'}: $error'),
+        ));
+      }
+    }
+  }
+
+  Widget _buildOfficialExamPdfButton() {
+    final enabled = !_isNotStarted && !_isClosed;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.picture_as_pdf_rounded),
+        title: Text(widget.assignment.evaluationFileName ??
+            (_isEnglish ? 'Official exam PDF' : 'Épreuve officielle PDF')),
+        subtitle: Text(enabled
+            ? (_isEnglish ? 'Open during the evaluation window' : 'Disponible pendant la période de l’évaluation')
+            : (_isNotStarted
+                ? (_isEnglish ? 'Available when the exam starts' : 'Disponible à l’ouverture de l’épreuve')
+                : (_isEnglish ? 'Evaluation closed' : 'Évaluation terminée'))),
+        trailing: const Icon(Icons.open_in_new_rounded),
+        onTap: enabled ? _openOfficialExamPdf : null,
+      ),
+    );
+  }
+
   bool get _isDraftSubmission {
     return _submission == null || _submission!.status == 'draft';
   }
@@ -426,6 +475,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                         children: [
                           _buildHeader(title, instructions),
+                          if (widget.assignment.evaluationFilePath != null) ...[
+                            const SizedBox(height: 12),
+                            _buildOfficialExamPdfButton(),
+                          ],
                           const SizedBox(height: 18),
                           if (_isSubmitted) _buildSubmissionStatus(),
                           if (_isSubmitted) const SizedBox(height: 14),
