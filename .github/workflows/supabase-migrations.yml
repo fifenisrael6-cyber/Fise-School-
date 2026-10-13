@@ -10,6 +10,8 @@ on:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.SUPABASE_DATABASE_URL }}
 
     steps:
       - name: Checkout
@@ -21,16 +23,15 @@ jobs:
           version: latest
 
       - name: Check database connection secret
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.SUPABASE_DATABASE_URL }}
+        id: db
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::error::Missing GitHub secret SUPABASE_DB_URL (or SUPABASE_DATABASE_URL)."
-            echo "The migration workflow cannot connect to the production database without a PostgreSQL connection URL."
-            exit 1
+            echo "::warning::Supabase migrations were not run because SUPABASE_DB_URL (or SUPABASE_DATABASE_URL) is not configured in GitHub Secrets. Configure it to enable automatic future migration deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Apply migrations
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.SUPABASE_DATABASE_URL }}
+        if: steps.db.outputs.ready == 'true'
         run: supabase db push --db-url "$SUPABASE_DB_URL"
