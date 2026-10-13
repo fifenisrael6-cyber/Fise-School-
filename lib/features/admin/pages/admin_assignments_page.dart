@@ -368,9 +368,16 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
         return;
       }
       try {
-        final cohort = expandedCohort().values.toList(growable: false);
+        // Offer subjects based only on the rooms explicitly selected by the
+        // administrator. Expanding to every compatible recipient before this
+        // intersection can erase all subjects when sibling streams have
+        // different curricula. Compatible recipient rooms are resolved after
+        // the subject is chosen, and only rooms carrying that subject receive it.
+        final selectedRooms = rooms
+            .where((room) => chosenRoomIds.contains(room.id))
+            .toList(growable: false);
         Map<String, Subject>? intersection;
-        for (final room in cohort) {
+        for (final room in selectedRooms) {
           final subjects = await courseService.listSubjectsForClass(room.id);
           final byId = <String, Subject>{for (final subject in subjects) subject.id: subject};
           intersection = intersection == null
