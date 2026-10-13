@@ -172,22 +172,13 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     setState(() => _loadingSubjects = true);
 
     try {
-      // Selecting one classroom identifies its whole school-level cohort.
-      // This lets a teacher publish to common-subject classrooms without
-      // manually checking every series in the same level.
-      final compatible = await _service.listTeacherCompatibleClasses();
-      final candidates = <SchoolClass>{...selected};
-      for (final chosen in selected) {
-        if (chosen.examLevelId == null) continue;
-        candidates.addAll(compatible.where((candidate) =>
-            candidate.academicYearId == chosen.academicYearId &&
-            candidate.subsystem == chosen.subsystem &&
-            candidate.sector == chosen.sector &&
-            candidate.examLevelId == chosen.examLevelId));
-      }
-
+      // Only the classrooms explicitly selected in the form determine
+      // which subjects are offered. Expanding to every compatible series here
+      // incorrectly intersected hundreds of curricula and often produced an
+      // empty subject list. Cohort expansion belongs to publication, where
+      // each destination is filtered independently by its own class_subjects.
       Map<String, Subject>? common;
-      for (final schoolClass in candidates) {
+      for (final schoolClass in selected) {
         final list = await _service.listSubjectsForClass(schoolClass.id);
         final byId = {for (final subject in list) subject.id: subject};
         if (common == null) {
