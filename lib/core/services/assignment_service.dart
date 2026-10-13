@@ -479,6 +479,23 @@ class AssignmentService {
     }
   }
 
+  /// Remove a partially created QCM only after a fresh server read confirms
+  /// that it is still a draft. If the server state cannot be read, preserve it.
+  Future<void> deleteDraftAssignmentIfUnpublished(
+    String assignmentId, {
+    required String teacherId,
+  }) async {
+    final row = await _client
+        .from('assignments')
+        .select('status')
+        .eq('id', assignmentId)
+        .eq('teacher_id', teacherId)
+        .maybeSingle();
+    if (row != null && row['status'] == 'draft') {
+      await deleteAssignmentForEveryone(assignmentId, teacherId: teacherId);
+    }
+  }
+
   /// Backwards-compatible alias: permanent deletion remains owner-scoped.
   Future<void> deleteAssignment(String assignmentId) async {
     final userId = _client.auth.currentUser?.id;
