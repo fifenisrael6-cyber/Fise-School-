@@ -220,7 +220,7 @@ Quand l'administrateur demande une leçon complète, utilise ces sections dans c
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    const model = "gemini-2.5-flash";
+    const model = "gemini-3.8-flash";
     const data = await callGemini(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       apiKey,
