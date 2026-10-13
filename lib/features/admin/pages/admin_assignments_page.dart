@@ -36,7 +36,7 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
         .from('assignments')
         .select(
           'id,course_id,lesson_id,teacher_id,class_id,title_fr,title_en,'
-          'instructions_fr,instructions_en,starts_at,due_at,status,max_score,exam_id,subject_id,evaluation_file_name,created_at',
+          'instructions_fr,instructions_en,starts_at,due_at,results_publish_at,status,max_score,exam_id,subject_id,evaluation_file_name,created_at',
         )
         .order('created_at', ascending: false);
 
@@ -134,6 +134,7 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     final maxScore = assignment['max_score']?.toString() ?? '';
     final startsAt = assignment['starts_at']?.toString();
     final dueAt = assignment['due_at']?.toString();
+    final resultsPublishAt = assignment['results_publish_at']?.toString();
     final evaluationFileName = assignment['evaluation_file_name']?.toString();
 
     showModalBottomSheet<void>(
@@ -197,6 +198,13 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                     leading: const Icon(Icons.schedule_rounded),
                     title: Text(_isFrench ? 'Fin de l’évaluation' : 'Evaluation ends'),
                     subtitle: Text(_formatDueDate(dueAt)),
+                  ),
+                if (resultsPublishAt != null && resultsPublishAt.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.visibility_rounded),
+                    title: Text(_isFrench ? 'Publication des résultats' : 'Results release'),
+                    subtitle: Text(_formatDueDate(resultsPublishAt)),
                   ),
                 if (evaluationFileName != null && evaluationFileName.isNotEmpty)
                   ListTile(
@@ -339,6 +347,7 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
     PlatformFile? selectedPdf;
     DateTime startsAt = DateTime.now().add(const Duration(minutes: 5));
     DateTime dueAt = DateTime.now().add(const Duration(hours: 1));
+    DateTime resultsPublishAt = DateTime.now().add(const Duration(days: 1, hours: 1));
     bool saving = false;
     String? localError;
 
@@ -445,6 +454,12 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                   : 'The end time must be after the start time.');
               return;
             }
+            if (resultsPublishAt.isBefore(dueAt)) {
+              refresh(() => localError = _isFrench
+                  ? 'La publication des résultats doit être prévue à la fin de l’évaluation ou après.'
+                  : 'Results must be scheduled for the end of the evaluation or later.');
+              return;
+            }
 
             final targets = <SchoolClass>[];
             try {
@@ -498,6 +513,7 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                   'instructions_en': instructionsController.text.trim(),
                   'starts_at': startsAt.toUtc().toIso8601String(),
                   'due_at': dueAt.toUtc().toIso8601String(),
+                  'results_publish_at': resultsPublishAt.toUtc().toIso8601String(),
                   'status': 'draft',
                   'max_score': 20,
                 }).select('id').single();
@@ -644,10 +660,27 @@ class _AdminAssignmentsPageState extends State<AdminAssignmentsPage> {
                     OutlinedButton.icon(
                       onPressed: saving ? null : () async {
                         final picked = await chooseDateTime(dialogContext, dueAt);
-                        if (picked != null && dialogContext.mounted) refresh(() => dueAt = picked);
+                        if (picked != null && dialogContext.mounted) {
+                          refresh(() {
+                            dueAt = picked;
+                            if (resultsPublishAt.isBefore(dueAt)) {
+                              resultsPublishAt = dueAt.add(const Duration(days: 1));
+                            }
+                          });
+                        }
                       },
                       icon: const Icon(Icons.stop_rounded),
                       label: Text('${_isFrench ? 'Fin' : 'Ends'} : ${formatDateTime(dueAt)}'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: saving ? null : () async {
+                        final picked = await chooseDateTime(dialogContext, resultsPublishAt);
+                        if (picked != null && dialogContext.mounted) {
+                          refresh(() => resultsPublishAt = picked);
+                        }
+                      },
+                      icon: const Icon(Icons.visibility_rounded),
+                      label: Text('${_isFrench ? 'Publication des résultats' : 'Results release'} : ${formatDateTime(resultsPublishAt)}'),
                     ),
                     if (localError != null) ...[
                       const SizedBox(height: 8),
