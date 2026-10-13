@@ -63,7 +63,7 @@ async function callGemini(url: string, apiKey: string, payload: unknown) {
   let lastError = "Gemini request failed.";
   for (let attempt = 0; attempt < 2; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 45000);
+    const timer = setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -220,7 +220,7 @@ Quand l'administrateur demande une leçon complète, utilise ces sections dans c
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+    const model = "gemini-2.5-flash";
     const data = await callGemini(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       apiKey,
