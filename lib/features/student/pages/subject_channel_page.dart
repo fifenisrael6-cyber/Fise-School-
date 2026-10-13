@@ -255,7 +255,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final focused = _chapterFocused;
 
     return DefaultTabController(
-      length: focused ? 3 : 4,
+      length: 2,
       child: Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
@@ -270,11 +270,16 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         bottom: TabBar(
           isScrollable: true,
           tabs: [
-            if (!focused)
-              Tab(text: _fr ? 'Chapitres' : 'Chapters', icon: const Icon(Icons.menu_book_rounded)),
-            Tab(text: _fr ? 'Cours officiels' : 'Official lessons', icon: const Icon(Icons.auto_stories_rounded)),
-            Tab(text: _fr ? 'Médias de l’enseignant' : 'Teacher media', icon: const Icon(Icons.perm_media_rounded)),
-            Tab(text: _fr ? 'QCM' : 'Quizzes', icon: const Icon(Icons.quiz_rounded)),
+            Tab(
+              text: focused
+                  ? (_fr ? 'Cours et médias' : 'Courses & media')
+                  : (_fr ? 'Chapitres' : 'Chapters'),
+              icon: Icon(focused ? Icons.menu_book_rounded : Icons.bookmarks_rounded),
+            ),
+            Tab(
+              text: _fr ? 'Évaluations IA' : 'AI evaluations',
+              icon: const Icon(Icons.auto_awesome_rounded),
+            ),
           ],
         ),
         actions: [
@@ -309,9 +314,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             );
           }
           final items = snapshot.data ?? const <_FeedItem>[];
-          final scopedContent = items
-              .where((item) => item.assignment == null && _itemMatchesFocusedChapter(item))
-              .toList();
+          final scopedContent = items.where(_itemMatchesFocusedChapter).toList();
           final officialCourses = scopedContent
               .where((item) => item.chapterContent != null ||
                   (item.course != null && _isOfficialCourse(item.course!)))
@@ -323,36 +326,20 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               .where((item) => item.course != null)
               .map((item) => item.course!.id)
               .toSet();
-          final quizzes = items.where((item) =>
-              item.assignment != null &&
-              (!focused || focusedCourseIds.contains(item.assignment!.courseId))).toList();
-
           final tabChildren = <Widget>[];
-          if (!focused) tabChildren.add(_chapterCatalog());
-          tabChildren.add(
-            _feedList(
-              officialCourses,
-              _fr
-                  ? 'Aucun cours publié par l’administration pour ce chapitre pour le moment.'
-                  : 'No lesson published by the administrator for this chapter yet.',
-            ),
-          );
-          tabChildren.add(
-            _feedList(
-              teacherMedia,
-              _fr
-                  ? 'Aucune photo, vidéo ou PDF partagé par l’enseignant pour ce chapitre pour le moment.'
-                  : 'No photo, video or PDF shared by a teacher for this chapter yet.',
-            ),
-          );
-          tabChildren.add(
-            _feedList(
-              quizzes,
-              _fr
-                  ? 'Aucun QCM publié pour ce chapitre pour le moment.'
-                  : 'No quiz published for this chapter yet.',
-            ),
-          );
+          if (!focused) {
+            tabChildren.add(_chapterCatalog());
+          } else {
+            tabChildren.add(
+              _feedList(
+                <_FeedItem>[...officialCourses, ...teacherMedia],
+                _fr
+                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
+                    : 'No course or media has been published for this chapter yet.',
+              ),
+            );
+          }
+          tabChildren.add(_aiEvaluations());
 
           return TabBarView(children: tabChildren);
         },
