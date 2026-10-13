@@ -135,7 +135,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     try {
       final rows = await Supabase.instance.client
           .from('assignment_submissions')
-          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct)')
+          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct),assignment_private_grades(score,status,details)')
           .eq('assignment_id', assignment.id);
       var correct = 0;
       var incorrect = 0;
@@ -145,22 +145,56 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         final row = Map<String, dynamic>.from(raw);
         final answers = (row['assignment_answers'] as List? ?? const [])
             .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false);
+        final rawPrivateGrades = row['assignment_private_grades'];
+        final privateGrade = rawPrivateGrades is List && rawPrivateGrades.isNotEmpty
+            ? Map<String, dynamic>.from(rawPrivateGrades.first as Map)
+            : rawPrivateGrades is Map
+                ? Map<String, dynamic>.from(rawPrivateGrades)
+                : <String, dynamic>{};
+        final privateDetails = (privateGrade['details'] as List? ?? const [])
+            .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item));
         var studentCorrect = 0;
         var studentIncorrect = 0;
+        var gradedAnswers = 0;
         for (final answer in answers) {
           if (answer['is_correct'] == true) {
             correct++;
             studentCorrect++;
             answered++;
+            gradedAnswers++;
           } else if (answer['is_correct'] == false) {
             incorrect++;
             studentIncorrect++;
             answered++;
+            gradedAnswers++;
+          }
+        }
+        // AI marks remain private from students until publication, but the
+        // assigned teacher can review them from this results panel beforehand.
+        if (gradedAnswers == 0 && privateGrade['status'] == 'graded') {
+          for (final answer in privateDetails) {
+            if (answer['is_correct'] == true) {
+              correct++;
+              studentCorrect++;
+              answered++;
+            } else if (answer['is_correct'] == false) {
+              incorrect++;
+              studentIncorrect++;
+              answered++;
+            }
           }
         }
         if (row['status'] == 'submitted' || row['status'] == 'corrected') {
-          participants.add({...row, 'correct_count': studentCorrect, 'incorrect_count': studentIncorrect});
+          participants.add({
+            ...row,
+            'score': row['score'] ?? (privateGrade['status'] == 'graded' ? privateGrade['score'] : null),
+            'correct_count': studentCorrect,
+            'incorrect_count': studentIncorrect,
+            'ai_correction_status': privateGrade['status'],
+          });
         }
       }
       if (!mounted) return;
