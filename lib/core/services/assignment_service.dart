@@ -218,12 +218,32 @@ class AssignmentService {
     throw StateError('La correction n’a retourné aucun résultat.');
   }
 
+  Future<void> _ensureAssignmentAcceptsAnswers(String submissionId) async {
+    final row = await _client
+        .from('assignment_submissions')
+        .select('assignment_id')
+        .eq('id', submissionId)
+        .single();
+    final assignment = await _client
+        .from('assignments')
+        .select('status,due_at')
+        .eq('id', row['assignment_id'] as String)
+        .single();
+    final status = assignment['status'] as String? ?? 'draft';
+    final dueValue = assignment['due_at'];
+    final dueAt = dueValue is String ? DateTime.tryParse(dueValue) : null;
+    if (status != 'published' || (dueAt != null && !DateTime.now().toUtc().isBefore(dueAt.toUtc()))) {
+      throw StateError('Cette évaluation est terminée ou n’accepte plus de réponses.');
+    }
+  }
+
   Future<AssignmentAnswer> saveAnswer({
     required String submissionId,
     required String questionId,
     String? answerText,
     String? selectedOption,
   }) async {
+    await _ensureAssignmentAcceptsAnswers(submissionId);
     final row = await _client
         .from('assignment_answers')
         .upsert({
@@ -241,7 +261,8 @@ class AssignmentService {
   Future<AssignmentSubmission> submitAssignment({
     required String submissionId,
   }) async {
-    final now = DateTime.now().toIso8601String();
+    await _ensureAssignmentAcceptsAnswers(submissionId);
+    final now = DateTime.now().toUtc().toIso8601String();
 
     final row = await _client
         .from('assignment_submissions')
