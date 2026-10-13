@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -101,6 +103,21 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       if (mounted) {
         setState(() => _catalogLoading = false);
       }
+    }
+  }
+
+  Future<void> _generateChapterQuizInBackground(String chapterId) async {
+    try {
+      final response = await _client.functions.invoke(
+        'chapter-quiz',
+        body: {'chapter_id': chapterId},
+      );
+      final data = response.data;
+      if (data is Map && data['error'] != null) {
+        debugPrint('AI QCM generation unavailable for $chapterId: ${data['error']}');
+      }
+    } catch (error) {
+      debugPrint('AI QCM generation failed after publication for $chapterId: $error');
     }
   }
 
@@ -281,14 +298,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                           if (published) {
                             // Generate the chapter's AI QCM in the background.
                             // Course publication remains successful if Gemini is temporarily unavailable.
-                            try {
-                              await _client.functions.invoke(
-                                'chapter-quiz',
-                                body: {'chapter_id': selectedChapter!['id'].toString()},
-                              );
-                            } catch (quizError) {
-                              debugPrint('AI QCM generation failed after publication: $quizError');
-                            }
+                            unawaited(_generateChapterQuizInBackground(selectedChapter!['id'].toString()));
                           }
                           if (sheetContext.mounted) {
                             Navigator.pop(sheetContext);
