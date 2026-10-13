@@ -484,9 +484,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         }
 
         await _service.publishCourse(course.id);
-        if (selectedChapterId != null) {
-          unawaited(_generateChapterQuizInBackground(selectedChapterId));
-        }
+        unawaited(_generateChapterQuizInBackground(selectedChapterId));
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
