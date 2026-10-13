@@ -283,14 +283,69 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                   builder: (context, resourceSnapshot) {
                     final resources = resourceSnapshot.data ?? const <CourseResource>[];
                     if (resources.isEmpty) {
+                      if (resourceSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
                       return const SizedBox.shrink();
                     }
+
+                    // Keep chapter resources grouped by file kind, like a phone
+                    // file manager, instead of mixing every attachment in one feed.
+                    const categories = <String, List<String>>{
+                      'image': ['image'],
+                      'audio': ['audio'],
+                      'video': ['video'],
+                      'pdf': ['pdf'],
+                      'document': ['document', 'other'],
+                    };
+                    final categoryLabels = <String, String>{
+                      'image': isEnglish ? 'Photos' : 'Photos',
+                      'audio': isEnglish ? 'Audio' : 'Audios',
+                      'video': isEnglish ? 'Videos' : 'Vidéos',
+                      'pdf': 'PDF',
+                      'document': isEnglish ? 'Other files' : 'Autres fichiers',
+                    };
+                    final categoryIcons = <String, IconData>{
+                      'image': Icons.photo_library_outlined,
+                      'audio': Icons.audiotrack_rounded,
+                      'video': Icons.video_library_outlined,
+                      'pdf': Icons.picture_as_pdf_outlined,
+                      'document': Icons.folder_open_rounded,
+                    };
+
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(isEnglish ? 'Course files' : 'Fichiers du cours', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text(
+                          isEnglish ? 'Chapter files' : 'Fichiers du chapitre',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 8),
-                        ...resources.map((resource) => OfflineResourceTile(locale: widget.locale, profile: widget.profile, resource: resource)),
+                        for (final entry in categories.entries)
+                          if (resources.any((resource) => entry.value.contains(resource.resourceType)))
+                            Card(
+                              clipBehavior: Clip.antiAlias,
+                              child: ExpansionTile(
+                                leading: Icon(categoryIcons[entry.key], color: const Color(0xFF166534)),
+                                title: Text(categoryLabels[entry.key]!, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Text(
+                                  '${resources.where((resource) => entry.value.contains(resource.resourceType)).length} '
+                                  '${isEnglish ? 'file(s)' : 'fichier(s)'}',
+                                ),
+                                children: [
+                                  ...resources
+                                      .where((resource) => entry.value.contains(resource.resourceType))
+                                      .map((resource) => OfflineResourceTile(
+                                            locale: widget.locale,
+                                            profile: widget.profile,
+                                            resource: resource,
+                                          )),
+                                ],
+                              ),
+                            ),
                       ],
                     );
                   },
