@@ -575,11 +575,14 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                   Icons.play_circle_outline_rounded,
                   '${_isEnglish ? 'Starts' : 'Début'} : ${_formatDueDate(widget.assignment.startsAt)}',
                 ),
-              if (widget.assignment.resultsPublishAt != null)
-                _buildHeaderChip(
-                  Icons.visibility_rounded,
-                  '${_isEnglish ? 'Results release' : 'Publication des résultats'} : ${_formatDueDate(widget.assignment.resultsPublishAt)}',
-                ),
+              _buildHeaderChip(
+                Icons.visibility_rounded,
+                widget.assignment.resultsPublishAt != null
+                    ? '${_isEnglish ? 'Results release' : 'Publication des résultats'} : ${_formatDueDate(widget.assignment.resultsPublishAt)}'
+                    : (_isEnglish
+                        ? 'Results release: not scheduled'
+                        : 'Publication des résultats : non programmée'),
+              ),
               _buildHeaderChip(
                 Icons.calendar_today_rounded,
                 _formatDueDate(widget.assignment.dueAt),
