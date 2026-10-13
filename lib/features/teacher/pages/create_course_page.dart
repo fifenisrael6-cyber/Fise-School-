@@ -53,6 +53,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
   List<SchoolClass> _classes = const [];
   Subject? _subject;
+  final Map<String, Curriculum?> _curriculumByClass = <String, Curriculum?>{};
+  final Map<String, List<CourseChapter>> _chaptersByClass = <String, List<CourseChapter>>{};
+  final Map<String, String> _selectedChapterByClass = <String, String>{};
+  bool _loadingChapters = false;
   final List<_CourseAttachment> _attachments = [];
   bool _saving = false;
 
@@ -210,6 +214,58 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     });
   }
 
+  /// Charge les chapitres correspondant à chaque classe sélectionnée.
+  /// Les filières peuvent avoir des programmes différents : le choix du chapitre
+  /// est donc conservé séparément pour chaque classe, sans mélanger les catalogues.
+  Future<void> _loadChapterOptions(
+    List<SchoolClass> classes,
+    Subject? subject,
+  ) async {
+    _curriculumByClass.clear();
+    _chaptersByClass.clear();
+    _selectedChapterByClass.clear();
+    if (classes.isEmpty || subject == null) {
+      if (mounted) setState(() => _loadingChapters = false);
+      return;
+    }
+
+    setState(() => _loadingChapters = true);
+    try {
+      final curricula = await _service.listCurricula(subject.id);
+      for (final schoolClass in classes) {
+        final matches = curricula.where((curriculum) =>
+          curriculum.subsystem == schoolClass.subsystem &&
+          curriculum.sector == schoolClass.sector &&
+          (curriculum.examLevelId == null || curriculum.examLevelId == schoolClass.examLevelId) &&
+          (curriculum.seriesId == null || curriculum.seriesId == schoolClass.seriesId) &&
+          (curriculum.specialtyId == null || curriculum.specialtyId == schoolClass.specialtyId)
+        ).toList()
+          ..sort((a, b) {
+            int specificity(Curriculum value) =>
+                (value.examLevelId == null ? 0 : 1) +
+                (value.seriesId == null ? 0 : 1) +
+                (value.specialtyId == null ? 0 : 1);
+            return specificity(b).compareTo(specificity(a));
+          });
+
+        final curriculum = matches.isEmpty ? null : matches.first;
+        _curriculumByClass[schoolClass.id] = curriculum;
+        if (curriculum != null) {
+          _chaptersByClass[schoolClass.id] =
+              await _service.listChapters(curriculum.id);
+        } else {
+          _chaptersByClass[schoolClass.id] = const <CourseChapter>[];
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de charger les chapitres' : 'Unable to load chapters'}: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingChapters = false);
+    }
+  }
+
   Future<void> _save() async {
     final title = _title.text.trim();
 
@@ -262,39 +318,22 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     for (final schoolClass in _classes) {
       try {
-        // courses requires curriculum_id and chapter_id. Resolve the official
-        // curriculum that matches this class before creating a media post.
-        final matchingCurricula = (await _service.listCurricula(_subject!.id))
-            .where((curriculum) =>
-                curriculum.subsystem == schoolClass.subsystem &&
-                curriculum.sector == schoolClass.sector &&
-                (curriculum.examLevelId == null || curriculum.examLevelId == schoolClass.examLevelId) &&
-                (curriculum.seriesId == null || curriculum.seriesId == schoolClass.seriesId) &&
-                (curriculum.specialtyId == null || curriculum.specialtyId == schoolClass.specialtyId))
-            .toList()
-          ..sort((a, b) {
-            int specificity(Curriculum c) =>
-                (c.examLevelId == null ? 0 : 1) +
-                (c.seriesId == null ? 0 : 1) +
-                (c.specialtyId == null ? 0 : 1);
-            return specificity(b).compareTo(specificity(a));
-          });
-        // A media post does not require an official curriculum. When one
-        // exists, keep the existing curriculum and first-chapter behavior.
-        final Curriculum? curriculum =
-            matchingCurricula.isEmpty ? null : matchingCurricula.first;
-        var chapters = <CourseChapter>[];
-        if (curriculum != null) {
-          chapters = await _service.listChapters(curriculum.id);
-          if (chapters.isEmpty) {
-            throw StateError(_fr
-                ? 'Aucun chapitre n’existe dans le programme de ${schoolClass.displayName}. L’administration doit créer les chapitres avant le partage.'
-                : 'No chapter exists in the curriculum for ${schoolClass.displayName}. An administrator must create chapters before sharing.');
-          }
+        final Curriculum? curriculum = _curriculumByClass[schoolClass.id];
+        final chapters = _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
+        final selectedChapterId = _selectedChapterByClass[schoolClass.id];
+        if (curriculum != null && chapters.isNotEmpty && selectedChapterId == null) {
+          throw StateError(_fr
+              ? 'Choisissez un chapitre pour ${schoolClass.displayName}.'
+              : 'Choose a chapter for ${schoolClass.displayName}.');
+        }
+        if (curriculum != null && chapters.isEmpty) {
+          throw StateError(_fr
+              ? 'Aucun chapitre disponible pour ${schoolClass.displayName}.'
+              : 'No chapter is available for ${schoolClass.displayName}.');
         }
         final course = await _service.saveCourse(
           curriculumId: curriculum?.id,
-          chapterId: chapters.isEmpty ? null : chapters.first.id,
+          chapterId: selectedChapterId,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
@@ -395,9 +434,64 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               setState(() {
                 _classes = classes;
                 _subject = subject;
+                _curriculumByClass.clear();
+                _chaptersByClass.clear();
+                _selectedChapterByClass.clear();
               });
+              _loadChapterOptions(classes, subject);
             },
           ),
+          const SizedBox(height: 14),
+          Text(
+            _fr ? 'Chapitre de destination (pour chaque classe)' : 'Destination chapter (for each classroom)',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (_loadingChapters)
+            const LinearProgressIndicator()
+          else if (_classes.isEmpty || _subject == null)
+            Text(_fr ? 'Choisissez d’abord les classes et la matière.' : 'Choose classrooms and a subject first.')
+          else
+            ..._classes.map((schoolClass) {
+              final curriculum = _curriculumByClass[schoolClass.id];
+              final chapters = _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(schoolClass.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (curriculum == null)
+                      Text(_fr ? 'Aucun programme correspondant trouvé pour cette classe.' : 'No matching curriculum found for this classroom.')
+                    else if (chapters.isEmpty)
+                      Text(_fr ? 'Aucun chapitre actif dans ce programme.' : 'No active chapters in this curriculum.')
+                    else
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('chapter-${schoolClass.id}-${curriculum.id}-${chapters.length}'),
+                        initialValue: _selectedChapterByClass[schoolClass.id],
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
+                          labelText: _fr ? 'Choisir un chapitre' : 'Choose a chapter',
+                        ),
+                        items: chapters.map((chapter) => DropdownMenuItem<String>(
+                          value: chapter.id,
+                          child: Text(chapter.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
+                        )).toList(growable: false),
+                        onChanged: (chapterId) {
+                          setState(() {
+                            if (chapterId == null) {
+                              _selectedChapterByClass.remove(schoolClass.id);
+                            } else {
+                              _selectedChapterByClass[schoolClass.id] = chapterId;
+                            }
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              );
+            }),
           const SizedBox(height: 20),
           TextField(
             controller: _title,
