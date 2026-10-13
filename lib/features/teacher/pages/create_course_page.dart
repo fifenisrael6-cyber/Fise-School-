@@ -417,19 +417,24 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           }
         }
 
-        if (curriculum != null && chapters.isNotEmpty && selectedChapterId == null) {
+        if (curriculum == null) {
+          throw StateError(_fr
+              ? 'Aucun programme officiel n’est associé à ${schoolClass.displayName} pour cette matière. Demandez à l’administrateur de compléter les chapitres avant de publier.'
+              : 'No official curriculum is linked to ${schoolClass.displayName} for this subject. Ask the administrator to complete the chapter catalogue before publishing.');
+        }
+        if (chapters.isEmpty) {
+          throw StateError(_fr
+              ? 'Aucun chapitre disponible pour ${schoolClass.displayName}. Demandez à l’administrateur de compléter le catalogue.'
+              : 'No chapter is available for ${schoolClass.displayName}. Ask the administrator to complete the catalogue.');
+        }
+        if (selectedChapterId == null) {
           throw StateError(_fr
               ? 'Choisissez un chapitre pour ${schoolClass.displayName}.'
               : 'Choose a chapter for ${schoolClass.displayName}.');
         }
-        if (curriculum != null && chapters.isEmpty) {
-          throw StateError(_fr
-              ? 'Aucun chapitre disponible pour ${schoolClass.displayName}.'
-              : 'No chapter is available for ${schoolClass.displayName}.');
-        }
 
         final course = await _service.saveCourse(
-          curriculumId: curriculum?.id,
+          curriculumId: curriculum.id,
           chapterId: selectedChapterId,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
