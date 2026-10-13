@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -58,6 +60,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       setState(() { _submission = submission; _loadingSubmission = false; });
       if (submission == null) {
         return;
+      }
+      if (submission.status == 'submitted') {
+        // Retry a previous transient AI error when the student reopens a saved submission.
+        unawaited(_service.requestAiCorrection(submission.id));
       }
       final answers = await _service.listAnswers(submission.id);
       await _applyAnswers(answers);
