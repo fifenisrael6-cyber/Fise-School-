@@ -129,6 +129,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                   (row['display_name'] ?? '').toString(),
                 )),
           );
+        _aiQuizzesFuture = _loadAiQuizzes();
       });
     } catch (_) {
       // Keep the QCM list available even if classroom labels cannot load.
