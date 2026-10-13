@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
-import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
