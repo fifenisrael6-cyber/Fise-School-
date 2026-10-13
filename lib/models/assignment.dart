@@ -11,6 +11,7 @@ class Assignment {
   final String titleEn;
   final String? instructionsFr;
   final String? instructionsEn;
+  final DateTime? startsAt;
   final DateTime? dueAt;
   final String status;
   final double maxScore;
@@ -29,6 +30,7 @@ class Assignment {
     required this.titleEn,
     this.instructionsFr,
     this.instructionsEn,
+    this.startsAt,
     this.dueAt,
     required this.status,
     required this.maxScore,
@@ -49,6 +51,7 @@ class Assignment {
       titleEn: map['title_en'] as String? ?? '',
       instructionsFr: map['instructions_fr'] as String?,
       instructionsEn: map['instructions_en'] as String?,
+      startsAt: _parseDate(map['starts_at']),
       dueAt: _parseDate(map['due_at']),
       status: map['status'] as String? ?? 'draft',
       maxScore: _parseDouble(map['max_score'], fallback: 20),
@@ -70,6 +73,7 @@ class Assignment {
       'title_en': titleEn,
       'instructions_fr': instructionsFr,
       'instructions_en': instructionsEn,
+      'starts_at': startsAt?.toIso8601String(),
       'due_at': dueAt?.toIso8601String(),
       'status': status,
       'max_score': maxScore,
@@ -98,6 +102,7 @@ class Assignment {
     String? titleEn,
     String? instructionsFr,
     String? instructionsEn,
+    DateTime? startsAt,
     DateTime? dueAt,
     String? status,
     double? maxScore,
@@ -116,6 +121,7 @@ class Assignment {
       titleEn: titleEn ?? this.titleEn,
       instructionsFr: instructionsFr ?? this.instructionsFr,
       instructionsEn: instructionsEn ?? this.instructionsEn,
+      startsAt: startsAt ?? this.startsAt,
       dueAt: dueAt ?? this.dueAt,
       status: status ?? this.status,
       maxScore: maxScore ?? this.maxScore,
