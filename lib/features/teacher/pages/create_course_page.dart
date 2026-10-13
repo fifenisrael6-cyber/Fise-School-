@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/photo_service.dart';
+import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
@@ -47,6 +48,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   final CourseService _service = CourseService();
   final ResourceService _resources = ResourceService();
   final PhotoService _photos = PhotoService();
+  final SmartCourseService _smart = SmartCourseService();
   final ImagePicker _imagePicker = ImagePicker();
 
   final _title = TextEditingController();
@@ -373,10 +375,34 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               : 'Incomplete publication: ${persistedResources.length}/${_attachments.length} media record(s) persisted on the server.');
         }
 
-        // Publish only after every resource is durable. This makes the
-        // student visibility policy and publish notification trigger see a
-        // complete media post rather than an empty course.
+        // Index readable PDF/image text before publishing so the AI QCM can
+        // use the actual educational source instead of inventing questions.
+        for (final resource in persistedResources) {
+          if (resource.resourceType != 'pdf' && resource.resourceType != 'image') continue;
+          try {
+            if (resource.resourceType == 'pdf') {
+              await _smart.reindexPdf(resource.id);
+            } else {
+              await _smart.reindexResource(resource.id);
+            }
+          } catch (indexError) {
+            debugPrint('Optional AI source indexing failed for ${resource.id}: $indexError');
+          }
+        }
+
+        // Publish only after every resource is durable. Once published, ask
+        // the AI to prepare this chapter's QCM in the background.
         await _service.publishCourse(course.id);
+        if (selectedChapterId != null) {
+          try {
+            await Supabase.instance.client.functions.invoke(
+              'chapter-quiz',
+              body: {'chapter_id': selectedChapterId},
+            );
+          } catch (quizError) {
+            debugPrint('AI QCM generation failed after media publication: $quizError');
+          }
+        }
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
