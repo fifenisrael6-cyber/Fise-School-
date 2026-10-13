@@ -25,6 +25,7 @@ class AssignmentService {
       // Listing upcoming evaluations must still work if publication has no work to do.
     }
 
+    final hiddenIds = await _hiddenAssignmentIds(studentId);
     List<Assignment> assignments;
     try {
       // Let Supabase RLS determine which published assignments belong to this
@@ -46,6 +47,7 @@ class AssignmentService {
       final rows = await request.order('due_at', ascending: true);
       assignments = rows
           .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
+          .where((assignment) => !hiddenIds.contains(assignment.id))
           .toList(growable: false);
     } catch (_) {
       // Fall back only when the remote query failed, not when offline caching
@@ -53,6 +55,7 @@ class AssignmentService {
       final cached = await OfflineRepository().getAssignments(studentId);
       return cached
           .where((assignment) =>
+              !hiddenIds.contains(assignment.id) &&
               (courseId == null || assignment.courseId == courseId) &&
               (lessonId == null || assignment.lessonId == lessonId) &&
               (subjectId == null || assignment.subjectId == subjectId) &&
@@ -310,6 +313,7 @@ class AssignmentService {
     String? classId,
     String? status,
   }) async {
+    final hiddenIds = await _hiddenAssignmentIds(teacherId);
     var request = _client
         .from('assignments')
         .select()
@@ -331,6 +335,7 @@ class AssignmentService {
 
     return rows
         .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
+        .where((assignment) => !hiddenIds.contains(assignment.id))
         .toList(growable: false);
   }
 
@@ -423,16 +428,64 @@ class AssignmentService {
     await _client.from('assignment_questions').delete().eq('id', questionId);
   }
 
-  Future<void> deleteAssignment(String assignmentId) async {
+  Future<Set<String>> _hiddenAssignmentIds(String userId) async {
+    try {
+      final rows = await _client
+          .from('assignment_user_hides')
+          .select('assignment_id')
+          .eq('user_id', userId);
+      return rows
+          .map((row) => row['assignment_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      // Preserve the current QCM experience until the matching migration is applied.
+      return <String>{};
+    }
+  }
+
+  /// Hide an assignment only for the currently authenticated user.
+  Future<void> hideAssignmentForMe(String assignmentId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Vous devez être connecté pour masquer ce QCM.');
+    }
+    await _client.from('assignment_user_hides').upsert(
+      {
+        'assignment_id': assignmentId,
+        'user_id': userId,
+      },
+      onConflict: 'assignment_id,user_id',
+    );
+  }
+
+  /// Permanently remove a teacher-owned QCM for everyone, including its
+  /// dependent questions/submissions as governed by the database foreign keys.
+  Future<void> deleteAssignmentForEveryone(
+    String assignmentId, {
+    required String teacherId,
+  }) async {
     final deleted = await _client
         .from('assignments')
         .delete()
         .eq('id', assignmentId)
+        .eq('teacher_id', teacherId)
         .select('id')
         .maybeSingle();
     if (deleted == null) {
-      throw StateError('Suppression refusée : le QCM est introuvable ou vous ne pouvez pas le supprimer.');
+      throw StateError(
+        'Suppression refusée : le QCM est introuvable ou vous ne pouvez pas le supprimer.',
+      );
     }
+  }
+
+  /// Backwards-compatible alias: permanent deletion remains owner-scoped.
+  Future<void> deleteAssignment(String assignmentId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw StateError('Vous devez être connecté pour supprimer ce QCM.');
+    }
+    await deleteAssignmentForEveryone(assignmentId, teacherId: userId);
   }
 
   Future<void> publishAssignment(String assignmentId) async {
