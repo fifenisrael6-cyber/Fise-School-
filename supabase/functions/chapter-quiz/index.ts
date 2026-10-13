@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
     if (itemsError) throw itemsError;
     const { data: publishedCourses, error: publishedCoursesError } = await dataClient
       .from("courses")
-      .select("title_fr,title_en,content_fr,content_en,updated_at")
+      .select("id,title_fr,title_en,content_fr,content_en,updated_at")
       .eq("chapter_id", chapterId)
       .eq("status", "published")
       .order("updated_at", { ascending: false })
