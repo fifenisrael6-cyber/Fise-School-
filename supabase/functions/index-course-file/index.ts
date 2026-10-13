@@ -66,24 +66,34 @@ async function transcribeWithGemini(bytes: Uint8Array, mime: string, language: s
       ? "Lis l'image pédagogique et transcris fidèlement tout le texte lisible, en conservant titres, formules, listes, exemples et orthographe de la langue étudiée. Ne résume pas et n'invente rien. Si une petite zone est illisible, omets uniquement cette zone."
       : "Transcris fidèlement le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.");
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
-    method: "POST",
-    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [
-        { text: prompt },
-        { inline_data: { mime_type: mime, data: base64 } },
-      ] }],
-      generationConfig: { temperature: 0.0 },
-    }),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data?.error?.message ?? "Gemini transcription failed.");
-  const text = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("\n").trim();
-  if (!text) throw new Error("Gemini returned an empty transcription.");
-  return text;
+  // Keep a fallback list: the configured model may have been retired for new API users.
+  const configuredModel = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
+  const models = [...new Set([configuredModel, "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"])];
+  let lastError = "Gemini transcription failed.";
+  for (const model of models) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mime, data: base64 } },
+        ] }],
+        generationConfig: { temperature: 0.0 },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      const text = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("\n").trim();
+      if (text) return text;
+      lastError = "Gemini returned an empty transcription.";
+      continue;
+    }
+    lastError = data?.error?.message ?? `Gemini transcription failed on ${model}.`;
+    if (![404, 429, 500, 502, 503, 504].includes(response.status)) break;
+  }
+  throw new Error(lastError);
 }
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   let requestedResourceId = "";
