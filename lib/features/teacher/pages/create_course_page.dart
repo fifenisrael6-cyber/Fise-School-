@@ -303,8 +303,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           contentFr: null,
           contentEn: null,
           smartLessonEnabled: false,
-          // Teacher-shared media are published immediately; the administrator can hide or delete them later.
-          status: 'published',
+          // Keep the course invisible until all media and metadata are saved.
+          // Publishing first triggers student notifications before the feed's
+          // RLS predicate can see a course_resources row.
+          status: 'draft',
         );
 
         for (var i = 0; i < _attachments.length; i++) {
@@ -332,9 +334,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               : 'Incomplete publication: ${persistedResources.length}/${_attachments.length} media record(s) persisted on the server.');
         }
 
-        // Students' feed policy only exposes published media courses that
-        // have at least one persisted resource, so count this class as saved
-        // only after the metadata is confirmed in Postgres.
+        // Publish only after every resource is durable. This makes the
+        // student visibility policy and publish notification trigger see a
+        // complete media post rather than an empty course.
+        await _service.publishCourse(course.id);
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
