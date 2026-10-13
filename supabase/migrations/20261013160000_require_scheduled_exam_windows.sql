@@ -4,10 +4,12 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $
 declare
   v_course public.courses%rowtype;
 begin
+  -- Trusted database migrations/service-role writes have no end-user JWT.
+  if auth.uid() is null then return new; end if;
   if new.course_id is null then
     if not public.is_catalog_admin() then
       raise exception 'Only an administrator can schedule an official exam without a course';
