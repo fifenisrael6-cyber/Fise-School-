@@ -88,23 +88,21 @@ class PrivateMessageService {
   }
 
   Future<void> markConversationDelivered(String senderId) async {
-    final userId = _client.auth.currentUser!.id;
-    await _client
-        .from('private_messages')
-        .update({'delivered_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', senderId)
-        .eq('recipient_id', userId)
-        .isFilter('delivered_at', null);
+    // Use the SECURITY DEFINER RPC: private_messages intentionally has no
+    // direct UPDATE policy for clients, so table updates are rejected by RLS.
+    await _client.rpc(
+      'mark_private_messages_delivered',
+      params: {'p_sender_id': senderId},
+    );
   }
 
   Future<void> markConversationRead(String contactId) async {
-    final userId = _client.auth.currentUser!.id;
-    await _client
-        .from('private_messages')
-        .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('sender_id', contactId)
-        .eq('recipient_id', userId)
-        .isFilter('read_at', null);
+    // The RPC atomically marks both delivery and read receipts and applies
+    // the same authorization check as the private-message conversation.
+    await _client.rpc(
+      'mark_private_messages_read',
+      params: {'p_sender_id': contactId},
+    );
   }
 
   /// Atomically consumes a view-once attachment and asks the Edge Function
