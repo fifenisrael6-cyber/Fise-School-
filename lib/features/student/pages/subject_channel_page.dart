@@ -201,8 +201,8 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                         ),
                         subtitle: Text(
                           _fr
-                              ? '${chapters.length} titre(s). Chaque chapitre ouvre sa propre page ; les cours et médias seront ajoutés plus tard.'
-                              : '${chapters.length} title(s). Each chapter opens its own page; lessons and media will be added later.',
+                              ? '${chapters.length} titre(s). Ouvre un chapitre pour retrouver les cours et leurs fichiers classés par dossiers : photos, audios, vidéos et PDF.'
+                              : '${chapters.length} title(s). Open a chapter to browse lessons and files grouped into folders: photos, audio, videos and PDFs.',
                         ),
                       ),
                     ),
@@ -624,14 +624,69 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             future: _loadResources(course.id),
             builder: (context, snapshot) {
               final resources = snapshot.data ?? const <CourseResource>[];
-              if (resources.isEmpty) {
-                return const SizedBox.shrink();
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: LinearProgressIndicator(minHeight: 2),
+                );
               }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: resources.map((resource) => OfflineResourceTile(
-                  locale: widget.locale, profile: widget.profile, resource: resource,
-                )).toList(),
+              if (resources.isEmpty) return const SizedBox.shrink();
+
+              // File-manager style folders: students can find course photos,
+              // audio, videos and PDFs without scrolling through a mixed list.
+              const categories = <String, List<String>>{
+                'image': ['image'],
+                'audio': ['audio'],
+                'video': ['video'],
+                'pdf': ['pdf'],
+                'documents': ['document', 'other'],
+              };
+              final labels = <String, String>{
+                'image': _fr ? 'Photos et images' : 'Photos and images',
+                'audio': _fr ? 'Audios' : 'Audio',
+                'video': _fr ? 'Vidéos' : 'Videos',
+                'pdf': 'PDF',
+                'documents': _fr ? 'Autres fichiers' : 'Other files',
+              };
+              final icons = <String, IconData>{
+                'image': Icons.photo_library_outlined,
+                'audio': Icons.audiotrack_rounded,
+                'video': Icons.video_library_outlined,
+                'pdf': Icons.picture_as_pdf_outlined,
+                'documents': Icons.folder_open_rounded,
+              };
+              final available = categories.entries.where((entry) =>
+                  resources.any((resource) => entry.value.contains(resource.resourceType)));
+              if (available.isEmpty) return const SizedBox.shrink();
+
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_fr ? 'Dossiers du cours' : 'Course folders',
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    ...available.map((entry) {
+                      final files = resources.where((resource) =>
+                          entry.value.contains(resource.resourceType)).toList();
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ExpansionTile(
+                          leading: Icon(icons[entry.key], color: const Color(0xFF166534)),
+                          title: Text(labels[entry.key]!,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('${files.length} ${_fr ? 'fichier(s)' : 'file(s)'}'),
+                          children: files.map((resource) => OfflineResourceTile(
+                            locale: widget.locale,
+                            profile: widget.profile,
+                            resource: resource,
+                          )).toList(),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
               );
             },
           ),
