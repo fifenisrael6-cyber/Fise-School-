@@ -4,6 +4,7 @@ class MessageContact {
   final String lastName;
   final String role;
   final String? className;
+  final int unreadCount;
 
   const MessageContact({
     required this.id,
@@ -11,6 +12,7 @@ class MessageContact {
     required this.lastName,
     required this.role,
     this.className,
+    this.unreadCount = 0,
   });
 
   factory MessageContact.fromMap(Map<String, dynamic> map) {
@@ -20,6 +22,7 @@ class MessageContact {
       lastName: map['last_name'] as String? ?? '',
       role: map['role'] as String? ?? '',
       className: map['class_name'] as String?,
+      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
     );
   }
 
