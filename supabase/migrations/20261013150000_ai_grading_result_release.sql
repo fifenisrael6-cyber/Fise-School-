@@ -77,6 +77,16 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  if current_user in ('postgres', 'service_role') then return new; end if;
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null and auth.uid() = new.student_id
+       and (new.score is not null or new.corrected_at is not null
+         or new.teacher_feedback_fr is not null or new.teacher_feedback_en is not null
+         or new.status not in ('draft', 'submitted')) then
+      raise exception 'Students cannot create pre-graded submissions';
+    end if;
+    return new;
+  end if;
   if auth.uid() is not null and auth.uid() = old.student_id then
     if new.score is distinct from old.score
        or new.corrected_at is distinct from old.corrected_at
@@ -106,6 +116,7 @@ as $$
 declare
   v_student_id uuid;
 begin
+  if current_user in ('postgres', 'service_role') then return new; end if;
   if auth.uid() is null then return new; end if;
   select s.student_id into v_student_id
   from public.assignment_submissions s where s.id = new.submission_id;
@@ -242,5 +253,5 @@ begin
 end;
 $$;
 
-grant execute on function public.publish_due_assignment_results() to authenticated;
+revoke all on function public.publish_due_assignment_results() from public, anon;\ngrant execute on function public.publish_due_assignment_results() to authenticated;
 grant execute on function public.publish_due_assignment_results() to service_role;
