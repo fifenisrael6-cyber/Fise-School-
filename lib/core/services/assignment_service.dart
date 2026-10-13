@@ -226,13 +226,18 @@ class AssignmentService {
         .single();
     final assignment = await _client
         .from('assignments')
-        .select('status,due_at')
+        .select('status,starts_at,due_at')
         .eq('id', row['assignment_id'] as String)
         .single();
     final status = assignment['status'] as String? ?? 'draft';
+    final now = DateTime.now().toUtc();
+    final startValue = assignment['starts_at'];
+    final startsAt = startValue is String ? DateTime.tryParse(startValue) : null;
     final dueValue = assignment['due_at'];
     final dueAt = dueValue is String ? DateTime.tryParse(dueValue) : null;
-    if (status != 'published' || (dueAt != null && !DateTime.now().toUtc().isBefore(dueAt.toUtc()))) {
+    if (status != 'published' ||
+        (startsAt != null && now.isBefore(startsAt.toUtc())) ||
+        (dueAt != null && !now.isBefore(dueAt.toUtc()))) {
       throw StateError('Cette évaluation est terminée ou n’accepte plus de réponses.');
     }
   }
@@ -315,6 +320,7 @@ class AssignmentService {
     required String titleEn,
     String? instructionsFr,
     String? instructionsEn,
+    DateTime? startsAt,
     DateTime? dueAt,
     required String status,
     double maxScore = 20,
@@ -329,6 +335,7 @@ class AssignmentService {
       'title_en': titleEn.trim(),
       'instructions_fr': instructionsFr?.trim(),
       'instructions_en': instructionsEn?.trim(),
+      'starts_at': startsAt?.toIso8601String(),
       'due_at': dueAt?.toIso8601String(),
       'status': status,
       'max_score': maxScore,
