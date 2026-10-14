@@ -6,7 +6,6 @@ import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 import 'create_assignment_page.dart';
 import 'qcm_builder_page.dart';
-import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
