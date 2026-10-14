@@ -473,7 +473,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     }
 
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() {
+      _saving = false;
+      _saveStatus = '';
+    });
 
     if (errors.isNotEmpty) {
       if (saved == 0) {
@@ -500,8 +503,6 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           : 'Media published to $saved selected classroom(s).')));
       return;
     }
-
-    Navigator.pop(context, true);
   }
 
   IconData _iconFor(String type) {
