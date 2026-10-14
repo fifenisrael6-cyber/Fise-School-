@@ -300,42 +300,14 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
     setState(() => _saving = true);
 
-    List<SchoolClass> targets;
+    // Send only to the classrooms explicitly selected by the teacher.
+    // Expanding a selected level into every compatible room duplicated every
+    // large media file and made publishing appear to run forever.
+    final List<SchoolClass> targets = List<SchoolClass>.unmodifiable(_classes);
     try {
-      // Expand the chosen level to the compatible rooms in the same academic
-      // year. A room receives the media only when the selected subject exists
-      // in its own class_subjects catalogue.
-      final compatible = await _service.listTeacherCompatibleClasses();
-      final byId = <String, SchoolClass>{for (final room in _classes) room.id: room};
-      for (final chosen in _classes) {
-        if (chosen.examLevelId == null) continue;
-        for (final candidate in compatible) {
-          if (candidate.academicYearId == chosen.academicYearId &&
-              candidate.subsystem == chosen.subsystem &&
-              candidate.sector == chosen.sector &&
-              candidate.examLevelId == chosen.examLevelId) {
-            byId[candidate.id] = candidate;
-          }
-        }
-      }
-
-      final candidates = byId.values.toList(growable: false);
-      targets = <SchoolClass>[];
-      for (final candidate in candidates) {
-        final subjects = await _service.listSubjectsForClass(candidate.id);
-        if (subjects.any((subject) => subject.id == _subject!.id)) {
-          targets.add(candidate);
-        }
-      }
-      if (targets.isEmpty) {
-        throw StateError(_fr
-            ? 'Aucune salle ne possède cette matière dans son programme.'
-            : 'No classroom has this subject in its curriculum.');
-      }
-
       await _service.authorizeTeacherClasses(
         targets.map((room) => room.id).toList(growable: false),
-      );
+      ).timeout(const Duration(seconds: 45));
     } catch (error) {
       if (mounted) {
         setState(() => _saving = false);
@@ -444,10 +416,17 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             position: i,
             titleFr: attachment.name,
             titleEn: attachment.name,
+          ).timeout(
+            const Duration(seconds: 90),
+            onTimeout: () => throw TimeoutException(
+              _fr
+                  ? 'Délai dépassé pendant l’envoi de « ${attachment.name} ». Vérifiez la connexion et la taille du fichier.'
+                  : 'Timed out uploading “${attachment.name}”. Check the connection and file size.',
+            ),
           );
         }
 
-        final persistedResources = await _resources.listForCourse(course.id);
+        final persistedResources = await _resources.listForCourse(course.id).timeout(const Duration(seconds: 30));
         if (persistedResources.length < _attachments.length) {
           throw StateError(_fr
               ? 'Publication incomplète : ${persistedResources.length}/${_attachments.length} média(s) enregistrés côté serveur.'
@@ -467,7 +446,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           }
         }
 
-        await _service.publishCourse(course.id);
+        await _service.publishCourse(course.id).timeout(const Duration(seconds: 30));
         saved++;
       } catch (error) {
         errors.add('${schoolClass.displayName}: $error');
