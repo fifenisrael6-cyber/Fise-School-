@@ -10,6 +10,8 @@ import '../widgets/offline_resource_tile.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
+import 'chapter_folder_page.dart';
+import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
   final DateTime date;
@@ -338,11 +340,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   @override
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
-    final focused = _chapterFocused;
-
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
         backgroundColor: const Color(0xFF166534),
@@ -352,21 +350,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           style: const TextStyle(fontWeight: FontWeight.w800),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-        ),
-        bottom: TabBar(
-          isScrollable: true,
-          tabs: [
-            Tab(
-              text: focused
-                  ? (_fr ? 'Cours et médias' : 'Courses & media')
-                  : (_fr ? 'Chapitres' : 'Chapters'),
-              icon: Icon(focused ? Icons.menu_book_rounded : Icons.bookmarks_rounded),
-            ),
-            Tab(
-              text: _fr ? 'Évaluations IA' : 'AI evaluations',
-              icon: const Icon(Icons.auto_awesome_rounded),
-            ),
-          ],
         ),
         actions: [
           IconButton(
@@ -399,33 +382,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               ),
             );
           }
+          if (!_chapterFocused) return _chapterCatalog();
           final items = snapshot.data ?? const <_FeedItem>[];
-          final scopedContent = items.where(_itemMatchesFocusedChapter).toList();
-          final officialCourses = scopedContent
-              .where((item) => item.chapterContent != null ||
-                  (item.course != null && _isOfficialCourse(item.course!)))
-              .toList();
-          final teacherMedia = scopedContent
-              .where((item) => item.course != null && !_isOfficialCourse(item.course!))
-              .toList();
-          final tabChildren = <Widget>[];
-          if (!focused) {
-            tabChildren.add(_chapterCatalog());
-          } else {
-            tabChildren.add(
-              _feedList(
-                <_FeedItem>[...officialCourses, ...teacherMedia],
-                _fr
-                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
-                    : 'No course or media has been published for this chapter yet.',
-              ),
-            );
-          }
-          tabChildren.add(_aiEvaluations());
-
-          return TabBarView(children: tabChildren);
+          final scoped = items.where(_itemMatchesFocusedChapter).toList();
+          return _feedList(scoped, _fr
+              ? 'Aucun contenu publié pour ce chapitre pour le moment.'
+              : 'No content has been published for this chapter yet.');
         },
-      ),
       ),
     );
   }
@@ -457,116 +420,157 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             return const Center(child: CircularProgressIndicator());
           }
           final media = snapshot.data ?? const <_ChapterMediaEntry>[];
-          final folders = <String, List<String>>{
-            'courses': const [],
-            'image': ['image'],
-            'audio': ['audio'],
-            'video': ['video'],
-            'pdf': ['pdf'],
-            'documents': ['document', 'other'],
-          };
-          final labels = <String, String>{
-            'courses': _fr ? 'Cours et leçons' : 'Courses and lessons',
-            'image': _fr ? 'Photos et images' : 'Photos and images',
-            'audio': _fr ? 'Fichiers audio' : 'Audio files',
-            'video': _fr ? 'Vidéos' : 'Videos',
-            'pdf': 'PDF',
-            'documents': _fr ? 'Autres documents' : 'Other documents',
-          };
-          final icons = <String, IconData>{
-            'courses': Icons.menu_book_rounded,
-            'image': Icons.photo_library_outlined,
-            'audio': Icons.audiotrack_rounded,
-            'video': Icons.video_library_outlined,
-            'pdf': Icons.picture_as_pdf_outlined,
-            'documents': Icons.folder_open_rounded,
-          };
-          final folderCounts = <String, int>{
-            'courses': items.length,
-            for (final key in ['image', 'audio', 'video', 'pdf', 'documents'])
-              key: media.where((entry) => folders[key]!.contains(entry.resource.resourceType)).length,
-          };
+          final courses = items.where((item) =>
+              item.chapterContent != null ||
+              (item.course != null &&
+                  (((item.course!.contentFr ?? '').trim().isNotEmpty) ||
+                   ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
+                   ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
+                   ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
+          final videos = media.where((e) => e.resource.resourceType == 'video').toList();
+          final audios = media.where((e) => e.resource.resourceType == 'audio').toList();
+          final documents = media.where((e) =>
+              ['pdf', 'image', 'document', 'other'].contains(e.resource.resourceType)).toList();
+          final exercises = media.where((e) =>
+              ['exercise', 'worksheet', 'work'].contains(e.resource.resourceType)).toList();
 
-          if (items.isEmpty && media.isEmpty) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(24),
-              children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.22),
-                const Icon(Icons.folder_open_rounded, size: 56),
-                const SizedBox(height: 12),
-                Text(emptyMessage, textAlign: TextAlign.center),
-              ],
-            );
+          Widget resourceItem(_ChapterMediaEntry entry) => Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.course.labelFor(_fr ? 'fr' : 'en'),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text('${entry.resource.resourceType.toUpperCase()}',
+                      style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                  OfflineResourceTile(
+                    locale: widget.locale,
+                    profile: widget.profile,
+                    resource: entry.resource,
+                  ),
+                ],
+              ),
+            ),
+          );
+
+          List<Widget> courseItems() => courses.map((item) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: item.chapterContent != null
+                ? _chapterContentPost(item.chapterContent!)
+                : _coursePost(item.course!, showResources: false),
+          )).toList();
+
+          void openFolder(String title, List<Widget> folderItems, String empty) {
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => ChapterFolderPage(
+                title: title,
+                items: folderItems,
+                emptyMessage: empty,
+              ),
+            ));
           }
 
+          final quizTitle = _fr ? 'QCM IA' : 'AI quizzes';
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(12),
             children: [
               if (_offlineMode) _offlineBanner(),
-              Card(
-                elevation: 0,
-                child: ListTile(
-                  leading: const Icon(Icons.folder_copy_outlined, color: Color(0xFF166534), size: 32),
-                  title: Text(_fr ? 'Fichiers du chapitre' : 'Chapter files',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(_fr
-                      ? 'Ouvre un dossier pour retrouver séparément les cours, photos, audios, vidéos et PDF.'
-                      : 'Open a folder to browse courses, photos, audio, videos and PDFs separately.'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+                child: Text(
+                  _fr ? 'Contenu du chapitre' : 'Chapter content',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
-              const SizedBox(height: 4),
-              ...folders.keys.map((key) {
-                final count = folderCounts[key] ?? 0;
-                final children = <Widget>[];
-                if (key == 'courses') {
-                  if (items.isEmpty) {
-                    children.add(ListTile(
-                      title: Text(_fr ? 'Aucun cours publié' : 'No published courses'),
-                    ));
-                  } else {
-                    children.addAll(items.map((item) => item.chapterContent != null
-                        ? _chapterContentPost(item.chapterContent!)
-                        : _coursePost(item.course!, showResources: false)));
-                  }
-                } else {
-                  final files = media.where((entry) =>
-                      folders[key]!.contains(entry.resource.resourceType)).toList();
-                  if (files.isEmpty) {
-                    children.add(ListTile(
-                      leading: const Icon(Icons.info_outline_rounded),
-                      title: Text(_fr ? 'Aucun fichier dans ce dossier' : 'This folder is empty'),
-                    ));
-                  } else {
-                    children.addAll(files.map((entry) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(entry.course.labelFor(_fr ? 'fr' : 'en'),
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          OfflineResourceTile(
+              ChapterFolderCard(
+                title: _fr ? 'Cours' : 'Lessons',
+                count: courses.length,
+                icon: Icons.menu_book_rounded,
+                countLabel: _fr ? 'élément(s)' : 'item(s)',
+                onTap: () => openFolder(
+                  _fr ? 'Cours' : 'Lessons',
+                  courseItems(),
+                  _fr ? 'Aucun cours pour le moment.' : 'No lessons available yet.',
+                ),
+              ),
+              ChapterFolderCard(
+                title: _fr ? 'Vidéos' : 'Videos',
+                count: videos.length,
+                icon: Icons.video_library_outlined,
+                countLabel: _fr ? 'fichier(s)' : 'file(s)',
+                onTap: () => openFolder(
+                  _fr ? 'Vidéos' : 'Videos',
+                  videos.map(resourceItem).toList(),
+                  _fr ? 'Aucune vidéo pour le moment.' : 'No videos available yet.',
+                ),
+              ),
+              ChapterFolderCard(
+                title: _fr ? 'Audios' : 'Audio',
+                count: audios.length,
+                icon: Icons.audiotrack_rounded,
+                countLabel: _fr ? 'fichier(s)' : 'file(s)',
+                onTap: () => openFolder(
+                  _fr ? 'Audios' : 'Audio',
+                  audios.map(resourceItem).toList(),
+                  _fr ? 'Aucun audio pour le moment.' : 'No audio available yet.',
+                ),
+              ),
+              ChapterFolderCard(
+                title: _fr ? 'Documents' : 'Documents',
+                count: documents.length,
+                icon: Icons.folder_copy_outlined,
+                countLabel: _fr ? 'fichier(s)' : 'file(s)',
+                onTap: () => openFolder(
+                  _fr ? 'Documents' : 'Documents',
+                  documents.map(resourceItem).toList(),
+                  _fr ? 'Aucun document (PDF ou image) pour le moment.' : 'No PDF or image documents available yet.',
+                ),
+              ),
+              ChapterFolderCard(
+                title: _fr ? 'Exercices' : 'Exercises',
+                count: exercises.length,
+                icon: Icons.edit_note_rounded,
+                countLabel: _fr ? 'élément(s)' : 'item(s)',
+                onTap: () => openFolder(
+                  _fr ? 'Exercices' : 'Exercises',
+                  exercises.map(resourceItem).toList(),
+                  _fr ? 'Aucun exercice pour le moment.' : 'No exercises available yet.',
+                ),
+              ),
+              ChapterFolderCard(
+                title: quizTitle,
+                count: 1,
+                icon: Icons.auto_awesome_rounded,
+                countLabel: _fr ? 'accès' : 'entry',
+                onTap: () => openFolder(
+                  quizTitle,
+                  [
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF166534)),
+                        title: Text(_fr ? 'Évaluation générée par l’IA' : 'AI-generated assessment'),
+                        subtitle: Text(_fr
+                            ? 'Le QCM utilise le contenu pédagogique publié de ce chapitre.'
+                            : 'The quiz uses this chapter’s published learning content.'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => ChapterQuizPage(
                             locale: widget.locale,
-                            profile: widget.profile,
-                            resource: entry.resource,
+                            chapterId: widget.chapterId!,
+                            chapterTitle: widget.chapterTitle ??
+                                widget.subject.labelFor(widget.locale.languageCode),
                           ),
-                        ],
+                        )),
                       ),
-                    )));
-                  }
-                }
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  clipBehavior: Clip.antiAlias,
-                  child: ExpansionTile(
-                    leading: Icon(icons[key], color: const Color(0xFF166534), size: 28),
-                    title: Text(labels[key]!, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('$count ${_fr ? 'élément(s)' : 'item(s)'}'),
-                    children: children,
-                  ),
-                );
-              }),
+                    ),
+                  ],
+                  _fr ? 'Le QCM IA sera disponible lorsque le contenu du chapitre permettra sa génération.' : 'The AI quiz will be available when this chapter has enough content to generate it.',
+                ),
+              ),
             ],
           );
         },
