@@ -31,6 +31,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
       - name: Write google-services.json (optional)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -44,7 +50,6 @@ jobs:
 
       - name: Generate Drift code
         run: dart run build_runner build --delete-conflicting-outputs
-
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos
