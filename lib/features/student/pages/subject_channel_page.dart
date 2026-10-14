@@ -280,12 +280,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                    ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
                    ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
                    ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
-          final videos = media.where((e) => e.resource.resourceType == 'video').toList();
-          final audios = media.where((e) => e.resource.resourceType == 'audio').toList();
-          final documents = media.where((e) =>
-              ['pdf', 'image', 'document', 'other'].contains(e.resource.resourceType)).toList();
-          final exercises = media.where((e) =>
-              ['exercise', 'worksheet', 'work', 'assignment'].contains(e.resource.resourceType)).toList();
+          final videos = media.where((e) => e.resource.folderKey == 'videos').toList();
+          final audios = media.where((e) => e.resource.folderKey == 'audios').toList();
+          final documents = media.where((e) => e.resource.folderKey == 'documents').toList();
+          final exercises = media.where((e) => e.resource.folderKey == 'exercises').toList();
 
           Widget resourceItem(_ChapterMediaEntry entry) => Card(
             margin: const EdgeInsets.only(bottom: 8),
