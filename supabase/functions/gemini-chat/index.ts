@@ -178,12 +178,11 @@ serve(async (req) => {
         : "Write a question or attach a document before sending." }, 400);
     }
 
-    // Reject the app's incomplete exercise starter prompt when no exercise is attached.
-    const incompleteExercisePrompt = /(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape|solve this exercise|résous cet exercice)\s*:\s*$/i;
-    if (!attachment?.base64 && incompleteExercisePrompt.test(message)) {
+    const isIncompleteExercisePrompt = /^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$/i;
+    if (!attachment?.base64 && isIncompleteExercisePrompt.test(message)) {
       return json({ error: language === "fr"
-        ? "Ajoute l'énoncé de l'exercice dans ton message ou joins une photo/PDF, puis réessaie."
-        : "Add the exercise statement to your message or attach a photo/PDF, then try again." }, 400);
+        ? "Écris l'énoncé de l'exercice ou joins une photo/PDF avant d'envoyer."
+        : "Write the exercise statement or attach a photo/PDF before sending." }, 400);
     }
 
     let attachmentPart: Record<string, unknown> | null = null;
@@ -249,24 +248,55 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    // Use a known supported model by default. If GEMINI_MODEL is stale or invalid,
-    // try the stable fallback instead of repeatedly calling nonexistent model names.
-    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-2.5-flash";
-    const models = [...new Set([configuredModel, "gemini-2.5-flash"])];
+    // Discover models enabled for this API key instead of relying on retired model names.
+    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\//, "");
+    let models: string[] = [];
+    try {
+      const listController = new AbortController();
+      const listTimeout = setTimeout(() => listController.abort(), 10000);
+      try {
+        const listResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+          { headers: { "x-goog-api-key": apiKey }, signal: listController.signal },
+        );
+        const listData = await listResponse.json().catch(() => ({}));
+        if (!listResponse.ok) {
+          const safeBody = JSON.stringify(listData ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 1500);
+          console.error("[gemini-chat] Gemini model discovery failed", JSON.stringify({ status: listResponse.status, body: safeBody }));
+        } else {
+          const available = (Array.isArray(listData?.models) ? listData.models : [])
+            .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
+              && item.supportedGenerationMethods.includes("generateContent"))
+            .map((item: any) => String(item.name ?? "").replace(/^models\//, ""))
+            .filter((name: string) => name.length > 0);
+          const preferred = [
+            ...(configuredModel ? [configuredModel] : []),
+            ...available.filter((name: string) => /flash/i.test(name) && !/tts|image|embedding|robotics/i.test(name)),
+            ...available.filter((name: string) => !/tts|image|embedding|robotics/i.test(name)),
+          ];
+          models = [...new Set(preferred)].slice(0, 3);
+        }
+      } finally {
+        clearTimeout(listTimeout);
+      }
+    } catch (error) {
+      console.error("[gemini-chat] Gemini model discovery exception", error instanceof Error ? error.message : String(error));
+    }
+    if (!models.length) {
+      models = [...new Set([...(configuredModel ? [configuredModel] : []), "gemini-2.5-flash", "gemini-2.0-flash"])];
+    }
+
     let data: any = null;
     let lastError = "Gemini request failed.";
     for (const model of models) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
+      const timeout = setTimeout(() => controller.abort(), 18000);
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
           {
             method: "POST",
-            headers: {
-              "x-goog-api-key": apiKey,
-              "Content-Type": "application/json",
-            },
+            headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: schoolContext }] },
               contents,
@@ -277,18 +307,15 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
         );
         data = await response.json().catch(() => ({}));
         if (response.ok) break;
-        const safeProviderBody = JSON.stringify(data ?? {})
-          .replaceAll(apiKey, "[REDACTED]")
-          .slice(0, 4000);
-        console.error("[gemini-chat] AI provider HTTP error", JSON.stringify({
-          model,
-          status: response.status,
-          body: safeProviderBody,
-        }));
+        const safeProviderBody = JSON.stringify(data ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 4000);
+        console.error("[gemini-chat] AI provider HTTP error", JSON.stringify({ model, status: response.status, body: safeProviderBody }));
         lastError = `Gemini HTTP ${response.status}: ${data?.error?.message ?? safeProviderBody}`;
         if (![404, 429, 500, 502, 503, 504].includes(response.status)) break;
       } catch (error) {
-        lastError = error instanceof DOMException && error.name === "AbortError" ? `Gemini request timed out on ${model}.` : (error instanceof Error ? error.message : "Gemini request failed.");
+        lastError = error instanceof DOMException && error.name === "AbortError"
+          ? `Gemini request timed out on ${model}.`
+          : (error instanceof Error ? error.message : "Gemini request failed.");
+        console.error("[gemini-chat] Gemini request exception", JSON.stringify({ model, message: lastError.slice(0, 1500) }));
       } finally {
         clearTimeout(timeout);
       }
