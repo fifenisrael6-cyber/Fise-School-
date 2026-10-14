@@ -262,7 +262,22 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         ),
       );
 
-      await _refresh();
+      // The upload and database insert have succeeded. A failed refresh must
+      // not be shown as an upload failure, or the teacher may resend a file
+      // that is already stored on the server.
+      try {
+        await _refresh();
+      } catch (refreshError) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isFrench
+                ? 'Le média est bien envoyé, mais la liste n’a pas pu s’actualiser. Actualisez la page pour le voir.'
+                : 'The media was uploaded, but the list could not refresh. Refresh the page to see it.'),
+          ),
+        );
+        debugPrint('[Teacher media] Upload succeeded; refresh failed: $refreshError');
+      }
     } catch (e) {
       if (!mounted) {
         return;
