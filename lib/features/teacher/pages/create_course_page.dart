@@ -491,6 +491,26 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     Navigator.pop(context, true);
   }
 
+  String _folderForType(String type) {
+    switch (type.toLowerCase()) {
+      case 'image':
+      case 'pdf':
+      case 'document':
+      case 'other':
+        return 'Documents';
+      case 'video':
+        return _fr ? 'Vidéos' : 'Videos';
+      case 'audio':
+        return _fr ? 'Audios' : 'Audio';
+      case 'exercise':
+      case 'worksheet':
+      case 'work':
+        return _fr ? 'Exercices' : 'Exercises';
+      default:
+        return _fr ? 'Cours' : 'Lessons';
+    }
+  }
+
   IconData _iconFor(String type) {
     switch (type) {
       case 'pdf':
@@ -593,8 +613,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Partagez des photos, vidéos, PDF et fichiers audio dans la salle choisie.'
-                : 'Share photos, videos, PDFs and audio files with the selected classroom.'),
+                ? 'Les médias seront rangés automatiquement dans le dossier du chapitre : photos et PDF → Documents, vidéos → Vidéos, fichiers audio → Audios. Choisissez aussi le chapitre de destination avant l’envoi.'
+                : 'Media is automatically sorted into the chapter folder: photos and PDFs → Documents, videos → Videos, audio files → Audio. Choose the destination chapter before sending.'),
           ),
           const SizedBox(height: 16),
           Text(
@@ -651,6 +671,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                       )
                     : Icon(_iconFor(_attachments[i].resourceType)),
                 title: Text(_attachments[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  _fr
+                      ? 'Dossier : ${_folderForType(_attachments[i].resourceType)}'
+                      : 'Folder: ${_folderForType(_attachments[i].resourceType)}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF166534)),
+                ),
                 trailing: IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: _saving ? null : () => setState(() => _attachments.removeAt(i)),

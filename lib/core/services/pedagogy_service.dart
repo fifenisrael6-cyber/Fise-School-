@@ -602,18 +602,9 @@ class CourseService {
   }
 
   Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    try {
-      final response = await _client.functions.invoke(
-        'chapter-quiz',
-        body: {'chapter_id': chapterId},
-      );
-      final data = response.data;
-      if (data is Map && data['error'] != null) {
-        debugPrint('Course published; AI chapter QCM not ready: ${data['error']}');
-      }
-    } catch (error) {
-      debugPrint('Course published; AI chapter QCM generation failed: $error');
-    }
+    // Automatic QCM generation is intentionally disabled. Teachers now create
+    // and publish their own questions from the teacher QCM workspace.
+    return;
   }
 
   Future<void> archiveCourse(String id) async {

@@ -107,18 +107,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   }
 
   Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    try {
-      final response = await _client.functions.invoke(
-        'chapter-quiz',
-        body: {'chapter_id': chapterId},
-      );
-      final data = response.data;
-      if (data is Map && data['error'] != null) {
-        debugPrint('AI QCM generation unavailable for $chapterId: ${data['error']}');
-      }
-    } catch (error) {
-      debugPrint('AI QCM generation failed after publication for $chapterId: $error');
-    }
+    // Automatic QCM generation is intentionally disabled. QCMs are authored
+    // and published manually by teachers.
+    return;
   }
 
   Future<void> _createCourse() async {

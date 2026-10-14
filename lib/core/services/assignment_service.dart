@@ -260,6 +260,7 @@ class AssignmentService {
     required String questionId,
     String? answerText,
     String? selectedOption,
+    bool? isCorrect,
   }) async {
     await _ensureAssignmentAcceptsAnswers(submissionId);
     final row = await _client
@@ -269,6 +270,7 @@ class AssignmentService {
           'question_id': questionId,
           'answer_text': answerText,
           'selected_option': selectedOption,
+          if (isCorrect != null) 'is_correct': isCorrect,
         }, onConflict: 'submission_id,question_id')
         .select()
         .single();
@@ -344,6 +346,7 @@ class AssignmentService {
     String? courseId,
     String? subjectId,
     String? lessonId,
+    String? chapterId,
     required String teacherId,
     required String classId,
     required String titleFr,
@@ -359,6 +362,7 @@ class AssignmentService {
       'course_id': courseId,
       'subject_id': subjectId,
       'lesson_id': lessonId,
+      'chapter_id': chapterId,
       'teacher_id': teacherId,
       'class_id': classId,
       'title_fr': titleFr.trim(),
