@@ -472,8 +472,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}');
     } else {
       _snack(_fr
-          ? 'Médias publiés automatiquement dans $saved salle(s) partageant cette matière.'
-          : 'Media automatically published to $saved classrooms sharing this subject.');
+          ? 'Médias publiés dans $saved salle(s) sélectionnée(s).'
+          : 'Media published to $saved selected classroom(s).');
     }
 
     Navigator.pop(context, true);
