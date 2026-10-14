@@ -97,7 +97,20 @@ class GeminiService {
       );
     }
 
-    final lessonContext = context;
+    final incompleteExercisePrompt = RegExp(
+      r'^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$',
+      caseSensitive: false,
+    );
+    if (attachmentBytes == null && incompleteExercisePrompt.hasMatch(cleanMessage)) {
+      throw AiServiceException(
+        isFrench
+            ? 'Écris l’énoncé de l’exercice ou joins une photo/PDF avant d’envoyer.'
+            : 'Write the exercise statement or attach a photo/PDF before sending.',
+        retryable: false,
+      );
+    }
+
+    final lessonContext = context
     final body = <String, dynamic>{
       'message': cleanMessage,
       'history': history.take(20).map((item) => item.toMap()).toList(),
@@ -184,6 +197,40 @@ class GeminiService {
   }
 
   AiServiceException _messageForError(String raw, int? status, bool isFrench) {
+    final code = raw.trim().toUpperCase();
+    if (code == 'AI_QUOTA_EXCEEDED' || status == 429) {
+      return AiServiceException(isFrench
+          ? 'Le service IA a atteint sa limite temporaire. Réessaie dans quelques minutes.'
+          : 'The AI service has reached its temporary limit. Try again in a few minutes.');
+    }
+    if (code == 'AI_MODEL_CONFIGURATION_ERROR') {
+      return AiServiceException(isFrench
+          ? 'Le modèle IA est momentanément indisponible. Réessaie dans un instant.'
+          : 'The AI model is temporarily unavailable. Please try again shortly.');
+    }
+    if (code == 'AI_PROVIDER_CONFIGURATION_ERROR') {
+      return AiServiceException(
+        isFrench
+            ? 'Le service IA est mal configuré. Le problème a été signalé au serveur.'
+            : 'The AI service is not configured correctly. The server has been notified.',
+        retryable: false,
+      );
+    }
+    if (code == 'AI_REQUEST_TIMEOUT' || status == 504) {
+      return AiServiceException(isFrench
+          ? 'Le service IA met trop de temps à répondre. Vérifie ta connexion puis réessaie.'
+          : 'The AI service is taking too long to respond. Check your connection and try again.');
+    }
+    if (code == 'AI_UPSTREAM_NETWORK_ERROR') {
+      return AiServiceException(isFrench
+          ? 'La connexion au fournisseur IA a échoué. Vérifie Internet puis réessaie.'
+          : 'The connection to the AI provider failed. Check your Internet and try again.');
+    }
+    if (code == 'AI_UPSTREAM_ERROR' || code == 'AI_TEMPORARILY_UNAVAILABLE') {
+      return AiServiceException(isFrench
+          ? 'Fise School AI rencontre un problème temporaire. Réessaie dans un instant.'
+          : 'Fise School AI is experiencing a temporary problem. Please try again shortly.');
+    }
     if (status == 401 || raw.contains('Invalid or expired session') || raw.contains('Authentication required')) {
       return AiServiceException(
         isFrench ? 'Ta session a expiré. Reconnecte-toi puis réessaie.' : 'Your session expired. Sign in again.',
