@@ -246,6 +246,7 @@ class CourseResource {
       titleFr,
       titleEn;
   final String? lessonId, mimeType;
+  final String folderKey;
   final int? fileSize, position, indexWordCount;
   final String indexStatus, indexError, indexPreview;
   final bool indexApproved;
@@ -260,6 +261,7 @@ class CourseResource {
     required this.titleEn,
     this.lessonId,
     this.mimeType,
+    this.folderKey = 'documents',
     this.fileSize,
     this.position,
     this.indexStatus = 'pending',
@@ -275,6 +277,7 @@ class CourseResource {
     courseId: map['course_id'] as String,
     lessonId: map['lesson_id'] as String?,
     resourceType: map['resource_type'] as String,
+    folderKey: (map['folder_key'] as String?) ?? _folderForResourceType(map['resource_type'] as String?),
     storagePath: map['storage_path'] as String,
     fileName: map['file_name'] as String,
     mimeType: map['mime_type'] as String?,
@@ -290,6 +293,15 @@ class CourseResource {
     indexedAt: _parseOptionalDate(map['indexed_at']),
     updatedAt: _parseOptionalDate(map['updated_at']),
   );
+  static String _folderForResourceType(String? type) {
+    switch ((type ?? '').toLowerCase()) {
+      case 'video': return 'videos';
+      case 'audio': return 'audios';
+      case 'exercise': case 'worksheet': case 'work': case 'assignment': return 'exercises';
+      case 'text': case 'lesson': return 'lessons';
+      default: return 'documents';
+    }
+  }
   static DateTime? _parseOptionalDate(Object? value) =>
       value is String ? DateTime.tryParse(value) : null;
 
