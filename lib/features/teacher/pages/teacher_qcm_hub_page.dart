@@ -22,7 +22,7 @@ class TeacherQcmHubPage extends StatefulWidget {
   State<TeacherQcmHubPage> createState() => _TeacherQcmHubPageState();
 }
 
-class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTickerProviderStateMixin {
+class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> {
   final AssignmentService _service = AssignmentService();
   late Future<List<Assignment>> _assignmentsFuture;
     final Map<String, String> _classNames = <String, String>{};
@@ -47,67 +47,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     );
   }
 
-  Future<List<Map<String, dynamic>>> _loadAiQuizzes() async {
-    final client = Supabase.instance.client;
-    final courseRows = await client
-        .from('courses')
-        .select('chapter_id,class_id')
-        .eq('teacher_id', widget.profile.id)
-        .eq('status', 'published');
-    final classIdsByChapter = <String, Set<String>>{};
-    final chapterIds = <String>{};
-    for (final raw in courseRows) {
-      final row = Map<String, dynamic>.from(raw);
-      final chapterId = row['chapter_id']?.toString() ?? '';
-      if (chapterId.isEmpty) continue;
-      chapterIds.add(chapterId);
-      final classId = row['class_id']?.toString() ?? '';
-      if (classId.isNotEmpty) {
-        classIdsByChapter.putIfAbsent(chapterId, () => <String>{}).add(classId);
-      }
-    }
-    if (chapterIds.isEmpty) return const <Map<String, dynamic>>[];
-
-    final ids = chapterIds.toList(growable: false);
-    final results = await Future.wait<dynamic>([
-      client
-          .from('chapter_quizzes')
-          .select('id,chapter_id,title_fr,title_en,description_fr,description_en,position')
-          .inFilter('chapter_id', ids)
-          .eq('is_published', true)
-          .isFilter('created_by', null)
-          .order('position'),
-      client
-          .from('course_chapters')
-          .select('id,title_fr,title_en')
-          .inFilter('id', ids),
-    ]);
-    final chapters = <String, Map<String, dynamic>>{
-      for (final raw in results[1] as List)
-        (raw['id'] ?? '').toString(): Map<String, dynamic>.from(raw),
-    };
-    final quizzes = <Map<String, dynamic>>[];
-    for (final raw in results[0] as List) {
-      final quiz = Map<String, dynamic>.from(raw);
-      final chapterId = quiz['chapter_id']?.toString() ?? '';
-      final chapter = chapters[chapterId] ?? const <String, dynamic>{};
-      final classLabels = (classIdsByChapter[chapterId] ?? <String>{})
-          .map((id) => _classNames[id])
-          .whereType<String>()
-          .where((name) => name.trim().isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      quizzes.add({
-        ...quiz,
-        'chapter_title_fr': chapter['title_fr']?.toString() ?? '',
-        'chapter_title_en': chapter['title_en']?.toString() ?? '',
-        'class_labels': classLabels,
-      });
-    }
-    return quizzes;
-  }
-
   Future<void> _loadClassNames() async {
     try {
       final rows = await Supabase.instance.client
@@ -128,17 +67,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     } catch (_) {
       // Keep the QCM list available even if classroom labels cannot load.
     }
-  }
-
-  Future<void> _retryAiGeneration() async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_fr
-            ? 'La génération automatique est désactivée. Créez et publiez vos questions dans « Nouveau QCM ».'
-            : 'Automatic generation is disabled. Create and publish your questions from “New quiz”.'),
-      ),
-    );
   }
 
   Future<void> _refresh() async {
