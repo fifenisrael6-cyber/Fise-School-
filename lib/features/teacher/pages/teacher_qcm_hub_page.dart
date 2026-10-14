@@ -138,85 +138,14 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   }
 
   Future<void> _retryAiGeneration() async {
-    if (_retryingAi) return;
-    setState(() => _retryingAi = true);
-    try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('courses')
-          .select('chapter_id')
-          .eq('teacher_id', widget.profile.id)
-          .eq('status', 'published');
-      final chapterIds = (rows as List)
-          .map((row) => row['chapter_id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      if (chapterIds.isEmpty) {
-        throw StateError(_fr
-            ? 'Aucun cours publié avec un chapitre n’a été trouvé.'
-            : 'No published course with a chapter was found.');
-      }
-      final published = await client
-          .from('chapter_quizzes')
-          .select('chapter_id')
-          .inFilter('chapter_id', chapterIds.toList())
-          .eq('is_published', true)
-          .isFilter('created_by', null);
-      final existingIds = (published as List)
-          .map((row) => row['chapter_id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      final missingIds = chapterIds.difference(existingIds);
-      if (missingIds.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(_fr
-                ? 'Chaque chapitre publié possède déjà un QCM IA.'
-                : 'Every published chapter already has an AI QCM.'),
-          ));
-        }
-        return;
-      }
-
-      var generated = 0;
-      final errors = <String>[];
-      for (final chapterId in missingIds) {
-        try {
-          final response = await client.functions.invoke(
-            'chapter-quiz',
-            body: {'chapter_id': chapterId},
-          );
-          final data = response.data;
-          if (data is Map && data['error'] != null) {
-            errors.add(data['error'].toString());
-          } else {
-            generated++;
-          }
-        } catch (error) {
-          errors.add(error.toString());
-        }
-      }
-      if (!mounted) return;
-      setState(_reload);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(errors.isEmpty
-            ? (_fr
-                ? 'Génération IA relancée pour $generated chapitre(s).'
-                : 'AI generation retried for $generated chapter(s).')
-            : (_fr
-                ? 'Génération terminée : $generated réussite(s), ${errors.length} erreur(s).'
-                : 'Generation finished: $generated succeeded, ${errors.length} error(s).')),
-        duration: const Duration(seconds: 5),
-      ));
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${_fr ? 'Relance impossible' : 'Retry failed'}: $error'),
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _retryingAi = false);
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_fr
+            ? 'La génération automatique est désactivée. Créez et publiez vos questions dans « Nouveau QCM ».'
+            : 'Automatic generation is disabled. Create and publish your questions from “New quiz”.'),
+      ),
+    );
   }
 
   Future<void> _refresh() async {
