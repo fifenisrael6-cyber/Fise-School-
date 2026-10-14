@@ -280,6 +280,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                    ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
                    ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
                    ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
+          final lessonResources = media.where((e) => e.resource.folderKey == 'lessons').toList();
           final videos = media.where((e) => e.resource.folderKey == 'videos').toList();
           final audios = media.where((e) => e.resource.folderKey == 'audios').toList();
           final documents = media.where((e) => e.resource.folderKey == 'documents').toList();
@@ -309,12 +310,15 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             ),
           );
 
-          List<Widget> courseItems() => courses.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: item.chapterContent != null
-                ? _chapterContentPost(item.chapterContent!)
-                : _coursePost(item.course!, showResources: false),
-          )).toList();
+          List<Widget> courseItems() => [
+            ...courses.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: item.chapterContent != null
+                  ? _chapterContentPost(item.chapterContent!)
+                  : _coursePost(item.course!, showResources: false),
+            )),
+            ...lessonResources.map(resourceItem),
+          ];
 
           void openFolder(String title, List<Widget> folderItems, String empty) {
             Navigator.push(context, MaterialPageRoute(
@@ -341,7 +345,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               ),
               ChapterFolderCard(
                 title: _fr ? 'Cours' : 'Lessons',
-                count: courses.length,
+                count: courses.length + lessonResources.length,
                 icon: Icons.menu_book_rounded,
                 countLabel: _fr ? 'élément(s)' : 'item(s)',
                 onTap: () => openFolder(
