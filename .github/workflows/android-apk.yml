@@ -4,6 +4,7 @@
 # Trigger Android build for the latest Fise School changes.
 # Retry requested by the project owner.
 # Rebuild after pinning Android Gradle Plugin 8.13.2 and Gradle 8.13 compatibility.
+# Re-run Android validation for the chapter-folder and manual-QCM pull request (2026-10-14).
 name: Build Android apk
 
 on:
