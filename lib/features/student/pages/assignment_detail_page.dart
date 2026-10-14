@@ -703,6 +703,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     String selectedOption,
   ) async {
     try {
+      await _saveAnswer(question);
       final feedback = await _service.checkQcmAnswer(
         questionId: question.id,
         selectedOption: selectedOption,
@@ -770,7 +771,6 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                 _qcmFeedback.remove(question.id);
                 _checkingQcm.add(question.id);
               });
-              _saveAnswer(question);
               _checkAssignmentQcmAnswer(question, value);
             },
             child: Column(
