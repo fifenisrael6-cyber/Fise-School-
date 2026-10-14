@@ -217,8 +217,9 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         }
 
         if (status == 'published') {
-          await _service.publishAssignment(assignment.id);
-          final savedAssignment = await _service.getAssignment(assignment.id);
+          // The UPDATE response is authoritative; avoid a second read that
+          // could fall back to a stale offline draft and report a false failure.
+          final savedAssignment = await _service.publishAssignment(assignment.id);
           if (savedAssignment.status != 'published') {
             throw StateError(
               _fr
