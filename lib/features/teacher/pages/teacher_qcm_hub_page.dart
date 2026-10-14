@@ -4,6 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
+import 'create_assignment_page.dart';
+import 'qcm_builder_page.dart';
+import 'teacher_qcm_edit_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
@@ -25,10 +28,8 @@ class TeacherQcmHubPage extends StatefulWidget {
 class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTickerProviderStateMixin {
   final AssignmentService _service = AssignmentService();
   late Future<List<Assignment>> _assignmentsFuture;
-  late Future<List<Map<String, dynamic>>> _aiQuizzesFuture;
   late final TabController _tabController;
   final Map<String, String> _classNames = <String, String>{};
-  bool _retryingAi = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -50,68 +51,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     _assignmentsFuture = _service.listTeacherAssignments(
       teacherId: widget.profile.id,
     );
-    _aiQuizzesFuture = _loadAiQuizzes();
-  }
-
-  Future<List<Map<String, dynamic>>> _loadAiQuizzes() async {
-    final client = Supabase.instance.client;
-    final courseRows = await client
-        .from('courses')
-        .select('chapter_id,class_id')
-        .eq('teacher_id', widget.profile.id)
-        .eq('status', 'published');
-    final classIdsByChapter = <String, Set<String>>{};
-    final chapterIds = <String>{};
-    for (final raw in courseRows) {
-      final row = Map<String, dynamic>.from(raw);
-      final chapterId = row['chapter_id']?.toString() ?? '';
-      if (chapterId.isEmpty) continue;
-      chapterIds.add(chapterId);
-      final classId = row['class_id']?.toString() ?? '';
-      if (classId.isNotEmpty) {
-        classIdsByChapter.putIfAbsent(chapterId, () => <String>{}).add(classId);
-      }
-    }
-    if (chapterIds.isEmpty) return const <Map<String, dynamic>>[];
-
-    final ids = chapterIds.toList(growable: false);
-    final results = await Future.wait<dynamic>([
-      client
-          .from('chapter_quizzes')
-          .select('id,chapter_id,title_fr,title_en,description_fr,description_en,position')
-          .inFilter('chapter_id', ids)
-          .eq('is_published', true)
-          .isFilter('created_by', null)
-          .order('position'),
-      client
-          .from('course_chapters')
-          .select('id,title_fr,title_en')
-          .inFilter('id', ids),
-    ]);
-    final chapters = <String, Map<String, dynamic>>{
-      for (final raw in results[1] as List)
-        (raw['id'] ?? '').toString(): Map<String, dynamic>.from(raw),
-    };
-    final quizzes = <Map<String, dynamic>>[];
-    for (final raw in results[0] as List) {
-      final quiz = Map<String, dynamic>.from(raw);
-      final chapterId = quiz['chapter_id']?.toString() ?? '';
-      final chapter = chapters[chapterId] ?? const <String, dynamic>{};
-      final classLabels = (classIdsByChapter[chapterId] ?? <String>{})
-          .map((id) => _classNames[id])
-          .whereType<String>()
-          .where((name) => name.trim().isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      quizzes.add({
-        ...quiz,
-        'chapter_title_fr': chapter['title_fr']?.toString() ?? '',
-        'chapter_title_en': chapter['title_en']?.toString() ?? '',
-        'class_labels': classLabels,
-      });
-    }
-    return quizzes;
   }
 
   Future<void> _loadClassNames() async {
@@ -130,98 +69,36 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                   (row['display_name'] ?? '').toString(),
                 )),
           );
-        _aiQuizzesFuture = _loadAiQuizzes();
       });
     } catch (_) {
       // Keep the QCM list available even if classroom labels cannot load.
     }
   }
 
-  Future<void> _retryAiGeneration() async {
-    if (_retryingAi) return;
-    setState(() => _retryingAi = true);
-    try {
-      final client = Supabase.instance.client;
-      final rows = await client
-          .from('courses')
-          .select('chapter_id')
-          .eq('teacher_id', widget.profile.id)
-          .eq('status', 'published');
-      final chapterIds = (rows as List)
-          .map((row) => row['chapter_id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      if (chapterIds.isEmpty) {
-        throw StateError(_fr
-            ? 'Aucun cours publié avec un chapitre n’a été trouvé.'
-            : 'No published course with a chapter was found.');
-      }
-      final published = await client
-          .from('chapter_quizzes')
-          .select('chapter_id')
-          .inFilter('chapter_id', chapterIds.toList())
-          .eq('is_published', true)
-          .isFilter('created_by', null);
-      final existingIds = (published as List)
-          .map((row) => row['chapter_id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      final missingIds = chapterIds.difference(existingIds);
-      if (missingIds.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(_fr
-                ? 'Chaque chapitre publié possède déjà un QCM IA.'
-                : 'Every published chapter already has an AI QCM.'),
-          ));
-        }
-        return;
-      }
-
-      var generated = 0;
-      final errors = <String>[];
-      for (final chapterId in missingIds) {
-        try {
-          final response = await client.functions.invoke(
-            'chapter-quiz',
-            body: {'chapter_id': chapterId},
-          );
-          final data = response.data;
-          if (data is Map && data['error'] != null) {
-            errors.add(data['error'].toString());
-          } else {
-            generated++;
-          }
-        } catch (error) {
-          errors.add(error.toString());
-        }
-      }
-      if (!mounted) return;
-      setState(_reload);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(errors.isEmpty
-            ? (_fr
-                ? 'Génération IA relancée pour $generated chapitre(s).'
-                : 'AI generation retried for $generated chapter(s).')
-            : (_fr
-                ? 'Génération terminée : $generated réussite(s), ${errors.length} erreur(s).'
-                : 'Generation finished: $generated succeeded, ${errors.length} error(s).')),
-        duration: const Duration(seconds: 5),
-      ));
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${_fr ? 'Relance impossible' : 'Retry failed'}: $error'),
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _retryingAi = false);
-    }
-  }
-
   Future<void> _refresh() async {
     setState(_reload);
-    await Future.wait<dynamic>([_assignmentsFuture, _aiQuizzesFuture]);
+    await _assignmentsFuture;
+  }
+
+  Future<void> _openCreator({required bool linkedToCourse}) async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => linkedToCourse
+            ? CreateAssignmentPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              )
+            : QcmBuilderPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              ),
+      ),
+    );
+    if (!mounted) return;
+    if (created == true) {
+      setState(_reload);
+      _tabController.animateTo(1);
+    }
   }
 
   String _statusLabel(String status) {
@@ -246,61 +123,47 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     }
   }
 
-  Future<void> _deleteAssignment(
-    Assignment assignment, {
-    required bool forEveryone,
-  }) async {
+  Future<void> _editAssignment(Assignment assignment) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TeacherQcmEditPage(
+          locale: widget.locale,
+          assignment: assignment,
+        ),
+      ),
+    );
+    if (changed == true && mounted) setState(_reload);
+  }
+
+  Future<void> _deleteAssignment(Assignment assignment) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(forEveryone
-            ? (_fr ? 'Supprimer pour tout le monde ?' : 'Delete for everyone?')
-            : (_fr ? 'Supprimer pour moi ?' : 'Delete for me?')),
-        content: Text(forEveryone
-            ? (_fr
-                ? 'Le QCM disparaîtra pour tous les élèves et sera supprimé définitivement avec ses questions et les réponses/résultats associés. Cette action est irréversible.'
-                : 'This quiz will disappear for all students and be permanently deleted with its questions and associated answers/results. This cannot be undone.')
-            : (_fr
-                ? 'Le QCM sera masqué uniquement dans votre espace enseignant. Les élèves et les autres utilisateurs continueront à le voir.'
-                : 'The quiz will be hidden only from your teacher workspace. Students and other users will still see it.')),
+        title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
+        content: Text(_fr
+          ? 'Cette action supprimera le QCM et ses données associées si les règles de la base l’autorisent.'
+          : 'This deletes the quiz and related data if permitted by the database rules.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_fr ? 'Annuler' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Supprimer' : 'Delete'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete')),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
-      if (forEveryone) {
-        await _service.deleteAssignmentForEveryone(
-          assignment.id,
-          teacherId: widget.profile.id,
-        );
-      } else {
-        await _service.hideAssignmentForMe(assignment.id);
-      }
+      await _service.deleteAssignment(assignment.id);
       if (mounted) {
         setState(_reload);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(forEveryone
-                ? (_fr ? 'QCM supprimé pour tout le monde.' : 'Quiz deleted for everyone.')
-                : (_fr ? 'QCM masqué dans votre espace.' : 'Quiz hidden from your workspace.')),
-          ),
+          SnackBar(content: Text(_fr ? 'QCM supprimé.' : 'Quiz deleted.')),
         );
       }
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
+      );
     }
   }
 
@@ -308,7 +171,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     try {
       final rows = await Supabase.instance.client
           .from('assignment_submissions')
-          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct),assignment_private_grades(score,status,details)')
+          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct)')
           .eq('assignment_id', assignment.id);
       var correct = 0;
       var incorrect = 0;
@@ -318,56 +181,22 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         final row = Map<String, dynamic>.from(raw);
         final answers = (row['assignment_answers'] as List? ?? const [])
             .whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .toList(growable: false);
-        final rawPrivateGrades = row['assignment_private_grades'];
-        final privateGrade = rawPrivateGrades is List && rawPrivateGrades.isNotEmpty
-            ? Map<String, dynamic>.from(rawPrivateGrades.first as Map)
-            : rawPrivateGrades is Map
-                ? Map<String, dynamic>.from(rawPrivateGrades)
-                : <String, dynamic>{};
-        final privateDetails = (privateGrade['details'] as List? ?? const [])
-            .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item));
         var studentCorrect = 0;
         var studentIncorrect = 0;
-        var gradedAnswers = 0;
         for (final answer in answers) {
           if (answer['is_correct'] == true) {
             correct++;
             studentCorrect++;
             answered++;
-            gradedAnswers++;
           } else if (answer['is_correct'] == false) {
             incorrect++;
             studentIncorrect++;
             answered++;
-            gradedAnswers++;
-          }
-        }
-        // AI marks remain private from students until publication, but the
-        // assigned teacher can review them from this results panel beforehand.
-        if (gradedAnswers == 0 && privateGrade['status'] == 'graded') {
-          for (final answer in privateDetails) {
-            if (answer['is_correct'] == true) {
-              correct++;
-              studentCorrect++;
-              answered++;
-            } else if (answer['is_correct'] == false) {
-              incorrect++;
-              studentIncorrect++;
-              answered++;
-            }
           }
         }
         if (row['status'] == 'submitted' || row['status'] == 'corrected') {
-          participants.add({
-            ...row,
-            'score': row['score'] ?? (privateGrade['status'] == 'graded' ? privateGrade['score'] : null),
-            'correct_count': studentCorrect,
-            'incorrect_count': studentIncorrect,
-            'ai_correction_status': privateGrade['status'],
-          });
+          participants.add({...row, 'correct_count': studentCorrect, 'incorrect_count': studentIncorrect});
         }
       }
       if (!mounted) return;
@@ -420,19 +249,19 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
       controller: _tabController,
       tabs: [
         Tab(
-          icon: const Icon(Icons.auto_awesome_rounded),
-          text: _fr ? 'QCM générés par l’IA' : 'AI-generated QCMs',
+          icon: const Icon(Icons.add_task_rounded),
+          text: _fr ? 'Créer / envoyer' : 'Create / send',
         ),
         Tab(
-          icon: const Icon(Icons.assignment_outlined),
-          text: _fr ? 'Devoirs et évaluations' : 'Assignments and assessments',
+          icon: const Icon(Icons.assignment_rounded),
+          text: _fr ? 'Mes QCM' : 'My quizzes',
         ),
       ],
     );
     final tabView = TabBarView(
       controller: _tabController,
       children: [
-        _buildAiQuizzesTab(),
+        _buildCreateTab(),
         _buildAssignmentsTab(),
       ],
     );
@@ -453,121 +282,85 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     );
   }
 
-  Widget _buildAiQuizzesTab() {
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _aiQuizzesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: const [
-                SizedBox(height: 180),
-                Center(child: CircularProgressIndicator()),
-              ],
-            );
-          }
-          if (snapshot.hasError) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(24),
+  Widget _buildCreateTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.cloud_off_rounded, size: 42),
-                const SizedBox(height: 12),
-                Text(
-                  _fr
-                      ? 'Impossible de charger les QCM IA. Vérifiez la connexion puis réessayez.'
-                      : 'Could not load AI QCMs. Check the connection and try again.',
-                  textAlign: TextAlign.center,
+                const Icon(
+                  Icons.quiz_rounded,
+                  size: 34,
+                  color: Color(0xFF166534),
                 ),
-                const SizedBox(height: 12),
-                Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(_reload),
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: Text(_fr ? 'Réessayer' : 'Retry'),
+                const SizedBox(height: 10),
+                Text(
+                  _fr ? 'Créer et envoyer un QCM' : 'Create and send a quiz',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ],
-            );
-          }
-          final quizzes = snapshot.data ?? const <Map<String, dynamic>>[];
-          if (quizzes.isEmpty) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(24),
-              children: [
-                const SizedBox(height: 60),
-                const Icon(Icons.auto_awesome_rounded, size: 54),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Text(
                   _fr
-                      ? 'Aucun QCM IA pour le moment. Publiez un cours dans un chapitre pour déclencher sa génération automatique, ou relancez la génération pour vos cours déjà publiés.'
-                      : 'No AI QCM yet. Publish course content in a chapter to trigger automatic generation, or retry generation for courses already published.',
-                  textAlign: TextAlign.center,
+                      ? 'Choisissez les salles compatibles avec votre profil, la matière, les questions et les bonnes réponses, puis publiez le QCM pour les élèves inscrits dans ces salles.'
+                      : 'Choose classrooms compatible with your profile, subject, questions and correct answers, then publish the quiz for students enrolled in those classrooms.',
                 ),
-                const SizedBox(height: 18),
-                Center(
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: _retryingAi ? null : _retryAiGeneration,
-                    icon: _retryingAi
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.auto_awesome_rounded),
-                    label: Text(_retryingAi
-                        ? (_fr ? 'Génération en cours…' : 'Generating…')
-                        : (_fr ? 'Relancer la génération IA' : 'Retry AI generation')),
+                    onPressed: () => _openCreator(linkedToCourse: false),
+                    icon: const Icon(Icons.send_rounded),
+                    label: Text(_fr ? 'Nouveau QCM' : 'New quiz'),
                   ),
                 ),
               ],
-            );
-          }
-          return ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            itemCount: quizzes.length,
-            itemBuilder: (context, index) {
-              final quiz = quizzes[index];
-              final titleFr = quiz['title_fr']?.toString().trim() ?? '';
-              final titleEn = quiz['title_en']?.toString().trim() ?? '';
-              final chapterFr = quiz['chapter_title_fr']?.toString().trim() ?? '';
-              final chapterEn = quiz['chapter_title_en']?.toString().trim() ?? '';
-              final title = _fr
-                  ? (titleFr.isNotEmpty ? titleFr : titleEn)
-                  : (titleEn.isNotEmpty ? titleEn : titleFr);
-              final chapter = _fr
-                  ? (chapterFr.isNotEmpty ? chapterFr : chapterEn)
-                  : (chapterEn.isNotEmpty ? chapterEn : chapterFr);
-              final labels = (quiz['class_labels'] as List? ?? const [])
-                  .map((value) => value.toString())
-                  .where((value) => value.trim().isNotEmpty)
-                  .join(', ');
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.auto_awesome_rounded),
-                  ),
-                  title: Text(
-                    title.isEmpty ? (_fr ? 'QCM IA' : 'AI QCM') : title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text([
-                      if (chapter.isNotEmpty) '${_fr ? 'Chapitre' : 'Chapter'} : $chapter',
-                      if (labels.isNotEmpty) '${_fr ? 'Salles' : 'Classes'} : $labels',
-                      _fr ? 'Généré automatiquement par l’IA' : 'Automatically generated by AI',
-                    ].join('\n')),
-                  ),
-                  isThreeLine: true,
-                  trailing: const Icon(Icons.verified_rounded, color: Color(0xFF166534)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.menu_book_rounded,
+                  size: 32,
+                  color: Color(0xFF166534),
                 ),
-              );
-            },
-          );
-        },
-      ),
+                const SizedBox(height: 10),
+                Text(
+                  _fr ? 'Devoir lié à un cours' : 'Course-linked assignment',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _fr
+                      ? 'Conservez aussi le parcours existant pour créer un devoir à partir d’un cours et d’une leçon.'
+                      : 'Keep using the existing flow to create an assignment from a course and lesson.',
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: () => _openCreator(linkedToCourse: true),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: Text(_fr ? 'Créer un devoir lié' : 'Create linked assignment'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -622,8 +415,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 const SizedBox(height: 12),
                 Text(
                   _fr
-                      ? 'Aucun QCM disponible. Les QCM sont générés automatiquement par l’IA à partir des cours publiés.'
-                      : 'No quizzes available. AI quizzes are generated automatically from published lessons.',
+                      ? 'Aucun QCM pour le moment. Créez un QCM dans le premier onglet.'
+                      : 'No quizzes yet. Create one in the first tab.',
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -660,17 +453,13 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
                     onSelected: (action) {
                       if (action == 'results') _showResults(assignment);
-                      if (action == 'delete_me') {
-                        _deleteAssignment(assignment, forEveryone: false);
-                      }
-                      if (action == 'delete_everyone') {
-                        _deleteAssignment(assignment, forEveryone: true);
-                      }
+                      if (action == 'edit') _editAssignment(assignment);
+                      if (action == 'delete') _deleteAssignment(assignment);
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
-                      PopupMenuItem(value: 'delete_me', child: Text(_fr ? 'Supprimer pour moi' : 'Delete for me')),
-                      PopupMenuItem(value: 'delete_everyone', child: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone')),
+                      PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier titre / consignes' : 'Edit title / instructions')),
+                      PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
                     ],
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 92),
