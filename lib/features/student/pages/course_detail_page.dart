@@ -10,7 +10,6 @@ import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
-import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
