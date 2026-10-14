@@ -11,6 +11,7 @@ import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
+import 'chapter_hub_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
@@ -705,73 +706,70 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   @override
   Widget build(BuildContext context) {
     final title = widget.chapterTitle ?? widget.subject.labelFor(widget.locale.languageCode);
-    return Scaffold(
-      backgroundColor: const Color(0xFFECE5DD),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF166534),
-        foregroundColor: Colors.white,
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            tooltip: _fr ? 'Leçon du jour' : 'Lesson of the day',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => DailyLessonPage(
-                  locale: widget.locale,
-                  profile: widget.profile,
-                  subjectId: widget.subject.id,
-                ),
+    final body = _chapterFocused
+        ? FutureBuilder<List<_FeedItem>>(
+            future: _feedFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    const Icon(Icons.error_outline_rounded, size: 44),
+                    const SizedBox(height: 12),
+                    Text(
+                      _fr ? 'Impossible de charger ce chapitre. Réessaie.' :
+                          'Could not load this chapter. Please try again.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: FilledButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: Text(_fr ? 'Réessayer' : 'Retry'),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              final items = (snapshot.data ?? const <_FeedItem>[])
+                  .where(_itemMatchesFocusedChapter)
+                  .toList();
+              return _feedList(
+                items,
+                _fr
+                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
+                    : 'No course or media has been published for this chapter yet.',
+              );
+            },
+          )
+        : _chapterCatalog();
+
+    return ChapterHubPage(
+      title: title,
+      actions: [
+        IconButton(
+          tooltip: _fr ? 'Leçon du jour' : 'Lesson of the day',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DailyLessonPage(
+                locale: widget.locale,
+                profile: widget.profile,
+                subjectId: widget.subject.id,
               ),
             ),
-            icon: const Icon(Icons.auto_stories_outlined),
           ),
-        ],
-      ),
-      body: _chapterFocused
-          ? FutureBuilder<List<_FeedItem>>(
-              future: _feedFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      const Icon(Icons.error_outline_rounded, size: 44),
-                      const SizedBox(height: 12),
-                      Text(
-                        _fr ? 'Impossible de charger ce chapitre. Réessaie.' :
-                            'Could not load this chapter. Please try again.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: FilledButton.icon(
-                          onPressed: _refresh,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: Text(_fr ? 'Réessayer' : 'Retry'),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                final items = (snapshot.data ?? const <_FeedItem>[])
-                    .where(_itemMatchesFocusedChapter)
-                    .toList();
-                return _feedList(
-                  items,
-                  _fr
-                      ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
-                      : 'No course or media has been published for this chapter yet.',
-                );
-              },
-            )
-          : _chapterCatalog(),
+          icon: const Icon(Icons.auto_stories_outlined),
+        ),
+      ],
+      body: body,
     );
   }
+}
 
 }
