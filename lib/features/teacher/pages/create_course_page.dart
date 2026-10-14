@@ -18,11 +18,13 @@ class _CourseAttachment {
   final String name;
   final Uint8List bytes;
   final String resourceType;
+  final String folderKey;
 
   const _CourseAttachment({
     required this.name,
     required this.bytes,
     required this.resourceType,
+    required this.folderKey,
   });
 }
 
@@ -83,6 +85,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           name: attachment.name,
           bytes: attachment.bytes,
           resourceType: type,
+          folderKey: _folderKeyForType(type),
         ));
       }
     }
@@ -113,6 +116,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           name: 'photo-${DateTime.now().millisecondsSinceEpoch}.jpg',
           bytes: bytes,
           resourceType: 'image',
+          folderKey: _folderKeyForType('image'),
         ),
       );
     });
@@ -130,7 +134,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ? 'image-${DateTime.now().millisecondsSinceEpoch}.jpg'
           : file.name;
       added.add(
-        _CourseAttachment(name: name, bytes: bytes, resourceType: 'image'),
+        _CourseAttachment(name: name, bytes: bytes, resourceType: 'image', folderKey: _folderKeyForType('image')),
       );
     }
     if (!mounted) {
@@ -158,6 +162,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         name: file.name,
         bytes: bytes,
         resourceType: 'pdf',
+        folderKey: _folderKeyForType('pdf'),
       ));
     });
   }
@@ -184,7 +189,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
     if (!mounted) return;
-    setState(() => _attachments.add(_CourseAttachment(name: file.name, bytes: bytes, resourceType: 'audio')));
+    setState(() => _attachments.add(_CourseAttachment(name: file.name, bytes: bytes, resourceType: 'audio', folderKey: _folderKeyForType('audio'))));
   }
 
   Future<void> _pickVideo() async {
@@ -211,6 +216,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           name: file.name,
           bytes: bytes,
           resourceType: 'video',
+          folderKey: _folderKeyForType('video'),
         ),
       );
     });
@@ -441,6 +447,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
               bytes: attachment.bytes,
             ),
             resourceType: attachment.resourceType,
+            folderKey: attachment.folderKey,
             position: i,
             titleFr: attachment.name,
             titleEn: attachment.name,
@@ -491,23 +498,27 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     Navigator.pop(context, true);
   }
 
-  String _folderForType(String type) {
+  String _folderKeyForType(String type) {
     switch (type.toLowerCase()) {
-      case 'image':
-      case 'pdf':
-      case 'document':
-      case 'other':
-        return 'Documents';
-      case 'video':
-        return _fr ? 'Vidéos' : 'Videos';
-      case 'audio':
-        return _fr ? 'Audios' : 'Audio';
+      case 'video': return 'videos';
+      case 'audio': return 'audios';
       case 'exercise':
       case 'worksheet':
       case 'work':
-        return _fr ? 'Exercices' : 'Exercises';
-      default:
-        return _fr ? 'Cours' : 'Lessons';
+      case 'assignment': return 'exercises';
+      case 'text':
+      case 'lesson': return 'lessons';
+      default: return 'documents';
+    }
+  }
+
+  String _folderForType(String type) {
+    switch (type) {
+      case 'lessons': return _fr ? 'Cours' : 'Lessons';
+      case 'videos': return _fr ? 'Vidéos' : 'Videos';
+      case 'audios': return _fr ? 'Audios' : 'Audio';
+      case 'exercises': return _fr ? 'Exercices' : 'Exercises';
+      default: return 'Documents';
     }
   }
 
@@ -657,7 +668,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           for (var i = 0; i < _attachments.length; i++)
             Card(
               margin: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
                 dense: true,
                 leading: _attachments[i].resourceType == 'image'
                     ? ClipRRect(
@@ -673,14 +687,48 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 title: Text(_attachments[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   _fr
-                      ? 'Dossier : ${_folderForType(_attachments[i].resourceType)}'
-                      : 'Folder: ${_folderForType(_attachments[i].resourceType)}',
+                      ? 'Dossier : ${_folderForType(_attachments[i].folderKey)}'
+                      : 'Folder: ${_folderForType(_attachments[i].folderKey)}',
                   style: const TextStyle(fontSize: 12, color: Color(0xFF166534)),
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.close_rounded),
                   onPressed: _saving ? null : () => setState(() => _attachments.removeAt(i)),
                 ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('folder-${_attachments[i].name}-${i}'),
+                      initialValue: _attachments[i].folderKey,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Dossier de destination' : 'Destination folder',
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: [
+                        DropdownMenuItem(value: 'lessons', child: Text(_fr ? 'Cours' : 'Lessons')),
+                        DropdownMenuItem(value: 'videos', child: Text(_fr ? 'Vidéos' : 'Videos')),
+                        DropdownMenuItem(value: 'audios', child: Text(_fr ? 'Audios' : 'Audio')),
+                        DropdownMenuItem(value: 'documents', child: Text(_fr ? 'Documents (PDF, images)' : 'Documents (PDF, images)')),
+                        DropdownMenuItem(value: 'exercises', child: Text(_fr ? 'Exercices' : 'Exercises')),
+                      ],
+                      onChanged: _saving ? null : (value) {
+                        if (value == null) return;
+                        setState(() {
+                          final previous = _attachments[i];
+                          _attachments[i] = _CourseAttachment(
+                            name: previous.name,
+                            bytes: previous.bytes,
+                            resourceType: previous.resourceType,
+                            folderKey: value,
+                          );
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           const SizedBox(height: 20),
