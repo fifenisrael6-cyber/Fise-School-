@@ -62,6 +62,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   bool _loadingChapters = false;
   final List<_CourseAttachment> _attachments = [];
   bool _saving = false;
+  String _saveStatus = '';
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -299,7 +300,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _saveStatus = _fr ? 'Préparation de l’envoi…' : 'Preparing upload…';
+    });
 
     // Send only to the classrooms explicitly selected by the teacher.
     // Expanding a selected level into every compatible room duplicated every
@@ -311,7 +315,10 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       ).timeout(const Duration(seconds: 45));
     } catch (error) {
       if (mounted) {
-        setState(() => _saving = false);
+        setState(() {
+      _saving = false;
+      _saveStatus = '';
+    });
         _snack('${_fr ? 'Accès ou diffusion des salles refusé' : 'Classroom access or distribution denied'}: $error');
       }
       return;
@@ -333,7 +340,13 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     var saved = 0;
     final errors = <String>[];
 
-    for (final schoolClass in targets) {
+    for (var targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+      final schoolClass = targets[targetIndex];
+      if (mounted) {
+        setState(() => _saveStatus = _fr
+            ? 'Salle ${targetIndex + 1}/${targets.length} : ${schoolClass.displayName}'
+            : 'Classroom ${targetIndex + 1}/${targets.length}: ${schoolClass.displayName}');
+      }
       try {
         Curriculum? curriculum = _curriculumByClass[schoolClass.id];
         List<CourseChapter> chapters =
@@ -406,6 +419,11 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
 
         for (var i = 0; i < _attachments.length; i++) {
           final attachment = _attachments[i];
+          if (mounted) {
+            setState(() => _saveStatus = _fr
+                ? 'Envoi ${i + 1}/${_attachments.length} : ${attachment.name}'
+                : 'Uploading ${i + 1}/${_attachments.length}: ${attachment.name}');
+          }
           await _resources.uploadResource(
             courseId: course.id,
             file: PlatformFile(
@@ -438,9 +456,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           if (resource.resourceType != 'pdf' && resource.resourceType != 'image') continue;
           try {
             if (resource.resourceType == 'pdf') {
-              await _smart.reindexPdf(resource.id);
+              await _smart.reindexPdf(resource.id).timeout(const Duration(seconds: 8));
             } else {
-              await _smart.reindexResource(resource.id);
+              await _smart.reindexResource(resource.id).timeout(const Duration(seconds: 8));
             }
           } catch (indexError) {
             debugPrint('Optional AI source indexing failed for ${resource.id}: $indexError');
@@ -471,9 +489,12 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ? 'Médias envoyés dans $saved salle(s). Échec dans ${errors.length} autre(s) salle(s) : ${errors.first}'
           : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}');
     } else {
-      _snack(_fr
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context, true);
+      messenger.showSnackBar(SnackBar(content: Text(_fr
           ? 'Médias publiés dans $saved salle(s) sélectionnée(s).'
-          : 'Media published to $saved selected classroom(s).');
+          : 'Media published to $saved selected classroom(s).')));
+      return;
     }
 
     Navigator.pop(context, true);
@@ -645,6 +666,25 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
                 ),
               ),
             ),
+          if (_saving) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: const Color(0xFFE8F5EC),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(
+                      _saveStatus.isEmpty ? (_fr ? 'Envoi en cours…' : 'Sending…') : _saveStatus,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    )),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [
