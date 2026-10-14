@@ -173,11 +173,21 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
             Text(_fr ? 'Échec — appuyez pour réessayer' : 'Failed — tap to retry', style: const TextStyle(fontSize: 10, color: Colors.redAccent)),
         ])),
         const SizedBox(width: 6),
-        if (_loading) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-        else if (done)
-          IconButton(onPressed: _open, tooltip: _fr ? 'Ouvrir' : 'Open', icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF166534)))
-        else
-          IconButton(onPressed: _download, tooltip: _fr ? 'Télécharger' : 'Download', icon: const Icon(Icons.download_rounded, color: Color(0xFF166534))),
+        if (_loading)
+          const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+        else ...[
+          IconButton(
+            onPressed: _open,
+            tooltip: _fr ? 'Ouvrir dans l’application' : 'Open in app',
+            icon: const Icon(Icons.open_in_app_rounded, color: Color(0xFF166534)),
+          ),
+          if (!done)
+            IconButton(
+              onPressed: _download,
+              tooltip: _fr ? 'Télécharger pour le mode hors ligne' : 'Download for offline use',
+              icon: const Icon(Icons.download_rounded, color: Color(0xFF166534)),
+            ),
+        ],
       ]),
     );
   }
