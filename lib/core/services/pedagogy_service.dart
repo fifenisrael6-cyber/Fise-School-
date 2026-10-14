@@ -856,6 +856,7 @@ class ResourceService {
     required PlatformFile file,
     required String resourceType,
     required int position,
+    String? folderKey,
     String? titleFr,
     String? titleEn,
   }) async {
@@ -902,6 +903,7 @@ class ResourceService {
       'storage_path': storagePath,
       'file_name': safeFileName,
       'resource_type': resourceType,
+      'folder_key': folderKey ?? _folderForResourceType(resourceType),
       'position': position,
       'title_fr': (titleFr == null || titleFr.trim().isEmpty) ? safeFileName : titleFr.trim(),
       'title_en': (titleEn == null || titleEn.trim().isEmpty) ? safeFileName : titleEn.trim(),
@@ -926,6 +928,16 @@ class ResourceService {
       }
 
       rethrow;
+    }
+  }
+
+  String _folderForResourceType(String type) {
+    switch (type.toLowerCase()) {
+      case 'video': return 'videos';
+      case 'audio': return 'audios';
+      case 'exercise': case 'worksheet': case 'work': case 'assignment': return 'exercises';
+      case 'text': case 'lesson': return 'lessons';
+      default: return 'documents';
     }
   }
 
