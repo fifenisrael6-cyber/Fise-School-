@@ -316,9 +316,9 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     } catch (error) {
       if (mounted) {
         setState(() {
-      _saving = false;
-      _saveStatus = '';
-    });
+          _saving = false;
+          _saveStatus = '';
+        });
         _snack('${_fr ? 'Accès ou diffusion des salles refusé' : 'Classroom access or distribution denied'}: $error');
       }
       return;
@@ -485,9 +485,13 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       // Some classrooms may have been published successfully before another
       // classroom failed. Report both facts so the teacher does not retry and
       // accidentally create duplicates in rooms already served.
-      _snack(_fr
+      final messenger = ScaffoldMessenger.of(context);
+      final message = _fr
           ? 'Médias envoyés dans $saved salle(s). Échec dans ${errors.length} autre(s) salle(s) : ${errors.first}'
-          : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}');
+          : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}';
+      Navigator.pop(context, true);
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+      return;
     } else {
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context, true);
