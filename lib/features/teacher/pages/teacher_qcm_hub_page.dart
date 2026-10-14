@@ -53,6 +53,27 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     );
   }
 
+  Future<void> _openCreator({required bool linkedToCourse}) async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => linkedToCourse
+            ? CreateAssignmentPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              )
+            : QcmBuilderPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              ),
+      ),
+    );
+    if (!mounted) return;
+    if (created == true) {
+      setState(_reload);
+      _tabController.animateTo(1);
+    }
+  }
+
   Future<void> _loadClassNames() async {
     try {
       final rows = await Supabase.instance.client
@@ -80,27 +101,6 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     await _assignmentsFuture;
   }
 
-  Future<void> _openCreator({required bool linkedToCourse}) async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => linkedToCourse
-            ? CreateAssignmentPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              )
-            : QcmBuilderPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              ),
-      ),
-    );
-    if (!mounted) return;
-    if (created == true) {
-      setState(_reload);
-      _tabController.animateTo(1);
-    }
-  }
-
   String _statusLabel(String status) {
     switch (status) {
       case 'published':
@@ -123,47 +123,61 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     }
   }
 
-  Future<void> _editAssignment(Assignment assignment) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => TeacherQcmEditPage(
-          locale: widget.locale,
-          assignment: assignment,
-        ),
-      ),
-    );
-    if (changed == true && mounted) setState(_reload);
-  }
-
-  Future<void> _deleteAssignment(Assignment assignment) async {
+  Future<void> _deleteAssignment(
+    Assignment assignment, {
+    required bool forEveryone,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(_fr ? 'Supprimer ce QCM ?' : 'Delete this quiz?'),
-        content: Text(_fr
-          ? 'Cette action supprimera le QCM et ses données associées si les règles de la base l’autorisent.'
-          : 'This deletes the quiz and related data if permitted by the database rules.'),
+        title: Text(forEveryone
+            ? (_fr ? 'Supprimer pour tout le monde ?' : 'Delete for everyone?')
+            : (_fr ? 'Supprimer pour moi ?' : 'Delete for me?')),
+        content: Text(forEveryone
+            ? (_fr
+                ? 'Le QCM disparaîtra pour tous les élèves et sera supprimé définitivement avec ses questions et les réponses/résultats associés. Cette action est irréversible.'
+                : 'This quiz will disappear for all students and be permanently deleted with its questions and associated answers/results. This cannot be undone.')
+            : (_fr
+                ? 'Le QCM sera masqué uniquement dans votre espace enseignant. Les élèves et les autres utilisateurs continueront à le voir.'
+                : 'The quiz will be hidden only from your teacher workspace. Students and other users will still see it.')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_fr ? 'Annuler' : 'Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Supprimer' : 'Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
-      await _service.deleteAssignment(assignment.id);
+      if (forEveryone) {
+        await _service.deleteAssignmentForEveryone(
+          assignment.id,
+          teacherId: widget.profile.id,
+        );
+      } else {
+        await _service.hideAssignmentForMe(assignment.id);
+      }
       if (mounted) {
         setState(_reload);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'QCM supprimé.' : 'Quiz deleted.')),
+          SnackBar(
+            content: Text(forEveryone
+                ? (_fr ? 'QCM supprimé pour tout le monde.' : 'Quiz deleted for everyone.')
+                : (_fr ? 'QCM masqué dans votre espace.' : 'Quiz hidden from your workspace.')),
+          ),
         );
       }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_fr ? 'Suppression impossible' : 'Delete failed'}: $error')),
+        );
+      }
     }
   }
 
@@ -171,7 +185,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     try {
       final rows = await Supabase.instance.client
           .from('assignment_submissions')
-          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct)')
+          .select('id,student_id,status,score,submitted_at,assignment_answers(is_correct),assignment_private_grades(score,status,details)')
           .eq('assignment_id', assignment.id);
       var correct = 0;
       var incorrect = 0;
@@ -181,22 +195,56 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         final row = Map<String, dynamic>.from(raw);
         final answers = (row['assignment_answers'] as List? ?? const [])
             .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList(growable: false);
+        final rawPrivateGrades = row['assignment_private_grades'];
+        final privateGrade = rawPrivateGrades is List && rawPrivateGrades.isNotEmpty
+            ? Map<String, dynamic>.from(rawPrivateGrades.first as Map)
+            : rawPrivateGrades is Map
+                ? Map<String, dynamic>.from(rawPrivateGrades)
+                : <String, dynamic>{};
+        final privateDetails = (privateGrade['details'] as List? ?? const [])
+            .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item));
         var studentCorrect = 0;
         var studentIncorrect = 0;
+        var gradedAnswers = 0;
         for (final answer in answers) {
           if (answer['is_correct'] == true) {
             correct++;
             studentCorrect++;
             answered++;
+            gradedAnswers++;
           } else if (answer['is_correct'] == false) {
             incorrect++;
             studentIncorrect++;
             answered++;
+            gradedAnswers++;
+          }
+        }
+        // AI marks remain private from students until publication, but the
+        // assigned teacher can review them from this results panel beforehand.
+        if (gradedAnswers == 0 && privateGrade['status'] == 'graded') {
+          for (final answer in privateDetails) {
+            if (answer['is_correct'] == true) {
+              correct++;
+              studentCorrect++;
+              answered++;
+            } else if (answer['is_correct'] == false) {
+              incorrect++;
+              studentIncorrect++;
+              answered++;
+            }
           }
         }
         if (row['status'] == 'submitted' || row['status'] == 'corrected') {
-          participants.add({...row, 'correct_count': studentCorrect, 'incorrect_count': studentIncorrect});
+          participants.add({
+            ...row,
+            'score': row['score'] ?? (privateGrade['status'] == 'graded' ? privateGrade['score'] : null),
+            'correct_count': studentCorrect,
+            'incorrect_count': studentIncorrect,
+            'ai_correction_status': privateGrade['status'],
+          });
         }
       }
       if (!mounted) return;
@@ -415,8 +463,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 const SizedBox(height: 12),
                 Text(
                   _fr
-                      ? 'Aucun QCM pour le moment. Créez un QCM dans le premier onglet.'
-                      : 'No quizzes yet. Create one in the first tab.',
+                      ? 'Aucun QCM disponible. Les QCM sont générés automatiquement par l’IA à partir des cours publiés.'
+                      : 'No quizzes available. AI quizzes are generated automatically from published lessons.',
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -453,13 +501,17 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                     tooltip: _fr ? 'Gérer le QCM' : 'Manage quiz',
                     onSelected: (action) {
                       if (action == 'results') _showResults(assignment);
-                      if (action == 'edit') _editAssignment(assignment);
-                      if (action == 'delete') _deleteAssignment(assignment);
+                      if (action == 'delete_me') {
+                        _deleteAssignment(assignment, forEveryone: false);
+                      }
+                      if (action == 'delete_everyone') {
+                        _deleteAssignment(assignment, forEveryone: true);
+                      }
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'results', child: Text(_fr ? 'Voir les résultats' : 'View results')),
-                      PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier titre / consignes' : 'Edit title / instructions')),
-                      PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer' : 'Delete')),
+                      PopupMenuItem(value: 'delete_me', child: Text(_fr ? 'Supprimer pour moi' : 'Delete for me')),
+                      PopupMenuItem(value: 'delete_everyone', child: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone')),
                     ],
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 92),
