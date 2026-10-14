@@ -624,8 +624,8 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
             child: Text(_fr
-                ? 'Les médias seront rangés automatiquement dans le dossier du chapitre : photos et PDF → Documents, vidéos → Vidéos, fichiers audio → Audios. Choisissez aussi le chapitre de destination avant l’envoi.'
-                : 'Media is automatically sorted into the chapter folder: photos and PDFs → Documents, videos → Videos, audio files → Audio. Choose the destination chapter before sending.'),
+                ? 'Chaque fichier est classé par défaut selon son type, mais vous pouvez choisir son dossier de destination (Cours, Vidéos, Audios, Documents ou Exercices) avant l’envoi. Choisissez aussi le chapitre de destination.'
+                : 'Each file is classified by type by default, but you can choose its destination folder (Lessons, Videos, Audio, Documents or Exercises) before sending. Choose the destination chapter too.'),
           ),
           const SizedBox(height: 16),
           Text(
