@@ -144,18 +144,9 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     final title = _title.text.trim();
     final instructions = _instructions.text.trim();
 
-    // Keep the existing class/subject workflow. Link a QCM to a course only
-    // when there is one unambiguous published course for that exact class
-    // and subject; otherwise the QCM remains available at subject level.
-    List<Course> publishedCourses = const <Course>[];
-    try {
-      publishedCourses = await CourseService().listTeacherCourses(
-        widget.profile.id,
-        status: 'published',
-      );
-    } catch (_) {
-      // QCM publication must still work if the optional course lookup fails.
-    }
+    // Manual QCM delivery is independent of the course workflow:
+    // the teacher-selected classroom and subject are the only targets.
+    // Do not attach the QCM to a course or change any course data.
 
     for (final schoolClass in _classes) {
       String? createdAssignmentId;
@@ -167,7 +158,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
                 course.classId == schoolClass.id)
             .toList(growable: false);
         final assignment = await _service.saveAssignment(
-          courseId: matchingCourses.length == 1 ? matchingCourses.single.id : null,
+          courseId: null,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
