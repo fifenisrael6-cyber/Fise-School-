@@ -151,13 +151,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     for (final schoolClass in _classes) {
       String? createdAssignmentId;
       try {
-        final matchingCourses = publishedCourses
-            .where((course) =>
-                course.status == 'published' &&
-                course.subjectId == _subject!.id &&
-                course.classId == schoolClass.id)
-            .toList(growable: false);
-        final assignment = await _service.saveAssignment(
+final assignment = await _service.saveAssignment(
           courseId: null,
           subjectId: _subject!.id,
           teacherId: widget.profile.id,
