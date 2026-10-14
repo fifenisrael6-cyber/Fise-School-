@@ -179,7 +179,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
           IconButton(
             onPressed: _open,
             tooltip: _fr ? 'Ouvrir dans l’application' : 'Open in app',
-            icon: const Icon(Icons.open_in_app_rounded, color: Color(0xFF166534)),
+            icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF166534)),
           ),
           if (!done)
             IconButton(
