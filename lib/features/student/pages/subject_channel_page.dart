@@ -771,5 +771,3 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 }
-
-}
