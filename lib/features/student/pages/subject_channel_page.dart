@@ -34,6 +34,8 @@ class SubjectChannelPage extends StatefulWidget {
   final Subject subject;
   final String? chapterId;
   final String? chapterTitle;
+  /// When set, opens one independent folder inside the selected chapter.
+  final String? folderKey;
 
   const SubjectChannelPage({
     super.key,
@@ -42,6 +44,7 @@ class SubjectChannelPage extends StatefulWidget {
     required this.subject,
     this.chapterId,
     this.chapterTitle,
+    this.folderKey,
   });
 
   @override
@@ -338,35 +341,28 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   @override
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
-    final focused = _chapterFocused;
-
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
         backgroundColor: const Color(0xFF166534),
         foregroundColor: Colors.white,
         title: Text(
-          widget.chapterTitle ?? widget.subject.labelFor(code),
+          widget.folderKey == 'ai_quiz'
+              ? (_fr ? 'QCM IA' : 'AI quiz')
+              : widget.folderKey == 'courses'
+                  ? (_fr ? 'Cours' : 'Courses')
+                  : widget.folderKey == 'videos'
+                      ? (_fr ? 'Vidéos' : 'Videos')
+                      : widget.folderKey == 'audios'
+                          ? (_fr ? 'Audios' : 'Audio')
+                          : widget.folderKey == 'documents'
+                              ? (_fr ? 'Documents' : 'Documents')
+                              : widget.folderKey == 'exercises'
+                                  ? (_fr ? 'Exercices' : 'Exercises')
+                                  : widget.chapterTitle ?? widget.subject.labelFor(code),
           style: const TextStyle(fontWeight: FontWeight.w800),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-        ),
-        bottom: TabBar(
-          isScrollable: true,
-          tabs: [
-            Tab(
-              text: focused
-                  ? (_fr ? 'Cours et médias' : 'Courses & media')
-                  : (_fr ? 'Chapitres' : 'Chapters'),
-              icon: Icon(focused ? Icons.menu_book_rounded : Icons.bookmarks_rounded),
-            ),
-            Tab(
-              text: _fr ? 'Évaluations IA' : 'AI evaluations',
-              icon: const Icon(Icons.auto_awesome_rounded),
-            ),
-          ],
         ),
         actions: [
           IconButton(
@@ -385,48 +381,42 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           ),
         ],
       ),
-      body: FutureBuilder<List<_FeedItem>>(
-        future: _feedFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('${snapshot.error}', textAlign: TextAlign.center),
-              ),
-            );
-          }
-          final items = snapshot.data ?? const <_FeedItem>[];
-          final scopedContent = items.where(_itemMatchesFocusedChapter).toList();
-          final officialCourses = scopedContent
-              .where((item) => item.chapterContent != null ||
-                  (item.course != null && _isOfficialCourse(item.course!)))
-              .toList();
-          final teacherMedia = scopedContent
-              .where((item) => item.course != null && !_isOfficialCourse(item.course!))
-              .toList();
-          final tabChildren = <Widget>[];
-          if (!focused) {
-            tabChildren.add(_chapterCatalog());
-          } else {
-            tabChildren.add(
-              _feedList(
-                <_FeedItem>[...officialCourses, ...teacherMedia],
-                _fr
-                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
-                    : 'No course or media has been published for this chapter yet.',
-              ),
-            );
-          }
-          tabChildren.add(_aiEvaluations());
-
-          return TabBarView(children: tabChildren);
-        },
-      ),
-      ),
+      body: ! _chapterFocused
+          ? _chapterCatalog()
+          : widget.folderKey == 'ai_quiz'
+              ? _aiEvaluations()
+              : FutureBuilder<List<_FeedItem>>(
+                  future: _feedFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text('${snapshot.error}', textAlign: TextAlign.center),
+                        ),
+                      );
+                    }
+                    final items = (snapshot.data ?? const <_FeedItem>[])
+                        .where(_itemMatchesFocusedChapter)
+                        .toList(growable: false);
+                    final officialCourses = items
+                        .where((item) => item.chapterContent != null ||
+                            (item.course != null && _isOfficialCourse(item.course!)))
+                        .toList();
+                    final teacherMedia = items
+                        .where((item) => item.course != null && !_isOfficialCourse(item.course!))
+                        .toList();
+                    return _feedList(
+                      <_FeedItem>[...officialCourses, ...teacherMedia],
+                      _fr
+                          ? 'Aucun contenu publié dans ce dossier pour le moment.'
+                          : 'No content has been published in this folder yet.',
+                    );
+                  },
+                ),
     );
   }
 
@@ -448,129 +438,179 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       () => _loadChapterMedia(items),
     );
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: FutureBuilder<List<_ChapterMediaEntry>>(
-        future: mediaFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final media = snapshot.data ?? const <_ChapterMediaEntry>[];
-          final folders = <String, List<String>>{
-            'courses': const [],
-            'image': ['image'],
-            'audio': ['audio'],
-            'video': ['video'],
-            'pdf': ['pdf'],
-            'documents': ['document', 'other'],
-          };
-          final labels = <String, String>{
-            'courses': _fr ? 'Cours et leçons' : 'Courses and lessons',
-            'image': _fr ? 'Photos et images' : 'Photos and images',
-            'audio': _fr ? 'Fichiers audio' : 'Audio files',
-            'video': _fr ? 'Vidéos' : 'Videos',
-            'pdf': 'PDF',
-            'documents': _fr ? 'Autres documents' : 'Other documents',
-          };
-          final icons = <String, IconData>{
-            'courses': Icons.menu_book_rounded,
-            'image': Icons.photo_library_outlined,
-            'audio': Icons.audiotrack_rounded,
-            'video': Icons.video_library_outlined,
-            'pdf': Icons.picture_as_pdf_outlined,
-            'documents': Icons.folder_open_rounded,
-          };
-          final folderCounts = <String, int>{
-            'courses': items.length,
-            for (final key in ['image', 'audio', 'video', 'pdf', 'documents'])
-              key: media.where((entry) => folders[key]!.contains(entry.resource.resourceType)).length,
-          };
-
-          if (items.isEmpty && media.isEmpty) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
+    return FutureBuilder<List<_ChapterMediaEntry>>(
+      future: mediaFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
               padding: const EdgeInsets.all(24),
-              children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.22),
-                const Icon(Icons.folder_open_rounded, size: 56),
-                const SizedBox(height: 12),
-                Text(emptyMessage, textAlign: TextAlign.center),
-              ],
-            );
-          }
+              child: Text('${snapshot.error}', textAlign: TextAlign.center),
+            ),
+          );
+        }
+        final media = snapshot.data ?? const <_ChapterMediaEntry>[];
+        final folderTypes = <String, List<String>>{
+          'videos': ['video'],
+          'audios': ['audio'],
+          'documents': ['pdf', 'document', 'other', 'image'],
+        };
+        final labels = <String, String>{
+          'courses': _fr ? 'Cours' : 'Courses',
+          'videos': _fr ? 'Vidéos' : 'Videos',
+          'audios': _fr ? 'Audios' : 'Audio',
+          'documents': _fr ? 'Documents' : 'Documents',
+          'exercises': _fr ? 'Exercices' : 'Exercises',
+          'ai_quiz': _fr ? 'QCM IA' : 'AI quiz',
+        };
+        final icons = <String, IconData>{
+          'courses': Icons.menu_book_rounded,
+          'videos': Icons.video_library_outlined,
+          'audios': Icons.audiotrack_rounded,
+          'documents': Icons.folder_open_rounded,
+          'exercises': Icons.edit_note_rounded,
+          'ai_quiz': Icons.auto_awesome_rounded,
+        };
+        final counts = <String, int>{
+          'courses': items.length,
+          'videos': media.where((e) => e.resource.resourceType == 'video').length,
+          'audios': media.where((e) => e.resource.resourceType == 'audio').length,
+          'documents': media.where((e) => folderTypes['documents']!.contains(e.resource.resourceType)).length,
+          'exercises': items.where((e) => e.course != null).length,
+          'ai_quiz': 1,
+        };
 
-          return ListView(
+        if (widget.folderKey == null) {
+          return RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(12),
+              children: [
+                if (_offlineMode) _offlineBanner(),
+                Card(
+                  elevation: 0,
+                  child: ListTile(
+                    leading: const Icon(Icons.folder_copy_outlined, color: Color(0xFF166534), size: 32),
+                    title: Text(_fr ? 'Dossiers du chapitre' : 'Chapter folders',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(_fr
+                        ? 'Chaque dossier s’ouvre sur sa propre page.'
+                        : 'Each folder opens on its own page.'),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ...labels.keys.map((key) => Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: Icon(icons[key], color: const Color(0xFF166534), size: 28),
+                    title: Text(labels[key]!, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${counts[key] ?? 0} ${_fr ? 'élément(s)' : 'item(s)'}'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SubjectChannelPage(
+                          locale: widget.locale,
+                          profile: widget.profile,
+                          subject: widget.subject,
+                          chapterId: widget.chapterId,
+                          chapterTitle: widget.chapterTitle,
+                          folderKey: key,
+                        ),
+                      ),
+                    ),
+                  ),
+                )),
+              ],
+            ),
+          );
+        }
+
+        if (widget.folderKey == 'ai_quiz') return _aiEvaluations();
+
+        final isCourses = widget.folderKey == 'courses';
+        final isExercises = widget.folderKey == 'exercises';
+        final selectedTypes = folderTypes[widget.folderKey] ?? const <String>[];
+        final selectedMedia = media
+            .where((entry) => selectedTypes.contains(entry.resource.resourceType))
+            .toList(growable: false);
+        final isEmpty = isCourses
+            ? items.isEmpty
+            : isExercises
+                ? items.where((item) => item.course != null).isEmpty
+                : selectedMedia.isEmpty;
+
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(12),
             children: [
               if (_offlineMode) _offlineBanner(),
-              Card(
-                elevation: 0,
-                child: ListTile(
-                  leading: const Icon(Icons.folder_copy_outlined, color: Color(0xFF166534), size: 32),
-                  title: Text(_fr ? 'Fichiers du chapitre' : 'Chapter files',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(_fr
-                      ? 'Ouvre un dossier pour retrouver séparément les cours, photos, audios, vidéos et PDF.'
-                      : 'Open a folder to browse courses, photos, audio, videos and PDFs separately.'),
-                ),
-              ),
-              const SizedBox(height: 4),
-              ...folders.keys.map((key) {
-                final count = folderCounts[key] ?? 0;
-                final children = <Widget>[];
-                if (key == 'courses') {
-                  if (items.isEmpty) {
-                    children.add(ListTile(
-                      title: Text(_fr ? 'Aucun cours publié' : 'No published courses'),
-                    ));
-                  } else {
-                    children.addAll(items.map((item) => item.chapterContent != null
-                        ? _chapterContentPost(item.chapterContent!)
-                        : _coursePost(item.course!, showResources: false)));
-                  }
-                } else {
-                  final files = media.where((entry) =>
-                      folders[key]!.contains(entry.resource.resourceType)).toList();
-                  if (files.isEmpty) {
-                    children.add(ListTile(
-                      leading: const Icon(Icons.info_outline_rounded),
-                      title: Text(_fr ? 'Aucun fichier dans ce dossier' : 'This folder is empty'),
-                    ));
-                  } else {
-                    children.addAll(files.map((entry) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(entry.course.labelFor(_fr ? 'fr' : 'en'),
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          OfflineResourceTile(
+              if (isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 72, horizontal: 20),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.folder_open_rounded, size: 54),
+                      const SizedBox(height: 12),
+                      Text(emptyMessage, textAlign: TextAlign.center),
+                    ],
+                  ),
+                )
+              else if (isCourses)
+                ...items.map((item) => item.chapterContent != null
+                    ? _chapterContentPost(item.chapterContent!)
+                    : _coursePost(item.course!, showResources: false))
+              else if (isExercises)
+                ...items.where((item) => item.course != null).map((item) {
+                  final course = item.course!;
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.edit_note_rounded, color: Color(0xFF166534)),
+                      title: Text(course.labelFor(widget.locale.languageCode)),
+                      subtitle: Text(_fr ? 'Ouvrir le cours et ses exercices' : 'Open course and exercises'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CourseDetailPage(
                             locale: widget.locale,
                             profile: widget.profile,
-                            resource: entry.resource,
+                            course: course,
                           ),
-                        ],
+                        ),
                       ),
-                    )));
-                  }
-                }
-                return Card(
+                    ),
+                  );
+                })
+              else
+                ...selectedMedia.map((entry) => Card(
                   margin: const EdgeInsets.only(bottom: 8),
-                  clipBehavior: Clip.antiAlias,
-                  child: ExpansionTile(
-                    leading: Icon(icons[key], color: const Color(0xFF166534), size: 28),
-                    title: Text(labels[key]!, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('$count ${_fr ? 'élément(s)' : 'item(s)'}'),
-                    children: children,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(entry.course.labelFor(widget.locale.languageCode),
+                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                        OfflineResourceTile(
+                          locale: widget.locale,
+                          profile: widget.profile,
+                          resource: entry.resource,
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              }),
+                )),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
