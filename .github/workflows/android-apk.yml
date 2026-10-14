@@ -31,6 +31,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Flutter must be installed before pub get, code generation, analysis and build.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
