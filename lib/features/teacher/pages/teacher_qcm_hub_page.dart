@@ -463,8 +463,8 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 const SizedBox(height: 12),
                 Text(
                   _fr
-                      ? 'Aucun QCM disponible. Les QCM sont générés automatiquement par l’IA à partir des cours publiés.'
-                      : 'No quizzes available. AI quizzes are generated automatically from published lessons.',
+                      ? 'Aucun QCM pour le moment. Créez un QCM dans le premier onglet.'
+                      : 'No quizzes yet. Create one in the first tab.',
                   textAlign: TextAlign.center,
                 ),
               ],
