@@ -92,6 +92,24 @@ class _AiPageState extends State<AiPage> {
   Future<void> _sendText(String rawText) async {
     final text = rawText.trim();
     final selectedAttachment = _attachment;
+    final incompleteExercisePrompt = RegExp(
+      r'^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$',
+      caseSensitive: false,
+    );
+    if (selectedAttachment == null && incompleteExercisePrompt.hasMatch(text)) {
+      setState(() {
+        _messages.add(_AiMessage(
+          text: _isFrench
+              ? 'Écris l’énoncé de l’exercice ou joins une photo/PDF avant d’envoyer.'
+              : 'Write the exercise statement or attach a photo/PDF before sending.',
+          fromUser: false,
+          isError: true,
+          canRetry: false,
+        ));
+      });
+      _scrollToBottom();
+      return;
+    }
     final contextAttachment = selectedAttachment ?? _conversationAttachment;
     if ((text.isEmpty && contextAttachment == null) || _sending) {
       return;
