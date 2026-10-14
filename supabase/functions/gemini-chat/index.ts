@@ -252,7 +252,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
     // Use a known supported model by default. If GEMINI_MODEL is stale or invalid,
     // try the stable fallback instead of repeatedly calling nonexistent model names.
     const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-2.5-flash";
-    const models = [...new Set([configuredModel, "gemini-2.5-flash"])];
+    const models = [...new Set([configuredModel, "gemini-2.5-flash", "gemini-2.0-flash"])];
     let data: any = null;
     let lastError = "Gemini request failed.";
     for (const model of models) {
@@ -276,7 +276,11 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
           },
         );
         data = await response.json().catch(() => ({}));
-        if (response.ok) break;
+        if (response.ok && data?.candidates?.length) break;
+        if (response.ok) {
+          lastError = `Gemini returned no candidates on ${model}.`;
+          continue;
+        }
         const safeProviderBody = JSON.stringify(data ?? {})
           .replaceAll(apiKey, "[REDACTED]")
           .slice(0, 4000);
