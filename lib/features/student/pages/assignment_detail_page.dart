@@ -707,6 +707,19 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
         questionId: question.id,
         selectedOption: selectedOption,
       );
+      final submission = _submission;
+      if (submission != null && submission.status == 'draft') {
+        try {
+          await _service.saveAnswer(
+            submissionId: submission.id,
+            questionId: question.id,
+            selectedOption: selectedOption,
+            isCorrect: feedback['is_correct'] == true,
+          );
+        } catch (_) {
+          // The on-screen correction still works if saving analytics fails.
+        }
+      }
       if (!mounted) return;
       setState(() {
         _checkingQcm.remove(question.id);
