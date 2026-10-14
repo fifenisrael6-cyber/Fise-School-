@@ -478,10 +478,18 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     setState(() => _saving = false);
 
     if (errors.isNotEmpty) {
-      _snack(
-        '${_fr ? 'Erreur' : 'Error'} (${errors.length}/${targets.length})\n${errors.first}',
-      );
-      if (saved == 0) return;
+      if (saved == 0) {
+        _snack(
+          '${_fr ? 'Échec de la publication' : 'Publication failed'} (${errors.length}/${targets.length})\n${errors.first}',
+        );
+        return;
+      }
+      // Some classrooms may have been published successfully before another
+      // classroom failed. Report both facts so the teacher does not retry and
+      // accidentally create duplicates in rooms already served.
+      _snack(_fr
+          ? 'Médias envoyés dans $saved salle(s). Échec dans ${errors.length} autre(s) salle(s) : ${errors.first}'
+          : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}');
     } else {
       _snack(_fr
           ? 'Médias publiés automatiquement dans $saved salle(s) partageant cette matière.'
