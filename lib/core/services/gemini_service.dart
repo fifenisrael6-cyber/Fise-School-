@@ -110,7 +110,7 @@ class GeminiService {
       );
     }
 
-    final lessonContext = context
+    final lessonContext = context;
     final body = <String, dynamic>{
       'message': cleanMessage,
       'history': history.take(20).map((item) => item.toMap()).toList(),
