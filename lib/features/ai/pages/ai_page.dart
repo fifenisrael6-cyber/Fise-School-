@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/gemini_service.dart';
@@ -67,6 +71,8 @@ class _AiPageState extends State<AiPage> {
       fromUser: false,
     ));
 
+    unawaited(_restoreConversation());
+
     final initial = widget.initialPrompt?.trim() ?? '';
     if (initial.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -74,6 +80,64 @@ class _AiPageState extends State<AiPage> {
           _sendText(initial);
         }
       });
+    }
+  }
+
+  String get _backupKey {
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? 'local';
+    return 'fise_ai_chat_backup_$userId';
+  }
+
+  /// Restaure automatiquement la dernière conversation locale après fermeture,
+  /// redémarrage ou interruption réseau. Les octets des pièces jointes ne sont
+  /// pas sauvegardés : seul leur nom reste dans l'historique.
+  Future<void> _restoreConversation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_backupKey);
+      if (raw == null || raw.isEmpty || !mounted) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List || decoded.isEmpty) return;
+      final restored = decoded.whereType<Map>().map((item) {
+        final text = (item['text'] ?? '').toString();
+        final name = item['attachmentName']?.toString();
+        return _AiMessage(
+          text: text,
+          fromUser: item['fromUser'] == true,
+          attachmentName: name,
+          attachmentMimeType: item['attachmentMimeType']?.toString(),
+        );
+      }).where((item) => item.text.trim().isNotEmpty || item.attachmentName != null).toList();
+      if (restored.isEmpty || !mounted || _messages.length > 1) return;
+      setState(() {
+        final intro = _messages.where((item) => item.isIntro).toList();
+        _messages
+          ..clear()
+          ..addAll(intro)
+          ..addAll(restored);
+      });
+      _scrollToBottom();
+    } catch (_) {
+      // Une sauvegarde illisible ne doit jamais empêcher l'ouverture du chat.
+    }
+  }
+
+  Future<void> _persistConversation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = _messages
+          .where((item) => !item.isIntro && !item.isError)
+          .where((item) => item.text.trim().isNotEmpty || item.attachmentName != null)
+          .toList();
+      final payload = saved.length > 80 ? saved.sublist(saved.length - 80) : saved;
+      await prefs.setString(_backupKey, jsonEncode(payload.map((item) => {
+        'text': item.text.length > 12000 ? item.text.substring(0, 12000) : item.text,
+        'fromUser': item.fromUser,
+        'attachmentName': item.attachmentName,
+        'attachmentMimeType': item.attachmentMimeType,
+      }).toList()));
+    } catch (_) {
+      // Le chat continue de fonctionner si le stockage local est indisponible.
     }
   }
 
@@ -131,6 +195,7 @@ class _AiPageState extends State<AiPage> {
       _sending = true;
     });
     _scrollToBottom();
+    unawaited(_persistConversation());
 
     try {
       // Évite un appel IA inutile (et une longue attente) sans Internet.
@@ -158,6 +223,7 @@ class _AiPageState extends State<AiPage> {
         _messages.add(_AiMessage(text: answer, fromUser: false));
         _sending = false;
       });
+      unawaited(_persistConversation());
     } catch (error) {
       if (!mounted) {
         return;
@@ -172,6 +238,7 @@ class _AiPageState extends State<AiPage> {
         ));
         _sending = false;
       });
+      unawaited(_persistConversation());
     }
     _scrollToBottom();
   }
@@ -355,6 +422,7 @@ class _AiPageState extends State<AiPage> {
   void _removeAttachment() => setState(() => _attachment = null);
 
   void _clearConversation() {
+    unawaited(SharedPreferences.getInstance().then((prefs) => prefs.remove(_backupKey)).catchError((_) => false));
     setState(() {
       _messages
         ..clear()
