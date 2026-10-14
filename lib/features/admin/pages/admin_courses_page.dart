@@ -107,9 +107,18 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   }
 
   Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    // Automatic QCM generation is intentionally disabled. QCMs are authored
-    // and published manually by teachers.
-    return;
+    try {
+      final response = await _client.functions.invoke(
+        'chapter-quiz',
+        body: {'chapter_id': chapterId},
+      );
+      final data = response.data;
+      if (data is Map && data['error'] != null) {
+        debugPrint('AI QCM generation unavailable for $chapterId: ${data['error']}');
+      }
+    } catch (error) {
+      debugPrint('AI QCM generation failed after publication for $chapterId: $error');
+    }
   }
 
   Future<void> _createCourse() async {
@@ -347,10 +356,51 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     if (file.bytes == null || file.bytes!.isEmpty) { _snack(_fr ? 'Impossible de lire ce fichier.' : 'Unable to read this file.'); return; }
     final ext = file.extension?.toLowerCase() ?? '';
     final type = switch (ext) { 'pdf' => 'pdf', 'jpg' || 'jpeg' || 'png' || 'webp' => 'image', 'mp4' || 'mov' => 'video', 'mp3' || 'wav' || 'm4a' => 'audio', 'doc' || 'docx' || 'txt' || 'ppt' || 'pptx' || 'xls' || 'xlsx' => 'document', _ => 'other' };
+    var selectedFolder = switch (type) {
+      'video' => 'videos',
+      'audio' => 'audios',
+      _ => 'documents',
+    };
+    final folderKey = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(_fr ? 'Choisir le dossier' : 'Choose folder'),
+          content: DropdownButtonFormField<String>(
+            initialValue: selectedFolder,
+            decoration: InputDecoration(
+              labelText: _fr ? 'Dossier de destination' : 'Destination folder',
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem(value: 'lessons', child: Text(_fr ? 'Cours / leçons' : 'Lessons')),
+              DropdownMenuItem(value: 'videos', child: Text(_fr ? 'Vidéos' : 'Videos')),
+              DropdownMenuItem(value: 'audios', child: Text(_fr ? 'Audios' : 'Audio')),
+              DropdownMenuItem(value: 'documents', child: Text(_fr ? 'Documents (PDF, images)' : 'Documents (PDF, images)')),
+              DropdownMenuItem(value: 'exercises', child: Text(_fr ? 'Exercices' : 'Exercises')),
+            ],
+            onChanged: (value) {
+              if (value != null) setDialog(() => selectedFolder = value);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_fr ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selectedFolder),
+              child: Text(_fr ? 'Continuer' : 'Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (folderKey == null) return;
     try {
       final count = await _client.from('course_resources').select('id').eq('course_id', course['id']).count(CountOption.exact);
-      await _resources.uploadResource(courseId: course['id'].toString(), file: file, resourceType: type, position: count.count, titleFr: file.name, titleEn: file.name);
-      _snack(_fr ? 'Contenu ajouté à la salle et au cours.' : 'Content added to the classroom course.');
+      await _resources.uploadResource(courseId: course['id'].toString(), file: file, resourceType: type, position: count.count, folderKey: folderKey, titleFr: file.name, titleEn: file.name);
+      _snack(_fr ? 'Contenu ajouté au dossier choisi.' : 'Content added to the selected folder.');
     } catch (e) { _snack(_fr ? 'Échec de l’envoi : $e' : 'Upload failed: $e'); }
   }
 
