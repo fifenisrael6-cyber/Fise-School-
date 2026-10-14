@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/gemini_service.dart';
@@ -382,14 +386,37 @@ class _LessonPageState extends State<LessonPage> {
         )));
       } else {
         if (resource.storagePath.isEmpty) {
-          throw Exception();
+          throw StateError('resource-storage-path-empty');
         }
         final url = await _resourceService.createSignedUrl(resource.storagePath);
-        // Keep the existing online fallback only when no local copy exists.
-        final uri = Uri.parse(url);
-        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-          throw Exception();
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw HttpException('Resource download failed: ${response.statusCode}');
         }
+        final tempDir = await getTemporaryDirectory();
+        final safeName = p.basename(resource.fileName).replaceAll(
+          RegExp(r'[^A-Za-z0-9._-]'),
+          '_',
+        );
+        final file = File(p.join(
+          tempDir.path,
+          'fise_lesson_preview_${resource.id}_$safeName',
+        ));
+        await file.writeAsBytes(response.bodyBytes, flush: true);
+        if (!mounted) {
+          return;
+        }
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OfflineResourceViewer(
+              locale: widget.locale,
+              userId: widget.profile.id,
+              resource: resource,
+              localPath: file.path,
+            ),
+          ),
+        );
       }
     } catch (_) {
       if (!mounted) {
