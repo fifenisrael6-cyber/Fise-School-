@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
@@ -46,6 +47,9 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
 
   List<SchoolClass> _classes = const [];
   Subject? _subject;
+  List<Map<String, dynamic>> _chapters = const [];
+  String? _chapterId;
+  bool _loadingChapters = false;
   DateTime? _dueAt;
   bool _saving = false;
 
@@ -64,6 +68,40 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadChapters() async {
+    final subject = _subject;
+    if (subject == null || _classes.isEmpty) {
+      if (mounted) setState(() { _chapters = const []; _chapterId = null; });
+      return;
+    }
+    setState(() { _loadingChapters = true; _chapters = const []; _chapterId = null; });
+    try {
+      final client = Supabase.instance.client;
+      final curricula = await client.from('curricula').select('id')
+          .eq('subject_id', subject.id).eq('is_active', true);
+      final curriculumIds = curricula.map((row) => row['id'].toString()).toList();
+      if (curriculumIds.isEmpty) {
+        if (mounted) setState(() => _chapters = const []);
+        return;
+      }
+      final rows = await client.from('course_chapters').select('id,curriculum_id,title_fr,title_en,position')
+          .inFilter('curriculum_id', curriculumIds).eq('is_active', true).order('position');
+      if (!mounted) return;
+      final unique = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        unique[row['id'].toString()] = Map<String, dynamic>.from(row);
+      }
+      setState(() {
+        _chapters = unique.values.toList(growable: false);
+        _chapterId = _chapters.isEmpty ? null : _chapters.first['id'].toString();
+      });
+    } catch (error) {
+      if (mounted) _snack('${_fr ? 'Impossible de charger les chapitres' : 'Unable to load chapters'}: $error');
+    } finally {
+      if (mounted) setState(() => _loadingChapters = false);
+    }
   }
 
   Future<void> _pickDueDate() async {
@@ -95,6 +133,9 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     }
     if (_subject == null) {
       return _fr ? 'Choisissez la matière.' : 'Choose the subject.';
+    }
+    if (_chapterId == null) {
+      return _fr ? 'Choisissez le chapitre.' : 'Choose the chapter.';
     }
     if (_title.text.trim().isEmpty) {
       return _examMode ? (_fr ? 'Donnez un titre à l’examen.' : 'Give the exam a title.') : (_fr ? 'Donnez un titre au QCM.' : 'Give the quiz a title.');
@@ -169,6 +210,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         final assignment = await _service.saveAssignment(
           courseId: matchingCourses.length == 1 ? matchingCourses.single.id : null,
           subjectId: _subject!.id,
+          chapterId: _chapterId,
           teacherId: widget.profile.id,
           classId: schoolClass.id,
           titleFr: title,
@@ -361,8 +403,31 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
                 _classes = classes;
                 _subject = subject;
               });
+              _loadChapters();
             },
           ),
+          const SizedBox(height: 16),
+          Text(_fr ? 'Chapitre de diffusion' : 'Chapter', style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (_loadingChapters)
+            const LinearProgressIndicator()
+          else if (_chapters.isEmpty)
+            Text(_fr ? 'Aucun chapitre actif trouvé pour cette matière.' : 'No active chapter found for this subject.')
+          else
+            DropdownButtonFormField<String>(
+              key: ValueKey('chapter-$_chapterId-${_chapters.length}'),
+              initialValue: _chapterId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _fr ? 'Choisir le chapitre' : 'Select chapter',
+                border: const OutlineInputBorder(),
+              ),
+              items: _chapters.map((chapter) => DropdownMenuItem<String>(
+                value: chapter['id'].toString(),
+                child: Text((( _fr ? chapter['title_fr'] : chapter['title_en']) ?? chapter['title_fr'] ?? chapter['title_en'] ?? '').toString()),
+              )).toList(),
+              onChanged: (value) => setState(() => _chapterId = value),
+            ),
           const SizedBox(height: 20),
           TextField(
             controller: _title,
