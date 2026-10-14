@@ -505,19 +505,24 @@ class AssignmentService {
     await deleteAssignmentForEveryone(assignmentId, teacherId: userId);
   }
 
-  Future<void> publishAssignment(String assignmentId) async {
-    // Require the database to confirm that the row was actually published.
-    // Previously an RLS-filtered UPDATE could affect zero rows without making
-    // the teacher's screen aware that the QCM remained a draft.
-    await _client
+  Future<Assignment> publishAssignment(String assignmentId) async {
+    // Return the row produced by the UPDATE itself. Do not verify publication
+    // through getAssignment(), which may return a stale offline draft after a
+    // transient read error even though the server accepted the publication.
+    final row = await _client
         .from('assignments')
         .update({
           'status': 'published',
-          'published_at': DateTime.now().toIso8601String(),
+          'published_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('id', assignmentId)
-        .select('id')
+        .select()
         .single();
+    final published = Assignment.fromMap(Map<String, dynamic>.from(row));
+    if (published.status != 'published') {
+      throw StateError('Supabase n’a pas confirmé la publication du QCM.');
+    }
+    return published;
   }
 
   Future<void> closeAssignment(String assignmentId) async {
