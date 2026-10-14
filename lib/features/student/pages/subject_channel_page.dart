@@ -285,7 +285,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           final documents = media.where((e) =>
               ['pdf', 'image', 'document', 'other'].contains(e.resource.resourceType)).toList();
           final exercises = media.where((e) =>
-              ['exercise', 'worksheet', 'work'].contains(e.resource.resourceType)).toList();
+              ['exercise', 'worksheet', 'work', 'assignment'].contains(e.resource.resourceType)).toList();
 
           Widget resourceItem(_ChapterMediaEntry entry) => Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -297,8 +297,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   Text(entry.course.labelFor(_fr ? 'fr' : 'en'),
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  Text('${entry.resource.resourceType.toUpperCase()}',
-                      style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                  Text(
+                    '${entry.resource.resourceType.toUpperCase()} · ${_formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))}',
+                    style: const TextStyle(fontSize: 11, color: Colors.black54),
+                  ),
                   OfflineResourceTile(
                     locale: widget.locale,
                     profile: widget.profile,
