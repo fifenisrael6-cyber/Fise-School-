@@ -86,7 +86,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     final totalMs = _duration.inMilliseconds;
     final progress = totalMs <= 0
         ? 0.0
-        : (_position.inMilliseconds / totalMs).clamp(0.0, 1.0);
+        : (_position.inMilliseconds / totalMs).clamp(0.0, 1.0).toDouble();
     final playing = _state == PlayerState.playing;
     return Container(
       width: 250,

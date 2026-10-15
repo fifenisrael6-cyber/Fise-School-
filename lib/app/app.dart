@@ -112,13 +112,18 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
     });
   }
 
+  Future<void> _saveLanguage(Locale locale) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('fise_school_language', locale.languageCode);
+    } catch (error) {
+      debugPrint('Changed language could not be saved: $error');
+    }
+  }
+
   void _changeLanguage(Locale locale) {
     setState(() => _locale = locale);
-    unawaited(SharedPreferences.getInstance().then(
-      (preferences) => preferences.setString('fise_school_language', locale.languageCode),
-    ).catchError((Object error) {
-      debugPrint('Changed language could not be saved: $error');
-    }));
+    unawaited(_saveLanguage(locale));
   }
 
   @override
