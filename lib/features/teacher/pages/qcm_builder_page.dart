@@ -134,7 +134,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
       await CourseService().authorizeTeacherClasses(
         _classes.map((schoolClass) => schoolClass.id).toList(growable: false),
       );
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         setState(() => _saving = false);
         _snack(_fr
@@ -216,7 +216,7 @@ final assignment = await _service.saveAssignment(
           }
         }
         done++;
-      } catch (error) {
+      } catch (_) {
         // Do not leave a half-written draft behind when saving its questions
         // fails. Never remove a QCM that is already confirmed as published.
         if (createdAssignmentId != null) {
