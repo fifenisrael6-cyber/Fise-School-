@@ -8,6 +8,7 @@ import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../pages/courses_page.dart';
 import '../pages/assignments_page.dart';
+import '../pages/student_evaluations_page.dart';
 import '../pages/progress_page.dart';
 import '../pages/timetable_page.dart';
 import '../pages/past_papers_page.dart';
@@ -36,6 +37,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
     return SwipeTabsShell(
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       pagesBuilder: (goToTab) => [
         _StudentHome(
           locale: widget.locale,
@@ -51,7 +53,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
       destinations: [
         NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
         NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-        NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
+        NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: 'Messages'),
         NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
         NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
       ],
@@ -98,6 +100,19 @@ class _StudentHome extends StatelessWidget {
             title: fr ? 'Annales d\'examens' : 'Past exam papers',
             subtitle: fr ? 'Sujets et corrigés des années précédentes.' : 'Papers and corrected exams from previous years.',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale))),
+          ),
+          _QuickCard(
+            icon: Icons.assignment_outlined,
+            title: fr ? 'Mes épreuves' : 'My exams',
+            subtitle: fr
+                ? 'Consulte les épreuves publiées et remets tes réponses.'
+                : 'View published exams and submit your answers.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
+              ),
+            ),
           ),
           _QuickCard(
             icon: Icons.grading_rounded,
