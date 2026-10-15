@@ -157,24 +157,24 @@ class AppDatabase extends _$AppDatabase {
       '''INSERT INTO downloaded_files(resource_id,course_id,user_id,file_name,mime_type,local_path,size_bytes,remote_updated_at,downloaded_at,last_opened_at,status)
       VALUES(?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(resource_id) DO UPDATE SET course_id=excluded.course_id,user_id=excluded.user_id,file_name=excluded.file_name,mime_type=excluded.mime_type,local_path=excluded.local_path,size_bytes=excluded.size_bytes,remote_updated_at=excluded.remote_updated_at,downloaded_at=excluded.downloaded_at,last_opened_at=excluded.last_opened_at,status=excluded.status''',
-      [Variable(file.resourceId), Variable(file.courseId), Variable(file.userId), Variable(file.fileName), Variable(file.mimeType ?? ''), Variable(file.localPath), Variable(file.sizeBytes), Variable(file.remoteUpdatedAt?.toIso8601String() ?? ''), Variable(file.downloadedAt?.toIso8601String() ?? ''), Variable(file.lastOpenedAt?.toIso8601String() ?? ''), Variable(file.status)],
+      [file.resourceId, file.courseId, file.userId, file.fileName, file.mimeType ?? '', file.localPath, file.sizeBytes, file.remoteUpdatedAt?.toIso8601String() ?? '', file.downloadedAt?.toIso8601String() ?? '', file.lastOpenedAt?.toIso8601String() ?? '', file.status],
     );
   }
 
   Future<void> updateDownloadedFileStatus(String resourceId, String userId, String status) async {
-    await customStatement('UPDATE downloaded_files SET status = ? WHERE resource_id = ? AND user_id = ?',  [Variable(status), Variable(resourceId), Variable(userId)]);
+    await customStatement('UPDATE downloaded_files SET status = ? WHERE resource_id = ? AND user_id = ?',  [status, resourceId, userId]);
   }
 
   Future<void> markDownloadedFileOpened(String resourceId, String userId) async {
-    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [Variable(DateTime.now().toIso8601String()), Variable(resourceId), Variable(userId)]);
+    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [DateTime.now().toIso8601String(), resourceId, userId]);
   }
 
   Future<void> deleteDownloadedFile(String resourceId, String userId) async {
-    await customStatement('DELETE FROM downloaded_files WHERE resource_id = ? AND user_id = ?',  [Variable(resourceId), Variable(userId)]);
+    await customStatement('DELETE FROM downloaded_files WHERE resource_id = ? AND user_id = ?',  [resourceId, userId]);
   }
 
   Future<void> deleteAllDownloadedFiles(String userId) async {
-    await customStatement('DELETE FROM downloaded_files WHERE user_id = ?',  [Variable(userId)]);
+    await customStatement('DELETE FROM downloaded_files WHERE user_id = ?',  [userId]);
   }
 
   Future<int> downloadedFilesSize(String userId) async {
@@ -239,7 +239,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcm({required String id, required String userId, required String kind, String? assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT INTO offline_qcm(id,user_id,kind,assignment_id,data_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id,user_id,kind) DO UPDATE SET assignment_id=excluded.assignment_id,data_json=excluded.data_json,updated_at=excluded.updated_at",
-       [Variable(id), Variable(userId), Variable(kind), Variable(assignmentId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
+       [id, userId, kind, assignmentId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
@@ -255,18 +255,18 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcmQueue({required String id, required String userId, required String submissionId, required String assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT OR REPLACE INTO offline_qcm_queue(id,user_id,submission_id,assignment_id,data_json,queued_at) VALUES(?,?,?,?,?,?)",
-       [Variable(id), Variable(userId), Variable(submissionId), Variable(assignmentId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
+       [id, userId, submissionId, assignmentId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
   Future<List<QueryRow>> getOfflineQcmQueue(String userId) => customSelect('SELECT * FROM offline_qcm_queue WHERE user_id = ? ORDER BY queued_at', variables: [Variable(userId)]).get();
 
-  Future<void> deleteOfflineQcmQueue(String id, String userId) => customStatement('DELETE FROM offline_qcm_queue WHERE id = ? AND user_id = ?',  [Variable(id), Variable(userId)]);
+  Future<void> deleteOfflineQcmQueue(String id, String userId) => customStatement('DELETE FROM offline_qcm_queue WHERE id = ? AND user_id = ?',  [id, userId]);
 
   Future<void> saveSmartLesson({required String userId, required String id, required String dataJson}) async {
     await customStatement(
       'INSERT INTO smart_lessons_cache(id,user_id,data_json,cached_at) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,data_json=excluded.data_json,cached_at=excluded.cached_at',
-       [Variable(id), Variable(userId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
+       [id, userId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
@@ -294,7 +294,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> queueSmartExercise({required String id, required String userId, required String lessonId, required String answersJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_queue(id,user_id,lesson_id,answers_json,queued_at) VALUES(?,?,?,?,?)',
-       [Variable(id), Variable(userId), Variable(lessonId), Variable(answersJson), Variable(DateTime.now().toIso8601String())],
+       [id, userId, lessonId, answersJson, DateTime.now().toIso8601String()],
     );
   }
 
@@ -305,13 +305,13 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteSmartExerciseQueue(String id, String userId) => customStatement(
     'DELETE FROM smart_exercise_queue WHERE id = ? AND user_id = ?',
-     [Variable(id), Variable(userId)],
+     [id, userId],
   );
 
   Future<void> saveSmartExerciseResult({required String id, required String userId, required String lessonId, required String dataJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_results(id,user_id,lesson_id,data_json,saved_at) VALUES(?,?,?,?,?)',
-       [Variable(id), Variable(userId), Variable(lessonId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
+       [id, userId, lessonId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
