@@ -147,7 +147,7 @@ Future<String> _readOfficeDocument(String path, String fileName) async {
     return output.join('\n\n');
   }
 
-  throw const UnsupportedError(
+  throw UnsupportedError(
     'Aperçu intégré disponible pour DOCX, PPTX et XLSX. Convertissez les anciens formats binaires en PDF.',
   );
 }
