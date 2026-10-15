@@ -359,6 +359,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                    ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
                    ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
 
+          bool hasExtension(String name, List<String> extensions) =>
+              extensions.any(name.endsWith);
+
           bool isType(_ChapterMediaEntry entry, String type) {
             final resource = entry.resource;
             final resourceType = resource.resourceType.toLowerCase();
@@ -368,9 +371,23 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               case 'photos':
                 return resourceType == 'image' ||
                     mime.startsWith('image/') ||
-                    RegExp(r'\\.(jpe?g|png|gif|webp|heic|bmp)
+                    hasExtension(name, ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.bmp']);
+              case 'audio':
+                return resourceType == 'audio' ||
+                    mime.startsWith('audio/') ||
+                    hasExtension(name, ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus', '.flac']);
+              case 'videos':
+                return resourceType == 'video' ||
+                    mime.startsWith('video/') ||
+                    hasExtension(name, ['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi']);
+              case 'pdf':
+                return resourceType == 'pdf' ||
+                    mime == 'application/pdf' ||
+                    name.endsWith('.pdf');
+              default:
+                return false;
+            }
           }
-
           final photos = media.where((entry) => isType(entry, 'photos')).toList();
           final audios = media.where((entry) => isType(entry, 'audio')).toList();
           final videos = media.where((entry) => isType(entry, 'videos')).toList();
