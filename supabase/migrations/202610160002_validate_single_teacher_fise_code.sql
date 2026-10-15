@@ -66,11 +66,6 @@ begin
       on conflict (group_id, user_id) do nothing;
     end loop;
 
-    insert into public.teacher_access_memberships(student_id, teacher_id, class_id, access_code_id)
-    values (v_user, v_teacher, p_class_id, 'MASTER-' || v_teacher::text)
-    on conflict (student_id, teacher_id, class_id)
-    do update set access_code_id = excluded.access_code_id;
-
     return true;
   end if;
 
