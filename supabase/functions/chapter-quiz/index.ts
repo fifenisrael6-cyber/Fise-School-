@@ -123,20 +123,20 @@ Deno.serve(async (req: Request) => {
     if (profileError || !profile || !["student", "teacher", "admin"].includes(profile.role)) {
       return json({ error: "Cette fonction est réservée aux élèves, enseignants autorisés et administrateurs." }, 403);
     }
+    const isStudent = profile.role === "student";
     const isTeacher = profile.role === "teacher";
     const isAdmin = profile.role === "admin";
-    if (!isTeacher && !isAdmin) {
-      return json({ error: "La génération des QCM est déclenchée par la publication d'un cours, pas par l'ouverture d'un chapitre par un élève." }, 403);
-    }
+    // Les élèves peuvent demander le QCM intelligent d'un chapitre actif ;
+    // la fonction ne lit que des contenus publiés et conserve la clé Gemini côté serveur.
     const dataClient = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const body = await req.json().catch(() => ({}));
     const chapterId = clean(body?.chapter_id, 80);
     if (!chapterId) return json({ error: "chapter_id is required." }, 400);
 
-    // A teacher may trigger generation only for a chapter containing their own
-    // published course/media post. The service role is used only after verifying
-    // the authenticated profile and this ownership constraint.
+    // Les enseignants restent limités à leurs propres cours publiés.
+    // Les élèves peuvent déclencher la génération uniquement pour un chapitre actif ;
+    // le contenu utilisé plus bas est filtré sur is_published=true.
     if (isTeacher) {
       const { data: ownCourse, error: ownCourseError } = await dataClient
         .from("courses")
@@ -150,7 +150,7 @@ Deno.serve(async (req: Request) => {
       if (!ownCourse) return json({ error: "Aucun cours publié de cet enseignant pour ce chapitre." }, 403);
     }
 
-    // Only authenticated teachers publishing their own course, or admins, can trigger generation.
+    // Tous les rôles autorisés ci-dessus doivent cibler un chapitre actif.
     const { data: chapter, error: chapterError } = await dataClient
       .from("course_chapters")
       .select("id,title_fr,title_en,curriculum_id")
