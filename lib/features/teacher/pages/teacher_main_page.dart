@@ -38,7 +38,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
         _TeacherHome(locale: widget.locale, profile: widget.profile),
         _TeacherQuizzes(locale: widget.locale, profile: widget.profile),
         TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
-        TeacherEvaluationsPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -58,11 +57,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
           icon: const Icon(Icons.menu_book_outlined),
           selectedIcon: const Icon(Icons.menu_book),
           label: fr ? 'Cours' : 'Courses',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.assignment_outlined),
-          selectedIcon: const Icon(Icons.assignment),
-          label: fr ? 'Épreuves' : 'Exams',
         ),
         NavigationDestination(
           icon: const Icon(Icons.chat_bubble_outline),
@@ -97,6 +91,16 @@ class _TeacherHome extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.assignment_outlined),
+            tooltip: fr ? 'Épreuves PDF et corrections' : 'PDF exams and corrections',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: fr ? 'Paramètres' : 'Settings',
@@ -147,19 +151,6 @@ class _TeacherHomeContent extends StatelessWidget {
           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 16),
-        _TeacherAction(
-          icon: Icons.picture_as_pdf_outlined,
-          title: fr ? 'Épreuves PDF et corrections' : 'PDF exams and corrections',
-          subtitle: fr
-              ? 'Publier une épreuve PDF à une salle et suivre les remises.'
-              : 'Publish a PDF exam to a classroom and track submissions.',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
-            ),
-          ),
-        ),
         _TeacherAction(
           icon: Icons.grading_rounded,
           title: fr ? 'Notes' : 'Marks',
