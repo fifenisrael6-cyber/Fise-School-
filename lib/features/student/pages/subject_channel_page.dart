@@ -318,6 +318,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 : 'No course or media has been published for this chapter yet.',
           );
         },
+      ),
     );
   }
 
