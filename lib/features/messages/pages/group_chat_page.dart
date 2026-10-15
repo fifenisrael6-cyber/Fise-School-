@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +11,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/offline/message_outbox.dart';
+import '../../../core/offline/message_attachment_offline.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
@@ -422,22 +423,57 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
-  Future<void> _openAttachment(GroupMessage message, String url) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => _GroupAttachmentViewer(
-        url: url,
-        name: message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment'),
+  Future<void> _openAttachment(
+    GroupMessage message,
+    String url, {
+    bool cacheOffline = true,
+  }) async {
+    final name = message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment');
+    if (!cacheOffline) {
+      // Respecter strictement le comportement éphémère des vues uniques.
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => _GroupAttachmentViewer(
+          url: url,
+          name: name,
+          mimeType: message.attachmentType ?? '',
+          isFrench: _fr,
+        ),
+      ));
+      return;
+    }
+
+    try {
+      final opened = await MessageAttachmentOfflineService().open(
+        userId: widget.profile.id,
+        conversationId: 'group-' + widget.group.id,
+        messageId: message.id,
+        fileName: name,
         mimeType: message.attachmentType ?? '',
-        isFrench: _fr,
-      ),
-    ));
+        signedUrl: url,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: widget.locale,
+          userId: widget.profile.id,
+          resource: opened.resource,
+          localPath: opened.localPath,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Ce fichier doit être ouvert une première fois avec Internet pour rester disponible hors ligne.'
+            : 'Open this file once while online to keep it available offline.');
+      }
+    }
   }
 
   Future<void> _openViewOnceAttachment(GroupMessage message) async {
     try {
       final url = await _service.openViewOnceAttachment(message.id);
       if (!mounted) return;
-      await _openAttachment(message, url);
+      await _openAttachment(message, url, cacheOffline: false);
       await _load(showLoader: false, markRead: false);
     } catch (_) {
       if (mounted) {
@@ -865,7 +901,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
       builder: (context, snapshot) {
         final url = snapshot.data;
         if (url != null && type.startsWith('audio/')) {
-          return _GroupRemoteAudioMessage(url: url, isFrench: _fr);
+          return TextButton.icon(
+            onPressed: () => _openAttachment(message, url),
+            icon: const Icon(Icons.audiotrack_rounded),
+            label: Text(message.attachmentName ?? (_fr ? 'Audio' : 'Audio')),
+          );
         }
 
         if (url != null && type.startsWith('image/')) {
@@ -888,7 +928,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         }
 
         return TextButton.icon(
-          onPressed: url == null ? null : () => _openAttachment(message, url),
+          onPressed: () => _openAttachment(message, url ?? ''),
           icon: Icon(type == 'application/pdf'
               ? Icons.picture_as_pdf_rounded
               : type.startsWith('video/')
@@ -902,136 +942,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
 }
 
 
-class _GroupRemoteAudioMessage extends StatefulWidget {
-  final String url;
-  final bool isFrench;
-
-  const _GroupRemoteAudioMessage({required this.url, required this.isFrench});
-
-  @override
-  State<_GroupRemoteAudioMessage> createState() => _GroupRemoteAudioMessageState();
-}
-
-class _GroupRemoteAudioMessageState extends State<_GroupRemoteAudioMessage> {
-  final AudioPlayer _player = AudioPlayer();
-  StreamSubscription<void>? _completed;
-  StreamSubscription<Duration>? _durationSubscription;
-  StreamSubscription<Duration>? _positionSubscription;
-  bool _playing = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _completed = _player.onPlayerComplete.listen((_) {
-      if (mounted) {
-        setState(() {
-          _playing = false;
-          _position = _duration;
-        });
-      }
-    });
-    _durationSubscription = _player.onDurationChanged.listen((value) {
-      if (mounted) setState(() => _duration = value);
-    });
-    _positionSubscription = _player.onPositionChanged.listen((value) {
-      if (mounted) setState(() => _position = value);
-    });
-    unawaited(_prepareDuration());
-  }
-
-  /// Load the audio source without starting playback so its total duration is
-  /// visible as soon as the voice message appears in the conversation.
-  Future<void> _prepareDuration() async {
-    try {
-      await _player.setSourceUrl(widget.url);
-      final duration = await _player.getDuration();
-      if (mounted && duration != null && duration > Duration.zero) {
-        setState(() => _duration = duration);
-      }
-    } catch (_) {
-      // The message remains playable; the duration will be filled when playback starts.
-    }
-  }
-
-  String _formatDuration(Duration value) {
-    final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
-    final hours = value.inHours;
-    return hours > 0 ? '${hours.toString().padLeft(2, '0')}:$minutes:$seconds' : '$minutes:$seconds';
-  }
-
-  Future<void> _toggle() async {
-    if (_playing) {
-      await _player.pause();
-      if (mounted) setState(() => _playing = false);
-      return;
-    }
-    if (_position >= _duration && _duration > Duration.zero) {
-      await _player.seek(Duration.zero);
-      if (mounted) setState(() => _position = Duration.zero);
-    }
-    if (mounted) setState(() => _playing = true);
-    try {
-      await _player.play(UrlSource(widget.url));
-    } catch (_) {
-      if (mounted) {
-        setState(() => _playing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.isFrench ? 'Lecture audio impossible.' : 'Unable to play audio.')),
-        );
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    unawaited(_completed?.cancel());
-    unawaited(_durationSubscription?.cancel());
-    unawaited(_positionSubscription?.cancel());
-    unawaited(_player.dispose());
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final total = _duration.inMilliseconds;
-    final current = _position.inMilliseconds.clamp(0, total > 0 ? total : 1);
-    return SizedBox(
-      width: 230,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            onPressed: _toggle,
-            icon: Icon(_playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(widget.isFrench ? 'Message vocal' : 'Voice message',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: total > 0 ? current / total : 0,
-                  minHeight: 3,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${_formatDuration(_position)} / ${_duration == Duration.zero ? '--:--' : _formatDuration(_duration)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.black54),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 class _GroupAttachmentViewer extends StatefulWidget {
   final String url;
   final String name;

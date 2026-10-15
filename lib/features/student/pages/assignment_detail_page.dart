@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/offline/offline_repository.dart';
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
+import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 
 class AssignmentDetailPage extends StatefulWidget {
@@ -357,30 +359,56 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   }
 
   Future<void> _openOfficialExamPdf() async {
-    final path = widget.assignment.evaluationFilePath;
-    if (path == null || path.trim().isEmpty || _isNotStarted || _isClosed) {
+    final storagePath = widget.assignment.evaluationFilePath;
+    if (storagePath == null ||
+        storagePath.trim().isEmpty ||
+        _isNotStarted ||
+        _isClosed) {
       return;
     }
+
+    final fileName = widget.assignment.evaluationFileName?.trim().isNotEmpty == true
+        ? widget.assignment.evaluationFileName!.trim()
+        : widget.assignment.titleFor(widget.locale) + '.pdf';
     try {
-      final url = await Supabase.instance.client.storage
-          .from('assignment-files')
-          .createSignedUrl(path, 900);
-      final opened = await launchUrl(
-        Uri.parse(url),
-        mode: LaunchMode.externalApplication,
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'assignment-exam-' + widget.assignment.id,
+        courseId: 'assignment-files',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () => Supabase.instance.client.storage
+            .from('assignment-files')
+            .createSignedUrl(storagePath, 900),
       );
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_isEnglish
-              ? 'Unable to open the exam PDF.'
-              : 'Impossible d’ouvrir le PDF de l’épreuve.'),
-        ));
-      }
-    } catch (error) {
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: 'assignment-exam-' + widget.assignment.id,
+        courseId: 'assignment-files',
+        resourceType: 'pdf',
+        storagePath: storagePath,
+        fileName: fileName,
+        titleFr: widget.assignment.titleFr,
+        titleEn: widget.assignment.titleEn,
+        mimeType: 'application/pdf',
+      );
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: widget.locale,
+          userId: widget.profile.id,
+          resource: resource,
+          localPath: localPath,
+        ),
+      ));
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${_isEnglish ? 'Exam PDF unavailable' : 'PDF de l’épreuve indisponible'}: $error'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isEnglish
+                ? 'Open this exam PDF online once to make it available offline.'
+                : 'Ouvrez ce PDF une première fois avec Internet pour le garder hors ligne.'),
+          ),
+        );
       }
     }
   }

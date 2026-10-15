@@ -11,6 +11,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/offline/message_outbox.dart';
+import '../../../core/offline/message_attachment_offline.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
@@ -789,6 +791,41 @@ class _MessageAttachment extends StatefulWidget {
 class _MessageAttachmentState extends State<_MessageAttachment> {
   bool _openingViewOnce = false;
 
+  Future<void> _openCachedAttachment(String url) async {
+    final message = widget.message;
+    final name = message.attachmentName ??
+        (widget.isFrench ? 'Pièce jointe' : 'Attachment');
+    try {
+      final opened = await MessageAttachmentOfflineService().open(
+        userId: widget.currentUserId,
+        conversationId: 'private-' + message.senderId + '-' + message.recipientId,
+        messageId: message.id,
+        fileName: name,
+        mimeType: message.attachmentType ?? '',
+        signedUrl: url,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: Locale(widget.isFrench ? 'fr' : 'en'),
+          userId: widget.currentUserId,
+          resource: opened.resource,
+          localPath: opened.localPath,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.isFrench
+                ? 'Ce fichier doit être ouvert une première fois avec Internet pour rester disponible hors ligne.'
+                : 'Open this file once while online to keep it available offline.'),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openViewOnce() async {
     if (_openingViewOnce) return;
     setState(() => _openingViewOnce = true);
@@ -885,30 +922,25 @@ class _MessageAttachmentState extends State<_MessageAttachment> {
       builder: (context, snapshot) {
         final url = snapshot.data;
         if (url == null) {
-          return Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              message.attachmentName ?? (isFrench ? 'Pièce jointe' : 'Attachment'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+          return TextButton.icon(
+            onPressed: () => _openCachedAttachment(''),
+            icon: const Icon(Icons.attach_file_rounded),
+            label: Text(message.attachmentName ?? (isFrench ? 'Pièce jointe' : 'Attachment')),
           );
         }
         if (type.startsWith('audio/')) {
-          return _RemoteAudioMessage(url: url, isFrench: isFrench);
+          return TextButton.icon(
+            onPressed: () => _openCachedAttachment(url),
+            icon: const Icon(Icons.audiotrack_rounded),
+            label: Text(message.attachmentName ?? (isFrench ? 'Audio' : 'Audio')),
+          );
         }
         if (type.startsWith('image/')) {
           return Padding(
             padding: const EdgeInsets.only(top: 8),
             child: GestureDetector(
               onTap: () {
-                Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => _PrivateAttachmentViewer(
-                    url: url,
-                    name: message.attachmentName ?? (isFrench ? 'Image' : 'Image'),
-                    mimeType: type,
-                    isFrench: isFrench,
-                  ),
-                ));
+                _openCachedAttachment(url);
               },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
@@ -927,14 +959,7 @@ class _MessageAttachmentState extends State<_MessageAttachment> {
           padding: const EdgeInsets.only(top: 8),
           child: TextButton.icon(
             onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute<void>(
-                builder: (_) => _PrivateAttachmentViewer(
-                  url: url,
-                  name: message.attachmentName ?? (isFrench ? 'Fichier' : 'File'),
-                  mimeType: type,
-                  isFrench: isFrench,
-                ),
-              ));
+              _openCachedAttachment(url);
             },
             icon: Icon(type == 'application/pdf'
                 ? Icons.picture_as_pdf_rounded
