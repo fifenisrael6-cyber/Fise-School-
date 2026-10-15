@@ -125,7 +125,9 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_fr ? 'Envoi impossible' : 'Submission failed'}: $error')),
+          SnackBar(content: Text(_fr
+              ? 'Impossible d’envoyer les réponses ou de calculer la note. Vérifie ta connexion et réessaie.'
+              : 'Unable to submit answers or calculate the score. Check your connection and try again.')),
         );
       }
     } finally {
