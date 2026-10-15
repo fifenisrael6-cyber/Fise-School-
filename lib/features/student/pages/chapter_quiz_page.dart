@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/chapter_learning.dart';
@@ -41,6 +42,18 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
 
   Future<void> _load() async {
     try {
+      // The chapter-folder AI entry point triggers generation from the
+      // chapter's already-published lesson/course content. The Edge Function
+      // checks the student's classroom access and reuses a valid quiz.
+      final generation = await Supabase.instance.client.functions.invoke(
+        'chapter-quiz',
+        body: {'chapter_id': widget.chapterId},
+      );
+      final generationData = generation.data;
+      if (generationData is Map && generationData['error'] != null) {
+        throw StateError(generationData['error'].toString());
+      }
+
       final quizzes = await _service.listQuizzes(widget.chapterId);
       if (quizzes.isEmpty) {
         throw StateError(_fr
