@@ -75,7 +75,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
         }
         // Créer un lien signé neuf à chaque ouverture : le précédent peut avoir expiré.
         final signedUrl = await _resources.createSignedUrl(widget.resource.storagePath);
-        if (signedUrl == null || signedUrl.isEmpty) {
+        if (signedUrl.isEmpty) {
           throw StateError('signed-url-unavailable');
         }
 
