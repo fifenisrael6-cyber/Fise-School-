@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/evaluation_service.dart';
 import '../../../models/evaluation.dart';
+import '../../../models/pedagogy.dart';
 
 String _fmt(DateTime d) {
   String two(int n) => n.toString().padLeft(2, '0');
@@ -59,6 +62,62 @@ class _TeacherEvaluationReviewPageState extends State<TeacherEvaluationReviewPag
   void _snack(String m) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  Future<void> _openPaper() async {
+    final userId = _service.currentUserId;
+    if (userId == null) {
+      _snack(_fr ? 'Session indisponible.' : 'Session unavailable.');
+      return;
+    }
+    final cacheId = 'evaluation-${widget.evaluation.id}';
+    final offline = CourseOfflineService();
+    try {
+      final cached = await offline.getLocal(userId, cacheId);
+      final paper = cached == null
+          ? await _service.teacherPaper(widget.evaluation.id)
+          : null;
+      if (cached == null && paper == null) {
+        _snack(_fr ? 'Le PDF de cette épreuve est introuvable.' : 'The exam PDF was not found.');
+        return;
+      }
+      final fileName = paper?.name ?? cached!.fileName;
+      final localPath = await offline.openExternalFile(
+        userId: userId,
+        resourceId: cacheId,
+        courseId: 'evaluations',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () {
+          if (paper == null) throw StateError('evaluation-paper-path-unavailable');
+          return _service.openPaperUrl(paper.path);
+        },
+      );
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: cacheId,
+        courseId: 'evaluations',
+        resourceType: 'pdf',
+        storagePath: paper?.path ?? '',
+        fileName: fileName,
+        titleFr: widget.evaluation.title,
+        titleEn: widget.evaluation.title,
+        mimeType: 'application/pdf',
+      );
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfflineResourceViewer(
+            locale: widget.locale,
+            userId: userId,
+            resource: resource,
+            localPath: localPath,
+          ),
+        ),
+      );
+    } catch (error) {
+      _snack(EvaluationService.friendlyError(error, fr: _fr));
+    }
   }
 
   Future<void> _validateReady() async {
@@ -119,6 +178,11 @@ class _TeacherEvaluationReviewPageState extends State<TeacherEvaluationReviewPag
       appBar: AppBar(
         title: Text(widget.evaluation.title, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            tooltip: _fr ? 'Ouvrir le PDF de l’épreuve' : 'Open exam PDF',
+            onPressed: _openPaper,
+            icon: const Icon(Icons.picture_as_pdf_rounded),
+          ),
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'validate') _validateReady();

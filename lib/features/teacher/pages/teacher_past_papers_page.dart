@@ -7,6 +7,7 @@ import '../../../core/services/photo_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
 import '../../../models/user_profile.dart';
+import '../../student/pages/past_paper_viewer_page.dart';
 
 /// Teacher upload and management of past exam papers, distributed to candidates of the selected exam.
 class TeacherPastPapersPage extends StatefulWidget {
@@ -321,6 +322,38 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     return p.examId == null ? (_fr ? 'Examen non précisé' : 'Exam not specified') : '';
   }
 
+  Future<void> _openPaper(PastPaper paper) async {
+    final name = paper.fileName.toLowerCase();
+    final isPdf = name.endsWith('.pdf');
+    final isImage = ['.png', '.jpg', '.jpeg', '.webp'].any(name.endsWith);
+    if (!isPdf && !isImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr ? 'Format non pris en charge.' : 'Unsupported file format.')),
+      );
+      return;
+    }
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PastPaperViewerPage(
+            userId: widget.profile.id,
+            resourceId: 'past-paper-${paper.id}',
+            signedUrlProvider: () => _papers.signedUrl(paper.filePath),
+            title: paper.fileName,
+            isPdf: isPdf,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr ? 'Impossible d’ouvrir ce fichier.' : 'Unable to open this file.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -349,7 +382,8 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
                           itemBuilder: (context, index) {
                             final paper = _items[index];
                             return Card(child: ListTile(
-                              leading: Icon(paper.kind == 'correction' ? Icons.fact_check_outlined : Icons.picture_as_pdf_outlined),
+                              onTap: () => _openPaper(paper),
+                               leading: Icon(paper.kind == 'correction' ? Icons.fact_check_outlined : Icons.picture_as_pdf_outlined),
                               title: Text(paper.subjectFor(widget.locale.languageCode)),
                               subtitle: Text('${_examName(paper)} • ${paper.year} • ${paper.fileName}'),
                               trailing: Row(

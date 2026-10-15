@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/pedagogy_service.dart';
 import 'school_classes_page.dart';
 
@@ -363,6 +365,83 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     } catch (e) { _snack(_fr ? 'Échec de l’envoi : $e' : 'Upload failed: $e'); }
   }
 
+  Future<void> _viewResources(Map<String, dynamic> course) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      _snack(_fr ? 'Connectez-vous pour ouvrir les fichiers.' : 'Sign in to open files.');
+      return;
+    }
+    try {
+      final resources = await _resources.listForCourse(course['id'].toString());
+      if (!mounted) return;
+      if (resources.isEmpty) {
+        _snack(_fr ? 'Aucun fichier dans ce cours.' : 'No files in this course.');
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.72,
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: resources.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final resource = resources[index];
+                final icon = switch (resource.resourceType) {
+                  'pdf' => Icons.picture_as_pdf_rounded,
+                  'image' => Icons.image_rounded,
+                  'video' => Icons.video_library_rounded,
+                  'audio' => Icons.audiotrack_rounded,
+                  _ => Icons.insert_drive_file_rounded,
+                };
+                return ListTile(
+                  leading: Icon(icon, color: const Color(0xFF166534)),
+                  title: Text(resource.fileName, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(_fr ? 'Téléchargé à la première ouverture' : 'Downloaded when first opened'),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    try {
+                      final localPath = await CourseOfflineService().openResource(
+                        userId: userId,
+                        resource: resource,
+                      );
+                      if (!mounted) return;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OfflineResourceViewer(
+                            locale: widget.locale,
+                            userId: userId,
+                            resource: resource,
+                            localPath: localPath,
+                          ),
+                        ),
+                      );
+                    } catch (_) {
+                      if (mounted) {
+                        _snack(_fr
+                            ? 'Ouvrez ce fichier une première fois avec Internet pour le garder hors ligne.'
+                            : 'Open this file once while online to keep it available offline.');
+                      }
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        _snack(_fr ? 'Impossible de charger les fichiers : $error' : 'Unable to load files: $error');
+      }
+    }
+  }
+
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   @override
@@ -391,7 +470,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           final c = _items[i];
           final room = (c['school_classes'] is Map) ? Map<String, dynamic>.from(c['school_classes'] as Map) : <String, dynamic>{};
           final subject = (c['subjects'] is Map) ? Map<String, dynamic>.from(c['subjects'] as Map) : <String, dynamic>{};
-          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'resource') _addResource(c); }, itemBuilder: (_) => [PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file'))])));
+          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'resource') _addResource(c); if (v == 'open') _viewResources(Map<String, dynamic>.from(c)); }, itemBuilder: (_) => [PopupMenuItem(value: 'open', child: Text(_fr ? 'Ouvrir les fichiers' : 'Open files')), PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file'))])));
         })))
       ]),
     );

@@ -1,9 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
@@ -366,80 +361,41 @@ class _LessonPageState extends State<LessonPage> {
   }
 
   Future<void> _openResource(CourseResource resource) async {
-    if (_loadingResource) {
-      return;
-    }
-
-    setState(() {
-      _loadingResource = true;
-    });
-
+    if (_loadingResource) return;
+    setState(() => _loadingResource = true);
     try {
-      final local = await _offline.getLocal(widget.profile.id, resource.id);
-      if (local != null && local.status == 'done') {
-        await _offline.markOpened(widget.profile.id, resource.id);
-        if (!mounted) {
-          return;
-        }
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
-          locale: widget.locale, userId: widget.profile.id, resource: resource, localPath: local.localPath,
-        )));
-      } else {
-        if (resource.storagePath.isEmpty) {
-          throw StateError('resource-storage-path-empty');
-        }
-        final url = await _resourceService.createSignedUrl(resource.storagePath);
-        final response = await http.get(Uri.parse(url));
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw HttpException('Resource download failed: ${response.statusCode}');
-        }
-        final tempDir = await getTemporaryDirectory();
-        final safeName = p.basename(resource.fileName).replaceAll(
-          RegExp(r'[^A-Za-z0-9._-]'),
-          '_',
-        );
-        final file = File(p.join(
-          tempDir.path,
-          'fise_lesson_preview_${resource.id}_$safeName',
-        ));
-        await file.writeAsBytes(response.bodyBytes, flush: true);
-        if (!mounted) {
-          return;
-        }
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OfflineResourceViewer(
-              locale: widget.locale,
-              userId: widget.profile.id,
-              resource: resource,
-              localPath: file.path,
-            ),
+      final localPath = await _offline.openResource(
+        userId: widget.profile.id,
+        resource: resource,
+      );
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfflineResourceViewer(
+            locale: widget.locale,
+            userId: widget.profile.id,
+            resource: resource,
+            localPath: localPath,
           ),
-        );
-      }
+        ),
+      );
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             isEnglish
-                ? 'Unable to open this resource.'
-                : 'Impossible d’ouvrir cette ressource.',
+                ? 'Open this file online once to make it available offline.'
+                : 'Ouvrez ce fichier une première fois avec Internet pour le garder hors ligne.',
           ),
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _loadingResource = false;
-        });
-      }
+      if (mounted) setState(() => _loadingResource = false);
     }
   }
+
 
   IconData _resourceIcon(String type) {
     switch (type.toLowerCase()) {

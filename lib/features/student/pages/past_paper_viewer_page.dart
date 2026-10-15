@@ -1,19 +1,24 @@
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:pdfx/pdfx.dart';
 
-/// Ouvre une annale dans Fise School au lieu de quitter l'application.
+import '../../../core/offline/course_offline_service.dart';
+
+/// Ouvre une annale dans Fise School et conserve la copie après sa première ouverture.
 class PastPaperViewerPage extends StatefulWidget {
   const PastPaperViewerPage({
     super.key,
-    required this.url,
+    required this.userId,
+    required this.resourceId,
+    required this.signedUrlProvider,
     required this.title,
     required this.isPdf,
   });
 
-  final String url;
+  final String userId;
+  final String resourceId;
+  final Future<String> Function() signedUrlProvider;
   final String title;
   final bool isPdf;
 
@@ -22,10 +27,17 @@ class PastPaperViewerPage extends StatefulWidget {
 }
 
 class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
-  Uint8List? _bytes;
+  String? _localPath;
   PdfControllerPinch? _pdfController;
   String? _error;
   bool _loading = true;
+
+  String get _imageMime {
+    final name = widget.title.toLowerCase();
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
 
   @override
   void initState() {
@@ -35,29 +47,30 @@ class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
 
   Future<void> _load() async {
     try {
-      final response = await http.get(Uri.parse(widget.url));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-      final bytes = response.bodyBytes;
-      if (bytes.isEmpty) throw Exception('Fichier vide');
-      if (widget.isPdf) {
-        _pdfController = PdfControllerPinch(
-          document: PdfDocument.openData(bytes),
-        );
-      }
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.userId,
+        resourceId: widget.resourceId,
+        courseId: 'past-papers',
+        fileName: widget.title,
+        mimeType: widget.isPdf ? 'application/pdf' : _imageMime,
+        signedUrlProvider: widget.signedUrlProvider,
+      );
+      final controller = widget.isPdf
+          ? PdfControllerPinch(document: PdfDocument.openFile(localPath))
+          : null;
       if (!mounted) {
-        _pdfController?.dispose();
+        controller?.dispose();
         return;
       }
       setState(() {
-        _bytes = bytes;
+        _localPath = localPath;
+        _pdfController = controller;
         _loading = false;
       });
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Impossible d’ouvrir ce document. Vérifiez votre connexion ou le fichier dans Supabase.';
+          _error = 'Impossible d’ouvrir ce document. Connectez-vous pour le télécharger une première fois.';
           _loading = false;
         });
       }
@@ -72,6 +85,7 @@ class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final path = _localPath;
     return Scaffold(
       appBar: AppBar(title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: _loading
@@ -89,7 +103,7 @@ class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
                       minScale: 0.5,
                       maxScale: 5,
                       child: Center(
-                        child: Image.memory(_bytes!, fit: BoxFit.contain),
+                        child: Image.file(File(path!), fit: BoxFit.contain),
                       ),
                     ),
     );

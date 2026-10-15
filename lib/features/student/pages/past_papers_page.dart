@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
@@ -76,7 +77,8 @@ class _PastPapersPageState extends State<PastPapersPage> {
 
   Future<void> _open(PastPaper paper) async {
     try {
-      final url = await _service.signedUrl(paper.filePath);
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) throw StateError('session-unavailable');
       final name = paper.fileName.toLowerCase();
       final isPdf = name.endsWith('.pdf');
       final isImage = name.endsWith('.png') ||
@@ -94,7 +96,9 @@ class _PastPapersPageState extends State<PastPapersPage> {
         context,
         MaterialPageRoute(
           builder: (_) => PastPaperViewerPage(
-            url: url,
+            userId: userId,
+            resourceId: 'past-paper-${paper.id}',
+            signedUrlProvider: () => _service.signedUrl(paper.filePath),
             title: paper.fileName,
             isPdf: isPdf,
           ),

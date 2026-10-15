@@ -38,6 +38,20 @@ class EvaluationService {
     return StudentEvaluationList.fromMap(Map<String, dynamic>.from(data as Map));
   }
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+
+  Future<({String path, String name})?> teacherPaper(String evaluationId) async {
+    final row = await _client
+        .from('evaluations')
+        .select('pdf_path,pdf_name')
+        .eq('id', evaluationId)
+        .maybeSingle();
+    final path = row?['pdf_path']?.toString().trim() ?? '';
+    if (path.isEmpty) return null;
+    final rawName = row?['pdf_name']?.toString().trim() ?? '';
+    return (path: path, name: rawName.isEmpty ? 'evaluation.pdf' : rawName);
+  }
+
   Future<String> openPaperUrl(String path) {
     return _client.storage.from(_papers).createSignedUrl(path, 900);
   }

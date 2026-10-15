@@ -1,12 +1,10 @@
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
@@ -316,24 +314,10 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
 
   Future<void> _openResource(CourseResource resource) async {
     try {
-      if (resource.storagePath.isEmpty) {
-        throw StateError('resource-storage-path-empty');
-      }
-      final url = await _service.createSignedUrl(resource.storagePath);
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw HttpException('Resource download failed: ${response.statusCode}');
-      }
-      final tempDir = await getTemporaryDirectory();
-      final safeName = p.basename(resource.fileName).replaceAll(
-        RegExp(r'[^A-Za-z0-9._-]'),
-        '_',
+      final localPath = await CourseOfflineService().openResource(
+        userId: widget.profile.id,
+        resource: resource,
       );
-      final file = File(p.join(
-        tempDir.path,
-        'fise_teacher_preview_${resource.id}_$safeName',
-      ));
-      await file.writeAsBytes(response.bodyBytes, flush: true);
       if (!mounted) return;
       await Navigator.push(
         context,
@@ -342,26 +326,24 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
             locale: widget.locale,
             userId: widget.profile.id,
             resource: resource,
-            localPath: file.path,
+            localPath: localPath,
           ),
         ),
       );
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _isFrench
-                ? 'Impossible d’ouvrir ce fichier dans Fise School. Vérifie la connexion et le format du fichier.'
-                : 'Unable to open this file in Fise School. Check the connection and file format.',
+                ? 'Connectez-vous pour ouvrir ce fichier une première fois. Il restera ensuite disponible hors ligne.'
+                : 'Connect once to open this file. It will then remain available offline.',
           ),
         ),
       );
     }
   }
+
 
   Future<void> _editResourceTitle(CourseResource resource) async {
     final controller = TextEditingController(text: _resourceTitle(resource));

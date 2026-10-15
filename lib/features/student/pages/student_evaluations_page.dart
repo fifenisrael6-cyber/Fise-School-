@@ -3,10 +3,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/evaluation_service.dart';
 import '../../../models/evaluation.dart';
+import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 
 String _fmt(DateTime d) {
@@ -249,14 +251,56 @@ class _StudentEvaluationDetailPageState extends State<StudentEvaluationDetailPag
   }
 
   Future<void> _openPdf() async {
+    if (!_started) return;
+    final cacheId = 'evaluation-${_e.id}';
+    final offline = CourseOfflineService();
     final path = _e.pdfPath;
-    if (path == null || !_started) return;
     try {
-      final url = await _service.openPaperUrl(path);
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      if (!ok) _snack(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open the PDF.');
-    } catch (e) {
-      _snack(EvaluationService.friendlyError(e, fr: _fr));
+      final cached = await offline.getLocal(widget.profile.id, cacheId);
+      if (cached == null && (path == null || path.trim().isEmpty)) {
+        _snack(_fr ? 'Le PDF de cette épreuve n’est pas disponible.' : 'The exam PDF is unavailable.');
+        return;
+      }
+      final fileName = _e.pdfName?.trim().isNotEmpty == true
+          ? _e.pdfName!.trim()
+          : '${_e.title}.pdf';
+      final localPath = await offline.openExternalFile(
+        userId: widget.profile.id,
+        resourceId: cacheId,
+        courseId: 'evaluations',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () {
+          if (path == null || path.trim().isEmpty) {
+            throw StateError('evaluation-paper-path-unavailable');
+          }
+          return _service.openPaperUrl(path);
+        },
+      );
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: cacheId,
+        courseId: 'evaluations',
+        resourceType: 'pdf',
+        storagePath: path ?? '',
+        fileName: fileName,
+        titleFr: _e.title,
+        titleEn: _e.title,
+        mimeType: 'application/pdf',
+      );
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfflineResourceViewer(
+            locale: widget.locale,
+            userId: widget.profile.id,
+            resource: resource,
+            localPath: localPath,
+          ),
+        ),
+      );
+    } catch (error) {
+      _snack(EvaluationService.friendlyError(error, fr: _fr));
     }
   }
 

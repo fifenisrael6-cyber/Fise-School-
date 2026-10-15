@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -44,11 +46,36 @@ class FiseSchoolApp extends StatefulWidget {
 
 class _FiseSchoolAppState extends State<FiseSchoolApp> {
   Locale _locale = const Locale('fr');
-  late final SessionService _sessionService =
+  SessionService get _sessionService =>
       widget.sessionService ??
       (_supabaseInitialized
           ? SupabaseSessionService()
           : const UnavailableSessionService());
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sessionService == null) {
+      unawaited(_initializeServicesInBackground());
+    }
+  }
+
+  Future<void> _initializeServicesInBackground() async {
+    // Afficher l'interface même si le réseau/Supabase est lent ou absent.
+    try {
+      await initializeFiseSchool();
+    } catch (error) {
+      debugPrint('Background Supabase initialization failed: $error');
+    }
+    if (!mounted) return;
+    setState(() {});
+    if (!_supabaseInitialized) return;
+    try {
+      await PushService.initialize().timeout(const Duration(seconds: 4));
+    } catch (error) {
+      debugPrint('Push initialization skipped: $error');
+    }
+  }
 
   void _changeLanguage(Locale locale) {
     setState(() {
@@ -81,6 +108,11 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
         ),
       ),
       home: AuthGate(
+        key: ValueKey<String>(
+          widget.sessionService != null
+              ? 'injected-session'
+              : (_supabaseInitialized ? 'supabase-ready' : 'supabase-pending'),
+        ),
         locale: _locale,
         onLanguageChanged: _changeLanguage,
         sessionService: _sessionService,
