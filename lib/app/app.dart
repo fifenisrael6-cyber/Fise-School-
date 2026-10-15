@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/offline/offline_banner.dart';
@@ -48,6 +49,7 @@ class FiseSchoolApp extends StatefulWidget {
 class _FiseSchoolAppState extends State<FiseSchoolApp> {
   Locale _locale = const Locale('fr');
   bool _languageChosen = false;
+  bool _languageReady = false;
   SessionService get _sessionService =>
       widget.sessionService ??
       (_supabaseInitialized
@@ -57,6 +59,7 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
   @override
   void initState() {
     super.initState();
+    unawaited(_restoreSavedLanguage());
     if (widget.sessionService == null) {
       unawaited(_initializeServicesInBackground());
     }
@@ -79,10 +82,43 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
     }
   }
 
-  void _changeLanguage(Locale locale) {
+  Future<void> _restoreSavedLanguage() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = preferences.getString('fise_school_language');
+      if (saved == 'fr' || saved == 'en') {
+        _locale = Locale(saved);
+        _languageChosen = true;
+      }
+    } catch (error) {
+      debugPrint('Saved language could not be restored: $error');
+    } finally {
+      if (mounted) setState(() => _languageReady = true);
+    }
+  }
+
+  Future<void> _selectInitialLanguage(Locale locale) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('fise_school_language', locale.languageCode);
+    } catch (error) {
+      debugPrint('Selected language could not be saved: $error');
+    }
+    if (!mounted) return;
     setState(() {
       _locale = locale;
+      _languageChosen = true;
+      _languageReady = true;
     });
+  }
+
+  void _changeLanguage(Locale locale) {
+    setState(() => _locale = locale);
+    unawaited(SharedPreferences.getInstance().then(
+      (preferences) => preferences.setString('fise_school_language', locale.languageCode),
+    ).catchError((Object error) {
+      debugPrint('Changed language could not be saved: $error');
+    }));
   }
 
   @override
@@ -109,16 +145,11 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
           sessionService: _sessionService,
         ),
       ),
-      home: !_languageChosen
-          ? LanguageSelectionPage(
-              onLanguageSelected: (locale) {
-                setState(() {
-                  _locale = locale;
-                  _languageChosen = true;
-                });
-              },
-            )
-          : AuthGate(
+      home: !_languageReady
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : !_languageChosen
+              ? LanguageSelectionPage(onLanguageSelected: _selectInitialLanguage)
+              : AuthGate(
         key: ValueKey<String>(
           widget.sessionService != null
               ? 'injected-session'

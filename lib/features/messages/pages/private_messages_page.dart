@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import '../widgets/voice_message_bubble.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
@@ -928,12 +929,10 @@ class _MessageAttachmentState extends State<_MessageAttachment> {
             label: Text(message.attachmentName ?? (isFrench ? 'Pièce jointe' : 'Attachment')),
           );
         }
-        if (type.startsWith('audio/')) {
-          return TextButton.icon(
-            onPressed: () => _openCachedAttachment(url),
-            icon: const Icon(Icons.audiotrack_rounded),
-            label: Text(message.attachmentName ?? (isFrench ? 'Audio' : 'Audio')),
-          );
+        if (type.startsWith('audio/') ||
+            (message.attachmentName ?? '').toLowerCase().startsWith('voice-') ||
+            (message.attachmentName ?? '').toLowerCase().endsWith('.m4a')) {
+          return VoiceMessageBubble(url: url, isFrench: isFrench);
         }
         if (type.startsWith('image/')) {
           return Padding(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../widgets/voice_message_bubble.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -914,12 +915,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
       future: _service.signedAttachmentUrl(message.attachmentPath),
       builder: (context, snapshot) {
         final url = snapshot.data;
-        if (url != null && type.startsWith('audio/')) {
-          return TextButton.icon(
-            onPressed: () => _openAttachment(message, url),
-            icon: const Icon(Icons.audiotrack_rounded),
-            label: Text(_attachmentDisplayLabel(message)),
-          );
+        if (url != null &&
+            (type.startsWith('audio/') ||
+                (message.attachmentName ?? '').toLowerCase().startsWith('voice-') ||
+                (message.attachmentName ?? '').toLowerCase().endsWith('.m4a'))) {
+          return VoiceMessageBubble(url: url, isFrench: _fr);
         }
 
         if (url != null && type.startsWith('image/')) {
