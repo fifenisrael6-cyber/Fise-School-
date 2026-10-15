@@ -97,8 +97,8 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         _chapters = unique.values.toList(growable: false);
         _chapterId = _chapters.isEmpty ? null : _chapters.first['id'].toString();
       });
-    } catch (error) {
-      if (mounted) _snack('${_fr ? 'Impossible de charger les chapitres' : 'Unable to load chapters'}: $error');
+    } catch (_) {
+      if (mounted) _snack(_fr ? 'Impossible de charger les chapitres. Vérifiez votre connexion et réessayez.' : 'Unable to load chapters. Check your connection and try again.');
     } finally {
       if (mounted) setState(() => _loadingChapters = false);
     }
