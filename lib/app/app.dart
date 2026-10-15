@@ -87,7 +87,7 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
       final preferences = await SharedPreferences.getInstance();
       final saved = preferences.getString('fise_school_language');
       if (saved == 'fr' || saved == 'en') {
-        _locale = Locale(saved);
+        _locale = Locale(saved!);
         _languageChosen = true;
       }
     } catch (error) {
