@@ -253,96 +253,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _aiEvaluations() {
-    if (_chapterFocused) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.auto_awesome_rounded, size: 36, color: Color(0xFF166534)),
-                  const SizedBox(height: 12),
-                  Text(_fr ? 'QCM généré par l’IA' : 'AI-generated quiz',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 8),
-                  Text(_fr
-                    ? 'Le QCM est généré à partir du contenu pédagogique publié de ce chapitre. Si la source est trop courte, aucune question ne sera inventée.'
-                    : 'The quiz is generated from this chapter’s published learning content. If the source is too short, no questions will be invented.'),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => ChapterQuizPage(
-                          locale: widget.locale,
-                          chapterId: widget.chapterId!,
-                          chapterTitle: widget.chapterTitle ?? widget.subject.labelFor(widget.locale.languageCode),
-                        ),
-                      )),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: Text(_fr ? 'Ouvrir le QCM IA' : 'Open AI quiz'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return FutureBuilder<List<CourseChapter>>(
-      future: _catalogChaptersFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text(_fr ? 'Impossible de charger les évaluations.' : 'Could not load evaluations.'));
-        }
-        final chapters = snapshot.data ?? const <CourseChapter>[];
-        if (chapters.isEmpty) {
-          return Center(child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(_fr ? 'Aucun chapitre disponible pour les évaluations.' : 'No chapters are available for evaluations.', textAlign: TextAlign.center),
-          ));
-        }
-        return ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          itemCount: chapters.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final chapter = chapters[index];
-            final title = chapter.labelFor(widget.locale.languageCode);
-            return Card(child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.auto_awesome_rounded)),
-              title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(_fr ? 'QCM généré automatiquement à partir du cours publié' : 'Quiz generated automatically from the published lesson'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => ChapterQuizPage(locale: widget.locale, chapterId: chapter.id, chapterTitle: title),
-              )),
-            ));
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final code = widget.locale.languageCode;
     final focused = _chapterFocused;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
       appBar: AppBar(
         backgroundColor: const Color(0xFF166534),
@@ -352,21 +268,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           style: const TextStyle(fontWeight: FontWeight.w800),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-        ),
-        bottom: TabBar(
-          isScrollable: true,
-          tabs: [
-            Tab(
-              text: focused
-                  ? (_fr ? 'Cours et médias' : 'Courses & media')
-                  : (_fr ? 'Chapitres' : 'Chapters'),
-              icon: Icon(focused ? Icons.menu_book_rounded : Icons.bookmarks_rounded),
-            ),
-            Tab(
-              text: _fr ? 'Évaluations IA' : 'AI evaluations',
-              icon: const Icon(Icons.auto_awesome_rounded),
-            ),
-          ],
         ),
         actions: [
           IconButton(
@@ -408,25 +309,15 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           final teacherMedia = scopedContent
               .where((item) => item.course != null && !_isOfficialCourse(item.course!))
               .toList();
-          final tabChildren = <Widget>[];
-          if (!focused) {
-            tabChildren.add(_chapterCatalog());
-          } else {
-            tabChildren.add(
-              _feedList(
-                <_FeedItem>[...officialCourses, ...teacherMedia],
-                _fr
-                    ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
-                    : 'No course or media has been published for this chapter yet.',
-              ),
-            );
-          }
-          tabChildren.add(_aiEvaluations());
+          if (!focused) return _chapterCatalog();
 
-          return TabBarView(children: tabChildren);
+          return _feedList(
+            <_FeedItem>[...officialCourses, ...teacherMedia],
+            _fr
+                ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
+                : 'No course or media has been published for this chapter yet.',
+          );
         },
-      ),
-      ),
     );
   }
 
