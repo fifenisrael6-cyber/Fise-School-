@@ -137,7 +137,9 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     } catch (error) {
       if (mounted) {
         setState(() => _saving = false);
-        _snack('${_fr ? 'Accès aux salles refusé' : 'Classroom access denied'}: $error');
+        _snack(_fr
+            ? 'Impossible de vérifier l’accès aux salles. Vérifiez votre connexion et réessayez.'
+            : 'Unable to verify classroom access. Check your connection and try again.');
       }
       return;
     }
@@ -227,7 +229,7 @@ final assignment = await _service.saveAssignment(
             // Preserve data if its state cannot be verified safely.
           }
         }
-        errors.add('${schoolClass.displayName}: $error');
+        errors.add('${schoolClass.displayName}: ${_fr ? 'enregistrement ou publication impossible.' : 'saving or publishing failed.'}');
       }
     }
 
@@ -237,7 +239,9 @@ final assignment = await _service.saveAssignment(
     setState(() => _saving = false);
 
     if (errors.isNotEmpty) {
-      _snack('${_fr ? 'Erreur' : 'Error'} (${errors.length}/${_classes.length})\n${errors.first}');
+      _snack(_fr
+          ? 'Le QCM n’a pas pu être enregistré ou publié dans toutes les salles. Vérifiez les salles sélectionnées et réessayez.'
+          : 'The quiz could not be saved or published to every classroom. Check the selected classrooms and try again.');
       if (done == 0) {
         return;
       }
