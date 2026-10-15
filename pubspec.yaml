@@ -28,6 +28,7 @@ dependencies:
   path: ^1.9.1
   shared_preferences: ^2.5.3
   pdfx: ^2.9.2
+  archive: ^4.0.9
   audioplayers: ^6.5.0
   record: ^7.1.1
   video_player: ^2.10.0
