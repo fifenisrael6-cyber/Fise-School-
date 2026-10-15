@@ -632,24 +632,73 @@ class CourseService {
     if (chapterId.isNotEmpty) {
       // Keep course publication fast; generate/update the AI QCM once in the
       // background. A temporary Gemini failure must not undo publication.
-      unawaited(_generateChapterQuizInBackground(chapterId));
+      unawaited(generateChapterQuiz(chapterId));
     }
     return publishedCourse;
   }
 
-  Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    try {
-      final response = await _client.functions.invoke(
-        'chapter-quiz',
-        body: {'chapter_id': chapterId},
-      );
-      final data = response.data;
-      if (data is Map && data['error'] != null) {
-        debugPrint('Course published; AI chapter QCM not ready: ${data['error']}');
+  /// Déclenche la génération du QCM du chapitre après publication.
+  /// Les erreurs temporaires sont réessayées sans annuler la publication du cours.
+  Future<void> generateChapterQuiz(String chapterId) async {
+    final normalizedChapterId = chapterId.trim();
+    if (normalizedChapterId.isEmpty) return;
+
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final response = await _client.functions.invoke(
+          'chapter-quiz',
+          body: {'chapter_id': normalizedChapterId},
+        );
+        final data = response.data;
+        if (data is Map && data['error'] != null) {
+          final message = data['error'].toString();
+          lastError = StateError(message);
+          debugPrint(
+            'AI chapter QCM attempt $attempt/3 failed for '
+            '$normalizedChapterId: $message',
+          );
+          final lowerMessage = message.toLowerCase();
+          if (lowerMessage.contains('trop court') ||
+              lowerMessage.contains('too short') ||
+              lowerMessage.contains('422') ||
+              lowerMessage.contains('401') ||
+              lowerMessage.contains('403')) {
+            return;
+          }
+        } else {
+          debugPrint(
+            'AI chapter QCM generated for $normalizedChapterId '
+            '(quiz: ${data is Map ? data['quizId'] ?? 'saved' : 'saved'}).',
+          );
+          return;
+        }
+      } catch (error) {
+        lastError = error;
+        final message = error.toString();
+        debugPrint(
+          'AI chapter QCM attempt $attempt/3 failed for '
+          '$normalizedChapterId: $message',
+        );
+        final lowerMessage = message.toLowerCase();
+        if (lowerMessage.contains('trop court') ||
+            lowerMessage.contains('too short') ||
+            lowerMessage.contains('status: 422') ||
+            lowerMessage.contains('status: 401') ||
+            lowerMessage.contains('status: 403')) {
+          return;
+        }
       }
-    } catch (error) {
-      debugPrint('Course published; AI chapter QCM generation failed: $error');
+
+      if (attempt < 3) {
+        await Future<void>.delayed(Duration(seconds: attempt * 2));
+      }
     }
+
+    debugPrint(
+      'AI chapter QCM generation failed after 3 attempts for '
+      '$normalizedChapterId: $lastError',
+    );
   }
 
   Future<void> archiveCourse(String id) async {
