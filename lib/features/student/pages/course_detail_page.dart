@@ -10,6 +10,7 @@ import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
+import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
@@ -38,6 +39,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   late Future<List<Lesson>> _lessonsFuture;
   late Future<List<Assignment>> _qcmsFuture;
+  late Future<List<Assignment>> _evaluationsFuture;
 
   String get _courseTitle {
     return widget.locale.languageCode == 'en'
@@ -62,6 +64,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     super.initState();
     _loadLessons();
     _qcmsFuture = _loadQcms();
+    _evaluationsFuture = _loadEvaluations();
     _prepareOffline();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
@@ -125,13 +128,35 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     }
   }
 
+  Future<List<Assignment>> _loadEvaluations() async {
+    final subjectId = widget.course.subjectId;
+    final classId = widget.course.classId;
+    if (classId == null) return const <Assignment>[];
+    try {
+      final assignments = await _assignmentService.listStudentAssignments(
+        studentId: widget.profile.id,
+        subjectId: subjectId,
+      );
+      return assignments.where((assignment) =>
+        assignment.courseId == null &&
+        assignment.classId == classId &&
+        assignment.subjectId == subjectId &&
+        assignment.evaluationFilePath?.trim().isNotEmpty == true
+      ).toList(growable: false);
+    } catch (_) {
+      return const <Assignment>[];
+    }
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _loadLessons();
       _qcmsFuture = _loadQcms();
+      _evaluationsFuture = _loadEvaluations();
     });
     await _lessonsFuture;
     await _qcmsFuture;
+    await _evaluationsFuture;
   }
 
   Future<void> _openLesson(Lesson lesson) async {
@@ -349,6 +374,207 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                       ],
                     );
                   },
+                ),
+                FutureBuilder<List<Assignment>>(
+                  future: _evaluationsFuture,
+                  builder: (context, evaluationSnapshot) {
+                    final evaluations = evaluationSnapshot.data ?? const <Assignment>[];
+                    if (evaluations.isEmpty) return const SizedBox.shrink();
+                    String formatDate(DateTime? value) {
+                      if (value == null) return isEnglish ? 'Not scheduled' : 'Non programmée';
+                      final date = value.toLocal();
+                      final day = date.day.toString().padLeft(2, '0');
+                      final month = date.month.toString().padLeft(2, '0');
+                      final hour = date.hour.toString().padLeft(2, '0');
+                      final minute = date.minute.toString().padLeft(2, '0');
+                      return '$day/$month/${date.year} • $hour:$minute';
+                    }
+                    String windowLabel(Assignment evaluation) {
+                      final now = DateTime.now();
+                      if (evaluation.startsAt != null && now.isBefore(evaluation.startsAt!.toLocal())) {
+                        return isEnglish ? 'Upcoming' : 'À venir';
+                      }
+                      if (evaluation.dueAt != null && !now.isBefore(evaluation.dueAt!.toLocal())) {
+                        return isEnglish ? 'Closed' : 'Terminée';
+                      }
+                      return isEnglish ? 'Scheduled / in progress' : 'Programmée / en cours';
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 22),
+                        Row(children: [
+                          const Icon(Icons.assignment_turned_in_outlined, color: Color(0xFF166534)),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(
+                            isEnglish ? 'Subject assessments' : 'Évaluations de la matière',
+                            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                          )),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(color: const Color(0xFFE4F2E9), borderRadius: BorderRadius.circular(20)),
+                            child: Text('${evaluations.length}', style: const TextStyle(color: Color(0xFF166534), fontWeight: FontWeight.bold)),
+                          ),
+                        ]),
+                        const SizedBox(height: 10),
+                        ...evaluations.map((evaluation) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+                          ),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Color(0xFFE4F2E9),
+                              child: Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF166534)),
+                            ),
+                            title: Text(evaluation.titleFor(widget.locale), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(windowLabel(evaluation)),
+                                  const SizedBox(height: 3),
+                                  Text('${isEnglish ? 'Start' : 'Début'} : ${formatDate(evaluation.startsAt)}'),
+                                  Text('${isEnglish ? 'End' : 'Fin'} : ${formatDate(evaluation.dueAt)}'),
+                                  if (evaluation.resultsPublishAt != null)
+                                    Text('${isEnglish ? 'Results release' : 'Publication des résultats'} : ${formatDate(evaluation.resultsPublishAt)}'),
+                                  if (evaluation.evaluationFileName?.trim().isNotEmpty == true)
+                                    Text(evaluation.evaluationFileName!, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            isThreeLine: true,
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () async {
+                              await Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => AssignmentDetailPage(
+                                    locale: widget.locale,
+                                    profile: widget.profile,
+                                    assignment: evaluation,
+                                  ),
+                                ),
+                              );
+                              if (mounted) setState(() => _evaluationsFuture = _loadEvaluations());
+                            },
+                          ),
+                        )),
+                      ],
+                    );
+                  },
+                ),
+                FutureBuilder<List<Assignment>>(
+                  future: _qcmsFuture,
+                  builder: (context, qcmSnapshot) {
+                    final qcms = qcmSnapshot.data ?? const <Assignment>[];
+                    if (qcms.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            const Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                isEnglish ? 'Course QCMs' : 'QCM du cours',
+                                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE4F2E9),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${qcms.length}',
+                                style: const TextStyle(color: Color(0xFF166534), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ...qcms.map((assignment) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+                          ),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Color(0xFFE4F2E9),
+                              child: Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
+                            ),
+                            title: Text(
+                              assignment.titleFor(widget.locale),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            subtitle: Text(
+                              assignment.instructionsFor(widget.locale) ??
+                                  (isEnglish ? 'Open and answer this QCM' : 'Ouvrez et répondez à ce QCM'),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () async {
+                              await Navigator.of(context).push<void>(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => AssignmentDetailPage(
+                                    locale: widget.locale,
+                                    profile: widget.profile,
+                                    assignment: assignment,
+                                  ),
+                                ),
+                              );
+                              if (mounted) setState(() => _qcmsFuture = _loadQcms());
+                            },
+                          ),
+                        )),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.menu_book_rounded,
+                      color: Color(0xFF166534),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isEnglish ? 'Lessons' : 'Leçons',
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F2E9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${lessons.length}',
+                        style: const TextStyle(
+                          color: Color(0xFF166534),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 if (lessons.isEmpty)
