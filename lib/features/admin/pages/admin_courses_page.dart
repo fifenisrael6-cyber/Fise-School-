@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/pedagogy_service.dart';
 import 'school_classes_page.dart';
 
@@ -44,24 +45,27 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       _error = null;
     });
     try {
-      final rows = await _client
-          .from('courses')
-          .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
-          .order('created_at', ascending: false);
-      if (!mounted) {
-        return;
-      }
+      final userId = _client.auth.currentUser?.id ?? 'anonymous';
+      final rows = await JsonCache.instance.cachedRead<List<Map<String, dynamic>>>(
+        key: 'admin_courses_$userId',
+        fetch: () async => await _client
+            .from('courses')
+            .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
+            .order('created_at', ascending: false) as Object?,
+        decode: (raw) => (raw as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false),
+      );
+      if (!mounted) return;
       setState(() {
-        _items = List<Map<String, dynamic>>.from(rows);
+        _items = rows;
         _loading = false;
       });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = error.toString();
       });
     }
   }

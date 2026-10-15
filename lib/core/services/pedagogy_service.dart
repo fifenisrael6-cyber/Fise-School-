@@ -988,6 +988,12 @@ class ResourceService {
           .select()
           .single();
 
+      // Invalider les listes : le nouveau fichier doit apparaître tout de suite
+      // et non attendre la fin d'une actualisation de cache en arrière-plan.
+      await JsonCache.instance.remove('resources_course_$courseId');
+      if (lessonId != null && lessonId.isNotEmpty) {
+        await JsonCache.instance.remove('resources_lesson_$lessonId');
+      }
       return CourseResource.fromMap(Map<String, dynamic>.from(row));
     } catch (_) {
       try {
@@ -1081,6 +1087,10 @@ class ResourceService {
     } catch (_) {
       // The new file and database reference are already saved.
     }
+    await JsonCache.instance.remove('resources_course_${resource.courseId}');
+    if (resource.lessonId != null && resource.lessonId!.isNotEmpty) {
+      await JsonCache.instance.remove('resources_lesson_${resource.lessonId}');
+    }
   }
 
   Future<void> updateResourceTitle({
@@ -1102,6 +1112,10 @@ class ResourceService {
       await _client.storage.from(bucket).remove([resource.storagePath]);
     } finally {
       await _client.from('course_resources').delete().eq('id', resource.id);
+    }
+    await JsonCache.instance.remove('resources_course_${resource.courseId}');
+    if (resource.lessonId != null && resource.lessonId!.isNotEmpty) {
+      await JsonCache.instance.remove('resources_lesson_${resource.lessonId}');
     }
   }
 }
