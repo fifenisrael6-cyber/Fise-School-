@@ -78,7 +78,7 @@ class CourseOfflineService {
     }
     try {
       final rows = await _db.getDownloadedFiles(userId: userId);
-      for (final row in rows.where((item) => item.status == 'queued')) {
+      for (final row in rows.where((item) => item.status == 'queued' && item.lastOpenedAt != null)) {
         if (_queuedIds.contains(row.resourceId)) {
           continue;
         }
@@ -234,11 +234,10 @@ class CourseOfflineService {
     final bytes = response.bodyBytes;
     if (bytes.isEmpty) throw const FormatException('empty-file');
 
+    // Ne supprime jamais un document déjà ouvert pour faire de la place :
+    // les fichiers enregistrés par l'utilisateur restent disponibles hors ligne.
     if (!await _hasSpace(userId, bytes.length)) {
-      await enforceStorageLimit(userId, extraBytes: bytes.length);
-      if (!await _hasSpace(userId, bytes.length)) {
-        throw const FileSystemException('Not enough space for offline file.');
-      }
+      throw const FileSystemException('Not enough space for offline file.');
     }
 
     final base = await getApplicationDocumentsDirectory();
@@ -351,13 +350,12 @@ class CourseOfflineService {
         }
       }
 
+      // Un nouveau téléchargement ne doit pas effacer des fichiers déjà
+      // ouverts et conservés hors ligne.
       if (!await _hasSpace(job.userId, resource.fileSize ?? 0)) {
-        await enforceStorageLimit(job.userId, extraBytes: resource.fileSize ?? 0);
-        if (!await _hasSpace(job.userId, resource.fileSize ?? 0)) {
-          await _db.updateDownloadedFileStatus(resource.id, job.userId, 'failed');
-          _progress.add(OfflineDownloadProgress(resourceId: resource.id, received: 0, total: resource.fileSize ?? 0, status: 'failed'));
-          return;
-        }
+        await _db.updateDownloadedFileStatus(resource.id, job.userId, 'failed');
+        _progress.add(OfflineDownloadProgress(resourceId: resource.id, received: 0, total: resource.fileSize ?? 0, status: 'failed'));
+        return;
       }
 
       await _db.updateDownloadedFileStatus(resource.id, job.userId, 'downloading');
