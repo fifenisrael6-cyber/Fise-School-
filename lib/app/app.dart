@@ -7,6 +7,7 @@ import '../core/offline/offline_banner.dart';
 import '../core/services/push_service.dart';
 import '../core/services/session_service.dart';
 import '../features/auth/widgets/auth_gate.dart';
+import '../features/public/pages/language_selection_page.dart';
 import '../supabase_config.dart';
 import 'routes.dart';
 import 'theme.dart';
@@ -46,6 +47,7 @@ class FiseSchoolApp extends StatefulWidget {
 
 class _FiseSchoolAppState extends State<FiseSchoolApp> {
   Locale _locale = const Locale('fr');
+  bool _languageChosen = false;
   SessionService get _sessionService =>
       widget.sessionService ??
       (_supabaseInitialized
@@ -107,7 +109,16 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
           sessionService: _sessionService,
         ),
       ),
-      home: AuthGate(
+      home: !_languageChosen
+          ? LanguageSelectionPage(
+              onLanguageSelected: (locale) {
+                setState(() {
+                  _locale = locale;
+                  _languageChosen = true;
+                });
+              },
+            )
+          : AuthGate(
         key: ValueKey<String>(
           widget.sessionService != null
               ? 'injected-session'
