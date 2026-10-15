@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
@@ -13,6 +15,19 @@ class ProfileService {
     }
 
     final cacheKey = 'profile_${user.id}';
+    // Un compte déjà utilisé sur cet appareil retrouve immédiatement son
+    // interface locale. La mise à jour serveur se fait sans bloquer l'écran.
+    final cached = await JsonCache.instance.read(cacheKey);
+    if (cached is Map) {
+      try {
+        final profile = UserProfile.fromMap(Map<String, dynamic>.from(cached));
+        unawaited(_refreshProfile(cacheKey, user.id));
+        return profile;
+      } catch (_) {
+        // Cache invalide : réessayer avec les données serveur.
+      }
+    }
+
     try {
       final data = await _client
           .from('profiles')
@@ -28,12 +43,30 @@ class ProfileService {
       } catch (_) {}
       return UserProfile.fromMap(data);
     } catch (_) {
-      // Sans réseau : dernier profil connu de CE compte (jamais celui d'un autre).
-      final cached = await JsonCache.instance.read(cacheKey);
-      if (cached is Map) {
-        return UserProfile.fromMap(Map<String, dynamic>.from(cached));
+      // Relecture défensive si un cache a été écrit entre temps.
+      final fallback = await JsonCache.instance.read(cacheKey);
+      if (fallback is Map) {
+        return UserProfile.fromMap(Map<String, dynamic>.from(fallback));
       }
       rethrow;
+    }
+  }
+
+  Future<void> _refreshProfile(String cacheKey, String userId) async {
+    try {
+      final data = await _client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle()
+          .timeout(JsonCache.networkTimeout);
+      if (data == null) {
+        await JsonCache.instance.remove(cacheKey);
+        return;
+      }
+      await JsonCache.instance.write(cacheKey, data);
+    } catch (_) {
+      // Le réseau reste facultatif pour l'affichage de l'espace utilisateur.
     }
   }
 

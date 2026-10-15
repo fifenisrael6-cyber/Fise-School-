@@ -221,7 +221,7 @@ class CourseOfflineService {
       throw const SocketException('offline-file-not-downloaded');
     }
 
-    final signedUrl = await signedUrlProvider();
+    final signedUrl = await signedUrlProvider().timeout(const Duration(seconds: 12));
     if (signedUrl.trim().isEmpty) {
       throw StateError('signed-url-unavailable');
     }
