@@ -32,9 +32,10 @@ begin
   where a.id = v_question.assignment_id and a.status = 'published';
   if not found then raise exception 'Ce devoir n’est pas disponible.'; end if;
 
-  if not public.student_can_access_assignment(v_assignment.id, v_user) then
-    raise exception 'Ce devoir ne correspond pas à ta salle ou à ton programme.';
-  end if;
+  if v_assignment.class_id is not null and not exists (
+    select 1 from public.class_students cs
+    where cs.student_id = v_user and cs.class_id = v_assignment.class_id and cs.is_active = true
+  ) then raise exception 'Ce devoir ne correspond pas à ta salle.'; end if;
 
   if v_question.question_type not in ('qcm', 'true_false') then
     raise exception 'Cette question ne possède pas de correction automatique.';
