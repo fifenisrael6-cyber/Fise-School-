@@ -112,21 +112,6 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     }
   }
 
-  Future<void> _generateChapterQuizInBackground(String chapterId) async {
-    try {
-      final response = await _client.functions.invoke(
-        'chapter-quiz',
-        body: {'chapter_id': chapterId},
-      );
-      final data = response.data;
-      if (data is Map && data['error'] != null) {
-        debugPrint('AI QCM generation unavailable for $chapterId: ${data['error']}');
-      }
-    } catch (error) {
-      debugPrint('AI QCM generation failed after publication for $chapterId: $error');
-    }
-  }
-
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
       await _client.from('school_classes').select('id,display_name,name,subsystem,sector,is_active,exam_level_id,series_id,specialty_id').eq('is_active', true).order('display_name'),
@@ -304,7 +289,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                           if (published) {
                             // Generate the chapter's AI QCM in the background.
                             // Course publication remains successful if Gemini is temporarily unavailable.
-                            unawaited(_generateChapterQuizInBackground(selectedChapter!['id'].toString()));
+                            unawaited(_courses.generateChapterQuiz(selectedChapter!['id'].toString()));
                           }
                           if (sheetContext.mounted) {
                             Navigator.pop(sheetContext);
