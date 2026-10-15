@@ -125,9 +125,7 @@ Deno.serve(async (req: Request) => {
     }
     const isTeacher = profile.role === "teacher";
     const isAdmin = profile.role === "admin";
-    if (!isTeacher && !isAdmin) {
-      return json({ error: "La génération des QCM est déclenchée par la publication d'un cours, pas par l'ouverture d'un chapitre par un élève." }, 403);
-    }
+    const isStudent = profile.role === "student";
     const dataClient = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const body = await req.json().catch(() => ({}));
@@ -157,11 +155,65 @@ Deno.serve(async (req: Request) => {
       .eq("id", chapterId).eq("is_active", true).maybeSingle();
     if (chapterError || !chapter) return json({ error: "Chapitre inaccessible." }, 403);
 
+    // Students may generate the AI quiz only for a chapter in the curriculum
+    // assigned to one of their active classrooms. This check runs before any
+    // service-role write and does not alter course or quiz table structure.
+    if (isStudent) {
+      const { data: curriculum, error: curriculumError } = await dataClient
+        .from("curricula")
+        .select("subject_id,subsystem,sector,exam_level_id,series_id,specialty_id")
+        .eq("id", chapter.curriculum_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (curriculumError) throw curriculumError;
+      if (!curriculum) return json({ error: "Programme du chapitre inaccessible." }, 403);
+
+      const { data: memberships, error: membershipError } = await dataClient
+        .from("class_students")
+        .select("class_id")
+        .eq("student_id", auth.user.id)
+        .eq("is_active", true);
+      if (membershipError) throw membershipError;
+      const classIds = (memberships ?? []).map((row: any) => String(row.class_id ?? "")).filter(Boolean);
+      if (classIds.length === 0) return json({ error: "Aucune classe active ne donne accès à ce chapitre." }, 403);
+
+      const { data: classes, error: classesError } = await dataClient
+        .from("school_classes")
+        .select("id,subsystem,sector,exam_level_id,series_id,specialty_id")
+        .in("id", classIds)
+        .eq("is_active", true);
+      if (classesError) throw classesError;
+      const sameOptional = (a: unknown, b: unknown) =>
+        a == null || b == null || String(a) === String(b);
+      const allowed = (classes ?? []).some((schoolClass: any) =>
+        schoolClass.subsystem === curriculum.subsystem &&
+        schoolClass.sector === curriculum.sector &&
+        sameOptional(schoolClass.exam_level_id, curriculum.exam_level_id) &&
+        sameOptional(schoolClass.series_id, curriculum.series_id) &&
+        sameOptional(schoolClass.specialty_id, curriculum.specialty_id)
+      );
+      if (!allowed) return json({ error: "Ce chapitre n’appartient pas au programme de votre classe." }, 403);
+    }
+
     const { data: existing, error: existingError } = await dataClient
       .from("chapter_quizzes").select("id,title_fr,title_en")
       .eq("chapter_id", chapterId).eq("is_published", true).is("created_by", null)
       .order("position").limit(1).maybeSingle();
     if (existingError) throw existingError;
+
+    // Opening the AI folder should be instant when a valid generated quiz
+    // already exists. Teachers/admins still refresh it after publishing.
+    if (isStudent && existing) {
+      const { data: existingQuestions, error: questionReadError } = await dataClient
+        .from("chapter_quiz_questions")
+        .select("id")
+        .eq("quiz_id", existing.id)
+        .limit(5);
+      if (questionReadError) throw questionReadError;
+      if ((existingQuestions ?? []).length >= 5) {
+        return json({ quizId: existing.id, title: existing.title_fr, cached: true });
+      }
+    }
 
     const { data: items, error: itemsError } = await dataClient
       .from("chapter_content_items")
