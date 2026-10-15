@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/offline/course_offline_service.dart';
@@ -307,27 +309,36 @@ class _TeacherSubmissionReviewPageState extends State<TeacherSubmissionReviewPag
       _error = null;
     });
     try {
+      // Afficher immédiatement le détail en cache, sans attendre les URL réseau
+      // signées des photos. Les URL sont récupérées ensuite en arrière-plan.
       final d = await _service.submissionDetail(widget.submissionId);
-      final urls = <String, String>{};
-      for (final p in d.photos) {
-        try {
-          urls[p.id] = await _service.photoUrl(p.storagePath);
-        } catch (_) {}
-      }
       if (!mounted) return;
       setState(() {
         _detail = d;
-        _urls = urls;
         _edits = d.questions.map(_QEdit.new).toList(growable: false);
         _comment.text = (d.score['teacher_comment'] ?? '').toString();
         _loading = false;
       });
+      unawaited(_loadPhotoUrls(d));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = EvaluationService.friendlyError(e, fr: _fr);
       });
+    }
+  }
+
+  Future<void> _loadPhotoUrls(SubmissionDetail detail) async {
+    for (final photo in detail.photos) {
+      try {
+        final url = await _service.photoUrl(photo.storagePath);
+        if (!mounted) return;
+        setState(() => _urls = {..._urls, photo.id: url});
+      } catch (_) {
+        // Une image non téléchargée reste accessible par son bouton hors ligne,
+        // lequel affichera un message si aucune copie locale n'existe.
+      }
     }
   }
 
@@ -413,17 +424,57 @@ class _TeacherSubmissionReviewPageState extends State<TeacherSubmissionReviewPag
     }
   }
 
-  void _zoom(String url) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
-          body: InteractiveViewer(maxScale: 6, child: Center(child: Image.network(url))),
+  Future<void> _zoom(ReviewPhoto photo) async {
+    final userId = _service.currentUserId;
+    if (userId == null) {
+      _snack(_fr ? 'Session indisponible.' : 'Session unavailable.');
+      return;
+    }
+    final fileName = photo.storagePath.split('/').last;
+    final lower = fileName.toLowerCase();
+    final mimeType = lower.endsWith('.png')
+        ? 'image/png'
+        : lower.endsWith('.webp')
+            ? 'image/webp'
+            : 'image/jpeg';
+    try {
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: userId,
+        resourceId: 'evaluation-photo-' + photo.id,
+        courseId: 'evaluation-photos',
+        fileName: fileName,
+        mimeType: mimeType,
+        signedUrlProvider: () => _service.photoUrl(photo.storagePath),
+      );
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: 'evaluation-photo-' + photo.id,
+        courseId: 'evaluation-photos',
+        resourceType: 'image',
+        storagePath: photo.storagePath,
+        fileName: fileName,
+        titleFr: fileName,
+        titleEn: fileName,
+        mimeType: mimeType,
+      );
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OfflineResourceViewer(
+            locale: widget.locale,
+            userId: userId,
+            resource: resource,
+            localPath: localPath,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Ouvrez cette photo une première fois avec Internet pour la garder hors ligne.'
+            : 'Open this photo online once to keep it available offline.');
+      }
+    }
   }
 
   @override
@@ -486,7 +537,7 @@ class _TeacherSubmissionReviewPageState extends State<TeacherSubmissionReviewPag
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: _urls[p.id] == null ? null : () => _zoom(_urls[p.id]!),
+                  onTap: () => _zoom(p),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: _urls[p.id] == null

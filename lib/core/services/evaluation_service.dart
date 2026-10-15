@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../offline/json_cache.dart';
 import '../../models/evaluation.dart';
 
 /// Accès au système d'évaluation automatisée. Aucune clé secrète ici : toutes les
@@ -33,9 +34,15 @@ class EvaluationService {
 
   // ---------------------------------------------------------------- Élève --
 
-  Future<StudentEvaluationList> listMine() async {
-    final data = await _client.rpc('list_my_evaluations');
-    return StudentEvaluationList.fromMap(Map<String, dynamic>.from(data as Map));
+  Future<StudentEvaluationList> listMine() {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<StudentEvaluationList>(
+      key: 'student_evaluations_$userId',
+      fetch: () async => await _client.rpc('list_my_evaluations') as Object?,
+      decode: (raw) => StudentEvaluationList.fromMap(
+        Map<String, dynamic>.from(raw as Map),
+      ),
+    );
   }
 
   String? get currentUserId => _client.auth.currentUser?.id;
@@ -92,19 +99,23 @@ class EvaluationService {
     return (photoId: photoId.toString(), path: path);
   }
 
-  Future<List<ReviewPhoto>> listMyPhotos(String submissionId) async {
-    final rows = await _client
-        .from('evaluation_photos')
-        .select('id,storage_path,position')
-        .eq('submission_id', submissionId)
-        .order('position');
-    return rows
-        .map((r) => ReviewPhoto(
-              id: r['id'].toString(),
-              storagePath: r['storage_path'].toString(),
-              position: (r['position'] as num?)?.toInt() ?? 1,
-            ))
-        .toList(growable: false);
+  Future<List<ReviewPhoto>> listMyPhotos(String submissionId) {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<List<ReviewPhoto>>(
+      key: 'evaluation_photos_${userId}_$submissionId',
+      fetch: () async => await _client
+          .from('evaluation_photos')
+          .select('id,storage_path,position')
+          .eq('submission_id', submissionId)
+          .order('position') as Object?,
+      decode: (raw) => (raw as List)
+          .map((r) => ReviewPhoto(
+                id: r['id'].toString(),
+                storagePath: r['storage_path'].toString(),
+                position: (r['position'] as num?)?.toInt() ?? 1,
+              ))
+          .toList(growable: false),
+    );
   }
 
   Future<void> removePhoto({required String photoId, required String path}) async {
@@ -130,11 +141,15 @@ class EvaluationService {
 
   // ----------------------------------------------------------- Enseignant --
 
-  Future<List<TeacherEvaluation>> listTeacherEvaluations() async {
-    final data = await _client.rpc('list_teacher_evaluations');
-    return (data as List)
-        .map((e) => TeacherEvaluation.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList(growable: false);
+  Future<List<TeacherEvaluation>> listTeacherEvaluations() {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<List<TeacherEvaluation>>(
+      key: 'teacher_evaluations_$userId',
+      fetch: () async => await _client.rpc('list_teacher_evaluations') as Object?,
+      decode: (raw) => (raw as List)
+          .map((e) => TeacherEvaluation.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false),
+    );
   }
 
   /// Crée l'épreuve, téléverse le PDF, enregistre barème/critères et classes, puis publie.
@@ -224,16 +239,32 @@ class EvaluationService {
     await _client.from('evaluations').update({'status': 'closed'}).eq('id', id);
   }
 
-  Future<List<ReviewRow>> listReview(String evaluationId) async {
-    final data = await _client.rpc('list_evaluation_review', params: {'p_evaluation': evaluationId});
-    return (data as List)
-        .map((e) => ReviewRow.fromMap(Map<String, dynamic>.from(e as Map)))
-        .toList(growable: false);
+  Future<List<ReviewRow>> listReview(String evaluationId) {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<List<ReviewRow>>(
+      key: 'evaluation_review_${userId}_$evaluationId',
+      fetch: () async => await _client.rpc(
+        'list_evaluation_review',
+        params: {'p_evaluation': evaluationId},
+      ) as Object?,
+      decode: (raw) => (raw as List)
+          .map((e) => ReviewRow.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false),
+    );
   }
 
-  Future<SubmissionDetail> submissionDetail(String submissionId) async {
-    final data = await _client.rpc('get_evaluation_submission_detail', params: {'p_submission': submissionId});
-    return SubmissionDetail.fromMap(Map<String, dynamic>.from(data as Map));
+  Future<SubmissionDetail> submissionDetail(String submissionId) {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<SubmissionDetail>(
+      key: 'evaluation_submission_detail_${userId}_$submissionId',
+      fetch: () async => await _client.rpc(
+        'get_evaluation_submission_detail',
+        params: {'p_submission': submissionId},
+      ) as Object?,
+      decode: (raw) => SubmissionDetail.fromMap(
+        Map<String, dynamic>.from(raw as Map),
+      ),
+    );
   }
 
   Future<String> photoUrl(String path) {

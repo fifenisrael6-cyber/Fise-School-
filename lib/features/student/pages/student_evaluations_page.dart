@@ -237,12 +237,96 @@ class _StudentEvaluationDetailPageState extends State<StudentEvaluationDetailPag
   Future<void> _loadDraftPhotos(String submissionId) async {
     try {
       final photos = await _service.listMyPhotos(submissionId);
-      for (final p in photos) {
-        final url = await _service.photoUrl(p.storagePath);
-        _shots.add(_Shot(photoId: p.id, path: p.storagePath, state: 'done')..remoteUrl = url);
+      for (final photo in photos) {
+        if (!_shots.any((shot) => shot.photoId == photo.id)) {
+          _shots.add(_Shot(
+            photoId: photo.id,
+            path: photo.storagePath,
+            state: 'done',
+          ));
+        }
       }
       if (mounted) setState(() {});
+      unawaited(_loadDraftPhotoUrls(photos));
     } catch (_) {}
+  }
+
+  Future<void> _loadDraftPhotoUrls(List<ReviewPhoto> photos) async {
+    for (final photo in photos) {
+      try {
+        final url = await _service.photoUrl(photo.storagePath);
+        if (!mounted) return;
+        for (final shot in _shots) {
+          if (shot.photoId == photo.id) {
+            shot.remoteUrl = url;
+            break;
+          }
+        }
+        setState(() {});
+      } catch (_) {
+        // La métadonnée locale reste visible; l'ouverture dira si le fichier
+        // doit encore être téléchargé avec Internet.
+      }
+    }
+  }
+
+  Future<void> _openShot(_Shot shot) async {
+    if (shot.bytes != null) {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(_fr ? 'Photo de la remise' : 'Submission photo')),
+          body: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 6,
+            child: Center(child: Image.memory(shot.bytes!, fit: BoxFit.contain)),
+          ),
+        ),
+      ));
+      return;
+    }
+    final photoId = shot.photoId;
+    final storagePath = shot.path;
+    if (photoId == null || storagePath == null) return;
+    final fileName = storagePath.split('/').last;
+    final lower = fileName.toLowerCase();
+    final mimeType = lower.endsWith('.png')
+        ? 'image/png'
+        : lower.endsWith('.webp')
+            ? 'image/webp'
+            : 'image/jpeg';
+    try {
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'evaluation-photo-' + photoId,
+        courseId: 'evaluation-photos',
+        fileName: fileName,
+        mimeType: mimeType,
+        signedUrlProvider: () => _service.photoUrl(storagePath),
+      );
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: 'evaluation-photo-' + photoId,
+        courseId: 'evaluation-photos',
+        resourceType: 'image',
+        storagePath: storagePath,
+        fileName: fileName,
+        titleFr: fileName,
+        titleEn: fileName,
+        mimeType: mimeType,
+      );
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: widget.locale,
+          userId: widget.profile.id,
+          resource: resource,
+          localPath: localPath,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) _snack(_fr
+          ? 'Ouvrez cette photo une première fois avec Internet pour la garder hors ligne.'
+          : 'Open this photo online once to keep it available offline.');
+    }
   }
 
   void _snack(String m) {
@@ -568,7 +652,7 @@ class _StudentEvaluationDetailPageState extends State<StudentEvaluationDetailPag
       image = const ColoredBox(color: Colors.black12);
     }
     return Stack(fit: StackFit.expand, children: [
-      ClipRRect(borderRadius: BorderRadius.circular(8), child: image),
+      GestureDetector(onTap: () => _openShot(s), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: image)),
       if (s.state == 'uploading')
         const ColoredBox(color: Colors.black38, child: Center(child: CircularProgressIndicator())),
       if (s.state == 'error')
