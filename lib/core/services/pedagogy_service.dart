@@ -143,6 +143,8 @@ class CourseService {
     String studentId, {
     required String subjectId,
   }) async {
+    final cacheKey = 'student_catalog_chapters_${studentId}_$subjectId';
+    try {
     final memberships = await _client
         .from('class_students')
         .select('class_id')
@@ -217,7 +219,31 @@ class CourseService {
           ? byPosition
           : a.titleFr.toLowerCase().compareTo(b.titleFr.toLowerCase());
     });
-    return chapters.toList(growable: false);
+    final result = chapters.toList(growable: false);
+    await JsonCache.instance.write(
+      cacheKey,
+      result.map((chapter) => <String, dynamic>{
+        'id': chapter.id,
+        'curriculum_id': chapter.curriculumId,
+        'title_fr': chapter.titleFr,
+        'title_en': chapter.titleEn,
+        'description_fr': chapter.descriptionFr,
+        'description_en': chapter.descriptionEn,
+        'position': chapter.position,
+        'is_active': chapter.isActive,
+      }).toList(growable: false),
+    );
+    return result;
+    } catch (_) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        return cached
+            .whereType<Map>()
+            .map((row) => CourseChapter.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
+      }
+      rethrow;
+    }
   }
 
   Future<List<Curriculum>> listCurricula(String subjectId) async {
@@ -254,6 +280,7 @@ class CourseService {
     String studentId, {
     required String subjectId,
   }) async {
+    final cacheKey = 'student_chapter_content_${studentId}_$subjectId';
     try {
       final memberships = await _client
           .from('class_students')
@@ -322,16 +349,24 @@ class CourseService {
           .inFilter('content_type', ['course', 'lesson', 'text'])
           .eq('is_published', true)
           .order('position');
-      return itemRows.map((raw) {
+      final items = itemRows.map((raw) {
         final item = Map<String, dynamic>.from(raw);
         final chapter = chapterById[item['chapter_id']?.toString()];
         item['chapter_title_fr'] = chapter?['title_fr'];
         item['chapter_title_en'] = chapter?['title_en'];
         return item;
       }).toList(growable: false);
+      await JsonCache.instance.write(cacheKey, items);
+      return items;
     } catch (_) {
-      // Keep teacher courses, media and QCM available if official content
-      // is temporarily unavailable or the student is offline.
+      // Reuse official chapter content already opened while online.
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        return cached
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
       return const <Map<String, dynamic>>[];
     }
   }
