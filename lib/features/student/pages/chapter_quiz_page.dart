@@ -61,7 +61,9 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error.toString().replaceFirst('Bad state: ', '');
+        _error = _fr
+            ? 'Impossible de charger ce QCM pour le moment. Vérifie ta connexion et réessaie.'
+            : 'This quiz could not be loaded right now. Check your connection and try again.';
         _loading = false;
       });
     }
