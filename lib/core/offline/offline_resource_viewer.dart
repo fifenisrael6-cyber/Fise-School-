@@ -40,10 +40,19 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
     final declared = widget.resource.resourceType.toLowerCase().trim();
     final mime = (widget.resource.mimeType ?? '').toLowerCase().trim();
     final name = widget.resource.fileName.toLowerCase();
+    bool hasExtension(List<String> extensions) =>
+        extensions.any((extension) => name.endsWith(extension));
     if (declared == 'pdf' || mime == 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
     if (declared == 'image' || mime.startsWith('image/') ||
-        RegExp(r'\.(jpg|jpeg|png|gif|webp|heic|bmp)
-
+        hasExtension(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.bmp'])) return 'image';
+    if (declared == 'audio' || mime.startsWith('audio/') ||
+        hasExtension(['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus', '.flac'])) return 'audio';
+    if (declared == 'video' || mime.startsWith('video/') ||
+        hasExtension(['.mp4', '.mov', '.mkv', '.webm', '.3gp', '.avi', '.m4v'])) return 'video';
+    if (declared == 'text' || mime.startsWith('text/') ||
+        hasExtension(['.txt', '.csv', '.json', '.xml', '.md'])) return 'text';
+    return declared;
+  }
   @override
   void initState() {
     super.initState();
