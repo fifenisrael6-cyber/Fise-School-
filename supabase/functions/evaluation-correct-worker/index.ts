@@ -11,7 +11,8 @@
 //  - le barème de l'enseignant prévaut sur ce que l'IA croit lire dans l'épreuve.
 //
 // Secrets requis : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY (déjà utilisé par
-// grade-assignment), EVAL_WORKER_SECRET. Optionnels : GEMINI_MODEL, EVAL_MIN_CONFIDENCE.
+// grade-assignment). Le secret du worker est conservé dans Vault et vérifié via RPC.
+// Optionnels : GEMINI_MODEL, EVAL_MIN_CONFIDENCE.
 // Déploiement : supabase functions deploy evaluation-correct-worker --no-verify-jwt
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -295,22 +296,29 @@ async function runBatch(admin: any, geminiKey: string, minConfidence: number) {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!req.headers.get("x-worker-secret")) return json({ error: "Unauthorized" }, 401);
 
-  const workerSecret = Deno.env.get("EVAL_WORKER_SECRET");
-  if (!workerSecret || req.headers.get("x-worker-secret") !== workerSecret) {
-    return json({ error: "Unauthorized" }, 401);
-  }
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY") ??
     Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY");
   if (!supabaseUrl || !serviceKey) return json({ error: "Environnement Supabase incomplet." }, 500);
-  if (!geminiKey) return json({ error: "GEMINI_API_KEY manquante : les corrections restent en attente." }, 503);
 
-  const minConfidence = Math.max(0.3, Math.min(0.95, Number(Deno.env.get("EVAL_MIN_CONFIDENCE") ?? "0.75")));
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const { data: workerSecret, error: secretError } = await admin.rpc("get_evaluation_worker_secret");
+  if (secretError) {
+    console.error("get_evaluation_worker_secret", secretError.message);
+    return json({ error: "Configuration sécurisée du worker indisponible." }, 500);
+  }
+  if (typeof workerSecret !== "string" || !workerSecret ||
+      req.headers.get("x-worker-secret") !== workerSecret) {
+    return json({ error: "Unauthorized" }, 401);
+  }
+  if (!geminiKey) return json({ error: "GEMINI_API_KEY manquante : les corrections restent en attente." }, 503);
+
+  const minConfidence = Math.max(0.3, Math.min(0.95, Number(Deno.env.get("EVAL_MIN_CONFIDENCE") ?? "0.75")));
 
   // Réponse immédiate ; le traitement continue en arrière-plan (indépendant de l'application).
   const work = runBatch(admin, geminiKey, minConfidence).catch((e) => console.error("batch", e));
