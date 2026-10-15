@@ -8,6 +8,7 @@ import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'grades_entry_page.dart';
 import 'teacher_past_papers_page.dart';
+import 'teacher_evaluations_page.dart';
 import 'teacher_qcm_hub_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
@@ -31,8 +32,8 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
     return SwipeTabsShell(
-      // 6 onglets : on n'affiche le libellé que de l'onglet actif pour garder la barre lisible.
-      labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+      // Les noms restent visibles sur tous les onglets.
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       pagesBuilder: (goToTab) => [
         _TeacherHome(locale: widget.locale, profile: widget.profile),
         _TeacherQuizzes(locale: widget.locale, profile: widget.profile),
@@ -60,7 +61,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
         NavigationDestination(
           icon: const Icon(Icons.chat_bubble_outline),
           selectedIcon: const Icon(Icons.chat_bubble),
-          label: fr ? 'Messagerie' : 'Messages',
+          label: 'Messages',
         ),
         NavigationDestination(
           icon: const Icon(Icons.history_edu_outlined),
@@ -140,6 +141,19 @@ class _TeacherHomeContent extends StatelessWidget {
           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 16),
+        _TeacherAction(
+          icon: Icons.picture_as_pdf_outlined,
+          title: fr ? 'Épreuves PDF et corrections' : 'PDF exams and corrections',
+          subtitle: fr
+              ? 'Publier une épreuve PDF à une salle et suivre les remises.'
+              : 'Publish a PDF exam to a classroom and track submissions.',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
+            ),
+          ),
+        ),
         _TeacherAction(
           icon: Icons.grading_rounded,
           title: fr ? 'Notes' : 'Marks',
