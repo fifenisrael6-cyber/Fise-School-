@@ -23,7 +23,6 @@ class OfflineResourceTile extends StatefulWidget {
 
 class _OfflineResourceTileState extends State<OfflineResourceTile> {
   final CourseOfflineService _offline = CourseOfflineService();
-  final ResourceService _resources = ResourceService();
   StreamSubscription<OfflineDownloadProgress>? _subscription;
   OfflineDownloadProgress? _progress;
   DownloadedFileRecord? _local;
