@@ -190,19 +190,36 @@ class ChapterLearningService {
   }
 
   Future<List<ChapterQuiz>> listQuizzes(String chapterId) async {
-    final rows = await _client
-        .from('chapter_quizzes')
-        .select()
-        .eq('chapter_id', chapterId)
-        .eq('is_published', true)
-        .isFilter('created_by', null)
-        .order('position');
+    Future<List<Map<String, dynamic>>> loadPublishedQuizzes() async {
+      final rows = await _client
+          .from('chapter_quizzes')
+          .select()
+          .eq('chapter_id', chapterId)
+          .eq('is_published', true)
+          .isFilter('created_by', null)
+          .order('position');
+      return List<Map<String, dynamic>>.from(rows);
+    }
 
-    // Only AI-generated QCMs are shown in the student course space. Generation
-    // happens after course publication, never as a side effect of opening a chapter.
-    return List<Map<String, dynamic>>.from(rows)
-        .map(ChapterQuiz.fromMap)
-        .toList();
+    var rows = await loadPublishedQuizzes();
+
+    // Si le chapitre contient déjà un cours mais que son QCM IA n'existe pas,
+    // déclencher la génération côté serveur à la première ouverture par l'élève.
+    // La fonction Edge ne consomme que les contenus publiés et garde la clé Gemini
+    // côté serveur. Une erreur IA ne bloque pas l'accès au cours.
+    if (rows.isEmpty && _client.auth.currentUser != null) {
+      try {
+        await _client.functions.invoke(
+          'chapter-quiz',
+          body: {'chapter_id': chapterId},
+        );
+        rows = await loadPublishedQuizzes();
+      } catch (error) {
+        debugPrint('Génération du QCM intelligent impossible pour $chapterId: $error');
+      }
+    }
+
+    return rows.map(ChapterQuiz.fromMap).toList();
   }
 
   /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
