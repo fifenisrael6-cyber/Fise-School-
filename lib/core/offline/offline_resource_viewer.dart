@@ -42,7 +42,7 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
     final name = widget.resource.fileName.toLowerCase();
     if (declared == 'pdf' || mime == 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
     if (declared == 'image' || mime.startsWith('image/') ||
-        RegExp(r'\\.(jpg|jpeg|png|gif|webp|heic|bmp)
+        RegExp(r'\.(jpg|jpeg|png|gif|webp|heic|bmp)
 
   @override
   void initState() {
@@ -206,7 +206,7 @@ class _AudioLocalPlayerState extends State<_AudioLocalPlayer> {
 }
 ).hasMatch(name)) return 'image';
     if (declared == 'audio' || mime.startsWith('audio/') ||
-        RegExp(r'\\.(mp3|m4a|aac|wav|ogg|opus|flac)
+        RegExp(r'\.(mp3|m4a|aac|wav|ogg|opus|flac)
 
   @override
   void initState() {
@@ -370,7 +370,7 @@ class _AudioLocalPlayerState extends State<_AudioLocalPlayer> {
 }
 ).hasMatch(name)) return 'audio';
     if (declared == 'video' || mime.startsWith('video/') ||
-        RegExp(r'\\.(mp4|mov|mkv|webm|3gp|avi|m4v)
+        RegExp(r'\.(mp4|mov|mkv|webm|3gp|avi|m4v)
 
   @override
   void initState() {
@@ -534,7 +534,7 @@ class _AudioLocalPlayerState extends State<_AudioLocalPlayer> {
 }
 ).hasMatch(name)) return 'video';
     if (declared == 'text' || mime.startsWith('text/') ||
-        RegExp(r'\\.(txt|csv|json|xml|md)
+        RegExp(r'\.(txt|csv|json|xml|md)
 
   @override
   void initState() {
