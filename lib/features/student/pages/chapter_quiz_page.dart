@@ -58,7 +58,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         _questions = questions;
         _loading = false;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _error = _fr
@@ -122,7 +122,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         throw StateError(_fr ? 'La correction n’a pas retourné de résultat.' : 'The correction returned no result.');
       }
       if (mounted) setState(() => _result = result);
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_fr
