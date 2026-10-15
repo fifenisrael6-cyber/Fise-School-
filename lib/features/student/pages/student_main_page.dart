@@ -46,7 +46,6 @@ class _StudentMainPageState extends State<StudentMainPage> {
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
-        StudentEvaluationsPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -54,7 +53,6 @@ class _StudentMainPageState extends State<StudentMainPage> {
       destinations: [
         NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
         NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-        NavigationDestination(icon: const Icon(Icons.assignment_outlined), selectedIcon: const Icon(Icons.assignment), label: fr ? 'Épreuves' : 'Exams'),
         NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: 'Messages'),
         NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
         NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
@@ -79,7 +77,24 @@ class _StudentHome extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
-          IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)))),
+          IconButton(
+            icon: const Icon(Icons.assignment_outlined),
+            tooltip: fr ? 'Épreuves' : 'Exams',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: fr ? 'Paramètres' : 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
+            ),
+          ),
         ],
       ),
       body: ListView(
@@ -102,19 +117,6 @@ class _StudentHome extends StatelessWidget {
             title: fr ? 'Annales d\'examens' : 'Past exam papers',
             subtitle: fr ? 'Sujets et corrigés des années précédentes.' : 'Papers and corrected exams from previous years.',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale))),
-          ),
-          _QuickCard(
-            icon: Icons.assignment_outlined,
-            title: fr ? 'Mes épreuves' : 'My exams',
-            subtitle: fr
-                ? 'Consulte les épreuves publiées et remets tes réponses.'
-                : 'View published exams and submit your answers.',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
-              ),
-            ),
           ),
           _QuickCard(
             icon: Icons.grading_rounded,
