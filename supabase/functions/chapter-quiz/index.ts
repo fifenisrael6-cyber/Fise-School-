@@ -123,7 +123,6 @@ Deno.serve(async (req: Request) => {
     if (profileError || !profile || !["student", "teacher", "admin"].includes(profile.role)) {
       return json({ error: "Cette fonction est réservée aux élèves, enseignants autorisés et administrateurs." }, 403);
     }
-    const isStudent = profile.role === "student";
     const isTeacher = profile.role === "teacher";
     const isAdmin = profile.role === "admin";
     // Les élèves peuvent demander le QCM intelligent d'un chapitre actif ;
