@@ -229,7 +229,7 @@ class MessageOutbox {
       fileName = '$id.bin';
       final dir = await _attachmentDir();
       await File(p.join(dir.path, fileName))
-          .writeAsBytes(attachmentBytes!, flush: true);
+          .writeAsBytes(attachmentBytes, flush: true);
     }
 
     final message = OutboxMessage(
@@ -242,7 +242,7 @@ class MessageOutbox {
       attachmentFile: fileName,
       attachmentName: hasAttachment ? attachmentName : null,
       attachmentType: hasAttachment ? attachmentType : null,
-      attachmentSize: hasAttachment ? attachmentBytes!.length : null,
+      attachmentSize: hasAttachment ? attachmentBytes.length : null,
       viewOnce: viewOnce,
     );
 
