@@ -36,6 +36,39 @@ jobs:
           channel: stable
           cache: true
 
+      # Install NDK before Gradle starts. Retry transient/corrupt SDK downloads
+      # instead of letting Gradle fail during project configuration.
+      - name: Install Android NDK with retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          NDK_VERSION="28.2.13676358"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "::error::Android sdkmanager introuvable."
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          for attempt in 1 2 3; do
+            echo "Installation NDK $NDK_VERSION — tentative $attempt/3"
+            rm -rf "$SDK_ROOT/ndk/$NDK_VERSION"
+            if "$SDKMANAGER" --install "ndk;$NDK_VERSION"; then
+              if [ -d "$SDK_ROOT/ndk/$NDK_VERSION" ]; then
+                echo "NDK $NDK_VERSION installé."
+                exit 0
+              fi
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "::error::Impossible d'installer le NDK $NDK_VERSION après trois tentatives."
+          exit 1
+
       - name: Write google-services.json (optional)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -49,7 +82,6 @@ jobs:
 
       - name: Generate Drift code
         run: dart run build_runner build --delete-conflicting-outputs
-
 
       - name: Flutter analyze
         run: flutter analyze --no-fatal-infos
