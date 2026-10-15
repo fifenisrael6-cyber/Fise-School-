@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/swipe_tabs_shell.dart';
 import '../../../models/user_profile.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
@@ -26,94 +27,98 @@ class TeacherMainPage extends StatefulWidget {
 }
 
 class _TeacherMainPageState extends State<TeacherMainPage> {
-  int _index = 0;
-
   @override
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
-    final pages = [
-      _TeacherHomeTabs(locale: widget.locale, profile: widget.profile),
-      TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
-      MessagesHubPage(locale: widget.locale, profile: widget.profile),
-      TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
-      ProfilePage(locale: widget.locale, profile: widget.profile),
-    ];
-
-    return Scaffold(
-      body: IndexedStack(index: _index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home),
-            label: fr ? 'Accueil' : 'Home',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.menu_book_outlined),
-            selectedIcon: const Icon(Icons.menu_book),
-            label: fr ? 'Cours' : 'Courses',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.chat_bubble_outline),
-            selectedIcon: const Icon(Icons.chat_bubble),
-            label: fr ? 'Messagerie' : 'Messages',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.history_edu_outlined),
-            selectedIcon: const Icon(Icons.history_edu),
-            label: fr ? 'Annales' : 'Exam papers',
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.person_outline),
-            selectedIcon: const Icon(Icons.person),
-            label: fr ? 'Profil' : 'Profile',
-          ),
-        ],
-      ),
+    return SwipeTabsShell(
+      // 6 onglets : on n'affiche le libellé que de l'onglet actif pour garder la barre lisible.
+      labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+      pagesBuilder: (goToTab) => [
+        _TeacherHome(locale: widget.locale, profile: widget.profile),
+        _TeacherQuizzes(locale: widget.locale, profile: widget.profile),
+        TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
+        MessagesHubPage(locale: widget.locale, profile: widget.profile),
+        TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
+        ProfilePage(locale: widget.locale, profile: widget.profile),
+      ],
+      destinations: [
+        NavigationDestination(
+          icon: const Icon(Icons.home_outlined),
+          selectedIcon: const Icon(Icons.home),
+          label: fr ? 'Accueil' : 'Home',
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.quiz_outlined),
+          selectedIcon: const Icon(Icons.quiz),
+          label: fr ? 'QCM' : 'Quizzes',
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.menu_book_outlined),
+          selectedIcon: const Icon(Icons.menu_book),
+          label: fr ? 'Cours' : 'Courses',
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.chat_bubble_outline),
+          selectedIcon: const Icon(Icons.chat_bubble),
+          label: fr ? 'Messagerie' : 'Messages',
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.history_edu_outlined),
+          selectedIcon: const Icon(Icons.history_edu),
+          label: fr ? 'Annales' : 'Exam papers',
+        ),
+        NavigationDestination(
+          icon: const Icon(Icons.person_outline),
+          selectedIcon: const Icon(Icons.person),
+          label: fr ? 'Profil' : 'Profile',
+        ),
+      ],
     );
   }
 }
 
-class _TeacherHomeTabs extends StatelessWidget {
+class _TeacherHome extends StatelessWidget {
   final Locale locale;
   final UserProfile profile;
 
-  const _TeacherHomeTabs({required this.locale, required this.profile});
+  const _TeacherHome({required this.locale, required this.profile});
 
   @override
   Widget build(BuildContext context) {
     final fr = locale.languageCode == 'fr';
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: fr ? 'Paramètres' : 'Settings',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
-              ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: fr ? 'Paramètres' : 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
             ),
-          ],
-          bottom: TabBar(
-            tabs: [
-              Tab(icon: const Icon(Icons.home_outlined), text: fr ? 'Accueil' : 'Home'),
-              Tab(icon: const Icon(Icons.quiz_outlined), text: fr ? 'QCM' : 'Quizzes'),
-            ],
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _TeacherHomeContent(locale: locale, profile: profile),
-            TeacherQcmHubPage(locale: locale, profile: profile, embedded: true),
-          ],
-        ),
+        ],
       ),
+      body: _TeacherHomeContent(locale: locale, profile: profile),
+    );
+  }
+}
+
+class _TeacherQuizzes extends StatelessWidget {
+  final Locale locale;
+  final UserProfile profile;
+
+  const _TeacherQuizzes({required this.locale, required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final fr = locale.languageCode == 'fr';
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(fr ? 'Espace QCM' : 'Quiz workspace', style: const TextStyle(fontWeight: FontWeight.w800)),
+      ),
+      body: TeacherQcmHubPage(locale: locale, profile: profile, embedded: true),
     );
   }
 }

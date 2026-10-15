@@ -346,7 +346,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
           ),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }

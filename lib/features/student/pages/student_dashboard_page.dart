@@ -12,6 +12,7 @@ import '../../settings/pages/settings_page.dart';
 import 'assignments_page.dart';
 import 'courses_page.dart';
 import 'progress_page.dart';
+import 'student_evaluations_page.dart';
 import 'timetable_page.dart';
 
 class StudentDashboardPage extends StatelessWidget {
@@ -58,6 +59,16 @@ class StudentDashboardPage extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (_) => AssignmentsPage(locale: locale, profile: profile),
+                ),
+              ),
+            ),
+            _DashboardItem(
+              Icons.fact_check_rounded,
+              locale.languageCode == 'fr' ? 'Mes épreuves' : 'My exams',
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
                 ),
               ),
             ),

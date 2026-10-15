@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
 import '../offline/course_offline_service.dart';
-import '../offline/offline_repository.dart';
+import '../offline/local_cleanup.dart';
 import 'profile_service.dart';
 import 'push_service.dart';
 
@@ -136,9 +136,7 @@ class SupabaseSessionService implements SessionService {
       if (userId != null) {
         await CourseOfflineService().deleteUserFiles(userId);
       }
-      await OfflineRepository().clearCourses();
-      await OfflineRepository().clearLessons();
-      await OfflineRepository().clearProgress();
+      await clearLocalUserData();
     } catch (_) {
       // Signing out must still succeed if local cache cleanup fails.
     }

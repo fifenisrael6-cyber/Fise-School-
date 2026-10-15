@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
+import '../offline/json_cache.dart';
 
 class ProfileService {
   SupabaseClient get _client => Supabase.instance.client;
@@ -11,13 +12,29 @@ class ProfileService {
       return null;
     }
 
-    final data = await _client
-        .from('profiles')
-        .select()
-        .eq('id', user.id)
-        .maybeSingle();
-
-    return data == null ? null : UserProfile.fromMap(data);
+    final cacheKey = 'profile_${user.id}';
+    try {
+      final data = await _client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(JsonCache.networkTimeout);
+      if (data == null) {
+        return null;
+      }
+      try {
+        await JsonCache.instance.write(cacheKey, data);
+      } catch (_) {}
+      return UserProfile.fromMap(data);
+    } catch (_) {
+      // Sans réseau : dernier profil connu de CE compte (jamais celui d'un autre).
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is Map) {
+        return UserProfile.fromMap(Map<String, dynamic>.from(cached));
+      }
+      rethrow;
+    }
   }
 
   Future<UserProfile> updateEditableProfile({

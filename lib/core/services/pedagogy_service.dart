@@ -11,6 +11,7 @@ import '../../models/school_class.dart';
 import '../../models/user_profile.dart';
 import '../offline/json_cache.dart';
 import '../offline/offline_repository.dart';
+import '../offline/pending_progress.dart';
 
 class SubjectService {
   final SupabaseClient _client;
@@ -755,19 +756,86 @@ class ProgressService {
   ProgressService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
-  Future<LessonProgress?> get(String studentId, String lessonId) async {
-    final row = await _client
-        .from('lesson_progress')
-        .select()
-        .eq('student_id', studentId)
-        .eq('lesson_id', lessonId)
-        .maybeSingle();
+  String _cacheKey(String studentId, String lessonId) =>
+      'lesson_progress_${studentId}_$lessonId';
 
-    if (row == null) {
-      return null;
+  /// Construit la progression à partir de la copie serveur/locale [base] et de
+  /// ce qui a été fait hors ligne [pending] (jamais de « rétrogradation »).
+  LessonProgress? _merge(
+    Map<String, dynamic>? base,
+    Map<String, dynamic>? pending,
+  ) {
+    if (pending == null) {
+      return base == null ? null : LessonProgress.fromMap(base);
     }
+    final completed =
+        base?['status'] == 'completed' || pending['status'] == 'completed';
+    return LessonProgress.fromMap(<String, dynamic>{
+      'id': base?['id'] ?? 'local-${pending['lesson_id']}',
+      'student_id': pending['student_id'],
+      'lesson_id': pending['lesson_id'],
+      'status': completed ? 'completed' : pending['status'],
+      'progress_percent': completed ? 100 : (pending['progress_percent'] ?? 0),
+      'started_at': base?['started_at'] ?? pending['started_at'],
+      'last_opened_at': pending['last_opened_at'],
+      'completed_at': base?['completed_at'] ?? pending['completed_at'],
+    });
+  }
 
-    return LessonProgress.fromMap(Map<String, dynamic>.from(row));
+  Future<LessonProgress?> get(String studentId, String lessonId) async {
+    final key = _cacheKey(studentId, lessonId);
+    Map<String, dynamic>? base;
+    var reachable = true;
+    try {
+      final row = await _client
+          .from('lesson_progress')
+          .select()
+          .eq('student_id', studentId)
+          .eq('lesson_id', lessonId)
+          .maybeSingle()
+          .timeout(JsonCache.networkTimeout);
+      if (row != null) {
+        base = Map<String, dynamic>.from(row);
+        try {
+          await JsonCache.instance.write(key, base);
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Sans réseau : dernière progression connue + ce qui est en attente.
+      reachable = false;
+    }
+    if (base == null && !reachable) {
+      final cached = await JsonCache.instance.read(key);
+      if (cached is Map) base = Map<String, dynamic>.from(cached);
+    }
+    final pending = await PendingProgress.instance.find(studentId, lessonId);
+    return _merge(base, pending);
+  }
+
+  Future<LessonProgress> _save(
+    Map<String, dynamic> values,
+    String studentId,
+    String lessonId,
+  ) async {
+    try {
+      final row = await _client
+          .from('lesson_progress')
+          .upsert(values, onConflict: 'student_id,lesson_id')
+          .select()
+          .single()
+          .timeout(JsonCache.networkTimeout);
+      final map = Map<String, dynamic>.from(row);
+      try {
+        await JsonCache.instance.write(_cacheKey(studentId, lessonId), map);
+      } catch (_) {}
+      return LessonProgress.fromMap(map);
+    } catch (_) {
+      // Pas de réseau : enregistré sur le téléphone, envoyé automatiquement
+      // au retour du réseau.
+      await PendingProgress.instance.enqueue(values);
+      final merged = await get(studentId, lessonId);
+      return merged ?? _merge(null, values)!;
+    }
   }
 
   Future<LessonProgress> open({
@@ -787,13 +855,7 @@ class ProgressService {
       'completed_at': existing?.completedAt?.toIso8601String(),
     };
 
-    final row = await _client
-        .from('lesson_progress')
-        .upsert(values, onConflict: 'student_id,lesson_id')
-        .select()
-        .single();
-
-    return LessonProgress.fromMap(Map<String, dynamic>.from(row));
+    return _save(values, studentId, lessonId);
   }
 
   Future<LessonProgress> complete({
@@ -813,13 +875,7 @@ class ProgressService {
       'completed_at': now,
     };
 
-    final row = await _client
-        .from('lesson_progress')
-        .upsert(values, onConflict: 'student_id,lesson_id')
-        .select()
-        .single();
-
-    return LessonProgress.fromMap(Map<String, dynamic>.from(row));
+    return _save(values, studentId, lessonId);
   }
 }
 
@@ -831,28 +887,34 @@ class ResourceService {
 
   static const String bucket = 'course-resources';
 
-  Future<List<CourseResource>> listForCourse(String courseId) async {
-    final rows = await _client
-        .from('course_resources')
-        .select()
-        .eq('course_id', courseId)
-        .order('position');
+  List<CourseResource> _decodeResources(Object? raw) => (raw as List)
+      .map((row) => CourseResource.fromMap(Map<String, dynamic>.from(row as Map)))
+      .toList(growable: false);
 
-    return rows
-        .map((row) => CourseResource.fromMap(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
+  /// Liste des documents d'un cours (dernière copie locale sans réseau).
+  Future<List<CourseResource>> listForCourse(String courseId) {
+    return JsonCache.instance.cachedRead<List<CourseResource>>(
+      key: 'resources_course_$courseId',
+      fetch: () async => await _client
+          .from('course_resources')
+          .select()
+          .eq('course_id', courseId)
+          .order('position') as Object?,
+      decode: _decodeResources,
+    );
   }
 
-  Future<List<CourseResource>> listForLesson(String lessonId) async {
-    final rows = await _client
-        .from('course_resources')
-        .select()
-        .eq('lesson_id', lessonId)
-        .order('position');
-
-    return rows
-        .map((row) => CourseResource.fromMap(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
+  /// Liste des documents d'une leçon (dernière copie locale sans réseau).
+  Future<List<CourseResource>> listForLesson(String lessonId) {
+    return JsonCache.instance.cachedRead<List<CourseResource>>(
+      key: 'resources_lesson_$lessonId',
+      fetch: () async => await _client
+          .from('course_resources')
+          .select()
+          .eq('lesson_id', lessonId)
+          .order('position') as Object?,
+      decode: _decodeResources,
+    );
   }
 
   Future<String> createSignedUrl(String storagePath, {int expiresIn = 3600}) {
@@ -927,7 +989,7 @@ class ResourceService {
           .single();
 
       return CourseResource.fromMap(Map<String, dynamic>.from(row));
-    } catch (error) {
+    } catch (_) {
       try {
         await _client.storage.from(bucket).remove([storagePath]);
       } catch (_) {

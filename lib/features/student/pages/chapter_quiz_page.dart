@@ -58,12 +58,10 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         _questions = questions;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = _fr
-            ? 'Impossible de charger ce QCM pour le moment. Vérifie ta connexion et réessaie.'
-            : 'This quiz could not be loaded right now. Check your connection and try again.';
+        _error = error.toString().replaceFirst('Bad state: ', '');
         _loading = false;
       });
     }
@@ -122,12 +120,10 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         throw StateError(_fr ? 'La correction n’a pas retourné de résultat.' : 'The correction returned no result.');
       }
       if (mounted) setState(() => _result = result);
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr
-              ? 'Impossible d’envoyer les réponses ou de calculer la note. Vérifie ta connexion et réessaie.'
-              : 'Unable to submit answers or calculate the score. Check your connection and try again.')),
+          SnackBar(content: Text('${_fr ? 'Envoi impossible' : 'Submission failed'}: $error')),
         );
       }
     } finally {

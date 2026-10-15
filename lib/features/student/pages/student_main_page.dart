@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
+import '../../../core/widgets/swipe_tabs_shell.dart';
 import '../../../models/user_profile.dart';
 import '../../ai/pages/ai_page.dart';
 import '../../settings/pages/profile_page.dart';
@@ -31,37 +32,29 @@ class StudentMainPage extends StatefulWidget {
 }
 
 class _StudentMainPageState extends State<StudentMainPage> {
-  int _index = 0;
-
-  List<Widget> get _pages => [
+  @override
+  Widget build(BuildContext context) {
+    final fr = widget.locale.languageCode == 'fr';
+    return SwipeTabsShell(
+      pagesBuilder: (goToTab) => [
         _StudentHome(
           locale: widget.locale,
           profile: widget.profile,
-          onOpenTab: (index) => setState(() => _index = index),
+          onOpenTab: goToTab,
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
-      ];
-
-  @override
-  Widget build(BuildContext context) {
-    final fr = widget.locale.languageCode == 'fr';
-    return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
-          NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
-          NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
-          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
-        ],
-      ),
+      ],
+      destinations: [
+        NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
+        NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+        NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
+        NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
+        NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
+      ],
     );
   }
 }

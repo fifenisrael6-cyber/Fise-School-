@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/past_paper.dart';
+import '../offline/json_cache.dart';
 
 class PastPaperService {
   PastPaperService({SupabaseClient? client})
@@ -10,17 +11,23 @@ class PastPaperService {
   final SupabaseClient _client;
   static const bucket = 'past-papers';
 
-  Future<List<PastPaper>> list({bool includeUnpublished = false}) async {
-    var query = _client.from('past_papers').select();
-    if (!includeUnpublished) {
-      query = query.eq('is_published', true);
-    }
-    final rows = await query
-        .order('exam_year', ascending: false)
-        .order('subject_fr');
-    return rows
-        .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
+  Future<List<PastPaper>> list({bool includeUnpublished = false}) {
+    final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    return JsonCache.instance.cachedRead<List<PastPaper>>(
+      key: 'past_papers_${userId}_${includeUnpublished ? 'all' : 'published'}',
+      fetch: () async {
+        var query = _client.from('past_papers').select();
+        if (!includeUnpublished) {
+          query = query.eq('is_published', true);
+        }
+        return await query
+            .order('exam_year', ascending: false)
+            .order('subject_fr') as Object?;
+      },
+      decode: (raw) => (raw as List)
+          .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row as Map)))
+          .toList(growable: false),
+    );
   }
 
   Future<String> signedUrl(String path) =>

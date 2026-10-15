@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/offline/connectivity_service.dart';
+import '../../../core/offline/message_outbox.dart';
+import '../../../core/offline/pending_progress.dart';
 import '../../../core/offline/sync_service.dart';
 import '../../admin/pages/admin_dashboard_page.dart';
 import '../../public/pages/public_home_page.dart';
@@ -61,7 +64,12 @@ class _AuthGateState extends State<AuthGate> {
         .catchError((_) {});
     _connectivitySubscription = ConnectivityService().connectionStream.listen((online) {
       if (online && _state.status == SessionStatus.authenticated) {
-        _syncStudentOfflineCache(_state.profile!);
+        // Retour du réseau : on envoie d'abord ce qui a été écrit hors ligne
+        // (messages, progression), puis on rafraîchit les cours de l'élève.
+        _flushPending();
+        if (_state.profile?.role.toLowerCase() == 'student') {
+          _syncStudentOfflineCache(_state.profile!);
+        }
       }
     });
   }
@@ -155,11 +163,29 @@ class _AuthGateState extends State<AuthGate> {
       PushService.registerForUser(state.profile!.id);
     }
 
+    if (state.status == SessionStatus.authenticated) {
+      // Messages ou progression restés en attente depuis la dernière session.
+      _flushPending();
+    }
+
     if (state.status == SessionStatus.authenticated &&
         state.profile?.role.toLowerCase() == 'student') {
       _syncStudentOfflineCache(state.profile!);
     } else if (state.status == SessionStatus.signedOut) {
       _syncedStudentId = null;
+    }
+  }
+
+  /// Envoie les éléments écrits hors ligne (messages, progression des leçons).
+  /// Ne lève jamais d'erreur : ce qui ne part pas reste en file.
+  Future<void> _flushPending() async {
+    try {
+      if (!await ConnectivityService().isOnline()) return;
+      final client = Supabase.instance.client;
+      await PendingProgress.instance.flush(client);
+      await MessageOutbox.instance.flush(client);
+    } catch (_) {
+      // Réessayé au prochain retour du réseau.
     }
   }
 

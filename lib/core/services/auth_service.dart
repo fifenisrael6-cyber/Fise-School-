@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'profile_service.dart';
-import '../offline/offline_repository.dart';
+import '../offline/local_cleanup.dart';
 
 class AuthService {
   SupabaseClient get _client => Supabase.instance.client;
@@ -122,8 +122,7 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
-      await OfflineRepository().clearCourses();
-      await OfflineRepository().clearLessons();
+      await clearLocalUserData();
     } catch (e) {
       debugPrint('Nettoyage du cache hors ligne impossible: $e');
     }

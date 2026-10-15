@@ -82,7 +82,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         _periods = periods;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -110,7 +110,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         return;
       }
       setState(() => _subjects = subjects);
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         _snack(_fr ? 'Matières indisponibles.' : 'Subjects unavailable.');
       }
@@ -141,7 +141,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         _roster = roster;
         _loadingGrid = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }

@@ -14,6 +14,7 @@ import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
 import 'qcm_builder_page.dart';
 import 'create_assignment_page.dart';
+import 'teacher_evaluations_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -153,6 +154,19 @@ class TeacherDashboardPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => TeacherQcmHubPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.fact_check_rounded,
+                      locale.languageCode == 'fr' ? 'Épreuves PDF et corrections' : 'PDF exams and grading',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TeacherEvaluationsPage(
                             locale: locale,
                             profile: profile,
                           ),

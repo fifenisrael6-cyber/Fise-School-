@@ -152,6 +152,8 @@ class Bulletin {
   final int? rank;
   final int classSize;
   final double? classAverage;
+  final double? averageGap;
+  final double? progress;
   final List<BulletinLine> lines;
 
   const Bulletin({
@@ -160,6 +162,8 @@ class Bulletin {
     required this.classSize,
     required this.classAverage,
     required this.lines,
+    this.averageGap,
+    this.progress,
   });
 
   factory Bulletin.fromMap(Map<String, dynamic> map) {
@@ -174,6 +178,8 @@ class Bulletin {
       rank: (map['rank'] as num?)?.toInt(),
       classSize: (map['class_size'] as num?)?.toInt() ?? 0,
       classAverage: _num(map['class_average']),
+      averageGap: _num(map['average_gap']),
+      progress: _num(map['progress']),
       lines: lines,
     );
   }

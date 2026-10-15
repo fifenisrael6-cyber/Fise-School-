@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/message_group.dart';
+import '../offline/json_cache.dart';
+import '../offline/message_outbox.dart';
 
 class GroupMessageService {
   GroupMessageService({SupabaseClient? client})
@@ -12,11 +14,17 @@ class GroupMessageService {
 
   static const String bucket = 'group-message-attachments';
 
-  Future<List<MessageGroup>> listGroups() async {
-    final result = await _client.rpc('list_my_message_groups');
-    return (result as List)
-        .map((row) => MessageGroup.fromMap(Map<String, dynamic>.from(row as Map)))
-        .toList(growable: false);
+  String get _userId => _client.auth.currentUser?.id ?? 'anonymous';
+
+  /// Groupes de l'utilisateur. Sans réseau : dernière liste connue.
+  Future<List<MessageGroup>> listGroups() {
+    return JsonCache.instance.cachedRead<List<MessageGroup>>(
+      key: 'groups_$_userId',
+      fetch: () async => await _client.rpc('list_my_message_groups') as Object?,
+      decode: (raw) => (raw as List)
+          .map((row) => MessageGroup.fromMap(Map<String, dynamic>.from(row as Map)))
+          .toList(growable: false),
+    );
   }
 
   /// Creates one group shared by all selected compatible classrooms.
@@ -62,24 +70,59 @@ class GroupMessageService {
     );
   }
 
+  /// Messages d'un groupe : serveur (ou dernière copie locale sans réseau)
+  /// suivis des messages en attente d'envoi.
   Future<List<GroupMessage>> listMessages(String groupId) async {
-    final result = await _client.rpc(
-      'list_message_group_messages',
-      params: {'p_group_id': groupId},
-    );
-    return (result as List)
-        .map((row) => GroupMessage.fromMap(Map<String, dynamic>.from(row as Map)))
-        .toList(growable: false);
+    final queued =
+        await MessageOutbox.instance.pending(scope: 'group', targetId: groupId);
+    List<GroupMessage> server;
+    try {
+      server = await JsonCache.instance.cachedRead<List<GroupMessage>>(
+        key: 'group_msgs_${_userId}_$groupId',
+        fetch: () async => await _client.rpc(
+          'list_message_group_messages',
+          params: {'p_group_id': groupId},
+        ) as Object?,
+        decode: (raw) => (raw as List)
+            .map((row) => GroupMessage.fromMap(Map<String, dynamic>.from(row as Map)))
+            .toList(growable: false),
+      );
+    } catch (_) {
+      if (queued.isEmpty) rethrow;
+      server = <GroupMessage>[];
+    }
+    final knownIds = server.map((m) => m.id).toSet();
+    return <GroupMessage>[
+      ...server,
+      for (final m in queued)
+        if (!knownIds.contains(m.localId))
+          GroupMessage(
+            id: m.localId,
+            senderId: m.senderId,
+            senderName: '',
+            senderRole: '',
+            body: m.body,
+            createdAt: m.createdAt,
+            attachmentName: m.attachmentName,
+            attachmentType: m.attachmentType,
+            viewOnce: m.viewOnce,
+            pending: !m.failed,
+            failed: m.failed,
+          ),
+    ];
   }
 
-  Future<List<GroupMember>> listMembers(String groupId) async {
-    final result = await _client.rpc(
-      'list_message_group_members',
-      params: {'p_group_id': groupId},
+  Future<List<GroupMember>> listMembers(String groupId) {
+    return JsonCache.instance.cachedRead<List<GroupMember>>(
+      key: 'group_members_${_userId}_$groupId',
+      fetch: () async => await _client.rpc(
+        'list_message_group_members',
+        params: {'p_group_id': groupId},
+      ) as Object?,
+      decode: (raw) => (raw as List)
+          .map((row) => GroupMember.fromMap(Map<String, dynamic>.from(row as Map)))
+          .toList(growable: false),
     );
-    return (result as List)
-        .map((row) => GroupMember.fromMap(Map<String, dynamic>.from(row as Map)))
-        .toList(growable: false);
   }
 
   Future<void> removeMember(String groupId, String userId) async {
@@ -90,6 +133,8 @@ class GroupMessageService {
         .eq('user_id', userId);
   }
 
+  /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
+  /// Sans réseau, il reste en attente (horloge) et part au retour du réseau.
   Future<void> send({
     required String groupId,
     required String body,
@@ -98,38 +143,17 @@ class GroupMessageService {
     String? attachmentType,
     bool viewOnce = false,
   }) async {
-    if (viewOnce && (attachmentBytes == null || attachmentName == null)) {
-      throw ArgumentError('View-once messages must include an attachment.');
-    }
-    final senderId = _client.auth.currentUser!.id;
-    String? path;
-
-    if (attachmentBytes != null && attachmentName != null) {
-      final safeName = attachmentName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      path = '$groupId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-      await _client.storage.from(bucket).uploadBinary(
-        path,
-        attachmentBytes,
-        fileOptions: FileOptions(
-          upsert: false,
-          contentType: attachmentType ?? 'application/octet-stream',
-        ),
-      );
-    }
-
-    if (body.trim().isEmpty && path == null) {
-      return;
-    }
-
-    await _client.from('message_group_messages').insert({
-      'group_id': groupId,
-      'sender_id': senderId,
-      'body': body.trim(),
-      'attachment_path': path,
-      'attachment_name': attachmentName,
-      'attachment_type': attachmentType,
-      'view_once': viewOnce,
-    });
+    final queued = await MessageOutbox.instance.enqueue(
+      scope: 'group',
+      targetId: groupId,
+      body: body,
+      attachmentBytes: attachmentBytes,
+      attachmentName: attachmentName,
+      attachmentType: attachmentType,
+      viewOnce: viewOnce,
+    );
+    if (queued == null) return;
+    await MessageOutbox.instance.flush(_client);
   }
 
   Future<String?> signedAttachmentUrl(String? path) async {

@@ -44,6 +44,11 @@ class PrivateMessage {
   final DateTime? viewedAt;
   final DateTime? deletedAt;
 
+  /// Message écrit sur cet appareil, pas encore reçu par le serveur
+  /// (file d'attente hors ligne). [failed] : refusé par le serveur.
+  final bool pending;
+  final bool failed;
+
   const PrivateMessage({
     required this.id,
     required this.senderId,
@@ -58,6 +63,8 @@ class PrivateMessage {
     this.viewOnce = false,
     this.viewedAt,
     this.deletedAt,
+    this.pending = false,
+    this.failed = false,
   });
 
   factory PrivateMessage.fromMap(Map<String, dynamic> map) {

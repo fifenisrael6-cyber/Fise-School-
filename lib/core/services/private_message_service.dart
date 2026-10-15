@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/private_message.dart';
+import '../offline/json_cache.dart';
+import '../offline/message_outbox.dart';
 
 class PrivateMessageService {
   PrivateMessageService({SupabaseClient? client})
@@ -10,11 +12,17 @@ class PrivateMessageService {
 
   final SupabaseClient _client;
 
-  Future<List<MessageContact>> listContacts() async {
-    final result = await _client.rpc('list_private_message_contacts');
-    return (result as List)
-        .map((item) => MessageContact.fromMap(Map<String, dynamic>.from(item)))
-        .toList();
+  String get _userId => _client.auth.currentUser?.id ?? 'anonymous';
+
+  /// Liste des contacts. Sans réseau : dernière liste connue.
+  Future<List<MessageContact>> listContacts() {
+    return JsonCache.instance.cachedRead<List<MessageContact>>(
+      key: 'pm_contacts_$_userId',
+      fetch: () async => await _client.rpc('list_private_message_contacts') as Object?,
+      decode: (raw) => (raw as List)
+          .map((item) => MessageContact.fromMap(Map<String, dynamic>.from(item as Map)))
+          .toList(),
+    );
   }
 
   Future<bool> unlockTeacher(String code) async {
@@ -25,16 +33,51 @@ class PrivateMessageService {
     return result == true;
   }
 
+  /// Conversation avec un contact : messages du serveur (ou dernière copie
+  /// locale sans réseau) suivis des messages en attente d'envoi.
   Future<List<PrivateMessage>> listConversation(String contactId) async {
-    final result = await _client.rpc(
-      'list_private_messages',
-      params: {'target_user_id': contactId},
-    );
-    return (result as List)
-        .map((item) => PrivateMessage.fromMap(Map<String, dynamic>.from(item)))
-        .toList();
+    final queued = await MessageOutbox.instance
+        .pending(scope: 'private', targetId: contactId);
+    List<PrivateMessage> server;
+    try {
+      server = await JsonCache.instance.cachedRead<List<PrivateMessage>>(
+        key: 'pm_conv_${_userId}_$contactId',
+        fetch: () async => await _client.rpc(
+          'list_private_messages',
+          params: {'target_user_id': contactId},
+        ) as Object?,
+        decode: (raw) => (raw as List)
+            .map((item) => PrivateMessage.fromMap(Map<String, dynamic>.from(item as Map)))
+            .toList(),
+      );
+    } catch (_) {
+      // Rien sur le serveur ni en cache : on n'affiche que les messages en
+      // attente, et on relance l'erreur s'il n'y en a aucun.
+      if (queued.isEmpty) rethrow;
+      server = <PrivateMessage>[];
+    }
+    final knownIds = server.map((m) => m.id).toSet();
+    return <PrivateMessage>[
+      ...server,
+      for (final m in queued)
+        if (!knownIds.contains(m.localId))
+          PrivateMessage(
+            id: m.localId,
+            senderId: m.senderId,
+            recipientId: m.targetId,
+            body: m.body,
+            createdAt: m.createdAt,
+            attachmentName: m.attachmentName,
+            attachmentType: m.attachmentType,
+            viewOnce: m.viewOnce,
+            pending: !m.failed,
+            failed: m.failed,
+          ),
+    ];
   }
 
+  /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
+  /// Sans réseau, il reste en attente (horloge) et part au retour du réseau.
   Future<void> send({
     required String recipientId,
     required String body,
@@ -43,39 +86,17 @@ class PrivateMessageService {
     String? attachmentType,
     bool viewOnce = false,
   }) async {
-    if (viewOnce && (attachmentBytes == null || attachmentName == null)) {
-      throw ArgumentError('View-once messages must include an attachment.');
-    }
-    final senderId = _client.auth.currentUser!.id;
-    String? path;
-
-    if (attachmentBytes != null && attachmentName != null) {
-      final safeName = attachmentName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      path = '$senderId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-      await _client.storage.from('private-message-attachments').uploadBinary(
-        path,
-        attachmentBytes,
-        fileOptions: FileOptions(
-          upsert: false,
-          contentType: attachmentType ?? 'application/octet-stream',
-        ),
-      );
-    }
-
-    if (body.trim().isEmpty && path == null) {
-      return;
-    }
-
-    await _client.from('private_messages').insert({
-      'sender_id': senderId,
-      'recipient_id': recipientId,
-      'body': body.trim(),
-      'attachment_path': path,
-      'attachment_name': attachmentName,
-      'attachment_type': attachmentType,
-      'attachment_size': attachmentBytes?.length,
-      'view_once': viewOnce,
-    });
+    final queued = await MessageOutbox.instance.enqueue(
+      scope: 'private',
+      targetId: recipientId,
+      body: body,
+      attachmentBytes: attachmentBytes,
+      attachmentName: attachmentName,
+      attachmentType: attachmentType,
+      viewOnce: viewOnce,
+    );
+    if (queued == null) return;
+    await MessageOutbox.instance.flush(_client);
   }
 
   Future<String?> signedAttachmentUrl(String? path) async {

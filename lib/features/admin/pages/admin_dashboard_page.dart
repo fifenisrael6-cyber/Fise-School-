@@ -5,6 +5,7 @@ import 'admin_assignments_page.dart';
 import 'admin_ai_page.dart';
 import 'admin_courses_page.dart';
 import 'admin_grades_page.dart';
+import 'admin_publication_page.dart';
 import 'admin_past_papers_page.dart';
 import 'admin_pedagogy_page.dart';
 import 'admin_people_page.dart';
@@ -87,6 +88,11 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.grading_rounded,
         title: _isFrench ? 'Notes et bulletins' : 'Marks and report cards',
         builder: (_) => AdminGradesPage(locale: locale),
+      ),
+      _AdminEntry(
+        icon: Icons.event_available_rounded,
+        title: _isFrench ? 'Publication des bulletins' : 'Report card publication',
+        builder: (_) => AdminPublicationPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.history_edu_rounded,

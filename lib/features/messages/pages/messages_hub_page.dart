@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/message_outbox.dart';
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/services/pedagogy_service.dart';
@@ -59,7 +60,11 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
 
   Future<void> _reload() async {
     setState(() => _groupsFuture = _service.listGroups());
-    await _groupsFuture;
+    try {
+      await _groupsFuture;
+    } catch (_) {
+      // Hors ligne sans copie locale : le FutureBuilder affiche déjà la liste vide.
+    }
   }
 
   @override
@@ -161,7 +166,13 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
         attachmentType: 'image/jpeg',
       );
       await _reload();
-      _snack(_fr ? 'Photo envoyée.' : 'Photo sent.');
+      final stillWaiting = await MessageOutbox.instance
+          .pending(scope: 'group', targetId: target.id);
+      _snack(stillWaiting.isEmpty
+          ? (_fr ? 'Photo envoyée.' : 'Photo sent.')
+          : (_fr
+              ? 'Photo enregistrée : elle partira dès le retour du réseau.'
+              : 'Photo saved: it will be sent when you are back online.'));
     } catch (_) {
       _snack(_fr ? 'Envoi impossible.' : 'Unable to send.');
     }

@@ -57,6 +57,11 @@ class GroupMessage {
   final bool viewedByMe;
   final DateTime? deletedAt;
 
+  /// Message écrit sur cet appareil, pas encore reçu par le serveur
+  /// (file d'attente hors ligne). [failed] : refusé par le serveur.
+  final bool pending;
+  final bool failed;
+
   const GroupMessage({
     required this.id,
     required this.senderId,
@@ -73,6 +78,8 @@ class GroupMessage {
     this.viewOnce = false,
     this.viewedByMe = false,
     this.deletedAt,
+    this.pending = false,
+    this.failed = false,
   });
 
   factory GroupMessage.fromMap(Map<String, dynamic> map) {

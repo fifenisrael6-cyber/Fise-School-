@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/offline/message_outbox.dart';
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
@@ -52,6 +53,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   PickedAttachment? _attachment;
   bool _viewOnce = false;
   RealtimeChannel? _channel;
+  StreamSubscription<void>? _outboxSubscription;
   String? _inviteCode;
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -63,6 +65,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _inviteCode = widget.group.inviteCode;
     _attachment = widget.initialAttachment;
     _load();
+    // Messages en attente : la conversation se met à jour quand la file change
+    // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
+    _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
+      if (mounted) _load(showLoader: false, markRead: false);
+    });
+    unawaited(MessageOutbox.instance.flush());
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')
       ..onPostgresChanges(
@@ -105,6 +113,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    _outboxSubscription?.cancel();
     _voiceLimitTimer?.cancel();
     _voiceTicker?.cancel();
     _voiceStopwatch.stop();
@@ -131,14 +140,47 @@ class _GroupChatPageState extends State<GroupChatPage> {
       if (mounted) {
         setState(() => _messages = messages);
       }
-    } catch (error) {
-      if (mounted) {
-        _snack('$error');
+    } catch (_) {
+      // Sans réseau et sans copie locale : message clair plutôt qu'une erreur brute.
+      if (mounted && showLoader) {
+        _snack(_fr
+            ? 'Impossible de charger la conversation sans connexion.'
+            : 'Could not load the conversation while offline.');
       }
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _pendingActions(GroupMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.refresh_rounded),
+              title: Text(_fr ? 'Renvoyer' : 'Retry'),
+              onTap: () => Navigator.pop(sheetContext, 'retry'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: Text(_fr ? 'Supprimer' : 'Delete'),
+              onTap: () => Navigator.pop(sheetContext, 'discard'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == 'retry') {
+      await MessageOutbox.instance.retry(message.id);
+    } else if (action == 'discard') {
+      await MessageOutbox.instance.discard(message.id);
     }
   }
 
@@ -686,7 +728,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: () => _confirmDeleteMessage(message),
+        onLongPress: () => (message.pending || message.failed)
+            ? _pendingActions(message)
+            : _confirmDeleteMessage(message),
         child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
@@ -715,6 +759,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
               )
             else ...[
               if (message.body.isNotEmpty) Text(message.body),
+              if (message.attachmentPath == null && message.attachmentName != null)
+                Text('📎 ${message.attachmentName}', style: const TextStyle(fontStyle: FontStyle.italic)),
               if (message.attachmentPath != null) _attachmentView(message),
             ],
             const SizedBox(height: 2),
@@ -730,7 +776,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   if (mine) ...[
                     const SizedBox(width: 4),
                     Tooltip(
-                      message: message.recipientCount > 0 && message.readCount >= message.recipientCount
+                      message: message.failed
+                          ? (_fr ? 'Échec de l’envoi — appuie longuement pour renvoyer' : 'Failed to send — long press to retry')
+                          : message.pending
+                          ? (_fr ? 'En attente de connexion' : 'Waiting for connection')
+                          : message.recipientCount > 0 && message.readCount >= message.recipientCount
                           ? (_fr ? 'Lu par tous' : 'Read by everyone')
                           : message.recipientCount > 0 && message.deliveredCount >= message.recipientCount
                               ? (_fr ? 'Reçu par tous' : 'Delivered to everyone')
@@ -738,13 +788,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
                                   ? (_fr ? 'En cours de réception' : 'Being delivered')
                                   : (_fr ? 'Envoyé' : 'Sent'),
                       child: Icon(
-                        message.recipientCount > 0 && message.readCount >= message.recipientCount
+                        message.failed
+                            ? Icons.error_outline_rounded
+                            : message.pending
+                            ? Icons.schedule_rounded
+                            : message.recipientCount > 0 && message.readCount >= message.recipientCount
                             ? Icons.done_all_rounded
                             : message.deliveredCount > 0
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
                         size: 14,
-                        color: message.recipientCount > 0 && message.readCount >= message.recipientCount
+                        color: message.failed
+                            ? Colors.red
+                            : message.recipientCount > 0 && message.readCount >= message.recipientCount
                             ? const Color(0xFF166534)
                             : message.deliveredCount > 0
                                 ? Colors.black54

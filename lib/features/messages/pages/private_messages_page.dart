@@ -10,6 +10,7 @@ import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/offline/message_outbox.dart';
 import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
@@ -49,6 +50,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   Timer? _voiceTicker;
   Duration _voiceElapsed = Duration.zero;
   RealtimeChannel? _channel;
+  StreamSubscription<void>? _outboxSubscription;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -57,6 +59,13 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.initState();
     _contactsFuture = _service.listContacts();
     _attachment = widget.initialAttachment;
+    // Messages en attente : on rafraîchit la conversation quand la file change
+    // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
+    _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
+      final selected = _selected;
+      if (selected != null && mounted) unawaited(_refreshMessages(selected));
+    });
+    unawaited(MessageOutbox.instance.flush());
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
         final row = payload.newRecord;
@@ -89,6 +98,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   void dispose() {
     _composer.dispose();
     _channel?.unsubscribe();
+    _outboxSubscription?.cancel();
     _voiceLimitTimer?.cancel();
     _voiceTicker?.cancel();
     _voiceStopwatch.stop();
@@ -139,13 +149,30 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// Recharge les messages sans écran de chargement (messages du serveur ou
+  /// copie locale, plus les messages en attente d'envoi).
+  Future<void> _refreshMessages(MessageContact contact) async {
+    try {
+      final messages = await _service.listConversation(contact.id);
+      if (mounted && _selected?.id == contact.id) {
+        setState(() => _messages = messages);
+      }
+    } catch (_) {
+      // Hors ligne sans copie locale : on garde ce qui est affiché.
+    }
+  }
+
   Future<void> _select(MessageContact contact) async {
     setState(() {
       _selected = contact;
       _loadingMessages = true;
     });
     try {
-      await _service.markConversationRead(contact.id);
+      try {
+        await _service.markConversationRead(contact.id);
+      } catch (_) {
+        // Hors ligne : l'accusé de lecture sera renvoyé à la prochaine ouverture.
+      }
       final messages = await _service.listConversation(contact.id);
       if (mounted) {
         setState(() {
@@ -153,10 +180,46 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           _contactsFuture = _service.listContacts();
         });
       }
+    } catch (_) {
+      if (mounted) {
+        _showMessage(_isFrench
+            ? 'Impossible de charger la conversation sans connexion.'
+            : 'Could not load the conversation while offline.');
+      }
     } finally {
       if (mounted) {
         setState(() => _loadingMessages = false);
       }
+    }
+  }
+
+  Future<void> _pendingActions(PrivateMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.refresh_rounded),
+              title: Text(_isFrench ? 'Renvoyer' : 'Retry'),
+              onTap: () => Navigator.pop(sheetContext, 'retry'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: Text(_isFrench ? 'Supprimer' : 'Delete'),
+              onTap: () => Navigator.pop(sheetContext, 'discard'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == 'retry') {
+      await MessageOutbox.instance.retry(message.id);
+    } else if (action == 'discard') {
+      await MessageOutbox.instance.discard(message.id);
     }
   }
 
@@ -187,7 +250,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           _viewOnce = false;
         });
       }
-      await _select(contact);
+      await _refreshMessages(contact);
     } catch (error) {
       if (mounted) _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
     } finally {
@@ -537,7 +600,9 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
                         child: GestureDetector(
-                          onLongPress: () => _confirmDeleteMessage(message),
+                          onLongPress: () => (message.pending || message.failed)
+                              ? _pendingActions(message)
+                              : _confirmDeleteMessage(message),
                           child: Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(12),
@@ -559,6 +624,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                 )
                               else ...[
                                 if (message.body.isNotEmpty) Text(message.body),
+                                if (message.attachmentPath == null && message.attachmentName != null)
+                                  Text('📎 ${message.attachmentName}', style: const TextStyle(fontStyle: FontStyle.italic)),
                                 if (message.attachmentPath != null)
                                   _MessageAttachment(
                                     service: _service,
@@ -578,13 +645,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   if (mine) ...[
                                     const SizedBox(width: 4),
                                     Icon(
-                                      message.readAt != null
+                                      message.failed
+                                          ? Icons.error_outline_rounded
+                                          : message.pending
+                                              ? Icons.schedule_rounded
+                                              : message.readAt != null
                                           ? Icons.done_all_rounded
                                           : message.deliveredAt != null
                                               ? Icons.done_all_rounded
                                               : Icons.done_rounded,
                                       size: 14,
-                                      color: message.readAt != null
+                                      color: message.failed
+                                          ? Colors.red
+                                          : message.readAt != null
                                           ? const Color(0xFF166534)
                                           : message.deliveredAt != null
                                               ? Colors.black54

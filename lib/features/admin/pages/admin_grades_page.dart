@@ -233,7 +233,7 @@ class _CoefficientsTabState extends State<_CoefficientsTab> {
       if (mounted) {
         setState(() => _subjects = s);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         _snack(_fr ? 'Matières indisponibles.' : 'Subjects unavailable.');
       }
@@ -368,7 +368,7 @@ class _BulletinsTabState extends State<_BulletinsTab> {
       if (mounted) {
         setState(() => _roster = r);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_fr ? 'Liste des élèves indisponible.' : 'Student list unavailable.')),

@@ -53,7 +53,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           _loading = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           _error = _isFrench

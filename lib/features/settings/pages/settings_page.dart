@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/local_cleanup.dart';
 import '../../../core/services/push_service.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
@@ -196,6 +197,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   try {
                     await CourseOfflineService().deleteUserFiles(profile.id);
                   } catch (_) {}
+
+                  // Envoie ce qui est en attente (si réseau) puis efface les
+                  // données locales pour le prochain compte de ce téléphone.
+                  await clearLocalUserData();
 
                   try {
                     await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);

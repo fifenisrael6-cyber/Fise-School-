@@ -61,7 +61,7 @@ class _PastPapersPageState extends State<PastPapersPage> {
         _exams = exams;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
