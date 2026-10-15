@@ -30,7 +30,6 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
   StreamSubscription<OfflineDownloadProgress>? _subscription;
   OfflineDownloadProgress? _progress;
   DownloadedFileRecord? _local;
-  String? _signedUrl;
   bool _loading = true;
 
   bool get _fr => widget.locale.languageCode != 'en';
@@ -74,8 +73,8 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
         if (widget.resource.storagePath.isEmpty) {
           throw StateError('offline-only');
         }
-        _signedUrl ??= await _resources.createSignedUrl(widget.resource.storagePath);
-        final signedUrl = _signedUrl;
+        // Créer un lien signé neuf à chaque ouverture : le précédent peut avoir expiré.
+        final signedUrl = await _resources.createSignedUrl(widget.resource.storagePath);
         if (signedUrl == null || signedUrl.isEmpty) {
           throw StateError('signed-url-unavailable');
         }
