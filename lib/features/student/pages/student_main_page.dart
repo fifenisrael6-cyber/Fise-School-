@@ -46,6 +46,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
           onSignOut: widget.onSignOut,
         ),
         CoursesPage(locale: widget.locale, profile: widget.profile),
+        StudentEvaluationsPage(locale: widget.locale, profile: widget.profile),
         MessagesHubPage(locale: widget.locale, profile: widget.profile),
         AiPage(locale: widget.locale, profile: widget.profile),
         ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -53,6 +54,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
       destinations: [
         NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
         NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+        NavigationDestination(icon: const Icon(Icons.assignment_outlined), selectedIcon: const Icon(Icons.assignment), label: fr ? 'Épreuves' : 'Exams'),
         NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: 'Messages'),
         NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
         NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
