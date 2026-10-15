@@ -796,7 +796,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
             else ...[
               if (message.body.isNotEmpty) Text(message.body),
               if (message.attachmentPath == null && message.attachmentName != null)
-                Text('📎 ${message.attachmentName}', style: const TextStyle(fontStyle: FontStyle.italic)),
+                Text(_attachmentDisplayLabel(message), style: const TextStyle(fontStyle: FontStyle.italic)),
               if (message.attachmentPath != null) _attachmentView(message),
             ],
             const SizedBox(height: 2),
@@ -854,6 +854,20 @@ class _GroupChatPageState extends State<GroupChatPage> {
     );
   }
 
+  String _attachmentDisplayLabel(GroupMessage message) {
+    final type = (message.attachmentType ?? '').toLowerCase();
+    final name = (message.attachmentName ?? '').toLowerCase();
+    if (type.startsWith('audio/') ||
+        name.startsWith('voice-') ||
+        name.endsWith('.m4a')) {
+      return _fr ? '🎤 Message vocal' : '🎤 Voice message';
+    }
+    if (type.startsWith('image/')) {
+      return _fr ? '📷 Photo' : '📷 Photo';
+    }
+    return _fr ? '📎 Fichier' : '📎 File';
+  }
+
   Widget _attachmentView(GroupMessage message) {
     final type = message.attachmentType ?? '';
 
@@ -904,7 +918,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           return TextButton.icon(
             onPressed: () => _openAttachment(message, url),
             icon: const Icon(Icons.audiotrack_rounded),
-            label: Text(message.attachmentName ?? (_fr ? 'Audio' : 'Audio')),
+            label: Text(_attachmentDisplayLabel(message)),
           );
         }
 
@@ -934,7 +948,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
               : type.startsWith('video/')
                   ? Icons.videocam_rounded
                   : Icons.attach_file_rounded),
-          label: Text(message.attachmentName ?? (_fr ? 'Fichier' : 'File')),
+          label: Text(_attachmentDisplayLabel(message)),
         );
       },
     );

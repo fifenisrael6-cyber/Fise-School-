@@ -80,16 +80,22 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
           ),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Fise School: ouverture ressource ${widget.resource.id} échouée: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
+        final genuinelyOffline = error is SocketException &&
+            (error.message == 'offline-file-not-downloaded' ||
+                error.message == 'offline');
+        final message = genuinelyOffline
+            ? (_fr
+                ? 'Ce fichier n’a pas encore été téléchargé. Connectez-vous à Internet pour l’ouvrir une première fois.'
+                : 'This file has not been downloaded yet. Connect to the Internet to open it once.')
+            : (_fr
+                ? 'Impossible d’ouvrir le fichier : $error'
+                : 'Could not open the file: $error');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _fr
-                  ? 'Ce fichier doit être ouvert une première fois avec Internet pour rester disponible hors ligne.'
-                  : 'Open this file once while online to keep it available offline.',
-            ),
-          ),
+          SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
         );
       }
     } finally {

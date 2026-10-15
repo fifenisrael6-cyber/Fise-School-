@@ -162,6 +162,20 @@ class _TeacherHomeContent extends StatelessWidget {
             MaterialPageRoute(builder: (_) => GradesEntryPage(locale: locale, profile: profile)),
           ),
         ),
+        const SizedBox(height: 12),
+        _TeacherAction(
+          icon: Icons.assignment_outlined,
+          title: fr ? 'Évaluations' : 'Assessments',
+          subtitle: fr
+              ? 'Publier les épreuves PDF, consulter les remises et corriger les copies.'
+              : 'Publish PDF exams, review student submissions and mark their work.',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
+            ),
+          ),
+        ),
       ],
     );
   }
