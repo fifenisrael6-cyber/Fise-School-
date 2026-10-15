@@ -45,7 +45,14 @@ class GroupMessageService {
 
   Future<String> joinWithCode(String code) async {
     final id = await _client.rpc('join_message_group', params: {'p_code': code});
+    await JsonCache.instance.remove('groups_$_userId');
     return id as String;
+  }
+
+  /// Force une lecture serveur après une adhésion ou une création de groupe.
+  Future<List<MessageGroup>> refreshGroups() async {
+    await JsonCache.instance.remove('groups_$_userId');
+    return listGroups();
   }
 
   Future<String> regenerateCode(String groupId) async {
