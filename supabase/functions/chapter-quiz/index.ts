@@ -206,8 +206,8 @@ Deno.serve(async (req: Request) => {
       const sameOptional = (a: unknown, b: unknown) =>
         a == null || b == null || String(a) === String(b);
       const allowed = (classes ?? []).some((schoolClass: any) =>
-        schoolClass.subsystem === curriculum.subsystem &&
-        schoolClass.sector === curriculum.sector &&
+        sameOptional(schoolClass.subsystem, curriculum.subsystem) &&
+        sameOptional(schoolClass.sector, curriculum.sector) &&
         sameOptional(schoolClass.exam_level_id, curriculum.exam_level_id) &&
         sameOptional(schoolClass.series_id, curriculum.series_id) &&
         sameOptional(schoolClass.specialty_id, curriculum.specialty_id)
