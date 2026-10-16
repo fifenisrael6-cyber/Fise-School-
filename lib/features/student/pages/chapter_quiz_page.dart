@@ -78,6 +78,8 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
       setState(() {
         _checkingAnswers.remove(question.id);
         _instantFeedback[question.id] = feedback;
+        final lockedIndex = feedback['selected_option_index'];
+        if (lockedIndex is num) _answers[question.id] = lockedIndex.toInt();
       });
       final correct = feedback['is_correct'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -172,6 +174,21 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                     Text(widget.chapterTitle, style: const TextStyle(color: Colors.black54)),
                     if (_result == null) ...[
                       const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              (_fr ? 'Progression hebdomadaire : ' : 'Weekly progress: ') + _instantFeedback.length.toString() + ' / ' + _questions.length.toString() + (_fr ? ' réponses' : ' answers'),
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 6),
+                            LinearProgressIndicator(value: _questions.isEmpty ? 0 : _instantFeedback.length / _questions.length),
+                            if (_instantFeedback.isNotEmpty)
+                              Text((_fr ? 'Bonnes réponses : ' : 'Correct answers: ') + _instantFeedback.values.where((v) => v['is_correct'] == true).length.toString() + ' / ' + _instantFeedback.length.toString() + (_fr ? ' · Réinitialisation chaque lundi' : ' · Resets every Monday')),
+                          ]),
+                        ),
+                      ),
                       for (final question in _questions)
                         Card(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -183,25 +200,30 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                               const SizedBox(height: 8),
                               ...List.generate(question.optionsFor(widget.locale.languageCode).length, (index) {
                                 final options = question.optionsFor(widget.locale.languageCode);
+                                final feedback = _instantFeedback[question.id];
+                                final locked = feedback != null;
+                                final correctIndex = feedback?['correct_option_index'];
+                                final isCorrectOption = correctIndex is num && correctIndex.toInt() == index;
+                                final isWrongChoice = locked && _answers[question.id] == index && feedback['is_correct'] != true;
                                 return RadioListTile<int>(
                                   contentPadding: EdgeInsets.zero,
                                   dense: true,
                                   value: index,
                                   groupValue: _answers[question.id],
-                                  title: Text(options[index]),
+                                  tileColor: isCorrectOption ? const Color(0xFFE8F5E9) : (isWrongChoice ? const Color(0xFFFFEBEE) : null),
+                                  title: Text(options[index], style: TextStyle(
+                                    color: isCorrectOption ? const Color(0xFF2E7D32) : (isWrongChoice ? const Color(0xFFC62828) : null),
+                                    fontWeight: isCorrectOption || isWrongChoice ? FontWeight.w700 : FontWeight.normal,
+                                  )),
                                   secondary: _checkingAnswers.contains(question.id)
                                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                      : _instantFeedback[question.id] == null
-                                          ? null
-                                          : Icon(
-                                              _instantFeedback[question.id]!['is_correct'] == true ? Icons.check_circle : Icons.cancel,
-                                              color: _instantFeedback[question.id]!['is_correct'] == true ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-                                            ),
-                                  onChanged: _submitting ? null : (value) {
-                                    if (value != null) {
+                                      : isCorrectOption
+                                          ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                                          : isWrongChoice ? const Icon(Icons.cancel, color: Color(0xFFC62828)) : null,
+                                  onChanged: _submitting || locked || _checkingAnswers.contains(question.id) ? null : (value) {
+                                    if (value != null && !_answers.containsKey(question.id)) {
                                       setState(() {
                                         _answers[question.id] = value;
-                                        _instantFeedback.remove(question.id);
                                         _checkingAnswers.add(question.id);
                                       });
                                       _checkAnswer(question, value);
@@ -209,6 +231,26 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                                   },
                                 );
                               }),
+                              if (_instantFeedback[question.id] != null) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF0FDF4),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    (_instantFeedback[question.id]!['is_correct'] == true
+                                      ? (_fr ? 'Bonne réponse !' : 'Correct answer!')
+                                      : (_fr ? 'Mauvaise réponse. La bonne réponse est en vert.' : 'Incorrect. The correct answer is green.')) +
+                                    (((_instantFeedback[question.id]![_fr ? 'explanation_fr' : 'explanation_en'] ?? '').toString().trim().isEmpty)
+                                      ? ''
+                                      : '\n' + _instantFeedback[question.id]![_fr ? 'explanation_fr' : 'explanation_en'].toString()),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
                             ]),
                           ),
                         ),
