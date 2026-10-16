@@ -1,11 +1,15 @@
 import 'package:flutter/widgets.dart';
 
 import '../features/auth/pages/auth_page.dart';
+import '../features/auth/pages/forgot_password_page.dart';
+import '../features/auth/pages/reset_password_page.dart';
 
 class FiseSchoolRoutes {
   static const home = '/';
   static const login = '/login';
   static const register = '/register';
+  static const forgotPassword = '/forgot-password';
+  static const resetPassword = '/reset-password';
   static const student = '/student';
   static const teacher = '/teacher';
   static const courses = '/courses';
@@ -40,6 +44,8 @@ class FiseSchoolRoutes {
     return {
       login: (_) => AuthPage(locale: locale),
       register: (_) => AuthPage(locale: locale, startInRegisterMode: true),
+      forgotPassword: (_) => const ForgotPasswordPage(),
+      resetPassword: (_) => const ResetPasswordPage(),
     };
   }
 }
