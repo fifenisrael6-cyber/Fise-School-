@@ -141,14 +141,32 @@ class EvaluationService {
 
   // ----------------------------------------------------------- Enseignant --
 
-  Future<List<TeacherEvaluation>> listTeacherEvaluations() {
+  Future<List<TeacherEvaluation>> listTeacherEvaluations({bool forceRefresh = false}) async {
     final userId = _client.auth.currentUser?.id ?? 'anonymous';
+    final cacheKey = 'teacher_evaluations_$userId';
+
+    Future<Object?> fetch() async =>
+        await _client.rpc('list_teacher_evaluations') as Object?;
+    List<TeacherEvaluation> decode(Object? raw) => (raw as List)
+        .map((e) => TeacherEvaluation.fromMap(Map<String, dynamic>.from(e as Map)))
+        .toList(growable: false);
+
+    // L'écran d'administration doit pouvoir actualiser les erreurs Gemini
+    // depuis le serveur au lieu d'afficher une copie hors ligne potentiellement ancienne.
+    if (forceRefresh) {
+      final raw = await fetch().timeout(const Duration(seconds: 12));
+      try {
+        await JsonCache.instance.write(cacheKey, raw);
+      } catch (_) {
+        // Le cache ne doit pas empêcher l'affichage d'un résultat réseau valide.
+      }
+      return decode(raw);
+    }
+
     return JsonCache.instance.cachedRead<List<TeacherEvaluation>>(
-      key: 'teacher_evaluations_$userId',
-      fetch: () async => await _client.rpc('list_teacher_evaluations') as Object?,
-      decode: (raw) => (raw as List)
-          .map((e) => TeacherEvaluation.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList(growable: false),
+      key: cacheKey,
+      fetch: fetch,
+      decode: decode,
     );
   }
 
