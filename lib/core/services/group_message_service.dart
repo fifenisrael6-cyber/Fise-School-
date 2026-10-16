@@ -162,6 +162,14 @@ class GroupMessageService {
     );
   }
 
+  Future<bool> isMember(String groupId) async {
+    final value = await _client.rpc(
+      'is_message_group_member',
+      params: {'p_group_id': groupId},
+    );
+    return value == true;
+  }
+
   Future<bool> getAnnouncementOnly(String groupId) async {
     final value = await _client.rpc(
       'get_message_group_announcement_mode',
