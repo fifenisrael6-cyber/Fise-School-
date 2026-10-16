@@ -45,7 +45,7 @@ class _AdminEvaluationAiPageState extends State<AdminEvaluationAiPage> {
       });
     }
     try {
-      final items = await _service.listTeacherEvaluations(forceRefresh: forceRefresh);
+      final items = (await _service.listTeacherEvaluations(forceRefresh: forceRefresh)).toList();
       if (!mounted) return;
       // Priorité aux évaluations avec erreurs Gemini, puis aux corrections
       // à examiner par un humain.
