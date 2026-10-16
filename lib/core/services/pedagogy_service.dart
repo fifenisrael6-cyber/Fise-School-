@@ -394,7 +394,18 @@ class CourseService {
   Future<List<Course>> listStudentCourses(
     String studentId, {
     String? subjectId,
+    bool _refresh = false,
   }) async {
+    final cacheKey = 'student_courses_${studentId}_${subjectId ?? 'all'}';
+    if (!_refresh) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(listStudentCourses(studentId, subjectId: subjectId, _refresh: true));
+        return cached.whereType<Map>()
+            .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
+      }
+    }
     List<Course> courses;
     try {
       // Let the database's student-safe RLS policy decide classroom visibility.
@@ -422,16 +433,37 @@ class CourseService {
           .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
     } catch (_) {
-      // Use offline data only when the remote read itself failed. A local
-      // cache write must never replace a successful response with stale data.
-      final cached = await OfflineRepository().getCoursesForStudent(studentId);
-      if (subjectId == null) {
-        return cached;
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        return cached.whereType<Map>()
+            .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
       }
-      return cached
-          .where((course) => course.subjectId == subjectId)
-          .toList(growable: false);
+      final localCourses = await OfflineRepository().getCoursesForStudent(studentId);
+      if (subjectId == null) return localCourses;
+      return localCourses.where((course) => course.subjectId == subjectId).toList(growable: false);
     }
+
+    try {
+      await JsonCache.instance.write(cacheKey, courses.map((course) => <String, dynamic>{
+        'id': course.id,
+        'curriculum_id': course.curriculumId,
+        'chapter_id': course.chapterId,
+        'subject_id': course.subjectId,
+        'teacher_id': course.teacherId,
+        'class_id': course.classId,
+        'title_fr': course.titleFr,
+        'title_en': course.titleEn,
+        'description_fr': course.descriptionFr,
+        'description_en': course.descriptionEn,
+        'content_fr': course.contentFr,
+        'content_en': course.contentEn,
+        'status': course.status,
+        'smart_lesson_enabled': course.smartLessonEnabled,
+        'minimum_exercise_score': course.minimumExerciseScore,
+        'published_at': course.publishedAt?.toIso8601String(),
+      }).toList(growable: false));
+    } catch (_) {}
 
     try {
       await OfflineRepository().saveCourses(courses);
