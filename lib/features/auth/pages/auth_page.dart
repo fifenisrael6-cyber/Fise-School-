@@ -275,6 +275,17 @@ class _AuthPageState extends State<AuthPage> {
                         return null;
                       },
                     ),
+                    if (!_isRegistering) ...[
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () => Navigator.of(context).pushNamed('/forgot-password'),
+                          child: const Text('Mot de passe oublié ?'),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: _isLoading ? null : () => _submit(texts),
