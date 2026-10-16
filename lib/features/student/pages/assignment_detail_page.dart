@@ -509,6 +509,28 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                         children: [
                           _buildHeader(title, instructions),
+                          if (questions.any((q) => q.isQcm || q.isTrueFalse)) ...[
+                            const SizedBox(height: 12),
+                            Builder(builder: (context) {
+                              final qcmQuestions = questions.where((q) => q.isQcm || q.isTrueFalse).toList();
+                              final answered = qcmQuestions.where((q) => _qcmFeedback.containsKey(q.id)).length;
+                              final correct = qcmQuestions.where((q) => _qcmFeedback[q.id]?['is_correct'] == true).length;
+                              return Card(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(
+                                      (_isEnglish ? 'Weekly QCM progress: ' : 'Progression hebdomadaire des QCM : ') + answered.toString() + ' / ' + qcmQuestions.length.toString(),
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    LinearProgressIndicator(value: qcmQuestions.isEmpty ? 0 : answered / qcmQuestions.length),
+                                    Text((_isEnglish ? 'Correct answers: ' : 'Bonnes réponses : ') + correct.toString() + ' / ' + answered.toString() + (_isEnglish ? ' · Resets every Monday' : ' · Réinitialisation chaque lundi')),
+                                  ]),
+                                ),
+                              );
+                            }),
+                          ],
                           if (widget.assignment.evaluationFilePath != null) ...[
                             const SizedBox(height: 12),
                             _buildOfficialExamPdfButton(),
