@@ -6,7 +6,6 @@ import '../../../core/offline/local_cleanup.dart';
 import '../../../core/services/push_service.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
-import 'offline_storage_page.dart';
 import '../../teacher/pages/teacher_payment_code_page.dart';
 import 'student_class_switch_page.dart';
 
@@ -180,24 +179,6 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsSection(
             title: isFrench ? 'Application' : 'Application',
             children: [
-              _SettingsTile(
-                icon: Icons.offline_bolt_rounded,
-                title: isFrench ? 'Stockage hors ligne' : 'Offline storage',
-                subtitle: isFrench
-                    ? 'Gérer les cours téléchargés et l’espace utilisé'
-                    : 'Manage downloaded courses and storage space',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => OfflineStoragePage(
-                        locale: widget.locale,
-                        profile: profile,
-                      ),
-                    ),
-                  );
-                },
-              ),
               _SettingsTile(
                 icon: Icons.info_outline_rounded,
                 title: isFrench
