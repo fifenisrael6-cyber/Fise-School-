@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/widgets/swipe_tabs_shell.dart';
+import '../../../core/services/student_class_context.dart';
 import '../../../models/user_profile.dart';
 import '../../ai/pages/ai_page.dart';
 import '../../settings/pages/profile_page.dart';
@@ -33,6 +35,43 @@ class StudentMainPage extends StatefulWidget {
 }
 
 class _StudentMainPageState extends State<StudentMainPage> {
+  late UserProfile _activeProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeProfile = widget.profile;
+    StudentClassContext.revision.addListener(_onClassContextChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant StudentMainPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.id != widget.profile.id) _activeProfile = widget.profile;
+  }
+
+  @override
+  void dispose() {
+    StudentClassContext.revision.removeListener(_onClassContextChanged);
+    super.dispose();
+  }
+
+  Future<void> _onClassContextChanged() async {
+    final id = _activeProfile.id;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', id)
+          .single();
+      if (!mounted || _activeProfile.id != id) return;
+      setState(() => _activeProfile = UserProfile.fromMap(Map<String, dynamic>.from(row)));
+    } catch (_) {
+      // Active class membership remains authoritative for class-scoped queries;
+      // keep the current shell available if the profile refresh is offline.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
@@ -41,7 +80,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
       pagesBuilder: (goToTab) => [
         _StudentHome(
           locale: widget.locale,
-          profile: widget.profile,
+          profile: _activeProfile,
           onOpenTab: goToTab,
           onSignOut: widget.onSignOut,
         ),

@@ -65,6 +65,25 @@ class JsonCache {
     } catch (_) {}
   }
 
+  /// Supprime uniquement les caches qui dépendent de la salle active.
+  /// Les fichiers hors ligne téléchargés et les autres caches de l'utilisateur
+  /// restent disponibles après un changement de classe.
+  Future<void> removeMatchingPrefixes(List<String> prefixes) async {
+    if (prefixes.isEmpty) return;
+    try {
+      final dir = await _directory();
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File || !entity.path.endsWith('.json')) continue;
+        final name = p.basename(entity.path);
+        final key = name.substring(0, name.length - 5);
+        if (prefixes.any((prefix) => key.startsWith(prefix))) {
+          try { await entity.delete(); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Supprime tout le cache (déconnexion : un autre compte peut utiliser
   /// le même téléphone).
   Future<void> clearAll() async {

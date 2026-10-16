@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/json_cache.dart';
+import '../../../core/services/student_class_context.dart';
+
 class StudentClassSwitchPage extends StatefulWidget {
   final Locale locale;
   const StudentClassSwitchPage({super.key, required this.locale});
@@ -73,8 +76,21 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
         'switch_student_class_with_teacher_code',
         params: {'p_code': _codeController.text.trim(), 'p_class_id': classId},
       );
+      // Remove only cached data that is scoped to this student's active class.
+      // Keep downloaded offline files and unrelated account data intact.
+      final studentId = Supabase.instance.client.auth.currentUser?.id;
+      if (studentId != null && studentId.isNotEmpty) {
+        await JsonCache.instance.removeMatchingPrefixes([
+          'class_subjects_$studentId',
+          'student_catalog_chapters_${studentId}_',
+          'student_chapter_content_${studentId}_',
+        ]);
+      }
+      StudentClassContext.notifyChanged();
       if (!mounted) return;
-      _message(_fr ? 'Classe modifiée. Revenez à l’accueil pour actualiser les matières.' : 'Class changed. Return to the home screen to refresh subjects.');
+      _message(_fr
+          ? 'Salle modifiée. Les contenus liés à l’ancienne salle ont été actualisés.'
+          : 'Classroom changed. Content linked to the previous classroom has been refreshed.');
       Navigator.pop(context, true);
     } catch (_) {
       if (mounted) _message(_fr ? 'Le changement a échoué. Vérifiez le code et la compatibilité de la classe.' : 'The change failed. Check the code and classroom compatibility.');
