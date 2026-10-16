@@ -8,7 +8,6 @@ import '../core/offline/offline_banner.dart';
 import '../core/services/push_service.dart';
 import '../core/services/session_service.dart';
 import '../features/auth/widgets/auth_gate.dart';
-import '../features/auth/pages/reset_password_page.dart';
 import '../features/public/pages/language_selection_page.dart';
 import '../supabase_config.dart';
 import 'routes.dart';
