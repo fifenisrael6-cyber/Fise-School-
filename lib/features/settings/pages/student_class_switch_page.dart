@@ -10,43 +10,49 @@ class StudentClassSwitchPage extends StatefulWidget {
 }
 
 class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
-  final _codeController = TextEditingController();
   List<Map<String, dynamic>> _classes = [];
   String? _selectedClassId;
-  bool _loading = false;
-  bool _searched = false;
+  bool _loading = true;
+  String? _error;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
   @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadClasses();
   }
 
-  Future<void> _findClasses() async {
-    final code = _codeController.text.trim();
-    if (code.isEmpty) {
-      _message(_fr ? 'Saisissez le code de groupe de l’enseignant.' : 'Enter the teacher group code.');
-      return;
-    }
-    setState(() { _loading = true; _searched = false; _classes = []; _selectedClassId = null; });
+  Future<void> _loadClasses() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final rows = await Supabase.instance.client.rpc(
-        'list_teacher_classrooms_for_student',
-        params: {'p_code': code},
-      ) as List;
+      final response = await Supabase.instance.client.rpc(
+        'list_available_student_classrooms',
+      );
+      final rows = response is List ? response : const [];
       if (!mounted) return;
+      final classes = rows
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
       setState(() {
-        _classes = rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
-        _searched = true;
-        _selectedClassId = _classes.isEmpty ? null : _classes.first['class_id']?.toString();
+        _classes = classes;
+        final current = classes.where((row) => row['is_current'] == true);
+        _selectedClassId = current.isNotEmpty
+            ? current.first['class_id']?.toString()
+            : (classes.isEmpty ? null : classes.first['class_id']?.toString());
       });
-      if (_classes.isEmpty) {
-        _message(_fr ? 'Aucune classe compatible trouvée pour ce code.' : 'No compatible classroom was found for this code.');
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = _fr
+              ? 'Impossible de charger les salles. Vérifiez votre connexion puis réessayez.'
+              : 'Could not load classrooms. Check your connection and try again.';
+        });
       }
-    } catch (e) {
-      if (mounted) _message(_fr ? 'Impossible de rechercher les classes. Vérifiez le code et la connexion.' : 'Could not load classrooms. Check the code and connection.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -54,98 +60,162 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
 
   Future<void> _switchClass() async {
     final classId = _selectedClassId;
-    if (classId == null) return;
+    if (classId == null || _classes.any(
+      (row) => row['class_id']?.toString() == classId && row['is_current'] == true,
+    )) {
+      return;
+    }
+
+    final selected = _classes.firstWhere(
+      (row) => row['class_id']?.toString() == classId,
+    );
+    final className = selected['class_name']?.toString() ??
+        (_fr ? 'la classe sélectionnée' : 'the selected classroom');
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(_fr ? 'Confirmer le changement de classe' : 'Confirm classroom change'),
-        content: Text(_fr ? 'Votre classe active et les matières associées seront mises à jour.' : 'Your active classroom and associated subjects will be updated.'),
+        title: Text(_fr ? 'Confirmer le changement de salle' : 'Confirm classroom change'),
+        content: Text(_fr
+            ? 'Passer à « $className » ? Cyber actualisera votre espace scolaire selon cette classe. Votre compte restera le même.'
+            : 'Switch to “$className”? Cyber will refresh your school space for this classroom. Your account will remain the same.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(_fr ? 'Confirmer' : 'Confirm')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(_fr ? 'Confirmer' : 'Confirm'),
+          ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
-    setState(() => _loading = true);
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       await Supabase.instance.client.rpc(
-        'switch_student_class_with_teacher_code',
-        params: {'p_code': _codeController.text.trim(), 'p_class_id': classId},
+        'switch_student_class_without_code',
+        params: {'p_class_id': classId},
       );
       if (!mounted) return;
-      _message(_fr ? 'Classe modifiée. Revenez à l’accueil pour actualiser les matières.' : 'Class changed. Return to the home screen to refresh subjects.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_fr
+              ? 'Salle modifiée. Votre espace scolaire va être actualisé.'
+              : 'Classroom changed. Your school space will refresh.'),
+        ),
+      );
       Navigator.pop(context, true);
     } catch (_) {
-      if (mounted) _message(_fr ? 'Le changement a échoué. Vérifiez le code et la compatibilité de la classe.' : 'The change failed. Check the code and classroom compatibility.');
+      if (!mounted) return;
+      setState(() {
+        _error = _fr
+            ? 'Le changement a échoué. Cette salle n’est peut-être plus disponible. Réessayez.'
+            : 'The change failed. This classroom may no longer be available. Please try again.';
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _message(String value) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      backgroundColor: const Color(0xFF166534),
-      foregroundColor: Colors.white,
-      title: Text(_fr ? 'Changer de classe' : 'Change classroom'),
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        Text(
-          _fr ? 'Saisissez le code de groupe FISE de votre enseignant. Seules les classes compatibles proposées par cet enseignant seront affichées.' : 'Enter your teacher’s FISE group code. Only compatible classrooms offered by that teacher will be shown.',
-          style: const TextStyle(height: 1.45),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF166534),
+          foregroundColor: Colors.white,
+          title: Text(_fr ? 'Changer de salle' : 'Change classroom'),
+          actions: [
+            IconButton(
+              onPressed: _loading ? null : _loadClasses,
+              tooltip: _fr ? 'Actualiser' : 'Refresh',
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _codeController,
-          textCapitalization: TextCapitalization.characters,
-          decoration: InputDecoration(
-            labelText: _fr ? 'Code de groupe enseignant' : 'Teacher group code',
-            hintText: 'FISE-XXXXXX',
-            border: const OutlineInputBorder(),
-            prefixIcon: const Icon(Icons.key_outlined),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _loading ? null : _findClasses,
-          icon: const Icon(Icons.search),
-          label: Text(_fr ? 'Rechercher les classes' : 'Find classrooms'),
-        ),
-        if (_loading) const Padding(
-          padding: EdgeInsets.all(20),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-        if (_searched && _classes.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text(_fr ? 'Choisissez la classe' : 'Choose a classroom', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-          ..._classes.map((row) {
-            final id = row['class_id']?.toString();
-            final current = row['is_current'] == true;
-            return Card(
-              child: RadioListTile<String>(
-                value: id ?? '',
-                groupValue: _selectedClassId,
-                onChanged: current || id == null ? null : (value) => setState(() => _selectedClassId = value),
-                title: Text(row['class_name']?.toString() ?? (_fr ? 'Classe sans nom' : 'Unnamed classroom')),
-                subtitle: current ? Text(_fr ? 'Classe actuelle' : 'Current classroom') : null,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadClasses,
+                child: ListView(
+                  padding: const EdgeInsets.all(18),
+                  children: [
+                    Text(
+                      _fr
+                          ? 'Choisissez librement une salle parmi les parcours scolaires disponibles. Aucun code enseignant ni mot de passe supplémentaire n’est nécessaire. Vous pourrez revenir à une salle précédente ou en choisir une autre plus tard.'
+                          : 'Choose a classroom from the available school pathways. No teacher code or additional password is required. You can return to a previous classroom or choose another one later.',
+                      style: const TextStyle(height: 1.45),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 14),
+                      Text(_error!, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _loadClasses,
+                        icon: const Icon(Icons.refresh),
+                        label: Text(_fr ? 'Réessayer' : 'Try again'),
+                      ),
+                    ],
+                    if (_classes.isEmpty && _error == null) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        _fr
+                            ? 'Aucune salle active n’est disponible pour le moment.'
+                            : 'No active classrooms are available right now.',
+                      ),
+                    ],
+                    if (_classes.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        _fr ? 'Salles disponibles' : 'Available classrooms',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._classes.map((row) {
+                        final id = row['class_id']?.toString();
+                        final isCurrent = row['is_current'] == true;
+                        final name = row['class_name']?.toString() ??
+                            (_fr ? 'Salle sans nom' : 'Unnamed classroom');
+                        final details = [
+                          row['subsystem']?.toString(),
+                          row['sector']?.toString(),
+                        ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
+                        return Card(
+                          child: RadioListTile<String>(
+                            value: id ?? '',
+                            groupValue: _selectedClassId,
+                            onChanged: id == null || id.isEmpty
+                                ? null
+                                : (value) => setState(() => _selectedClassId = value),
+                            title: Text(name),
+                            subtitle: Text([
+                              if (details.isNotEmpty) details,
+                              if (isCurrent) (_fr ? 'Salle actuelle' : 'Current classroom'),
+                            ].join(' • ')),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _loading ||
+                                  _selectedClassId == null ||
+                                  _classes.any((row) =>
+                                      row['class_id']?.toString() == _selectedClassId &&
+                                      row['is_current'] == true)
+                              ? null
+                              : _switchClass,
+                          child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            );
-          }),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _loading || _selectedClassId == null || _classes.any((r) => r['class_id']?.toString() == _selectedClassId && r['is_current'] == true) ? null : _switchClass,
-            child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
-          ),
-        ],
-      ],
-    ),
-  );
+      );
 }
