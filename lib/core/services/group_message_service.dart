@@ -269,6 +269,9 @@ class GroupMessageService {
       },
     );
 
+    await JsonCache.instance.remove('group_msgs_${_userId}_$groupId');
+    await JsonCache.instance.remove('groups_$_userId');
+
     // Delete only this sender-owned storage object after the RPC has marked
     // or hidden the message. A local delete must not remove it for other users.
     if (forEveryone && result is String && result.isNotEmpty) {
