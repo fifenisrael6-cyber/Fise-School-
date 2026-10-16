@@ -142,13 +142,13 @@ class CourseService {
   Future<List<CourseChapter>> listStudentCatalogChapters(
     String studentId, {
     required String subjectId,
-    bool _refresh = false,
+    bool refresh = false,
   }) async {
     final cacheKey = 'student_catalog_chapters_${studentId}_$subjectId';
-    if (!_refresh) {
+    if (!refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(() async { await listStudentCatalogChapters(studentId, subjectId: subjectId, _refresh: true); }());
+        unawaited(() async { await listStudentCatalogChapters(studentId, subjectId: subjectId, refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => CourseChapter.fromMap(Map<String, dynamic>.from(row)))
             .toList(growable: false);
@@ -289,13 +289,13 @@ class CourseService {
   Future<List<Map<String, dynamic>>> listStudentChapterContent(
     String studentId, {
     required String subjectId,
-    bool _refresh = false,
+    bool refresh = false,
   }) async {
     final cacheKey = 'student_chapter_content_${studentId}_$subjectId';
-    if (!_refresh) {
+    if (!refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(() async { await listStudentChapterContent(studentId, subjectId: subjectId, _refresh: true); }());
+        unawaited(() async { await listStudentChapterContent(studentId, subjectId: subjectId, refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => Map<String, dynamic>.from(row))
             .toList(growable: false);
@@ -394,13 +394,13 @@ class CourseService {
   Future<List<Course>> listStudentCourses(
     String studentId, {
     String? subjectId,
-    bool _refresh = false,
+    bool refresh = false,
   }) async {
     final cacheKey = 'student_courses_${studentId}_${subjectId ?? 'all'}';
-    if (!_refresh) {
+    if (!refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(() async { await listStudentCourses(studentId, subjectId: subjectId, _refresh: true); }());
+        unawaited(() async { await listStudentCourses(studentId, subjectId: subjectId, refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
             .toList(growable: false);
@@ -496,11 +496,11 @@ class CourseService {
     return course;
   }
 
-  Future<List<Lesson>> listLessons(String courseId, {bool _refresh = false}) async {
-    if (!_refresh) {
+  Future<List<Lesson>> listLessons(String courseId, {bool refresh = false}) async {
+    if (!refresh) {
       final cached = await OfflineRepository().getLessonsForCourse(courseId);
       if (cached.isNotEmpty) {
-        unawaited(() async { await listLessons(courseId, _refresh: true); }());
+        unawaited(() async { await listLessons(courseId, refresh: true); }());
         return cached;
       }
     }
@@ -794,11 +794,11 @@ class LessonService {
   LessonService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
-  Future<Lesson> getLesson(String id, {bool _refresh = false}) async {
-    if (!_refresh) {
+  Future<Lesson> getLesson(String id, {bool refresh = false}) async {
+    if (!refresh) {
       final cached = await OfflineRepository().getLesson(id);
       if (cached != null) {
-        unawaited(() async { await getLesson(id, _refresh: true); }());
+        unawaited(() async { await getLesson(id, refresh: true); }());
         return cached;
       }
     }
@@ -816,11 +816,11 @@ class LessonService {
     }
   }
 
-  Future<List<Lesson>> listLessons(String courseId, {bool _refresh = false}) async {
-    if (!_refresh) {
+  Future<List<Lesson>> listLessons(String courseId, {bool refresh = false}) async {
+    if (!refresh) {
       final cached = await OfflineRepository().getLessonsForCourse(courseId);
       if (cached.isNotEmpty) {
-        unawaited(() async { await listLessons(courseId, _refresh: true); }());
+        unawaited(() async { await listLessons(courseId, refresh: true); }());
         return cached;
       }
     }
