@@ -15,6 +15,7 @@ import '../../../core/offline/message_outbox.dart';
 import '../../../core/offline/message_attachment_offline.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
+import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
@@ -61,11 +62,26 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
 
+  Future<void> _loadTeacherAccessCode() async {
+    if (!_isOwner) return;
+    try {
+      final codes = await TeacherAccessCodeService()
+          .getTeacherAccessCodes(widget.profile.id);
+      if (!mounted) return;
+      setState(() {
+        _inviteCode = codes.isEmpty ? null : codes.first.displayCode;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _inviteCode = null);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _inviteCode = widget.group.inviteCode;
+    _inviteCode = null;
     _attachment = widget.initialAttachment;
+    unawaited(_loadTeacherAccessCode());
     _load();
     // Messages en attente : la conversation se met à jour quand la file change
     // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
