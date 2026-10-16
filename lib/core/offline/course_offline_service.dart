@@ -54,7 +54,6 @@ class CourseOfflineService {
   StreamSubscription<bool>? _connectionSubscription;
 
   static const int _maxParallel = 2;
-  static const int _maxVideoBytes = 25 * 1024 * 1024;
   final StreamController<OfflineDownloadProgress> _progress = StreamController.broadcast();
   int _active = 0;
   final List<_DownloadJob> _queue = [];
@@ -277,10 +276,6 @@ class CourseOfflineService {
   }
 
   Future<void> _enqueueResource({required String userId, required CourseResource resource, bool force = false}) async {
-    if (!force && resource.resourceType == 'video' && (resource.fileSize ?? (_maxVideoBytes + 1)) > _maxVideoBytes) {
-      return;
-    }
-
     final existing = await _db.getDownloadedFile(resource.id, userId);
     final remoteUpdatedAt = await _remoteUpdatedAt(resource.id);
     final localValid = existing != null && existing.status == 'done' && File(existing.localPath).existsSync();
@@ -414,30 +409,13 @@ class CourseOfflineService {
     }
   }
 
-  Future<bool> _hasSpace(String userId, int extraBytes) async {
-    final limit = (await _settings.limitMb()) * 1024 * 1024;
-    return (await usedBytes(userId)) + extraBytes <= limit;
-  }
+  // Pas de quota artificiel : Android reste responsable de signaler
+  // lorsque le stockage réel du téléphone est plein.
+  Future<bool> _hasSpace(String userId, int extraBytes) async => true;
 
-  Future<void> enforceStorageLimit(String userId, {int extraBytes = 0}) async {
-    final limit = (await _settings.limitMb()) * 1024 * 1024;
-    var used = await usedBytes(userId);
-    if (used + extraBytes <= limit) {
-      return;
-    }
-    final files = await _db.getDownloadedFiles(userId: userId);
-    for (final file in files) {
-      if (file.status != 'done') {
-        continue;
-      }
-      try { await File(file.localPath).delete(); } catch (_) {}
-      await _db.deleteDownloadedFile(file.resourceId, userId);
-      used -= file.sizeBytes;
-      if (used + extraBytes <= limit) {
-        break;
-      }
-    }
-  }
+  // Conservé pour compatibilité avec les anciennes pages; ne supprime plus
+  // les fichiers téléchargés automatiquement.
+  Future<void> enforceStorageLimit(String userId, {int extraBytes = 0}) async {}
 
   Future<void> markOpened(String userId, String resourceId) => _db.markDownloadedFileOpened(resourceId, userId);
 
