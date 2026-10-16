@@ -13,6 +13,29 @@ alter table public.private_messages
   add column if not exists hidden_for uuid[] not null default '{}'::uuid[],
   add column if not exists deleted_at timestamptz;
 
+-- "Delete for me" must also be respected by direct table reads, not only by the UI RPC.
+drop policy if exists "members read group messages" on public.message_group_messages;
+create policy "members read group messages"
+on public.message_group_messages for select to authenticated
+using (
+  public.is_message_group_member(group_id)
+  and not ((select auth.uid()) = any(coalesce(hidden_for, '{}'::uuid[])))
+);
+
+drop policy if exists "participants read private messages" on public.private_messages;
+create policy "participants read private messages" on public.private_messages for select to authenticated
+using (
+  (sender_id = (select auth.uid()) or recipient_id = (select auth.uid()))
+  and public.can_message(
+    case when sender_id = (select auth.uid()) then recipient_id else sender_id end
+  )
+  and not ((select auth.uid()) = any(coalesce(hidden_for, '{}'::uuid[])))
+);
+
+-- Physical row deletion would bypass the per-user hiding and shared tombstone rules.
+drop policy if exists "senders delete own private messages" on public.private_messages;
+drop policy if exists "senders delete own group messages" on public.message_group_messages;
+
 -- Server-side enforcement: a locked group accepts messages only from its owner.
 create or replace function public.enforce_message_group_send_rules()
 returns trigger
@@ -217,7 +240,6 @@ begin
     update public.message_group_messages
     set deleted_at = coalesce(deleted_at, now()),
         body = '',
-        attachment_path = null,
         attachment_name = null,
         attachment_type = null
     where id = p_message_id;
@@ -269,7 +291,6 @@ begin
     update public.private_messages
     set deleted_at = coalesce(deleted_at, now()),
         body = '',
-        attachment_path = null,
         attachment_name = null,
         attachment_type = null
     where id = p_message_id;
