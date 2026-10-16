@@ -289,8 +289,18 @@ class CourseService {
   Future<List<Map<String, dynamic>>> listStudentChapterContent(
     String studentId, {
     required String subjectId,
+    bool _refresh = false,
   }) async {
     final cacheKey = 'student_chapter_content_${studentId}_$subjectId';
+    if (!_refresh) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(listStudentChapterContent(studentId, subjectId: subjectId, _refresh: true));
+        return cached.whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
+    }
     try {
       final memberships = await _client
           .from('class_students')
