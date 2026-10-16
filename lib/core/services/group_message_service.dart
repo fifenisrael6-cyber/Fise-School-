@@ -162,12 +162,43 @@ class GroupMessageService {
     );
   }
 
+  Future<bool> getAnnouncementOnly(String groupId) async {
+    final value = await _client.rpc(
+      'get_message_group_announcement_mode',
+      params: {'p_group_id': groupId},
+    );
+    return value == true;
+  }
+
+  Future<bool> setAnnouncementOnly(String groupId, bool enabled) async {
+    final value = await _client.rpc(
+      'set_message_group_announcement_mode',
+      params: {'p_group_id': groupId, 'p_enabled': enabled},
+    );
+    return value == true;
+  }
+
+  Future<void> leaveGroup(String groupId) async {
+    await _client.rpc('leave_message_group', params: {'p_group_id': groupId});
+    await JsonCache.instance.remove('groups_$_userId');
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
+    await JsonCache.instance.remove('groups_$_userId');
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+  }
+
   Future<void> removeMember(String groupId, String userId) async {
-    await _client
-        .from('message_group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', userId);
+    await _client.rpc(
+      'remove_message_group_member',
+      params: {'p_group_id': groupId, 'p_user_id': userId},
+    );
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('groups_$_userId');
   }
 
   /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
