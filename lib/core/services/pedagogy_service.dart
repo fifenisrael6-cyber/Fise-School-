@@ -142,8 +142,18 @@ class CourseService {
   Future<List<CourseChapter>> listStudentCatalogChapters(
     String studentId, {
     required String subjectId,
+    bool refresh = false,
   }) async {
     final cacheKey = 'student_catalog_chapters_${studentId}_$subjectId';
+    if (!refresh) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(() async { await listStudentCatalogChapters(studentId, subjectId: subjectId, refresh: true); }());
+        return cached.whereType<Map>()
+            .map((row) => CourseChapter.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
+      }
+    }
     try {
     final memberships = await _client
         .from('class_students')
@@ -279,8 +289,18 @@ class CourseService {
   Future<List<Map<String, dynamic>>> listStudentChapterContent(
     String studentId, {
     required String subjectId,
+    bool refresh = false,
   }) async {
     final cacheKey = 'student_chapter_content_${studentId}_$subjectId';
+    if (!refresh) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(() async { await listStudentChapterContent(studentId, subjectId: subjectId, refresh: true); }());
+        return cached.whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
+    }
     try {
       final memberships = await _client
           .from('class_students')
@@ -374,7 +394,18 @@ class CourseService {
   Future<List<Course>> listStudentCourses(
     String studentId, {
     String? subjectId,
+    bool refresh = false,
   }) async {
+    final cacheKey = 'student_courses_${studentId}_${subjectId ?? 'all'}';
+    if (!refresh) {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(() async { await listStudentCourses(studentId, subjectId: subjectId, refresh: true); }());
+        return cached.whereType<Map>()
+            .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
+      }
+    }
     List<Course> courses;
     try {
       // Let the database's student-safe RLS policy decide classroom visibility.
@@ -393,7 +424,9 @@ class CourseService {
         request = request.eq('subject_id', subjectId);
       }
 
-      final response = await request.order('updated_at', ascending: false);
+      final response = await request
+          .order('updated_at', ascending: false)
+          .timeout(JsonCache.networkTimeout);
       // A dynamic Supabase query can expose its decoded result as List<dynamic>.
       // Normalize it to a list and explicitly type every mapped Course.
       final rows = response is List ? response : const <dynamic>[];
@@ -402,16 +435,37 @@ class CourseService {
           .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
     } catch (_) {
-      // Use offline data only when the remote read itself failed. A local
-      // cache write must never replace a successful response with stale data.
-      final cached = await OfflineRepository().getCoursesForStudent(studentId);
-      if (subjectId == null) {
-        return cached;
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        return cached.whereType<Map>()
+            .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
       }
-      return cached
-          .where((course) => course.subjectId == subjectId)
-          .toList(growable: false);
+      final localCourses = await OfflineRepository().getCoursesForStudent(studentId);
+      if (subjectId == null) return localCourses;
+      return localCourses.where((course) => course.subjectId == subjectId).toList(growable: false);
     }
+
+    try {
+      await JsonCache.instance.write(cacheKey, courses.map((course) => <String, dynamic>{
+        'id': course.id,
+        'curriculum_id': course.curriculumId,
+        'chapter_id': course.chapterId,
+        'subject_id': course.subjectId,
+        'teacher_id': course.teacherId,
+        'class_id': course.classId,
+        'title_fr': course.titleFr,
+        'title_en': course.titleEn,
+        'description_fr': course.descriptionFr,
+        'description_en': course.descriptionEn,
+        'content_fr': course.contentFr,
+        'content_en': course.contentEn,
+        'status': course.status,
+        'smart_lesson_enabled': course.smartLessonEnabled,
+        'minimum_exercise_score': course.minimumExerciseScore,
+        'published_at': course.publishedAt?.toIso8601String(),
+      }).toList(growable: false));
+    } catch (_) {}
 
     try {
       await OfflineRepository().saveCourses(courses);
@@ -442,14 +496,22 @@ class CourseService {
     return course;
   }
 
-  Future<List<Lesson>> listLessons(String courseId) async {
+  Future<List<Lesson>> listLessons(String courseId, {bool refresh = false}) async {
+    if (!refresh) {
+      final cached = await OfflineRepository().getLessonsForCourse(courseId);
+      if (cached.isNotEmpty) {
+        unawaited(() async { await listLessons(courseId, refresh: true); }());
+        return cached;
+      }
+    }
     try {
       final rows = await _client
           .from('lessons')
           .select()
           .eq('course_id', courseId)
           .eq('is_published', true)
-          .order('position');
+          .order('position')
+          .timeout(JsonCache.networkTimeout);
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
@@ -732,7 +794,14 @@ class LessonService {
   LessonService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
-  Future<Lesson> getLesson(String id) async {
+  Future<Lesson> getLesson(String id, {bool refresh = false}) async {
+    if (!refresh) {
+      final cached = await OfflineRepository().getLesson(id);
+      if (cached != null) {
+        unawaited(() async { await getLesson(id, refresh: true); }());
+        return cached;
+      }
+    }
     try {
       final row = await _client.from('lessons').select().eq('id', id).single();
       final lesson = Lesson.fromMap(Map<String, dynamic>.from(row));
@@ -747,14 +816,22 @@ class LessonService {
     }
   }
 
-  Future<List<Lesson>> listLessons(String courseId) async {
+  Future<List<Lesson>> listLessons(String courseId, {bool refresh = false}) async {
+    if (!refresh) {
+      final cached = await OfflineRepository().getLessonsForCourse(courseId);
+      if (cached.isNotEmpty) {
+        unawaited(() async { await listLessons(courseId, refresh: true); }());
+        return cached;
+      }
+    }
     try {
       final rows = await _client
           .from('lessons')
           .select()
           .eq('course_id', courseId)
           .eq('is_published', true)
-          .order('position');
+          .order('position')
+          .timeout(JsonCache.networkTimeout);
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
