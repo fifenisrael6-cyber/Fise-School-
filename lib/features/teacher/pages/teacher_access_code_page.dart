@@ -265,9 +265,9 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                 decoration: InputDecoration(
                   labelText: _isFrench ? 'Nouveau code' : 'New code',
                   hintText: _isFrench
-                      ? 'Ex: fise123ABC'
-                      : 'Ex: fise123ABC',
-                  prefixText: 'fise',
+                      ? 'Ex: ABC123'
+                      : 'Ex: ABC123',
+                  prefixText: 'FISE-',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),

@@ -49,6 +49,36 @@ class GroupMessageService {
     return id as String;
   }
 
+  /// Liste les groupes et les salles liés au code maître FISE.
+  /// L'adhésion à une salle est ensuite contrôlée par le serveur.
+  Future<List<Map<String, dynamic>>> listTeacherGroupsByCode(String code) async {
+    final response = await _client.rpc(
+      'list_teacher_groups_by_code',
+      params: {'p_code': code},
+    );
+    return (response as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList(growable: false);
+  }
+
+  /// Rejoint un seul groupe après vérification de la salle de l'élève.
+  Future<String> joinTeacherGroupByCode({
+    required String code,
+    required String groupId,
+    required String classId,
+  }) async {
+    final response = await _client.rpc(
+      'join_teacher_group_by_code',
+      params: {
+        'p_code': code,
+        'p_group_id': groupId,
+        'p_class_id': classId,
+      },
+    );
+    await JsonCache.instance.remove('groups_$_userId');
+    return response as String;
+  }
+
   /// Force une lecture serveur après une adhésion ou une création de groupe.
   Future<List<MessageGroup>> refreshGroups() async {
     await JsonCache.instance.remove('groups_$_userId');
@@ -132,12 +162,51 @@ class GroupMessageService {
     );
   }
 
+  Future<bool> isMember(String groupId) async {
+    final value = await _client.rpc(
+      'is_message_group_member',
+      params: {'p_group_id': groupId},
+    );
+    return value == true;
+  }
+
+  Future<bool> getAnnouncementOnly(String groupId) async {
+    final value = await _client.rpc(
+      'get_message_group_announcement_mode',
+      params: {'p_group_id': groupId},
+    );
+    return value == true;
+  }
+
+  Future<bool> setAnnouncementOnly(String groupId, bool enabled) async {
+    final value = await _client.rpc(
+      'set_message_group_announcement_mode',
+      params: {'p_group_id': groupId, 'p_enabled': enabled},
+    );
+    return value == true;
+  }
+
+  Future<void> leaveGroup(String groupId) async {
+    await _client.rpc('leave_message_group', params: {'p_group_id': groupId});
+    await JsonCache.instance.remove('groups_$_userId');
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
+    await JsonCache.instance.remove('groups_$_userId');
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+  }
+
   Future<void> removeMember(String groupId, String userId) async {
-    await _client
-        .from('message_group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', userId);
+    await _client.rpc(
+      'remove_message_group_member',
+      params: {'p_group_id': groupId, 'p_user_id': userId},
+    );
+    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('groups_$_userId');
   }
 
   /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
@@ -199,6 +268,9 @@ class GroupMessageService {
         'p_for_everyone': forEveryone,
       },
     );
+
+    await JsonCache.instance.remove('group_msgs_${_userId}_$groupId');
+    await JsonCache.instance.remove('groups_$_userId');
 
     // Delete only this sender-owned storage object after the RPC has marked
     // or hidden the message. A local delete must not remove it for other users.

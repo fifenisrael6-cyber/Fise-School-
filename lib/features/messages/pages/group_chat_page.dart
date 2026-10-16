@@ -15,6 +15,7 @@ import '../../../core/offline/message_outbox.dart';
 import '../../../core/offline/message_attachment_offline.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
+import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
@@ -57,15 +58,32 @@ class _GroupChatPageState extends State<GroupChatPage> {
   RealtimeChannel? _channel;
   StreamSubscription<void>? _outboxSubscription;
   String? _inviteCode;
+  bool _announcementOnly = false;
+  bool _updatingGroup = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
 
+  Future<void> _loadTeacherAccessCode() async {
+    if (!_isOwner) return;
+    try {
+      final codes = await TeacherAccessCodeService()
+          .getTeacherAccessCodes(widget.profile.id);
+      if (!mounted) return;
+      setState(() {
+        _inviteCode = codes.isEmpty ? null : codes.first.displayCode;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _inviteCode = null);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _inviteCode = widget.group.inviteCode;
+    _inviteCode = null;
     _attachment = widget.initialAttachment;
+    unawaited(_loadTeacherAccessCode());
     _load();
     // Messages en attente : la conversation se met à jour quand la file change
     // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
@@ -108,6 +126,28 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false, markRead: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_groups',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
       ..subscribe();
   }
 
@@ -128,6 +168,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
       setState(() => _loading = true);
     }
     try {
+      try {
+        final isMember = await _service.isMember(widget.group.id);
+        if (!isMember) {
+          if (mounted) Navigator.of(context).pop(true);
+          return;
+        }
+      } catch (_) {
+        // Offline: keep the last local view; the server still guards every action.
+      }
       if (markRead) {
         // Receipts are supplementary: keep the chat usable if the new receipt
         // migration has not reached the connected Supabase project yet.
@@ -137,6 +186,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
         } catch (_) {
           // The conversation itself must still load.
         }
+      }
+      try {
+        final announcementOnly =
+            await _service.getAnnouncementOnly(widget.group.id);
+        if (mounted) {
+          setState(() => _announcementOnly = announcementOnly);
+        }
+      } catch (_) {
+        // The server-side trigger still enforces the mode if this read fails.
       }
       final messages = await _service.listMessages(widget.group.id);
       if (mounted) {
@@ -496,6 +554,95 @@ class _GroupChatPageState extends State<GroupChatPage> {
     return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _toggleAnnouncementMode() async {
+    if (_updatingGroup) return;
+    setState(() => _updatingGroup = true);
+    try {
+      final enabled = await _service.setAnnouncementOnly(
+        widget.group.id,
+        !_announcementOnly,
+      );
+      if (!mounted) return;
+      setState(() => _announcementOnly = enabled);
+      _snack(enabled
+          ? (_fr
+              ? 'Groupe verrouillé : seul l’enseignant peut écrire.'
+              : 'Group locked: only the teacher can send messages.')
+          : (_fr
+              ? 'Les messages des membres sont de nouveau autorisés.'
+              : 'Member messages are enabled again.'));
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de modifier le groupe' : 'Could not update group'}: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _updatingGroup = false);
+    }
+  }
+
+  Future<void> _confirmLeaveGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Quitter le groupe ?' : 'Leave group?'),
+        content: Text(_fr
+            ? 'Le groupe disparaîtra de ta liste. Tu pourras le rejoindre de nouveau si tu y es autorisé.'
+            : 'The group will disappear from your list. You can rejoin if you are still eligible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Quitter' : 'Leave'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _service.leaveGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de quitter le groupe' : 'Could not leave group'}: $error');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer définitivement le groupe ?' : 'Delete group permanently?'),
+        content: Text(_fr
+            ? 'Le groupe et son historique de messages seront supprimés pour tous les membres. Cette action est irréversible.'
+            : 'The group and its message history will be removed for all members. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer le groupe' : 'Delete group'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _service.deleteGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de supprimer le groupe' : 'Could not delete group'}: $error');
+      }
+    }
+  }
+
   Future<void> _showInfo() async {
     List<GroupMember> members = const [];
     try {
@@ -572,6 +719,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
+                if (_announcementOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _fr
+                          ? 'Mode annonces activé : seul le propriétaire peut écrire.'
+                          : 'Announcement mode is on: only the owner can send messages.',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 Text(
                   '${_fr ? 'Membres' : 'Members'} (${members.length})',
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -590,7 +747,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           ? (_fr ? 'Enseignant' : 'Teacher')
                           : (_fr ? 'Élève' : 'Student'),
                     ),
-                    trailing: _isOwner && member.userId != widget.profile.id
+                    trailing: _isOwner && member.role == 'student' && member.userId != widget.profile.id
                         ? IconButton(
                             tooltip: _fr ? 'Retirer du groupe' : 'Remove from group',
                             icon: const Icon(Icons.person_remove_alt_1_rounded),
@@ -652,10 +809,60 @@ class _GroupChatPageState extends State<GroupChatPage> {
             icon: Icon(_isOwner ? Icons.vpn_key_rounded : Icons.info_outline_rounded),
             onPressed: _showInfo,
           ),
+          PopupMenuButton<String>(
+            onSelected: (action) {
+              if (action == 'toggle_mode') {
+                _toggleAnnouncementMode();
+              } else if (action == 'leave') {
+                _confirmLeaveGroup();
+              } else if (action == 'delete_group') {
+                _confirmDeleteGroup();
+              }
+            },
+            itemBuilder: (context) => [
+              if (_isOwner)
+                PopupMenuItem(
+                  value: 'toggle_mode',
+                  child: Text(_announcementOnly
+                      ? (_fr ? 'Autoriser les messages des membres' : 'Allow member messages')
+                      : (_fr ? 'Verrouiller : enseignant uniquement' : 'Lock: teacher only')),
+                ),
+              if (!_isOwner)
+                PopupMenuItem(
+                  value: 'leave',
+                  child: Text(_fr ? 'Quitter le groupe' : 'Leave group'),
+                ),
+              if (_isOwner)
+                PopupMenuItem(
+                  value: 'delete_group',
+                  child: Text(_fr ? 'Supprimer le groupe' : 'Delete group'),
+                ),
+            ],
+          ),
         ],
       ),
       body: Column(
         children: [
+          if (_announcementOnly)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFFF3CD),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  const Icon(Icons.lock_rounded, size: 18, color: Color(0xFF795548)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _fr
+                          ? 'Mode annonces : seul l’enseignant peut envoyer des messages.'
+                          : 'Announcement mode: only the teacher can send messages.',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -670,7 +877,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         itemBuilder: (context, index) => _bubble(reversed[index]),
                       ),
           ),
-          SafeArea(
+          if (_announcementOnly && !_isOwner)
+            Container(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                _fr
+                    ? 'La conversation est verrouillée par l’enseignant.'
+                    : 'The teacher has locked this conversation.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600),
+              ),
+            ),
+          if (!(_announcementOnly && !_isOwner))
+            SafeArea(
             top: false,
             child: Container(
               color: Colors.white,
@@ -817,31 +1038,31 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           ? (_fr ? 'Échec de l’envoi — appuie longuement pour renvoyer' : 'Failed to send — long press to retry')
                           : message.pending
                           ? (_fr ? 'En attente de connexion' : 'Waiting for connection')
-                          : message.recipientCount > 0 && message.readCount >= message.recipientCount
-                          ? (_fr ? 'Lu par tous' : 'Read by everyone')
-                          : message.recipientCount > 0 && message.deliveredCount >= message.recipientCount
-                              ? (_fr ? 'Reçu par tous' : 'Delivered to everyone')
-                              : message.deliveredCount > 0
-                                  ? (_fr ? 'En cours de réception' : 'Being delivered')
-                                  : (_fr ? 'Envoyé' : 'Sent'),
+                          : message.readCount > 0
+                              ? (message.recipientCount > 0 && message.readCount >= message.recipientCount
+                                  ? (_fr ? 'Lu par tous' : 'Read by everyone')
+                                  : (_fr ? 'Lu par ${message.readCount} membre(s)' : 'Read by ${message.readCount} member(s)'))
+                              : message.recipientCount > 0 && message.deliveredCount >= message.recipientCount
+                                  ? (_fr ? 'Reçu par tous' : 'Delivered to everyone')
+                                  : message.deliveredCount > 0
+                                      ? (_fr ? 'Reçu' : 'Delivered')
+                                      : (_fr ? 'Envoyé' : 'Sent'),
                       child: Icon(
                         message.failed
                             ? Icons.error_outline_rounded
                             : message.pending
                             ? Icons.schedule_rounded
-                            : message.recipientCount > 0 && message.readCount >= message.recipientCount
-                            ? Icons.done_all_rounded
-                            : message.deliveredCount > 0
+                            : message.deliveredCount > 0 || message.readCount > 0
                                 ? Icons.done_all_rounded
                                 : Icons.done_rounded,
                         size: 14,
                         color: message.failed
                             ? Colors.red
-                            : message.recipientCount > 0 && message.readCount >= message.recipientCount
-                            ? const Color(0xFF166534)
-                            : message.deliveredCount > 0
-                                ? Colors.black54
-                                : Colors.black45,
+                            : message.readCount > 0
+                                ? const Color(0xFF128C7E)
+                                : message.deliveredCount > 0
+                                    ? Colors.black54
+                                    : Colors.black45,
                       ),
                     ),
                   ],

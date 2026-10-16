@@ -157,6 +157,12 @@ class PrivateMessageService {
       },
     );
 
+    final contactId = message.senderId == userId
+        ? message.recipientId
+        : message.senderId;
+    await JsonCache.instance.remove('pm_conv_${_userId}_$contactId');
+    await JsonCache.instance.remove('pm_contacts_$_userId');
+
     // The database function clears the attachment path before returning it.
     // Storage cleanup is best-effort and does not affect the deletion state.
     if (result is String && result.isNotEmpty) {
