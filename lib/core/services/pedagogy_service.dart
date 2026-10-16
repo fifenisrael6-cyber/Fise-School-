@@ -494,14 +494,22 @@ class CourseService {
     return course;
   }
 
-  Future<List<Lesson>> listLessons(String courseId) async {
+  Future<List<Lesson>> listLessons(String courseId, {bool _refresh = false}) async {
+    if (!_refresh) {
+      final cached = await OfflineRepository().getLessonsForCourse(courseId);
+      if (cached.isNotEmpty) {
+        unawaited(listLessons(courseId, _refresh: true));
+        return cached;
+      }
+    }
     try {
       final rows = await _client
           .from('lessons')
           .select()
           .eq('course_id', courseId)
           .eq('is_published', true)
-          .order('position');
+          .order('position')
+          .timeout(JsonCache.networkTimeout);
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
@@ -784,7 +792,14 @@ class LessonService {
   LessonService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
-  Future<Lesson> getLesson(String id) async {
+  Future<Lesson> getLesson(String id, {bool _refresh = false}) async {
+    if (!_refresh) {
+      final cached = await OfflineRepository().getLesson(id);
+      if (cached != null) {
+        unawaited(getLesson(id, _refresh: true));
+        return cached;
+      }
+    }
     try {
       final row = await _client.from('lessons').select().eq('id', id).single();
       final lesson = Lesson.fromMap(Map<String, dynamic>.from(row));
