@@ -783,10 +783,11 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
               setState(() {
                 _selectedAnswers[question.id] = value;
                 _qcmFeedback.remove(question.id);
-                _checkingQcm.add(question.id);
+                _checkingQcm.remove(question.id);
               });
+              // Keep manual QCM answers editable until final submission.
+              // Do not lock the choices while checking each tap.
               _saveAnswer(question);
-              _checkAssignmentQcmAnswer(question, value);
             },
             child: Column(
               children: options.map((option) {
@@ -799,7 +800,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                     feedback['is_correct'] != true;
                 return RadioListTile<String>(
                   value: option,
-                  enabled: enabled && !_checkingQcm.contains(question.id),
+                  enabled: enabled,
                   activeColor: const Color(0xFF166534),
                   contentPadding: EdgeInsets.zero,
                   tileColor: isCorrect
