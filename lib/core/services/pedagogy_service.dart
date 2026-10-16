@@ -816,14 +816,22 @@ class LessonService {
     }
   }
 
-  Future<List<Lesson>> listLessons(String courseId) async {
+  Future<List<Lesson>> listLessons(String courseId, {bool _refresh = false}) async {
+    if (!_refresh) {
+      final cached = await OfflineRepository().getLessonsForCourse(courseId);
+      if (cached.isNotEmpty) {
+        unawaited(() async { await listLessons(courseId, _refresh: true); }());
+        return cached;
+      }
+    }
     try {
       final rows = await _client
           .from('lessons')
           .select()
           .eq('course_id', courseId)
           .eq('is_published', true)
-          .order('position');
+          .order('position')
+          .timeout(JsonCache.networkTimeout);
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
