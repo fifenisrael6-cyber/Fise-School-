@@ -49,6 +49,36 @@ class GroupMessageService {
     return id as String;
   }
 
+  /// Liste les groupes et les salles liés au code maître FISE.
+  /// L'adhésion à une salle est ensuite contrôlée par le serveur.
+  Future<List<Map<String, dynamic>>> listTeacherGroupsByCode(String code) async {
+    final response = await _client.rpc(
+      'list_teacher_groups_by_code',
+      params: {'p_code': code},
+    );
+    return (response as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList(growable: false);
+  }
+
+  /// Rejoint un seul groupe après vérification de la salle de l'élève.
+  Future<String> joinTeacherGroupByCode({
+    required String code,
+    required String groupId,
+    required String classId,
+  }) async {
+    final response = await _client.rpc(
+      'join_teacher_group_by_code',
+      params: {
+        'p_code': code,
+        'p_group_id': groupId,
+        'p_class_id': classId,
+      },
+    );
+    await JsonCache.instance.remove('groups_$_userId');
+    return response as String;
+  }
+
   /// Force une lecture serveur après une adhésion ou une création de groupe.
   Future<List<MessageGroup>> refreshGroups() async {
     await JsonCache.instance.remove('groups_$_userId');
