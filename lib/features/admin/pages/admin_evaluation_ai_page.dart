@@ -89,8 +89,8 @@ class _AdminEvaluationAiPageState extends State<AdminEvaluationAiPage> {
       body: RefreshIndicator(
         onRefresh: () => _load(forceRefresh: true),
         child: _loading && _items.isEmpty
-            ? const ListView(
-                physics: AlwaysScrollableScrollPhysics(),
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   SizedBox(height: 260),
                   Center(child: CircularProgressIndicator()),
