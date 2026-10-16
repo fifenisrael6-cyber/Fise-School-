@@ -29,15 +29,26 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
 
   Future<void> _load() async {
     try {
-      final existing = await _service.getOwnCode();
-      _balance = await _service.getWalletBalance();
-      if (existing != null && existing['active'] == true) {
-        _code = existing['code']?.toString();
+      // Always load the canonical shared FISE code. This RPC also synchronizes
+      // the legacy payment-code row, so group access and payments use one code.
+      final sharedCode = await _service.createOrGetCode();
+      final balance = await _service.getWalletBalance();
+      if (mounted) {
+        setState(() {
+          _code = sharedCode.trim().toUpperCase();
+          _balance = balance;
+        });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible de charger le code de paiement. Réessayez plus tard.')),
+          SnackBar(
+            content: Text(
+              _fr
+                  ? 'Impossible de charger votre code unique FISE. Vérifiez votre connexion puis réessayez.'
+                  : 'Unable to load your unique FISE code. Check your connection and try again.',
+            ),
+          ),
         );
       }
     }
@@ -56,7 +67,13 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'Impossible de créer le code.' : 'Unable to create the code.')),
+          SnackBar(
+            content: Text(
+              _fr
+                  ? 'Impossible de récupérer le code unique FISE. Réessayez.'
+                  : 'Unable to retrieve the unique FISE code. Please try again.',
+            ),
+          ),
         );
       }
     } finally {
