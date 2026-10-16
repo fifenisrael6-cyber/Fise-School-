@@ -739,6 +739,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       setState(() {
         _checkingQcm.remove(question.id);
         _qcmFeedback[question.id] = feedback;
+        final lockedOption = feedback['selected_option']?.toString();
+        if (lockedOption != null && lockedOption.isNotEmpty) {
+          _selectedAnswers[question.id] = lockedOption;
+        }
       });
       final correct = feedback['is_correct'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -779,7 +783,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           RadioGroup<String>(
             groupValue: selected,
             onChanged: (value) {
-              if (!enabled || value == null) return;
+              if (!enabled || value == null || _qcmFeedback.containsKey(question.id) || _checkingQcm.contains(question.id)) return;
               setState(() {
                 _selectedAnswers[question.id] = value;
                 _qcmFeedback.remove(question.id);
@@ -799,7 +803,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                     feedback['is_correct'] != true;
                 return RadioListTile<String>(
                   value: option,
-                  enabled: enabled && !_checkingQcm.contains(question.id),
+                  enabled: enabled && !_checkingQcm.contains(question.id) && !hasFeedback,
                   activeColor: const Color(0xFF166534),
                   contentPadding: EdgeInsets.zero,
                   tileColor: isCorrect
