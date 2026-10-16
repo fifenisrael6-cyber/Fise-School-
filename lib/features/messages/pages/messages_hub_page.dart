@@ -529,3 +529,64 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                               ? 'Aucun groupe. Créez un groupe puis donnez son code d’invitation à vos élèves.'
                               : 'No group yet. Create one and give its invitation code to your students.')
                           : (_fr
+                              ? 'Vous n’êtes dans aucun groupe. Demandez le code d’invitation à votre professeur.'
+                              : 'You are not in any group. Ask your teacher for the invitation code.'),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  ...groups.map(
+                    (group) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFF166534),
+                        child: Text(
+                          group.name.isEmpty ? '?' : group.name.substring(0, 1).toUpperCase(),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      title: Text(
+                        group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        group.lastBody ??
+                            (group.className ??
+                                '${group.memberCount} ${_fr ? 'membre(s)' : 'member(s)'}'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (group.unreadCount > 0)
+                            Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF166534),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                group.unreadCount > 99 ? '99+' : '${group.unreadCount}',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          Text(
+                            _formatTime(group.lastAt),
+                            style: const TextStyle(fontSize: 12, color: Colors.black54),
+                          ),
+                        ],
+                      ),
+                      onTap: () => _openGroup(group),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
