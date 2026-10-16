@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/json_cache.dart';
+import '../../../core/services/student_class_context.dart';
 
 class StudentClassSwitchPage extends StatefulWidget {
   final Locale locale;
@@ -85,6 +86,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
           'student_chapter_content_${studentId}_',
         ]);
       }
+      StudentClassContext.notifyChanged();
       if (!mounted) return;
       _message(_fr
           ? 'Salle modifiée. Les contenus liés à l’ancienne salle ont été actualisés.'
