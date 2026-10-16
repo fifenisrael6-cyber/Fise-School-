@@ -55,6 +55,19 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           if (mounted) setState(() => _groupsFuture = _service.listGroups());
         },
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'user_id',
+          value: widget.profile.id,
+        ),
+        callback: (_) {
+          if (mounted) setState(() => _groupsFuture = _service.listGroups());
+        },
+      )
       .subscribe();
   }
 
