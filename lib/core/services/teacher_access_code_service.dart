@@ -83,9 +83,33 @@ class TeacherAccessCodeService {
     }
   }
 
+  /// Salles auxquelles l'enseignant associé au code a réellement affecté un groupe.
+  /// La compatibilité avec le profil de l'élève est vérifiée côté serveur.
+  Future<List<Map<String, dynamic>>> listSwitchableClassrooms(String code) async {
+    final response = await _client.rpc(
+      'list_teacher_classrooms_for_student',
+      params: {'p_code': code.trim()},
+    );
+    if (response is! List) return const [];
+    return response
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  /// Changement explicite de salle. Le serveur vérifie le code, la salle,
+  /// l'affectation de l'enseignant et la compatibilité du profil.
+  Future<void> switchStudentClassroom({
+    required String code,
+    required String classId,
+  }) async {
+    await _client.rpc(
+      'switch_student_class_with_teacher_code',
+      params: {'p_code': code.trim(), 'p_class_id': classId},
+    );
+  }
+
   /// Retourne et crée au besoin le code unique FISE de l'enseignant.
-  /// Retourne le code FISE partagé. Les erreurs serveur remontent à l'écran
-  /// enseignant au lieu d'être transformées silencieusement en liste vide.
   Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
     final result = await _client.rpc('get_or_create_teacher_group_access_code');
     final fullCode = (result as String).toUpperCase();
