@@ -23,6 +23,10 @@ class AuthService {
   /// Retourne true si une session est créée immédiatement.
   /// Avec la confirmation e-mail activée, Supabase peut retourner false
   /// tout en ayant créé correctement le compte.
+  Future<void> sendPasswordReset({required String email}) async {
+    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
+  }
+
   Future<bool> signUp({
     required String email,
     required String password,
