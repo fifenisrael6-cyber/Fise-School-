@@ -36,6 +36,16 @@ using (
 drop policy if exists "senders delete own private messages" on public.private_messages;
 drop policy if exists "senders delete own group messages" on public.message_group_messages;
 
+-- Permit users to remove only their own uploaded group files, including after
+-- the message row has been converted to a deletion tombstone.
+drop policy if exists "members delete own group attachments" on storage.objects;
+create policy "members delete own group attachments"
+on storage.objects for delete to authenticated
+using (
+  bucket_id = 'group-message-attachments'
+  and owner_id = (select auth.uid())::text
+);
+
 -- Server-side enforcement: a locked group accepts messages only from its owner.
 create or replace function public.enforce_message_group_send_rules()
 returns trigger
@@ -240,6 +250,7 @@ begin
     update public.message_group_messages
     set deleted_at = coalesce(deleted_at, now()),
         body = '',
+        attachment_path = null,
         attachment_name = null,
         attachment_type = null
     where id = p_message_id;
@@ -291,6 +302,7 @@ begin
     update public.private_messages
     set deleted_at = coalesce(deleted_at, now()),
         body = '',
+        attachment_path = null,
         attachment_name = null,
         attachment_type = null
     where id = p_message_id;
