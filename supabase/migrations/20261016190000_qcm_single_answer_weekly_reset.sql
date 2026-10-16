@@ -131,20 +131,6 @@ begin
     raise exception 'Cette question ne possède pas de correction automatique.';
   end if;
 
-  select * into v_saved from public.qcm_weekly_answers
-  where student_id = v_user and qcm_type = 'teacher'
-    and question_id = p_question_id and week_start = v_week;
-  if found then
-    select count(*), count(*) filter (where is_correct) into v_count, v_correct_count
-    from public.qcm_weekly_answers where student_id = v_user and qcm_type = 'teacher' and week_start = v_week;
-    return jsonb_build_object(
-      'is_correct',v_saved.is_correct,'correct_option',v_saved.selected_value,
-      'selected_option',v_saved.selected_value,'already_answered',true,
-      'weekly_answered',v_count,'weekly_correct',v_correct_count,
-      'weekly_total',v_count,'weekly_score',case when v_count = 0 then 0 else round(100.0*v_correct_count/v_count) end
-    );
-  end if;
-
   v_options := coalesce(v_question.options, '[]'::jsonb);
   v_correct := trim(coalesce(v_question.correct_answer, ''));
   v_selected := lower(regexp_replace(trim(p_selected_option), '\s+', ' ', 'g'));
@@ -168,6 +154,19 @@ begin
       else v_correct end;
     v_is_correct := (lower(trim(p_selected_option)) in ('true','vrai','1','yes','oui')) =
                     (lower(trim(v_correct)) in ('true','vrai','1','yes','oui'));
+  end if;
+  select * into v_saved from public.qcm_weekly_answers
+  where student_id = v_user and qcm_type = 'teacher'
+    and question_id = p_question_id and week_start = v_week;
+  if found then
+    select count(*), count(*) filter (where is_correct) into v_count, v_correct_count
+    from public.qcm_weekly_answers where student_id = v_user and qcm_type = 'teacher' and week_start = v_week;
+    return jsonb_build_object(
+      'is_correct',v_saved.is_correct,'correct_option',v_correct_option,
+      'selected_option',v_saved.selected_value,'already_answered',true,
+      'weekly_answered',v_count,'weekly_correct',v_correct_count,
+      'weekly_total',v_count,'weekly_score',case when v_count = 0 then 0 else round(100.0*v_correct_count/v_count) end
+    );
   end if;
   begin
     insert into public.qcm_weekly_answers(
