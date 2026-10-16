@@ -53,7 +53,7 @@ class AiLessonContext {
       'lessonTitle': clean(lessonTitle, 200),
       // Le serveur limite aussi la taille ; on évite d'envoyer trop de texte
       // sur une connexion faible.
-      'lessonContent': clean(lessonContent, 6000),
+      'lessonContent': clean(lessonContent, 3000),
     };
   }
 }
@@ -113,7 +113,7 @@ class GeminiService {
     final lessonContext = context;
     final body = <String, dynamic>{
       'message': cleanMessage,
-      'history': history.take(20).map((item) => item.toMap()).toList(),
+      'history': history.take(8).map((item) => item.toMap()).toList(),
       // Demande seulement : le serveur vérifie le rôle réel en base.
       'mode': mode == 'admin' ? 'admin' : 'student',
       'language': isFrench ? 'fr' : 'en',
@@ -142,7 +142,7 @@ class GeminiService {
     try {
       final response = await _client.functions
           .invoke('gemini-chat', body: body)
-          .timeout(const Duration(seconds: 75));
+          .timeout(const Duration(seconds: 45));
       return _readAnswer(response.data, isFrench);
     } on AiServiceException {
       rethrow;
