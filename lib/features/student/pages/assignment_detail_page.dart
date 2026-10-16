@@ -766,6 +766,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           _selectedAnswers[question.id] = lockedOption;
         }
       });
+      await _saveAnswer(question);
       final correct = feedback['is_correct'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -811,7 +812,6 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                 _qcmFeedback.remove(question.id);
                 _checkingQcm.add(question.id);
               });
-              _saveAnswer(question);
               _checkAssignmentQcmAnswer(question, value);
             },
             child: Column(
