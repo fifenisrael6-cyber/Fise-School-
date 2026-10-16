@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../core/services/photo_service.dart';
@@ -41,29 +44,63 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
     _load();
   }
 
+  String get _papersCacheKey => 'teacher_past_papers_${widget.profile.id}';
+
+  Map<String, dynamic> _paperToCache(PastPaper paper) => {
+    'id': paper.id,
+    'exam_id': paper.examId,
+    'subsystem': paper.subsystem,
+    'exam_year': paper.year,
+    'session_label': paper.session,
+    'subject_fr': paper.subjectFr,
+    'subject_en': paper.subjectEn,
+    'kind': paper.kind,
+    'file_path': paper.filePath,
+    'file_name': paper.fileName,
+    'is_published': paper.isPublished,
+  };
+
+  List<PastPaper> _decodeCachedPapers(Object? raw) {
+    if (raw is! List) return const <PastPaper>[];
+    return raw.whereType<Map>().map(
+      (row) => PastPaper.fromMap(Map<String, dynamic>.from(row)),
+    ).toList(growable: false);
+  }
+
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    final cached = await JsonCache.instance.read(_papersCacheKey);
+    final hasCached = cached is List;
+    if (mounted) {
+      setState(() {
+        if (hasCached) _items = _decodeCachedPapers(cached);
+        _loading = !hasCached;
+        _error = null;
+      });
+    }
     try {
       List<ExamDefinition> exams = const [];
       try {
-        exams = await ExamCatalogService().getExams();
+        exams = await ExamCatalogService().getExams().timeout(const Duration(seconds: 8));
       } catch (_) {
-        // Exam catalog is optional; papers can still be uploaded without it.
+        // Exam catalog is optional; cached paper metadata remains usable offline.
       }
-      final papers = await _papers.list(includeUnpublished: true);
+      final papers = await _papers.list(includeUnpublished: true)
+          .timeout(const Duration(seconds: 12));
+      await JsonCache.instance.write(
+        _papersCacheKey,
+        papers.map(_paperToCache).toList(growable: false),
+      );
       if (!mounted) return;
       setState(() {
         _exams = exams;
         _items = papers;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = _fr ? 'Chargement impossible : $e' : 'Unable to load: $e';
+        _error = hasCached ? null : (_fr ? 'Chargement impossible : $e' : 'Unable to load: $e');
         _loading = false;
       });
     }
