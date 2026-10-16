@@ -189,15 +189,15 @@ class GroupMessageService {
   Future<void> leaveGroup(String groupId) async {
     await _client.rpc('leave_message_group', params: {'p_group_id': groupId});
     await JsonCache.instance.remove('groups_$_userId');
-    await JsonCache.instance.remove('group_members_$_userId_$groupId');
-    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+    await JsonCache.instance.remove('group_members_${_userId}_$groupId');
+    await JsonCache.instance.remove('group_msgs_${_userId}_$groupId');
   }
 
   Future<void> deleteGroup(String groupId) async {
     await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
     await JsonCache.instance.remove('groups_$_userId');
-    await JsonCache.instance.remove('group_members_$_userId_$groupId');
-    await JsonCache.instance.remove('group_msgs_$_userId_$groupId');
+    await JsonCache.instance.remove('group_members_${_userId}_$groupId');
+    await JsonCache.instance.remove('group_msgs_${_userId}_$groupId');
   }
 
   Future<void> removeMember(String groupId, String userId) async {
@@ -205,7 +205,7 @@ class GroupMessageService {
       'remove_message_group_member',
       params: {'p_group_id': groupId, 'p_user_id': userId},
     );
-    await JsonCache.instance.remove('group_members_$_userId_$groupId');
+    await JsonCache.instance.remove('group_members_${_userId}_$groupId');
     await JsonCache.instance.remove('groups_$_userId');
   }
 
