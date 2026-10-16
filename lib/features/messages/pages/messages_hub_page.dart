@@ -329,7 +329,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           autofocus: true,
           textCapitalization: TextCapitalization.characters,
           decoration: InputDecoration(
-            labelText: _fr ? 'Code unique de l’enseignant (privé et groupe)' : 'Teacher code (private and group messages)',
+            labelText: _fr ? 'Code unique de l’enseignant' : 'Teacher’s unique code',
             hintText: 'FISE-XXXXXX',
             border: const OutlineInputBorder(),
           ),
@@ -341,7 +341,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_fr ? 'Rejoindre' : 'Join'),
+            child: Text(_fr ? 'Continuer' : 'Continue'),
           ),
         ],
       ),
@@ -349,21 +349,88 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
 
     final code = controller.text.trim();
     controller.dispose();
-
-    if (confirmed != true || code.isEmpty) {
-      return;
-    }
+    if (confirmed != true || code.isEmpty) return;
 
     try {
-      await _service.joinWithCode(code);
-      setState(() => _groupsFuture = _service.refreshGroups());
-      await _groupsFuture;
-      _snack(_fr ? 'Vous avez rejoint le groupe.' : 'You joined the group.');
+      final choices = await _service.listTeacherGroupsByCode(code);
+      if (!mounted) return;
+
+      // Compatibilité avec les anciens codes individuels de groupe.
+      if (choices.isEmpty) {
+        await _service.joinWithCode(code);
+        await _reload();
+        _snack(_fr ? 'Vous avez rejoint le groupe.' : 'You joined the group.');
+        return;
+      }
+
+      final selected = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_fr ? 'Choisir le groupe et la salle' : 'Choose group and classroom'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: choices.map((choice) {
+                  final groupName = (choice['group_name'] ?? '').toString();
+                  final className = (choice['class_name'] ?? '').toString();
+                  final classId = (choice['class_id'] ?? '').toString();
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.groups_rounded),
+                    ),
+                    title: Text(
+                      groupName.isEmpty
+                          ? (_fr ? 'Groupe sans nom' : 'Unnamed group')
+                          : groupName,
+                    ),
+                    subtitle: Text(
+                      className.isEmpty
+                          ? (_fr ? 'Salle non définie' : 'Classroom not assigned')
+                          : className,
+                    ),
+                    enabled: classId.isNotEmpty,
+                    onTap: classId.isEmpty
+                        ? null
+                        : () => Navigator.pop(dialogContext, choice),
+                  );
+                }).toList(growable: false),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_fr ? 'Annuler' : 'Cancel'),
+            ),
+          ],
+        ),
+      );
+      if (selected == null || !mounted) return;
+
+      await _service.joinTeacherGroupByCode(
+        code: code,
+        groupId: (selected['group_id'] ?? '').toString(),
+        classId: (selected['class_id'] ?? '').toString(),
+      );
+      await _reload();
+      _snack(_fr
+          ? 'Accès au groupe accordé pour votre salle.'
+          : 'Group access granted for your classroom.');
     } catch (error) {
-      _snack(_fr ? 'Impossible de rejoindre le groupe : $error' : 'Could not join group: $error');
+      if (!mounted) return;
+      final message = error.toString().toLowerCase();
+      _snack(message.contains('classroom') || message.contains('salle')
+          ? (_fr
+              ? 'Accès refusé : ce groupe ne correspond pas à votre salle.'
+              : 'Access denied: this group does not match your classroom.')
+          : (_fr
+              ? 'Impossible de rejoindre le groupe : $error'
+              : 'Could not join group: $error'));
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
