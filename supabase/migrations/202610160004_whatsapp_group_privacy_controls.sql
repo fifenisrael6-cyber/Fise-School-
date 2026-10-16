@@ -232,7 +232,7 @@ $$;
 -- to the original sender and replaces the content with a deletion tombstone.
 create or replace function public.delete_group_message(
   p_message_id uuid,
-  p_for_everyone boolean
+  p_for_everyone boolean DEFAULT true
 )
 returns text
 language plpgsql
@@ -284,7 +284,7 @@ $$;
 
 create or replace function public.delete_private_message(
   p_message_id uuid,
-  p_for_everyone boolean
+  p_for_everyone boolean DEFAULT true
 )
 returns text
 language plpgsql
