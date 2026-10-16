@@ -111,7 +111,7 @@ declare
   v_suffix text;
   v_teacher_id uuid;
 begin
-  if auth.uid() is null then raise exception 'Authentication required'; end if;
+  -- Called by the authenticated app and by the trusted payment Edge Function.
   v_suffix := upper(regexp_replace(v_input, '^(FISE|GPR|GRP)-?', '', 'i'));
 
   -- First resolve the canonical shared teacher code.
@@ -149,4 +149,4 @@ grant execute on function public.list_teacher_groups_by_code(text) to authentica
 revoke all on function public.create_teacher_payment_code() from public, anon;
 grant execute on function public.create_teacher_payment_code() to authenticated;
 revoke all on function public.resolve_teacher_payment_code(text) from public, anon;
-grant execute on function public.resolve_teacher_payment_code(text) to authenticated;
+grant execute on function public.resolve_teacher_payment_code(text) to authenticated, service_role;
