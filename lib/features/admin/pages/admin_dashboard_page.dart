@@ -6,6 +6,7 @@ import 'admin_ai_page.dart';
 import 'admin_courses_page.dart';
 import 'admin_grades_page.dart';
 import 'admin_publication_page.dart';
+import 'admin_evaluation_ai_page.dart';
 import 'admin_past_papers_page.dart';
 import 'admin_pedagogy_page.dart';
 import 'admin_people_page.dart';
@@ -73,6 +74,11 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.auto_awesome_rounded,
         title: _isFrench ? 'Assistant IA pédagogique' : 'Teaching AI assistant',
         builder: (_) => AdminAiStudioPage(locale: locale),
+      ),
+      _AdminEntry(
+        icon: Icons.auto_awesome_rounded,
+        title: _isFrench ? 'Corrections IA des épreuves' : 'AI exam corrections',
+        builder: (_) => AdminEvaluationAiPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.assignment_rounded,

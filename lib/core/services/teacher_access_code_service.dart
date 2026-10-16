@@ -84,24 +84,22 @@ class TeacherAccessCodeService {
   }
 
   /// Retourne et crée au besoin le code unique FISE de l'enseignant.
+  /// Retourne le code FISE partagé. Les erreurs serveur remontent à l'écran
+  /// enseignant au lieu d'être transformées silencieusement en liste vide.
   Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
-    try {
-      final result = await _client.rpc('get_or_create_teacher_group_access_code');
-      final fullCode = (result as String).toUpperCase();
-      final now = DateTime.now();
-      return [
-        TeacherAccessCode(
-          id: 'master-$teacherId',
-          teacherId: teacherId,
-          code: fullCode.replaceFirst(RegExp(r'^FISE-'), ''),
-          classId: 'ALL',
-          createdAt: now,
-          isActive: true,
-        ),
-      ];
-    } catch (_) {
-      return [];
-    }
+    final result = await _client.rpc('get_or_create_teacher_group_access_code');
+    final fullCode = (result as String).toUpperCase();
+    final now = DateTime.now();
+    return [
+      TeacherAccessCode(
+        id: 'master-$teacherId',
+        teacherId: teacherId,
+        code: fullCode.replaceFirst(RegExp(r'^FISE-'), ''),
+        classId: 'ALL',
+        createdAt: now,
+        isActive: true,
+      ),
+    ];
   }
 
   Future<void> deactivateAccessCode(String accessCodeId) async {

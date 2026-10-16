@@ -368,11 +368,22 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
       final choices = await _service.listTeacherGroupsByCode(code);
       if (!mounted) return;
 
-      // Compatibilité avec les anciens codes individuels de groupe.
-      if (choices.isEmpty) {
+      // Un code maître FISE doit toujours passer par la sélection du groupe/salle.
+      // Ne jamais le transmettre à l'ancien flux, qui pourrait inscrire l'élève
+      // automatiquement dans tous les groupes compatibles.
+      final isTeacherMasterCode =
+          RegExp(r'^FISE[- ]?', caseSensitive: false).hasMatch(code.trim());
+      if (choices.isEmpty && !isTeacherMasterCode) {
+        // Compatibilité uniquement pour les anciens codes d'invitation de groupe (GPR).
         await _service.joinWithCode(code);
         await _reload();
         _snack(_fr ? 'Vous avez rejoint le groupe.' : 'You joined the group.');
+        return;
+      }
+      if (choices.isEmpty && isTeacherMasterCode) {
+        _snack(_fr
+            ? 'Aucun groupe de cet enseignant n’est disponible pour votre salle. Vérifiez votre classe ou demandez à l’enseignant de créer un groupe pour celle-ci.'
+            : 'This teacher has no group available for your classroom. Check your class or ask the teacher to create a group for it.');
         return;
       }
 
