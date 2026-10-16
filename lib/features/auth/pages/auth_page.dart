@@ -129,40 +129,6 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
-  Future<void> _sendPasswordReset(AppTexts texts) async {
-    final email = _emailController.text.trim().toLowerCase();
-    if (_validEmail(email, texts) != null) {
-      _showError(
-        _lang == 'en'
-            ? 'Enter your email address first.'
-            : 'Saisissez d’abord votre adresse e-mail.',
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      await _authService.sendPasswordReset(email: email);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _lang == 'en'
-                ? 'If this account exists, a password reset email has been sent. Check your inbox and spam folder.'
-                : 'Si ce compte existe, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception et les courriers indésirables.',
-          ),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    } on AuthException catch (error) {
-      if (mounted) _showError(error.message);
-    } catch (_) {
-      if (mounted) _showError(texts.networkError);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _submit(AppTexts texts) async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -309,23 +275,6 @@ class _AuthPageState extends State<AuthPage> {
                         return null;
                       },
                     ),
-                    if (!_isRegistering) ...[
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          key: const ValueKey('forgot-password'),
-                          onPressed: _isLoading
-                              ? null
-                              : () => _sendPasswordReset(texts),
-                          child: Text(
-                            _lang == 'en'
-                                ? 'Forgot password?'
-                                : 'Mot de passe oublié ?',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
                     const SizedBox(height: 24),
                     FilledButton(
                       onPressed: _isLoading ? null : () => _submit(texts),
