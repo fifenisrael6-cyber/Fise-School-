@@ -8,6 +8,19 @@
 	<string>Fise School a besoin d’accéder à vos photos pour choisir votre photo de profil.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>fise-school-password-recovery</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fiseschool</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
