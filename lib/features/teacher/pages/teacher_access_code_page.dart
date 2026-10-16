@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
@@ -110,12 +111,14 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     }
   }
 
-  void _copyToClipboard(String code) {
+  Future<void> _copyToClipboard(String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           _isFrench
-              ? 'Code copié: $code'
+              ? 'Code copié : $code'
               : 'Code copied: $code',
         ),
         duration: const Duration(seconds: 2),
@@ -196,8 +199,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                       Center(
                         child: Text(
                           _isFrench
-                              ? 'Les élèves doivent saisir ce code pour pouvoir vous contacter en messagerie privée.'
-                              : 'Students must enter this code to message you privately.',
+                              ? 'Ce code FISE unique sert à retrouver vos groupes et à sélectionner la salle de l’élève. Utilisez le même code pour les fonctions de paiement compatibles.'
+                              : 'This unique FISE code lets students find your groups and select their classroom. The same code is used by compatible payment features.',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
