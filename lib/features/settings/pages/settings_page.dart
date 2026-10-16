@@ -8,6 +8,7 @@ import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
 import 'offline_storage_page.dart';
 import '../../teacher/pages/teacher_payment_code_page.dart';
+import 'student_class_switch_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final Locale locale;
@@ -55,6 +56,22 @@ class _SettingsPageState extends State<SettingsPage> {
                   Navigator.pop(context);
                 },
               ),
+              if (profile.role == 'student')
+                _SettingsTile(
+                  icon: Icons.swap_horiz_rounded,
+                  title: isFrench ? 'Changer de classe' : 'Change classroom',
+                  subtitle: isFrench
+                      ? 'Rejoindre une autre classe avec le code de groupe de l’enseignant'
+                      : 'Join another classroom using a teacher group code',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StudentClassSwitchPage(locale: widget.locale),
+                      ),
+                    );
+                  },
+                ),
               _SettingsTile(
                 icon: Icons.notifications_none_rounded,
                 title: isFrench ? 'Notifications' : 'Notifications',
@@ -104,6 +121,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 ? 'Confidentialité et sécurité'
                 : 'Privacy and security',
             children: [
+              _SettingsTile(
+                icon: Icons.password_rounded,
+                title: isFrench ? 'Réinitialiser le mot de passe' : 'Reset password',
+                subtitle: isFrench
+                    ? 'Recevoir un lien par e-mail pour choisir un nouveau mot de passe'
+                    : 'Receive an email link to choose a new password',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => _SecurityPage(
+                        locale: widget.locale,
+                        profile: profile,
+                      ),
+                    ),
+                  );
+                },
+              ),
               _SettingsTile(
                 icon: Icons.lock_outline_rounded,
                 title: isFrench ? 'Confidentialité' : 'Privacy',
