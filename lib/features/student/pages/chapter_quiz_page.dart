@@ -93,7 +93,10 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
       );
     } catch (_) {
       if (!mounted) return;
-      setState(() => _checkingAnswers.remove(question.id));
+      setState(() {
+        _checkingAnswers.remove(question.id);
+        _answers.remove(question.id);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_fr
             ? 'Impossible de vérifier cette réponse. Vérifie ta connexion.'
