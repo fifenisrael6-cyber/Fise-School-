@@ -185,7 +185,17 @@ class _AuthPageState extends State<AuthPage> {
       }
     } on AuthException catch (error) {
       if (mounted) {
-        _showError(error.message);
+        final code = error.code?.toLowerCase() ?? '';
+        final message = !_isRegistering &&
+                (code == 'invalid_credentials' ||
+                    code == 'invalid_grant' ||
+                    error.message.toLowerCase().contains('invalid login credentials') ||
+                    error.message.toLowerCase().contains('invalid credentials'))
+            ? (_lang == 'fr'
+                ? 'Mot de passe incorrect. Vérifiez votre mot de passe et réessayez.'
+                : 'Incorrect password. Check your password and try again.')
+            : error.message;
+        _showError(message);
       }
     } catch (_) {
       if (mounted) {
