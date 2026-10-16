@@ -27,8 +27,6 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
   ChapterQuiz? _quiz;
   List<ChapterQuizQuestion> _questions = const [];
   final Map<String, int> _answers = {};
-  final Map<String, Map<String, dynamic>> _instantFeedback = {};
-  final Set<String> _checkingAnswers = {};
   Map<String, dynamic>? _result;
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -64,39 +62,6 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
         _error = error.toString().replaceFirst('Bad state: ', '');
         _loading = false;
       });
-    }
-  }
-
-  Future<void> _checkAnswer(ChapterQuizQuestion question, int selectedIndex) async {
-    try {
-      final feedback = await _service.checkQuizAnswer(
-        quizId: question.quizId,
-        questionId: question.id,
-        selectedOptionIndex: selectedIndex,
-      );
-      if (!mounted) return;
-      setState(() {
-        _checkingAnswers.remove(question.id);
-        _instantFeedback[question.id] = feedback;
-      });
-      final correct = feedback['is_correct'] == true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(correct
-              ? (_fr ? 'Bonne réponse !' : 'Correct answer!')
-              : (_fr ? 'Mauvaise réponse.' : 'Incorrect answer.')),
-          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _checkingAnswers.remove(question.id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr
-            ? 'Impossible de vérifier cette réponse. Vérifie ta connexion.'
-            : 'Unable to check this answer. Check your connection.')),
-      );
     }
   }
 
@@ -189,22 +154,13 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                                   value: index,
                                   groupValue: _answers[question.id],
                                   title: Text(options[index]),
-                                  secondary: _checkingAnswers.contains(question.id)
-                                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                      : _instantFeedback[question.id] == null
-                                          ? null
-                                          : Icon(
-                                              _instantFeedback[question.id]!['is_correct'] == true ? Icons.check_circle : Icons.cancel,
-                                              color: _instantFeedback[question.id]!['is_correct'] == true ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-                                            ),
-                                  onChanged: _submitting ? null : (value) {
+                                  // Do not mark every option with the same per-answer
+                                  // feedback. Answers remain editable until final submission.
+                                  onChanged: _submitting || _result != null ? null : (value) {
                                     if (value != null) {
                                       setState(() {
                                         _answers[question.id] = value;
-                                        _instantFeedback.remove(question.id);
-                                        _checkingAnswers.add(question.id);
                                       });
-                                      _checkAnswer(question, value);
                                     }
                                   },
                                 );
