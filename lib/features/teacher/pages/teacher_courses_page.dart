@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/localization/app_texts.dart';
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/pedagogy.dart';
@@ -43,13 +46,75 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
     _coursesFuture = _loadCoursesWithDiagnostics();
   }
 
+  String get _offlineCacheKey => 'teacher_courses_${widget.profile.id}';
+
+  Map<String, dynamic> _courseToCache(Course course) => {
+    'id': course.id,
+    'curriculum_id': course.curriculumId,
+    'chapter_id': course.chapterId,
+    'subject_id': course.subjectId,
+    'teacher_id': course.teacherId,
+    'class_id': course.classId,
+    'title_fr': course.titleFr,
+    'title_en': course.titleEn,
+    'description_fr': course.descriptionFr,
+    'description_en': course.descriptionEn,
+    'content_fr': course.contentFr,
+    'content_en': course.contentEn,
+    'smart_lesson_enabled': course.smartLessonEnabled,
+    'minimum_exercise_score': course.minimumExerciseScore,
+    'status': course.status,
+    'published_at': course.publishedAt?.toIso8601String(),
+  };
+
+  List<Course> _decodeCachedCourses(Object? raw) {
+    if (raw is! List) return const <Course>[];
+    return raw.whereType<Map>().map(
+      (row) => Course.fromMap(Map<String, dynamic>.from(row)),
+    ).toList(growable: false);
+  }
+
   Future<List<Course>> _loadCoursesWithDiagnostics() async {
+    // Priorité à la copie locale : l'écran ne doit pas attendre le réseau
+    // lorsque l'enseignant a déjà ouvert cette page sur cet appareil.
+    final cached = await JsonCache.instance.read(_offlineCacheKey);
+    if (cached is List) {
+      unawaited(_refreshCoursesInBackground());
+      return _decodeCachedCourses(cached);
+    }
+
     try {
-      return await _service.listTeacherCourses(widget.profile.id);
+      final courses = await _service
+          .listTeacherCourses(widget.profile.id)
+          .timeout(const Duration(seconds: 12));
+      await JsonCache.instance.write(
+        _offlineCacheKey,
+        courses.map(_courseToCache).toList(growable: false),
+      );
+      return courses;
     } catch (error, stackTrace) {
       debugPrint('[Mes médias de classe] Supabase load failed: $error');
       debugPrintStack(label: '[Mes médias de classe] stack trace', stackTrace: stackTrace);
       rethrow;
+    }
+  }
+
+  Future<void> _refreshCoursesInBackground() async {
+    try {
+      final courses = await _service
+          .listTeacherCourses(widget.profile.id)
+          .timeout(const Duration(seconds: 12));
+      await JsonCache.instance.write(
+        _offlineCacheKey,
+        courses.map(_courseToCache).toList(growable: false),
+      );
+      if (mounted) {
+        setState(() {
+          _coursesFuture = Future<List<Course>>.value(courses);
+        });
+      }
+    } catch (error) {
+      debugPrint('[Mes médias de classe] Background refresh skipped: $error');
     }
   }
 
