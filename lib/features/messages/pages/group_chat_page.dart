@@ -727,7 +727,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           ? (_fr ? 'Enseignant' : 'Teacher')
                           : (_fr ? 'Élève' : 'Student'),
                     ),
-                    trailing: _isOwner && member.userId != widget.profile.id
+                    trailing: _isOwner && member.role == 'student' && member.userId != widget.profile.id
                         ? IconButton(
                             tooltip: _fr ? 'Retirer du groupe' : 'Remove from group',
                             icon: const Icon(Icons.person_remove_alt_1_rounded),
