@@ -8,6 +8,7 @@ import '../core/offline/offline_banner.dart';
 import '../core/services/push_service.dart';
 import '../core/services/session_service.dart';
 import '../features/auth/widgets/auth_gate.dart';
+import '../features/auth/pages/reset_password_page.dart';
 import '../features/public/pages/language_selection_page.dart';
 import '../supabase_config.dart';
 import 'routes.dart';
@@ -47,6 +48,8 @@ class FiseSchoolApp extends StatefulWidget {
 }
 
 class _FiseSchoolAppState extends State<FiseSchoolApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<dynamic>? _authStateSubscription;
   Locale _locale = const Locale('fr');
   bool _languageChosen = false;
   bool _languageReady = false;
@@ -75,6 +78,16 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
     if (!mounted) return;
     setState(() {});
     if (!_supabaseInitialized) return;
+    _authStateSubscription ??= Supabase.instance.client.auth.onAuthStateChange.listen(
+      (state) {
+        if (state.event == AuthChangeEvent.passwordRecovery) {
+          _navigatorKey.currentState?.pushNamed(FiseSchoolRoutes.resetPassword);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('Password recovery link handling failed: $error');
+      },
+    );
     try {
       await PushService.initialize().timeout(const Duration(seconds: 4));
     } catch (error) {
@@ -127,8 +140,15 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
   }
 
   @override
+  void dispose() {
+    unawaited(_authStateSubscription?.cancel());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: fiseMessengerKey,
       title: 'Fise School',
