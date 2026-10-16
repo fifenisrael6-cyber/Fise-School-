@@ -29,6 +29,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
   final Map<String, int> _answers = {};
   final Map<String, Map<String, dynamic>> _instantFeedback = {};
   final Set<String> _checkingAnswers = {};
+  final Set<String> _lockedAnswers = {};
   Map<String, dynamic>? _result;
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -78,6 +79,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
       setState(() {
         _checkingAnswers.remove(question.id);
         _instantFeedback[question.id] = feedback;
+        _lockedAnswers.add(question.id);
       });
       final correct = feedback['is_correct'] == true;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,7 +93,12 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
       );
     } catch (_) {
       if (!mounted) return;
-      setState(() => _checkingAnswers.remove(question.id));
+      setState(() {
+        _checkingAnswers.remove(question.id);
+        _answers.remove(question.id);
+        _instantFeedback.remove(question.id);
+        _lockedAnswers.remove(question.id);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_fr
             ? 'Impossible de vérifier cette réponse. Vérifie ta connexion.'
@@ -183,25 +190,50 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                               const SizedBox(height: 8),
                               ...List.generate(question.optionsFor(widget.locale.languageCode).length, (index) {
                                 final options = question.optionsFor(widget.locale.languageCode);
+                                final feedback = _instantFeedback[question.id];
+                                final correctIndex = feedback?['correct_option_index'] is num
+                                    ? (feedback!['correct_option_index'] as num).toInt()
+                                    : null;
+                                final locked = _lockedAnswers.contains(question.id);
+                                final isCorrectOption = correctIndex == index;
+                                final isSelected = _answers[question.id] == index;
+                                final optionColor = feedback == null
+                                    ? null
+                                    : isCorrectOption
+                                        ? const Color(0xFF2E7D32)
+                                        : isSelected
+                                            ? const Color(0xFFC62828)
+                                            : null;
                                 return RadioListTile<int>(
                                   contentPadding: EdgeInsets.zero,
                                   dense: true,
                                   value: index,
                                   groupValue: _answers[question.id],
-                                  title: Text(options[index]),
+                                  title: Text(options[index], style: TextStyle(
+                                    color: optionColor,
+                                    fontWeight: (isSelected || isCorrectOption) && feedback != null
+                                        ? FontWeight.w700
+                                        : FontWeight.normal,
+                                  )),
+                                  tileColor: feedback != null && (isSelected || isCorrectOption)
+                                      ? (isCorrectOption
+                                          ? const Color(0x1A2E7D32)
+                                          : const Color(0x1AC62828))
+                                      : null,
+                                  activeColor: optionColor,
+                                  selected: isSelected,
                                   secondary: _checkingAnswers.contains(question.id)
                                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                       : _instantFeedback[question.id] == null
                                           ? null
                                           : Icon(
-                                              _instantFeedback[question.id]!['is_correct'] == true ? Icons.check_circle : Icons.cancel,
-                                              color: _instantFeedback[question.id]!['is_correct'] == true ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                                              isCorrectOption ? Icons.check_circle : (isSelected ? Icons.cancel : Icons.circle_outlined),
+                                              color: isCorrectOption ? const Color(0xFF2E7D32) : (isSelected ? const Color(0xFFC62828) : Colors.black26),
                                             ),
-                                  onChanged: _submitting ? null : (value) {
-                                    if (value != null) {
+                                  onChanged: (_submitting || locked || _checkingAnswers.contains(question.id)) ? null : (value) {
+                                    if (value != null && !_answers.containsKey(question.id)) {
                                       setState(() {
                                         _answers[question.id] = value;
-                                        _instantFeedback.remove(question.id);
                                         _checkingAnswers.add(question.id);
                                       });
                                       _checkAnswer(question, value);
