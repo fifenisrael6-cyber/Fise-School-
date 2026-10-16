@@ -424,7 +424,9 @@ class CourseService {
         request = request.eq('subject_id', subjectId);
       }
 
-      final response = await request.order('updated_at', ascending: false);
+      final response = await request
+          .order('updated_at', ascending: false)
+          .timeout(JsonCache.networkTimeout);
       // A dynamic Supabase query can expose its decoded result as List<dynamic>.
       // Normalize it to a list and explicitly type every mapped Course.
       final rows = response is List ? response : const <dynamic>[];
