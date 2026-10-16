@@ -46,6 +46,22 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsSection(
             title: isFrench ? 'Compte' : 'Account',
             children: [
+              if (profile.role.toLowerCase() == 'student')
+                _SettingsTile(
+                  icon: Icons.swap_horiz_rounded,
+                  title: isFrench ? 'Changer de classe' : 'Change classroom',
+                  subtitle: isFrench
+                      ? 'Option élève : saisir le code de groupe de votre enseignant'
+                      : 'Student option: enter your teacher’s group code',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StudentClassSwitchPage(locale: widget.locale),
+                      ),
+                    );
+                  },
+                ),
               _SettingsTile(
                 icon: Icons.person_outline_rounded,
                 title: isFrench ? 'Profil' : 'Profile',
@@ -56,22 +72,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   Navigator.pop(context);
                 },
               ),
-              if (profile.role == 'student')
-                _SettingsTile(
-                  icon: Icons.swap_horiz_rounded,
-                  title: isFrench ? 'Changer de classe' : 'Change classroom',
-                  subtitle: isFrench
-                      ? 'Rejoindre une autre classe avec le code de groupe de l’enseignant'
-                      : 'Join another classroom using a teacher group code',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StudentClassSwitchPage(locale: widget.locale),
-                      ),
-                    );
-                  },
-                ),
               _SettingsTile(
                 icon: Icons.notifications_none_rounded,
                 title: isFrench ? 'Notifications' : 'Notifications',
