@@ -13,7 +13,7 @@ declare
 begin
   if auth.uid() is null then raise exception 'Authentication required'; end if;
   select p.role into v_role from public.profiles p where p.id = auth.uid();
-  if v_role not in ('student', 'teacher', 'admin') then
+  if coalesce(v_role, '') not in ('student', 'teacher', 'admin') then
     raise exception 'This account cannot access teacher groups';
   end if;
 
