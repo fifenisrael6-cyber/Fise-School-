@@ -152,11 +152,6 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       if (!mounted) return;
       widget.onSuccess();
       _openMessages();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isFrench ? 'Salle mise à jour.' : 'Classroom updated.'),
-        ),
-      );
     } catch (e) {
       if (mounted) {
         final message = e.toString().toLowerCase();
