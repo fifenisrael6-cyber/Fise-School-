@@ -137,6 +137,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false, markRead: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
       ..subscribe();
   }
 
@@ -157,6 +168,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
       setState(() => _loading = true);
     }
     try {
+      try {
+        final isMember = await _service.isMember(widget.group.id);
+        if (!isMember) {
+          if (mounted) Navigator.of(context).pop(true);
+          return;
+        }
+      } catch (_) {
+        // Offline: keep the last local view; the server still guards every action.
+      }
       if (markRead) {
         // Receipts are supplementary: keep the chat usable if the new receipt
         // migration has not reached the connected Supabase project yet.
