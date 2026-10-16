@@ -28,10 +28,6 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
   String? _error;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   void dispose() {
@@ -62,19 +58,8 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
       if (!valid) {
         throw StateError('Invalid or unauthorized access code.');
       }
-
       if (!mounted) return;
-
-      widget.onSuccess();
-      Navigator.of(context).pop();
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MessagesHubPage(
-            locale: widget.locale,
-            profile: widget.profile,
-          ),
-        ),
-      );
+      _openMessages();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -85,34 +70,144 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         });
       }
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _switchClassroom() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) {
+      setState(() {
+        _error = _isFrench ? 'Entrez d’abord le code unique de l’enseignant.' : 'Enter the teacher code first.';
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final classrooms = await _service.listSwitchableClassrooms(code);
+      if (!mounted) return;
+      if (classrooms.isEmpty) {
+        throw StateError('No compatible classrooms found for this teacher code.');
+      }
+
+      String? selectedClassId;
+      final chosenClassId = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text(_isFrench ? 'Choisir la nouvelle salle' : 'Choose the new classroom'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _isFrench
+                        ? 'Le changement ne sera effectué qu’après votre confirmation.'
+                        : 'Your classroom changes only after you confirm.',
+                  ),
+                  const SizedBox(height: 12),
+                  ...classrooms.map((room) {
+                    final id = room['class_id']?.toString() ?? '';
+                    final name = room['class_name']?.toString() ?? id;
+                    final isCurrent = room['is_current'] == true;
+                    return RadioListTile<String>(
+                      value: id,
+                      groupValue: selectedClassId,
+                      title: Text(name),
+                      subtitle: isCurrent
+                          ? Text(_isFrench ? 'Salle actuelle' : 'Current classroom')
+                          : null,
+                      onChanged: id.isEmpty
+                          ? null
+                          : (value) => setDialogState(() => selectedClassId = value),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: selectedClassId == null
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(selectedClassId),
+                child: Text(_isFrench ? 'Confirmer' : 'Confirm'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (chosenClassId == null) return;
+      await _service.switchStudentClassroom(code: code, classId: chosenClassId);
+      if (!mounted) return;
+      widget.onSuccess();
+      _openMessages();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isFrench ? 'Salle mise à jour.' : 'Classroom updated.'),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        final message = e.toString().toLowerCase();
+        setState(() {
+          _error = message.contains('invalid') || message.contains('incompatible')
+              ? (_isFrench
+                  ? 'Code invalide ou salle non compatible avec votre profil.'
+                  : 'Invalid code or classroom incompatible with your profile.')
+              : (_isFrench
+                  ? 'Impossible de changer de salle. Vérifiez le code et réessayez.'
+                  : 'Could not change classroom. Check the code and try again.');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _openMessages() {
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MessagesHubPage(
+          locale: widget.locale,
+          profile: widget.profile,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(
-        _isFrench ? 'Code d\'accès requis' : 'Access code required',
-      ),
+      title: Text(_isFrench ? 'Code d\'accès requis' : 'Access code required'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             _isFrench
-                ? 'Entrez le code d\'accès fourni par votre enseignant pour accéder à la messagerie de votre enseignant.'
-                : "Enter the access code provided by your teacher to access your teacher's messaging.",
+                ? 'Entrez le code d’accès fourni par votre enseignant pour accéder à sa messagerie.'
+                : "Enter the code provided by your teacher to access their messaging.",
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _codeController,
             enabled: !_loading,
+            textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
-              labelText: _isFrench ? 'Code d\'accès' : 'Access code',
-              hintText: 'fise...',
+              labelText: _isFrench ? 'Code d’accès' : 'Access code',
+              hintText: 'FISE-XXXXXX',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -125,6 +220,10 @@ class _AccessCodeDialogState extends State<AccessCodeDialog> {
         TextButton(
           onPressed: _loading ? null : () => Navigator.pop(context),
           child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+        ),
+        TextButton(
+          onPressed: _loading ? null : _switchClassroom,
+          child: Text(_isFrench ? 'Changer de salle' : 'Switch classroom'),
         ),
         FilledButton(
           onPressed: _loading ? null : _validateAndAccess,
