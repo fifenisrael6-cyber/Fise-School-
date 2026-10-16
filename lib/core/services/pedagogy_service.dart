@@ -148,7 +148,7 @@ class CourseService {
     if (!_refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(listStudentCatalogChapters(studentId, subjectId: subjectId, _refresh: true));
+        unawaited(() async { await listStudentCatalogChapters(studentId, subjectId: subjectId, _refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => CourseChapter.fromMap(Map<String, dynamic>.from(row)))
             .toList(growable: false);
@@ -295,7 +295,7 @@ class CourseService {
     if (!_refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(listStudentChapterContent(studentId, subjectId: subjectId, _refresh: true));
+        unawaited(() async { await listStudentChapterContent(studentId, subjectId: subjectId, _refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => Map<String, dynamic>.from(row))
             .toList(growable: false);
@@ -400,7 +400,7 @@ class CourseService {
     if (!_refresh) {
       final cached = await JsonCache.instance.read(cacheKey);
       if (cached is List) {
-        unawaited(listStudentCourses(studentId, subjectId: subjectId, _refresh: true));
+        unawaited(() async { await listStudentCourses(studentId, subjectId: subjectId, _refresh: true); }());
         return cached.whereType<Map>()
             .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
             .toList(growable: false);
@@ -500,7 +500,7 @@ class CourseService {
     if (!_refresh) {
       final cached = await OfflineRepository().getLessonsForCourse(courseId);
       if (cached.isNotEmpty) {
-        unawaited(listLessons(courseId, _refresh: true));
+        unawaited(() async { await listLessons(courseId, _refresh: true); }());
         return cached;
       }
     }
@@ -798,7 +798,7 @@ class LessonService {
     if (!_refresh) {
       final cached = await OfflineRepository().getLesson(id);
       if (cached != null) {
-        unawaited(getLesson(id, _refresh: true));
+        unawaited(() async { await getLesson(id, _refresh: true); }());
         return cached;
       }
     }
