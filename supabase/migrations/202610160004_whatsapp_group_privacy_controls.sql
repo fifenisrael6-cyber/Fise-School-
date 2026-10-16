@@ -32,6 +32,21 @@ using (
   and not ((select auth.uid()) = any(coalesce(hidden_for, '{}'::uuid[])))
 );
 
+-- A group owner may remove students, not other teachers; every member may leave themselves.
+drop policy if exists "owner removes or member leaves" on public.message_group_members;
+create policy "owner removes or member leaves"
+on public.message_group_members for delete to authenticated
+using (
+  user_id = (select auth.uid())
+  or (
+    role = 'student'
+    and exists (
+      select 1 from public.message_groups g
+      where g.id = group_id and g.owner_id = (select auth.uid())
+    )
+  )
+);
+
 -- Physical row deletion would bypass the per-user hiding and shared tombstone rules.
 drop policy if exists "senders delete own private messages" on public.private_messages;
 drop policy if exists "senders delete own group messages" on public.message_group_messages;
