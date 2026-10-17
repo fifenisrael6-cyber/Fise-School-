@@ -69,6 +69,14 @@ class AiServiceException implements Exception {
   String toString() => message;
 }
 
+class AiQuotaExceededException extends AiServiceException {
+  const AiQuotaExceededException(super.message) : super(retryable: false);
+}
+
+class AiPremiumFeatureException extends AiServiceException {
+  const AiPremiumFeatureException(super.message) : super(retryable: false);
+}
+
 class GeminiService {
   GeminiService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
@@ -199,9 +207,18 @@ class GeminiService {
   AiServiceException _messageForError(String raw, int? status, bool isFrench) {
     final code = raw.trim().toUpperCase();
     if (code == 'AI_QUOTA_EXCEEDED' || status == 429) {
-      return AiServiceException(isFrench
-          ? 'Le service IA a atteint sa limite temporaire. Réessaie dans quelques minutes.'
-          : 'The AI service has reached its temporary limit. Try again in a few minutes.');
+      return AiQuotaExceededException(isFrench
+          ? 'Tu as utilisé tes 4 questions IA gratuites. Passe à Premium pour continuer immédiatement.'
+          : 'You have used your 4 free AI questions. Upgrade to Premium to continue immediately.');
+    }
+    final normalized = raw.toLowerCase();
+    if (status == 403 &&
+        (normalized.contains('version gratuite ne permet pas') ||
+         normalized.contains('free version does not allow') ||
+         normalized.contains('free tier does not allow'))) {
+      return AiPremiumFeatureException(isFrench
+          ? 'Les documents PDF et les photos avec l’IA sont réservés à Premium. Passe à Premium pour les utiliser.'
+          : 'PDF documents and AI photo analysis require Premium. Upgrade to use them.');
     }
     if (code == 'AI_MODEL_CONFIGURATION_ERROR') {
       return AiServiceException(isFrench
