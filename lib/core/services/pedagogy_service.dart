@@ -12,6 +12,7 @@ import '../../models/user_profile.dart';
 import '../offline/json_cache.dart';
 import '../offline/offline_repository.dart';
 import '../offline/pending_progress.dart';
+import 'free_tier_service.dart';
 
 class SubjectService {
   final SupabaseClient _client;
@@ -453,8 +454,15 @@ class CourseService {
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
-      await OfflineRepository().saveLessons(lessons);
-      return lessons;
+      final freeTier = FreeTierService(client: _client);
+      final allowedLessons = <Lesson>[];
+      for (final lesson in lessons) {
+        if (await freeTier.consume('lesson', lesson.id)) {
+          allowedLessons.add(lesson);
+        }
+      }
+      await OfflineRepository().saveLessons(allowedLessons);
+      return allowedLessons;
     } catch (_) {
       return OfflineRepository().getLessonsForCourse(courseId);
     }
