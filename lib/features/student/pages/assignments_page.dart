@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/assignment_service.dart';
+import '../../../core/services/free_tier_service.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 
@@ -26,6 +28,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   late Future<List<Assignment>> _assignmentsFuture;
 
   bool get _isEnglish => widget.locale.languageCode == 'en';
+  bool _quotaOfferShown = false;
 
   @override
   void initState() {
@@ -36,6 +39,20 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   void _loadAssignments() {
     _assignmentsFuture = _service.listStudentAssignments(
       studentId: widget.profile.id,
+    );
+    _assignmentsFuture.then((_) => _maybeShowQcmQuotaOffer());
+  }
+
+  Future<void> _maybeShowQcmQuotaOffer() async {
+    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('qcm');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    _quotaOfferShown = true;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _isEnglish ? 'assessments and QCMs' : 'les évaluations et QCM',
     );
   }
 
