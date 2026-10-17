@@ -186,7 +186,8 @@ class _AiPageState extends State<AiPage> {
       final quotaReached = rawError.contains('questions ia gratuites') ||
           rawError.contains('free ai questions') ||
           rawError.contains('free plan cannot send documents') ||
-          rawError.contains('ne permet pas d’envoyer des documents');
+          rawError.contains('ne permet pas d’envoyer des documents') ||
+          rawError.contains("ne permet pas d'envoyer des documents");
       setState(() {
         _messages.add(_AiMessage(
           text: _friendlyError(error),
