@@ -38,6 +38,7 @@ class FreeTierService {
   Future<bool> consume(String feature, String resourceId) async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
+    final cacheKey = 'free_tier_access_${user.id}_$feature';
 
     try {
       final profile = await _client
@@ -51,10 +52,20 @@ class FreeTierService {
         'consume_student_free_quota',
         params: {'p_feature': feature, 'p_resource_id': resourceId},
       );
-      if (result is Map) return result['allowed'] == true;
-      return false;
+      final allowed = result is Map && result['allowed'] == true;
+      if (allowed) {
+        final previous = await JsonCache.instance.read(cacheKey);
+        final ids = previous is List
+            ? previous.map((item) => item.toString()).toSet()
+            : <String>{};
+        ids.add(resourceId);
+        await JsonCache.instance.write(cacheKey, ids.toList());
+      }
+      return allowed;
     } catch (_) {
-      return false;
+      // Offline access is limited to resources already granted while online.
+      final previous = await JsonCache.instance.read(cacheKey);
+      return previous is List && previous.any((item) => item.toString() == resourceId);
     }
   }
 }
