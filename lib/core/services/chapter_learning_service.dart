@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/chapter_learning.dart';
 import '../../models/user_profile.dart';
+import 'free_tier_service.dart';
 
 /// Accès Supabase au nouveau parcours Chapitre > Cours > Quiz > Exercices.
 /// Les autorisations effectives restent celles des politiques RLS de Supabase.
@@ -219,7 +220,15 @@ class ChapterLearningService {
       }
     }
 
-    return rows.map(ChapterQuiz.fromMap).toList();
+    final quizzes = rows.map(ChapterQuiz.fromMap).toList();
+    final freeTier = FreeTierService(client: _client);
+    final allowed = <ChapterQuiz>[];
+    for (final quiz in quizzes) {
+      if (await freeTier.consume('qcm', quiz.id)) {
+        allowed.add(quiz);
+      }
+    }
+    return allowed;
   }
 
   /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
