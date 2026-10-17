@@ -4,7 +4,7 @@ create table if not exists public.student_free_quota_events (
   id bigint generated always as identity primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
   feature text not null check (feature in
-    ('ai_question','group_send','group_receive','lesson','qcm','annal','evaluation')),
+    ('ai_question','group_send','group_receive','course','lesson','qcm','annal','evaluation')),
   resource_id text,
   created_at timestamptz not null default now()
 );
@@ -47,6 +47,7 @@ begin
     when 'ai_question' then 4
     when 'group_send' then 2
     when 'group_receive' then 2
+    when 'course' then 2
     when 'lesson' then 2
     when 'qcm' then 2
     when 'annal' then 2
@@ -62,7 +63,7 @@ begin
 
   -- Revisiting a resource already granted during the last 24 hours is allowed
   -- and does not consume another unit.
-  if p_feature in ('lesson','qcm','annal','evaluation') then
+  if p_feature in ('course','lesson','qcm','annal','evaluation') then
     if nullif(trim(coalesce(p_resource_id, '')), '') is null then
       return jsonb_build_object('allowed', false, 'reason', 'resource_required');
     end if;
