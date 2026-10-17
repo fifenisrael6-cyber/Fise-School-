@@ -415,6 +415,32 @@ class CourseService {
     }
 
     try {
+      final roleRow = await _client.from('profiles').select('role')
+          .eq('id', studentId).maybeSingle();
+      if (roleRow?['role'] == 'student') {
+        final premium = await _client.rpc(
+          'is_student_premium',
+          params: {'p_user_id': studentId},
+        );
+        if (premium != true) {
+          final freeTier = FreeTierService(client: _client);
+          final allowedCourses = <Course>[];
+          for (final course in courses) {
+            if (await freeTier.consume('course', course.id)) {
+              allowedCourses.add(course);
+            } else {
+              break;
+            }
+          }
+          courses = allowedCourses;
+        }
+      }
+    } catch (_) {
+      // Never expose extra online courses when quota verification fails.
+      courses = const <Course>[];
+    }
+
+    try {
       await OfflineRepository().saveCourses(courses);
     } catch (_) {
       // Offline caching is best-effort; the live courses still belong on screen.
