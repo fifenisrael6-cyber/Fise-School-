@@ -6,6 +6,7 @@ import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/gemini_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/user_profile.dart';
 
 class AiPage extends StatefulWidget {
@@ -181,15 +182,27 @@ class _AiPageState extends State<AiPage> {
         return;
       }
       final retryable = error is! AiServiceException || error.retryable;
+      final rawError = error.toString().toLowerCase();
+      final quotaReached = rawError.contains('ai_quota_exceeded') ||
+          rawError.contains('questions ia gratuites') ||
+          rawError.contains('free ai questions');
       setState(() {
         _messages.add(_AiMessage(
           text: _friendlyError(error),
           fromUser: false,
           isError: true,
-          canRetry: retryable,
+          canRetry: retryable && !quotaReached,
         ));
         _sending = false;
       });
+      if (quotaReached && mounted) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _isFrench ? 'l’assistant IA' : 'the AI assistant',
+        );
+      }
     }
     _scrollToBottom();
   }
