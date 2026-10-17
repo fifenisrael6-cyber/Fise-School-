@@ -424,15 +424,22 @@ class CourseService {
         );
         if (premium != true) {
           final freeTier = FreeTierService(client: _client);
-          final allowedCourses = <Course>[];
-          for (final course in courses) {
+          final previouslyGranted = await freeTier.cachedResourceIds('course');
+          final orderedCourses = [...courses]..sort((a, b) {
+            final aGranted = previouslyGranted.contains(a.id);
+            final bGranted = previouslyGranted.contains(b.id);
+            if (aGranted == bGranted) return 0;
+            return aGranted ? -1 : 1;
+          });
+          final allowedIds = <String>{};
+          for (final course in orderedCourses) {
             if (await freeTier.consume('course', course.id)) {
-              allowedCourses.add(course);
+              allowedIds.add(course.id);
             } else {
               break;
             }
           }
-          courses = allowedCourses;
+          courses = courses.where((course) => allowedIds.contains(course.id)).toList(growable: false);
         }
       }
     } catch (_) {
@@ -481,14 +488,22 @@ class CourseService {
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
       final freeTier = FreeTierService(client: _client);
-      final allowedLessons = <Lesson>[];
-      for (final lesson in lessons) {
+      final previouslyGranted = await freeTier.cachedResourceIds('lesson');
+      final orderedLessons = [...lessons]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final lesson in orderedLessons) {
         if (await freeTier.consume('lesson', lesson.id)) {
-          allowedLessons.add(lesson);
+          allowedIds.add(lesson.id);
         } else {
           break;
         }
       }
+      final allowedLessons = lessons.where((lesson) => allowedIds.contains(lesson.id)).toList(growable: false);
       await OfflineRepository().saveLessons(allowedLessons);
       return allowedLessons;
     } catch (_) {
