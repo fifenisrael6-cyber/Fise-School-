@@ -38,6 +38,7 @@ class _AuthPageState extends State<AuthPage> {
 
   late bool _isRegistering = widget.startInRegisterMode;
   late String _role = widget.initialRole;
+  String? _teacherVocation;
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -191,6 +192,7 @@ class _AuthPageState extends State<AuthPage> {
           languageOption: _languageOption,
           className: _selectedClassName(level),
           classId: _selectedClassId,
+          teacherVocation: _isStudent ? null : _teacherVocation,
         );
       } else {
         await _authService.signIn(
@@ -380,6 +382,31 @@ class _AuthPageState extends State<AuthPage> {
           }
         },
       ),
+      if (_role == 'teacher') ...[
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          key: const ValueKey('teacher-vocation'),
+          initialValue: _teacherVocation,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: _lang == 'en' ? 'Teaching stream' : 'Filière enseignée',
+          ),
+          items: [
+            DropdownMenuItem(
+              value: 'scientific',
+              child: Text(_lang == 'en' ? 'Scientific' : 'Scientifique'),
+            ),
+            DropdownMenuItem(
+              value: 'literary',
+              child: Text(_lang == 'en' ? 'Literary' : 'Littéraire'),
+            ),
+          ],
+          validator: (value) => _role == 'teacher' && value == null
+              ? texts.selectionRequired
+              : null,
+          onChanged: (value) => setState(() => _teacherVocation = value),
+        ),
+      ],
       const SizedBox(height: 14),
       _field(_firstNameController, texts.firstName, texts),
       const SizedBox(height: 14),
