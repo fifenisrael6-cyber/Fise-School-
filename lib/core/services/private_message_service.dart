@@ -79,6 +79,14 @@ class PrivateMessageService {
 
   /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
   /// Sans réseau, il reste en attente (horloge) et part au retour du réseau.
+  Future<bool> canUseFreeMessageQuota(String feature) async {
+    final result = await _client.rpc(
+      'check_student_free_quota',
+      params: {'p_feature': feature},
+    );
+    return result is Map && result['allowed'] == true;
+  }
+
   Future<void> send({
     required String recipientId,
     required String body,
