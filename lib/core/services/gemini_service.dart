@@ -70,11 +70,11 @@ class AiServiceException implements Exception {
 }
 
 class AiQuotaExceededException extends AiServiceException {
-  const AiQuotaExceededException(super.message) : super(retryable: false);
+  const AiQuotaExceededException(String message) : super(message, retryable: false);
 }
 
 class AiPremiumFeatureException extends AiServiceException {
-  const AiPremiumFeatureException(super.message) : super(retryable: false);
+  const AiPremiumFeatureException(String message) : super(message, retryable: false);
 }
 
 class GeminiService {
