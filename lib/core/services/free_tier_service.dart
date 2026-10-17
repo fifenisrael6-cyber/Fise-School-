@@ -8,6 +8,23 @@ class FreeTierService {
 
   final SupabaseClient _client;
 
+  Future<bool> canAccessMultimedia() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    try {
+      final profile = await _client.from('profiles').select('role')
+          .eq('id', user.id).maybeSingle();
+      if (profile?['role'] != 'student') return true;
+      final premium = await _client.rpc(
+        'is_student_premium',
+        params: {'p_user_id': user.id},
+      );
+      return premium == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> consume(String feature, String resourceId) async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
