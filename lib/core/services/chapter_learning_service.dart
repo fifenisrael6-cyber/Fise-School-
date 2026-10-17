@@ -226,6 +226,8 @@ class ChapterLearningService {
     for (final quiz in quizzes) {
       if (await freeTier.consume('qcm', quiz.id)) {
         allowed.add(quiz);
+      } else {
+        break;
       }
     }
     return allowed;
