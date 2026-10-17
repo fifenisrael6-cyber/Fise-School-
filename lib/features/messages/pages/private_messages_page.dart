@@ -95,6 +95,16 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         }
       })
       .subscribe();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFreeReceiveQuota());
+  }
+
+  Future<void> _checkFreeReceiveQuota() async {
+    try {
+      final allowed = await _service.canUseFreeMessageQuota('group_receive');
+      if (!allowed && mounted) await _showPremiumRequired();
+    } catch (_) {
+      // Preserve offline chat; the server-side trigger remains authoritative.
+    }
   }
 
   @override
