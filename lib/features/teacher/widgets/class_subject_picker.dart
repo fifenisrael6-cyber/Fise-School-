@@ -38,10 +38,90 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
+  String? _teacherVocation;
+
   @override
   void initState() {
     super.initState();
+    _loadTeacherVocation();
     _loadFollowedClasses();
+  }
+
+  Future<void> _loadTeacherVocation() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('teacher_vocation')
+          .eq('id', widget.teacherId)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        final value = row?['teacher_vocation']?.toString().toLowerCase();
+        _teacherVocation = value == 'scientific' || value == 'literary'
+            ? value
+            : null;
+      });
+      if (_selectedIds.isNotEmpty) await _reloadSubjects();
+    } catch (_) {
+      // If older teacher profiles have no vocation, preserve existing behaviour.
+    }
+  }
+
+  bool _matchesTeacherVocation(Subject subject) {
+    final vocation = _teacherVocation;
+    if (vocation == null) return true;
+    final code = subject.code.toLowerCase().replaceAll('-', '_');
+    final label = '${subject.nameFr} ${subject.nameEn}'.toLowerCase();
+
+    const scientificCodes = <String>{
+      'mathematiques', 'mathematics_en', 'additional_mathematics',
+      'further_mathematics', 'technical_math', 'technical_math_en',
+      'physique', 'physics_en', 'chimie', 'chemistry_en',
+      'fr_tech_physique_chimie', 'pct', 'svt', 'biology_en',
+      'human_biology', 'geology', 'sciences', 'general_science',
+      'technical_science', 'technical_science_en', 'informatique',
+      'computer_science_en', 'fr_tech_informatique', 'en_tech_ict',
+      'technologie', 'technical_science', 'technical_math',
+    };
+    const literaryCodes = <String>{
+      'francais', 'french_language', 'english_language', 'anglais',
+      'en_tech_english', 'allemand', 'espagnol', 'italien', 'arabe',
+      'chinois', 'latin', 'grec', 'seconde_langue', 'langues_nationales',
+      'histoire', 'history_en', 'geographie', 'geography_en',
+      'fr_tech_histoire_geo', 'philosophie', 'philosophy_en',
+      'litterature', 'literature_in_english', 'logic', 'economics',
+      'commerce', 'commerce_fr', 'accounting', 'comptabilite_fr',
+      'education_civique', 'citizenship_en', 'fr_tech_ecm',
+      'en_tech_citizenship', 'religious_studies',
+    };
+
+    if (vocation == 'literary') {
+      if (scientificCodes.contains(code)) return false;
+      if (label.contains('mathemat') || label.contains('mathématique') ||
+          label.contains('physics') || label.contains('physique') ||
+          label.contains('chemistry') || label.contains('chimie') ||
+          label.contains('biology') || label.contains('biologie') ||
+          label.contains('science') || label.contains('sciences') ||
+          label.contains('computer science') || label.contains('informatique') ||
+          label.contains('geology') || label.contains('géologie')) {
+        return false;
+      }
+      return true;
+    }
+
+    if (literaryCodes.contains(code)) return false;
+    if (label.contains('philosoph') || label.contains('history') ||
+        label.contains('histoire') || label.contains('geography') ||
+        label.contains('géographie') || label.contains('literature') ||
+        label.contains('littérature') || label.contains('language') ||
+        label.contains('langue') || label.contains('french') ||
+        label.contains('français') || label.contains('english') ||
+        label.contains('anglais') || label.contains('economics') ||
+        label.contains('économie') || label.contains('commerce') ||
+        label.contains('accounting') || label.contains('comptabilité')) {
+      return false;
+    }
+    return true;
   }
 
   Future<void> _loadFollowedClasses() async {
@@ -192,7 +272,9 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       }
 
       if (!mounted) return;
-      final subjects = (common ?? <String, Subject>{}).values.toList()
+      final subjects = (common ?? <String, Subject>{}).values
+          .where(_matchesTeacherVocation)
+          .toList()
         ..sort((a, b) => a.labelFor(_fr ? 'fr' : 'en')
             .toLowerCase()
             .compareTo(b.labelFor(_fr ? 'fr' : 'en').toLowerCase()));
