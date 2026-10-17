@@ -459,6 +459,8 @@ class CourseService {
       for (final lesson in lessons) {
         if (await freeTier.consume('lesson', lesson.id)) {
           allowedLessons.add(lesson);
+        } else {
+          break;
         }
       }
       await OfflineRepository().saveLessons(allowedLessons);
