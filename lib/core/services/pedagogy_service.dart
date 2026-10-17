@@ -988,9 +988,9 @@ class ResourceService {
   bool _isMultimedia(CourseResource resource) {
     final type = resource.resourceType.toLowerCase();
     final mime = (resource.mimeType ?? '').toLowerCase();
-    return const {'video','audio','image','photo','multimedia'}.contains(type) ||
+    return const {'video','audio','image','photo','multimedia','pdf'}.contains(type) ||
         mime.startsWith('video/') || mime.startsWith('audio/') ||
-        mime.startsWith('image/');
+        mime.startsWith('image/') || mime == 'application/pdf';
   }
 
   Future<List<CourseResource>> _applyMultimediaEntitlement(
