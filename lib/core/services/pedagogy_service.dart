@@ -414,39 +414,9 @@ class CourseService {
           .toList(growable: false);
     }
 
-    try {
-      final roleRow = await _client.from('profiles').select('role')
-          .eq('id', studentId).maybeSingle();
-      if (roleRow?['role'] == 'student') {
-        final premium = await _client.rpc(
-          'is_student_premium',
-          params: {'p_user_id': studentId},
-        );
-        if (premium != true) {
-          final freeTier = FreeTierService(client: _client);
-          final previouslyGranted = await freeTier.cachedResourceIds('course');
-          final orderedCourses = [...courses]..sort((a, b) {
-            final aGranted = previouslyGranted.contains(a.id);
-            final bGranted = previouslyGranted.contains(b.id);
-            if (aGranted == bGranted) return 0;
-            return aGranted ? -1 : 1;
-          });
-          final allowedIds = <String>{};
-          for (final course in orderedCourses) {
-            if (await freeTier.consume('course', course.id)) {
-              allowedIds.add(course.id);
-            } else {
-              break;
-            }
-          }
-          courses = courses.where((course) => allowedIds.contains(course.id)).toList(growable: false);
-        }
-      }
-    } catch (_) {
-      // Never expose extra online courses when quota verification fails.
-      courses = const <Course>[];
-    }
-
+    // Opening the course catalogue or a course container is free.
+    // The free quota is consumed only when the student opens an actual lesson;
+    // otherwise merely entering a course can incorrectly trigger Premium.
     try {
       await OfflineRepository().saveCourses(courses);
     } catch (_) {
