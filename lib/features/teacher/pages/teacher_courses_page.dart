@@ -33,6 +33,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   final ResourceService _resources = ResourceService();
 
   late Future<List<Course>> _coursesFuture;
+  final TextEditingController _courseSearchController = TextEditingController();
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -44,6 +45,12 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
 
   void _reload() {
     _coursesFuture = _loadCoursesWithDiagnostics();
+  }
+
+  @override
+  void dispose() {
+    _courseSearchController.dispose();
+    super.dispose();
   }
 
   String get _offlineCacheKey => 'teacher_courses_${widget.profile.id}';
@@ -304,6 +311,10 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
           }
 
           final courses = snapshot.data ?? const <Course>[];
+          final query = _courseSearchController.text.trim().toLowerCase();
+          final visibleCourses = query.isEmpty
+              ? courses
+              : courses.where((course) => '${course.labelFor(widget.locale.languageCode)} ${course.titleFr} ${course.titleEn} ${course.descriptionFr ?? ''} ${course.descriptionEn ?? ''}'.toLowerCase().contains(query)).toList(growable: false);
 
           if (courses.isEmpty) {
             return Center(
@@ -324,10 +335,33 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
             },
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-              itemCount: courses.length,
+              itemCount: visibleCourses.length + (visibleCourses.isEmpty ? 2 : 1),
               separatorBuilder: (_, _) => const SizedBox(height: 14),
               itemBuilder: (_, index) {
-                final course = courses[index];
+                if (index == 0) {
+                  return TextField(
+                    controller: _courseSearchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: _isFrench ? 'Rechercher un cours ou un média…' : 'Search a course or media…',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _courseSearchController.text.isEmpty ? null : IconButton(
+                        tooltip: _isFrench ? 'Effacer' : 'Clear',
+                        onPressed: () { _courseSearchController.clear(); setState(() {}); },
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                  );
+                }
+                final filteredIndex = index - 1;
+                if (filteredIndex >= visibleCourses.length) {
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_isFrench ? 'Aucun résultat pour cette recherche.' : 'No search results.'),
+                  );
+                }
+                final course = visibleCourses[filteredIndex];
 
                 return _CourseCard(
                   course: course,

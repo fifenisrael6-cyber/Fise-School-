@@ -60,6 +60,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   StreamSubscription<bool>? _connectionSubscription;
   bool _offlineMode = false;
   bool _quotaOfferShown = false;
+  final TextEditingController _courseSearchController = TextEditingController();
 
   late Future<List<_FeedItem>> _feedFuture;
   late Future<List<CourseChapter>> _catalogChaptersFuture;
@@ -87,6 +88,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   @override
   void dispose() {
     _connectionSubscription?.cancel();
+    _courseSearchController.dispose();
     super.dispose();
   }
 
@@ -330,11 +332,52 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               .toList();
           if (!focused) return _chapterCatalog();
 
-          return _feedList(
-            <_FeedItem>[...officialCourses, ...teacherMedia],
-            _fr
-                ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
-                : 'No course or media has been published for this chapter yet.',
+          final query = _courseSearchController.text.trim().toLowerCase();
+          final allFeedItems = <_FeedItem>[...officialCourses, ...teacherMedia];
+          final filteredItems = query.isEmpty ? allFeedItems : allFeedItems.where((item) {
+            final course = item.course;
+            final chapter = item.chapterContent;
+            final searchable = [
+              if (course != null) course.labelFor(widget.locale.languageCode),
+              if (course != null) course.descriptionFr ?? '',
+              if (course != null) course.descriptionEn ?? '',
+              if (course != null) course.contentFr ?? '',
+              if (course != null) course.contentEn ?? '',
+              if (chapter != null) chapter.values.join(' '),
+            ].join(' ').toLowerCase();
+            return searchable.contains(query);
+          }).toList(growable: false);
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: TextField(
+                  controller: _courseSearchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: _fr ? 'Rechercher un cours ou un document…' : 'Search courses or documents…',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _courseSearchController.text.isEmpty ? null : IconButton(
+                      tooltip: _fr ? 'Effacer' : 'Clear',
+                      onPressed: () { _courseSearchController.clear(); setState(() {}); },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _feedList(
+                  filteredItems,
+                  query.isEmpty
+                      ? (_fr
+                          ? 'Aucun cours ni média publié pour ce chapitre pour le moment.'
+                          : 'No course or media has been published for this chapter yet.')
+                      : (_fr ? 'Aucun résultat pour cette recherche.' : 'No results for this search.'),
+                ),
+              ),
+            ],
           );
         },
       ),

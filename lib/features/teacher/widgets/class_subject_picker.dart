@@ -32,6 +32,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   late Future<List<SchoolClass>> _classesFuture;
   final Set<String> _selectedIds = <String>{};
+  final TextEditingController _classSearchController = TextEditingController();
   List<SchoolClass> _allClasses = const [];
   List<Subject> _subjects = const [];
   Subject? _subject;
@@ -40,6 +41,12 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   bool get _fr => widget.locale.languageCode == 'fr';
 
   String? _teacherVocation;
+
+  @override
+  void dispose() {
+    _classSearchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -440,15 +447,42 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
               return Text('${snapshot.error}');
             }
             final classes = snapshot.data ?? const <SchoolClass>[];
+            final query = _classSearchController.text.trim().toLowerCase();
+            final visibleClasses = query.isEmpty
+                ? classes
+                : classes.where((c) => '${c.displayName} ${c.name}'.toLowerCase().contains(query)).toList(growable: false);
             if (classes.isEmpty) {
               return Text(_fr
                   ? 'Aucune salle compatible avec votre sous-système et votre secteur. Vérifiez votre profil auprès de l’administration.'
                   : 'No classroom matches your subsystem and sector. Check your profile with the administrator.');
             }
-            return Wrap(
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _classSearchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _classSearchController.text.isEmpty ? null : IconButton(
+                      tooltip: _fr ? 'Effacer' : 'Clear',
+                      onPressed: () { _classSearchController.clear(); setState(() {}); },
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (visibleClasses.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(_fr ? 'Aucune salle trouvée.' : 'No classrooms found.'),
+                  ),
+                Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: classes
+              children: visibleClasses
                   .map(
                     (schoolClass) => FilterChip(
                       label: Text(schoolClass.displayName),
@@ -457,6 +491,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                     ),
                   )
                   .toList(),
+                ),
+              ],
             );
           },
         ),

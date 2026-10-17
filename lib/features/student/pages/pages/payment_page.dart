@@ -137,7 +137,11 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
       }
 
       var message = error.toString().replaceFirst('Exception: ', '');
-      if (_isFrench && message.contains('Choose an active classroom')) {
+      if (message.contains('Supabase/Notch Pay secrets are not configured')) {
+        message = _isFrench
+            ? 'Le paiement est temporairement indisponible : la clé publique Notch Pay manque dans les secrets Supabase. Réessaie après la configuration par l’administrateur.'
+            : 'Payments are temporarily unavailable: the Notch Pay public key is missing from Supabase secrets. Try again after the administrator configures it.';
+      } else if (_isFrench && message.contains('Choose an active classroom')) {
         message = 'Choisis d’abord une salle dans les paramètres avant de payer.';
       } else if (_isFrench && message.contains('one assigned scientific teacher and one assigned literary teacher')) {
         message = 'Ta salle doit avoir un enseignant scientifique et un enseignant littéraire affectés avant l’achat de Premium.';
