@@ -119,7 +119,7 @@ class _PremiumPageState extends State<PremiumPage> {
       final payment = await _notchPayService.createPayment(
         email: email,
         name: name,
-        amount: 1000,
+        amount: 2000,
         currency: 'XAF',
         description: 'Abonnement Fise School Premium - 30 jours',
       );
@@ -466,8 +466,8 @@ class _PremiumPageState extends State<PremiumPage> {
             const SizedBox(height: 12),
             Text(
               isFrench
-                  ? '1000 FCFA pour 30 jours de Premium.'
-                  : '1000 XAF for 30 days of Premium.',
+                  ? '2000 FCFA pour 30 jours de Premium.'
+                  : '2000 XAF for 30 days of Premium.',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -506,8 +506,8 @@ class _PremiumPageState extends State<PremiumPage> {
                             ? 'Ouverture du paiement...'
                             : 'Opening payment...'
                       : isFrench
-                      ? 'Activer Premium — 1000 FCFA'
-                      : 'Activate Premium — 1000 XAF',
+                      ? 'Activer Premium — 2000 FCFA'
+                      : 'Activate Premium — 2000 XAF',
                 ),
               ),
             const SizedBox(height: 10),
