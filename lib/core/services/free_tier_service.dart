@@ -10,6 +10,22 @@ class FreeTierService {
 
   final SupabaseClient _client;
 
+  /// Read-only server status for a rolling 24-hour quota. Null means the server
+  /// could not verify the quota; callers must not treat that as free access.
+  Future<Map<String, dynamic>?> status(String feature) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    try {
+      final result = await _client.rpc(
+        'student_free_quota_status',
+        params: {'p_feature': feature},
+      );
+      return result is Map ? Map<String, dynamic>.from(result) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<bool> canAccessMultimedia() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
