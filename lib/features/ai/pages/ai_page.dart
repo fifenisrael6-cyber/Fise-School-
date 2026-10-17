@@ -6,6 +6,7 @@ import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/gemini_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/user_profile.dart';
 
 class AiPage extends StatefulWidget {
@@ -181,15 +182,31 @@ class _AiPageState extends State<AiPage> {
         return;
       }
       final retryable = error is! AiServiceException || error.retryable;
+      final rawError = error.toString().toLowerCase();
+      final quotaReached = rawError.contains('questions ia gratuites') ||
+          rawError.contains('free ai questions') ||
+          rawError.contains('free plan cannot send documents') ||
+          rawError.contains('ne permet pas d’envoyer des documents') ||
+          rawError.contains("ne permet pas d'envoyer des documents");
       setState(() {
         _messages.add(_AiMessage(
           text: _friendlyError(error),
           fromUser: false,
           isError: true,
-          canRetry: retryable,
+          canRetry: retryable && !quotaReached,
         ));
         _sending = false;
       });
+      if (quotaReached && mounted) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: rawError.contains('documents') || rawError.contains('photo')
+              ? (_isFrench ? 'les photos et PDF avec l’IA' : 'AI photos and PDFs')
+              : (_isFrench ? 'l’assistant IA' : 'the AI assistant'),
+        );
+      }
     }
     _scrollToBottom();
   }

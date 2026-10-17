@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/past_paper.dart';
 import '../offline/json_cache.dart';
+import 'free_tier_service.dart';
 
 class PastPaperService {
   PastPaperService({SupabaseClient? client})
@@ -43,19 +44,23 @@ class PastPaperService {
       );
       if (premium == true) return papers;
 
-      final allowed = <PastPaper>[];
-      for (final paper in papers) {
-        final quota = await _client.rpc(
-          'consume_student_free_quota',
-          params: {'p_feature': 'annal', 'p_resource_id': paper.id},
-        );
-        if (quota is Map && quota['allowed'] == true) {
-          allowed.add(paper);
+      final freeTier = FreeTierService(client: _client);
+      final previouslyGranted = await freeTier.cachedResourceIds('annal');
+      final ordered = [...papers]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final paper in ordered) {
+        if (await freeTier.consume('annal', paper.id)) {
+          allowedIds.add(paper.id);
         } else {
           break;
         }
       }
-      return allowed;
+      return papers.where((paper) => allowedIds.contains(paper.id)).toList(growable: false);
     } catch (_) {
       // Fail closed for online catalogue access if free-tier rights cannot be
       // verified; previously cached content remains on the device for offline use.

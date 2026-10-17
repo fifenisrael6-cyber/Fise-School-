@@ -15,11 +15,12 @@ import '../../../core/offline/message_outbox.dart';
 import '../../../core/offline/message_attachment_offline.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
+import '../../../core/services/free_tier_service.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
-import '../../student/pages/pages/payment_page.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 
 /// Conversation d'un groupe, façon WhatsApp.
 class GroupChatPage extends StatefulWidget {
@@ -86,6 +87,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _attachment = widget.initialAttachment;
     unawaited(_loadTeacherAccessCode());
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowReceiveQuotaOffer());
     // Messages en attente : la conversation se met à jour quand la file change
     // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
     _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
@@ -249,40 +251,44 @@ class _GroupChatPageState extends State<GroupChatPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _showPremiumRequired() async {
-    final goToPayment = await showDialog<bool>(
+  Future<void> _maybeShowReceiveQuotaOffer() async {
+    if (widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('group_receive');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    await showPremiumOfferSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_fr ? 'Quota gratuit atteint' : 'Free quota reached'),
-        content: Text(_fr
-            ? 'Tu as utilisé tes 2 messages gratuits. Paie 2 000 FCFA pour activer Premium pendant 30 jours et continuer.'
-            : 'You have used your 2 free messages. Pay 2,000 XAF to activate Premium for 30 days and continue.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(_fr ? 'Plus tard' : 'Later'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(_fr ? 'Payer maintenant' : 'Pay now'),
-          ),
-        ],
-      ),
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la réception des messages' : 'receiving messages',
     );
-    if (goToPayment == true && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
-        ),
-      );
-    }
+  }
+
+  Future<void> _showPremiumRequired() async {
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la messagerie' : 'messaging',
+    );
   }
 
   Future<void> _send() async {
     final body = _composer.text.trim();
     if (_sending || (body.isEmpty && _attachment == null)) {
       return;
+    }
+
+    if (widget.profile.role.toLowerCase() == 'student') {
+      final quota = await FreeTierService().status('group_send');
+      if (quota != null && quota['premium'] != true && quota['allowed'] == false) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _fr ? 'la messagerie' : 'messaging',
+        );
+        return;
+      }
     }
 
     setState(() => _sending = true);

@@ -15,10 +15,11 @@ import '../../../core/offline/message_outbox.dart';
 import '../../../core/offline/message_attachment_offline.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/private_message_service.dart';
+import '../../../core/services/free_tier_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/photo_service.dart';
-import '../../student/pages/pages/payment_page.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
@@ -61,6 +62,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowReceiveQuotaOffer());
     _contactsFuture = _service.listContacts();
     _attachment = widget.initialAttachment;
     // Messages en attente : on rafraîchit la conversation quand la file change
@@ -227,6 +229,18 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     }
   }
 
+  Future<void> _maybeShowReceiveQuotaOffer() async {
+    if (widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('group_receive');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _isFrench ? 'la réception des messages' : 'receiving messages',
+    );
+  }
+
   Future<void> _send() async {
     final contact = _selected;
     final body = _composer.text.trim();
@@ -235,6 +249,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     }
     if (body.isEmpty && _attachment == null) {
       return;
+    }
+
+    if (widget.profile.role.toLowerCase() == 'student') {
+      final quota = await FreeTierService().status('group_send');
+      if (quota != null && quota['premium'] != true && quota['allowed'] == false) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _isFrench ? 'la messagerie' : 'messaging',
+        );
+        return;
+      }
     }
 
     setState(() => _sending = true);
@@ -256,7 +283,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       }
       await _refreshMessages(contact);
     } catch (error) {
-      if (mounted) _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      if (!mounted) return;
+      if (error.toString().contains('FREE_PRIVATE_SEND_LIMIT')) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _isFrench ? 'la messagerie' : 'messaging',
+        );
+      } else {
+        _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      }
     } finally {
       if (mounted) {
         setState(() => _sending = false);

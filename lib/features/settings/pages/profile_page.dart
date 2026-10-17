@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/photo_service.dart';
+import '../../student/pages/pages/payment_page.dart';
 import '../../../models/user_profile.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -81,6 +82,34 @@ class _ProfilePageState extends State<ProfilePage> {
               onChanged: (value) => setState(() => _language = value ?? 'fr'),
             ),
             const SizedBox(height: 24),
+            if (widget.profile.role.toLowerCase() == 'student') ...[
+              Card(
+                color: const Color(0xFFF0FDF4),
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFDCFCE7),
+                    child: Icon(Icons.workspace_premium_rounded, color: Color(0xFF166534)),
+                  ),
+                  title: Text(
+                    widget.locale.languageCode == 'en' ? 'Fise School Premium' : 'Fise School Premium',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    widget.locale.languageCode == 'en'
+                        ? '2,000 XAF for 30 days · AI, courses, assessments and messaging'
+                        : '2 000 FCFA pour 30 jours · IA, cours, évaluations et messagerie',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             _schoolInfo(texts),
           ],
         ),

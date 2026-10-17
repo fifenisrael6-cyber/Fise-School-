@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/assignment.dart';
 import '../offline/offline_repository.dart';
+import 'free_tier_service.dart';
 
 class AssignmentService {
   final SupabaseClient _client;
@@ -53,7 +54,7 @@ class AssignmentService {
       // Fall back only when the remote query failed, not when offline caching
       // fails after a successful response.
       final cached = await OfflineRepository().getAssignments(studentId);
-      return cached
+      final eligible = cached
           .where((assignment) =>
               !hiddenIds.contains(assignment.id) &&
               (courseId == null || assignment.courseId == courseId) &&
@@ -61,8 +62,10 @@ class AssignmentService {
               (subjectId == null || assignment.subjectId == subjectId) &&
               ['published', 'closed'].contains(assignment.status))
           .toList(growable: false);
+      return _applyFreeQcmQuota(eligible, studentId);
     }
 
+    assignments = await _applyFreeQcmQuota(assignments, studentId);
     final offline = OfflineRepository();
     for (final assignment in assignments) {
       try {
@@ -78,6 +81,42 @@ class AssignmentService {
       }
     }
     return assignments;
+  }
+
+  Future<List<Assignment>> _applyFreeQcmQuota(
+    List<Assignment> assignments,
+    String studentId,
+  ) async {
+    try {
+      final profile = await _client.from('profiles').select('role')
+          .eq('id', studentId).maybeSingle();
+      if (profile?['role'] != 'student') return assignments;
+      final premium = await _client.rpc(
+        'is_student_premium',
+        params: {'p_user_id': studentId},
+      );
+      if (premium == true) return assignments;
+      final freeTier = FreeTierService(client: _client);
+      final previouslyGranted = await freeTier.cachedResourceIds('qcm');
+      final ordered = [...assignments]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final assignment in ordered) {
+        if (await freeTier.consume('qcm', assignment.id)) {
+          allowedIds.add(assignment.id);
+        } else {
+          break;
+        }
+      }
+      return assignments.where((assignment) => allowedIds.contains(assignment.id)).toList(growable: false);
+    } catch (_) {
+      // Fail closed if the online entitlement cannot be verified.
+      return const <Assignment>[];
+    }
   }
 
   Future<Assignment> getAssignment(String id, {String? studentId}) async {

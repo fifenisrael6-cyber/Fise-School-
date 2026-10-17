@@ -116,7 +116,7 @@ class _StudentHome extends StatelessWidget {
             icon: Icons.history_edu_rounded,
             title: fr ? 'Annales d\'examens' : 'Past exam papers',
             subtitle: fr ? 'Sujets et corrigés des années précédentes.' : 'Papers and corrected exams from previous years.',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale, profile: profile))),
           ),
           _QuickCard(
             icon: Icons.grading_rounded,

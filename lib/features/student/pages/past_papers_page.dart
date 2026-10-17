@@ -5,12 +5,16 @@ import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
+import '../../../models/user_profile.dart';
+import '../../../core/services/free_tier_service.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import 'past_paper_viewer_page.dart';
 
 /// Annales d'examens : sujets et corrigés, filtrables par examen, année et matière.
 class PastPapersPage extends StatefulWidget {
   final Locale locale;
-  const PastPapersPage({super.key, required this.locale});
+  final UserProfile profile;
+  const PastPapersPage({super.key, required this.locale, required this.profile});
 
   @override
   State<PastPapersPage> createState() => _PastPapersPageState();
@@ -25,6 +29,7 @@ class _PastPapersPageState extends State<PastPapersPage> {
   Map<String, ExamDefinition> _exams = const {};
   String? _examId;
   int? _year;
+  bool _quotaOfferShown = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -62,6 +67,7 @@ class _PastPapersPageState extends State<PastPapersPage> {
         _exams = exams;
         _loading = false;
       });
+      await _maybeShowAnnalQuotaOffer();
     } catch (_) {
       if (!mounted) {
         return;
@@ -73,6 +79,19 @@ class _PastPapersPageState extends State<PastPapersPage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _maybeShowAnnalQuotaOffer() async {
+    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('annal');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    _quotaOfferShown = true;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'les annales d’examens' : 'past exam papers',
+    );
   }
 
   Future<void> _open(PastPaper paper) async {
