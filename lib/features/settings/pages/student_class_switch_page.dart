@@ -14,6 +14,16 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
   String? _selectedClassId;
   bool _loading = true;
   String? _error;
+  final TextEditingController _searchController = TextEditingController();
+
+  List<Map<String, dynamic>> get _filteredClasses {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _classes;
+    return _classes.where((row) {
+      final text = '${row['class_name'] ?? ''} ${row['subsystem'] ?? ''} ${row['sector'] ?? ''}'.toLowerCase();
+      return text.contains(query);
+    }).toList(growable: false);
+  }
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -21,6 +31,12 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
   void initState() {
     super.initState();
     _loadClasses();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadClasses() async {
@@ -175,7 +191,27 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       const SizedBox(height: 8),
-                      ..._classes.map((row) {
+                      TextField(
+                        controller: _searchController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: _fr ? 'Rechercher une salle, une filière…' : 'Search classroom or pathway…',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: _searchController.text.isEmpty ? null : IconButton(
+                            tooltip: _fr ? 'Effacer' : 'Clear',
+                            onPressed: () { _searchController.clear(); setState(() {}); },
+                            icon: const Icon(Icons.close),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_filteredClasses.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(_fr ? 'Aucune salle ne correspond à la recherche.' : 'No classroom matches your search.'),
+                        ),
+                      ..._filteredClasses.map((row) {
                         final id = row['class_id']?.toString();
                         final isCurrent = row['is_current'] == true;
                         final name = row['class_name']?.toString() ??
