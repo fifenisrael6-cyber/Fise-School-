@@ -33,7 +33,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
   static const int _subscriptionAmount = int.fromEnvironment(
     'FISE_SUBSCRIPTION_AMOUNT',
-    defaultValue: 1000,
+    defaultValue: 2000,
   );
 
   Future<void> _startPayment() async {
