@@ -1118,6 +1118,30 @@ class ResourceService {
           .select()
           .single();
 
+      // Compter les PDF/photos séparément pour chaque salle suivie.
+      final publicationKind = extension == 'pdf' || resourceType.toLowerCase() == 'pdf'
+          ? 'pdf'
+          : ((mimeType ?? '').startsWith('image/') ||
+                  const {'image', 'photo'}.contains(resourceType.toLowerCase())
+              ? 'photo'
+              : null);
+      if (publicationKind != null) {
+        try {
+          final course = await _client.from('courses').select('class_id')
+              .eq('id', courseId).maybeSingle();
+          final classId = course?['class_id']?.toString();
+          if (classId != null && classId.isNotEmpty) {
+            await _client.rpc('record_teacher_room_publication', params: {
+              'p_class_id': classId,
+              'p_kind': publicationKind,
+              'p_resource_id': row['id'].toString(),
+            });
+          }
+        } catch (_) {
+          // La publication reste disponible même si le suivi doit être réconcilié.
+        }
+      }
+
       // Invalider les listes : le nouveau fichier doit apparaître tout de suite
       // et non attendre la fin d'une actualisation de cache en arrière-plan.
       await JsonCache.instance.remove('resources_course_$courseId');
