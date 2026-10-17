@@ -26,6 +26,18 @@ class FreeTierService {
     }
   }
 
+  /// Locally remembered resources that were granted by the server before.
+  /// Lists use these IDs first so a newly published item cannot hide a student's
+  /// already-authorized offline/downloaded resources when the daily quota is full.
+  Future<Set<String>> cachedResourceIds(String feature) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return <String>{};
+    final previous = await JsonCache.instance.read('free_tier_access_${user.id}_$feature');
+    return previous is List
+        ? previous.map((item) => item.toString()).where((id) => id.isNotEmpty).toSet()
+        : <String>{};
+  }
+
   Future<bool> canAccessMultimedia() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
