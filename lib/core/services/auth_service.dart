@@ -45,6 +45,7 @@ class AuthService {
     String? languageOption,
     String? className,
     String? classId,
+    String? teacherVocation,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
@@ -68,6 +69,7 @@ class AuthService {
         'language_option': languageOption,
         'class_name': className,
         'class_id': classId,
+        'teacher_vocation': role == 'teacher' ? teacherVocation : null,
       },
     );
 
