@@ -296,7 +296,7 @@ declare
   v_limit integer;
 begin
   if v_user is null then raise exception 'Authentication required'; end if;
-  if p_feature <> 'group_send' then
+  if p_feature not in ('group_send', 'group_receive') then
     return jsonb_build_object('allowed', false, 'reason', 'unknown_feature');
   end if;
 
@@ -337,6 +337,14 @@ begin
     v_quota := public.consume_free_quota_for_user(new.sender_id, 'group_send', null);
     if coalesce((v_quota ->> 'allowed')::boolean, false) is not true then
       raise exception 'FREE_MESSAGE_SEND_LIMIT: Tu as utilisé tes 2 messages gratuits. Passe à Premium pour continuer.';
+    end if;
+  end if;
+
+  select p.role into v_role from public.profiles p where p.id = new.recipient_id;
+  if v_role = 'student' and not public.is_student_premium(new.recipient_id) then
+    v_quota := public.consume_free_quota_for_user(new.recipient_id, 'group_receive', null);
+    if coalesce((v_quota ->> 'allowed')::boolean, false) is not true then
+      raise exception 'FREE_MESSAGE_RECEIVE_LIMIT: Cet élève a utilisé ses 2 messages gratuits et doit passer à Premium.';
     end if;
   end if;
   return new;
