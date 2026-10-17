@@ -253,7 +253,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
 
     if (widget.profile.role.toLowerCase() == 'student') {
       final quota = await FreeTierService().status('group_send');
-      if (quota != null && quota['premium'] != true && quota['allowed'] == false) {
+      if (!mounted) return;
+      if (quota == null) {
+        _showMessage(_isFrench
+            ? 'Impossible de vérifier le quota. Vérifie ta connexion puis réessaie.'
+            : 'Could not verify your quota. Check your connection and try again.');
+        return;
+      }
+      if (quota['premium'] != true && quota['allowed'] == false) {
         await showPremiumOfferSheet(
           context: context,
           locale: widget.locale,
