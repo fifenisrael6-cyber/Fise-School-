@@ -70,9 +70,15 @@ begin
     update public.class_students
        set is_active = true,
            joined_at = now()
-     where student_id = v_user
-       and class_id = p_class_id
-       and is_active = false;
+     where id = (
+       select previous.id
+       from public.class_students previous
+       where previous.student_id = v_user
+         and previous.class_id = p_class_id
+         and previous.is_active = false
+       order by previous.joined_at desc
+       limit 1
+     );
 
     if not found then
       insert into public.class_students(class_id, student_id, joined_at, is_active)
