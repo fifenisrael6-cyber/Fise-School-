@@ -4,6 +4,8 @@ import 'dart:async';
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/services/free_tier_service.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
@@ -57,6 +59,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _connectionSubscription;
   bool _offlineMode = false;
+  bool _quotaOfferShown = false;
 
   late Future<List<_FeedItem>> _feedFuture;
   late Future<List<CourseChapter>> _catalogChaptersFuture;
@@ -73,6 +76,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       subjectId: widget.subject.id,
     );
     _feedFuture = _load();
+    _feedFuture.then((_) => _maybeShowCourseQuotaOffer());
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
         setState(() => _offlineMode = !online);
@@ -84,6 +88,19 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   void dispose() {
     _connectionSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _maybeShowCourseQuotaOffer() async {
+    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('course');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    _quotaOfferShown = true;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'les cours' : 'courses',
+    );
   }
 
   Future<List<_FeedItem>> _load() async {
