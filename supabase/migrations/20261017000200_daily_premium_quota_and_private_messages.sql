@@ -127,6 +127,7 @@ begin
     when 'ai_question' then 4
     when 'group_send' then 2
     when 'group_receive' then 2
+    when 'course' then 2
     when 'lesson' then 2
     when 'qcm' then 2
     when 'annal' then 2
