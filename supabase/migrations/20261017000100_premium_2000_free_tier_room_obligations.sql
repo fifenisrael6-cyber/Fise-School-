@@ -399,10 +399,14 @@ declare
   v_order public.payment_orders%rowtype;
   v_subscription_id uuid;
   v_teacher record;
-  v_amount bigint;
   v_total_commission bigint := 0;
   v_platform bigint;
   v_inserted integer;
+  v_remaining bigint;
+  v_recovery bigint;
+  v_wallet_balance bigint;
+  v_debt record;
+  v_reversal_id uuid;
 begin
   select * into v_order
   from public.payment_orders
@@ -473,8 +477,30 @@ begin
 
       get diagnostics v_inserted = row_count;
       if v_inserted > 0 then
+        -- Une part d'une commission future rembourse d'abord les revenus dus
+        -- à l'administrateur après un manquement antérieur dans une salle.
+        v_remaining := v_teacher.commission;
+        for v_debt in
+          select id, amount_xaf, recovered_xaf
+          from public.teacher_room_revenue_reversals
+          where teacher_id = v_teacher.teacher_id
+            and recovered_xaf < amount_xaf
+          order by created_at, id
+          for update
+        loop
+          exit when v_remaining <= 0;
+          v_recovery := least(v_remaining, v_debt.amount_xaf - v_debt.recovered_xaf);
+          update public.teacher_room_revenue_reversals
+          set recovered_xaf = recovered_xaf + v_recovery,
+              status = case when recovered_xaf + v_recovery >= amount_xaf
+                            then 'returned' else 'outstanding' end,
+              updated_at = now()
+          where id = v_debt.id;
+          v_remaining := v_remaining - v_recovery;
+        end loop;
+
         update public.teacher_wallets
-        set balance_xaf = balance_xaf + v_teacher.commission, updated_at = now()
+        set balance_xaf = balance_xaf + v_remaining, updated_at = now()
         where teacher_id = v_teacher.teacher_id;
       end if;
     end loop;
@@ -539,3 +565,126 @@ end;
 $$;
 revoke all on function public.set_my_teacher_vocation(text) from public, anon;
 grant execute on function public.set_my_teacher_vocation(text) to authenticated;
+
+
+-- Revenus Premium reversés à l'administrateur lorsqu'un enseignant manque ses
+-- obligations dans une salle. Un solde insuffisant crée une dette recouvrée
+-- automatiquement sur les commissions futures, sans rendre le portefeuille négatif.
+create table if not exists public.teacher_room_revenue_reversals (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references auth.users(id) on delete cascade,
+  class_id uuid not null references public.school_classes(id) on delete cascade,
+  month_start date not null,
+  payment_order_id uuid not null references public.payment_orders(id) on delete restrict,
+  amount_xaf bigint not null check (amount_xaf > 0),
+  recovered_xaf bigint not null default 0 check (recovered_xaf >= 0 and recovered_xaf <= amount_xaf),
+  status text not null default 'outstanding' check (status in ('outstanding','returned')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (teacher_id, class_id, month_start, payment_order_id)
+);
+alter table public.teacher_room_revenue_reversals enable row level security;
+drop policy if exists "teachers and admins read room revenue reversals" on public.teacher_room_revenue_reversals;
+create policy "teachers and admins read room revenue reversals"
+on public.teacher_room_revenue_reversals for select to authenticated
+using (teacher_id = auth.uid() or public.is_admin());
+
+create or replace function public.admin_finalize_teacher_room_obligation(
+  p_teacher_id uuid,
+  p_class_id uuid,
+  p_month_start date,
+  p_met boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_transaction record;
+  v_reversal_id uuid;
+  v_wallet_balance bigint;
+  v_debit bigint;
+  v_reversed_total bigint := 0;
+begin
+  if auth.uid() is null or not public.is_admin() then
+    raise exception 'Only an administrator can review room obligations';
+  end if;
+  if p_teacher_id is null or p_class_id is null or p_month_start is null then
+    raise exception 'Teacher, classroom and month are required';
+  end if;
+
+  insert into public.teacher_room_monthly_obligations(teacher_id,class_id,month_start)
+  values(p_teacher_id,p_class_id,p_month_start)
+  on conflict (teacher_id,class_id,month_start) do nothing;
+
+  update public.teacher_room_monthly_obligations
+  set status = case when p_met then 'met' else 'missed' end,
+      reviewed_at = now(),
+      reviewed_by = auth.uid(),
+      updated_at = now()
+  where teacher_id = p_teacher_id and class_id = p_class_id and month_start = p_month_start;
+
+  if p_met then
+    return jsonb_build_object('success',true,'status','met','reversed_xaf',0);
+  end if;
+
+  for v_transaction in
+    select wt.payment_order_id, wt.amount_xaf
+    from public.teacher_wallet_transactions wt
+    join public.payment_orders po on po.id = wt.payment_order_id
+    where wt.teacher_id = p_teacher_id
+      and wt.class_id = p_class_id
+      and wt.type = 'commission'
+      and po.related_class_id = p_class_id
+      and po.paid_at >= p_month_start::timestamptz
+      and po.paid_at < (p_month_start + interval '1 month')::timestamptz
+    order by po.paid_at, wt.payment_order_id
+  loop
+    v_reversal_id := null;
+    insert into public.teacher_room_revenue_reversals(
+      teacher_id,class_id,month_start,payment_order_id,amount_xaf
+    )
+    values(
+      p_teacher_id,p_class_id,p_month_start,
+      v_transaction.payment_order_id,v_transaction.amount_xaf
+    )
+    on conflict (teacher_id,class_id,month_start,payment_order_id) do nothing
+    returning id into v_reversal_id;
+
+    if v_reversal_id is not null then
+      insert into public.teacher_wallets(teacher_id,balance_xaf)
+      values(p_teacher_id,0)
+      on conflict (teacher_id) do nothing;
+
+      select balance_xaf into v_wallet_balance
+      from public.teacher_wallets where teacher_id = p_teacher_id for update;
+      v_debit := least(coalesce(v_wallet_balance,0),v_transaction.amount_xaf);
+
+      update public.teacher_wallets
+      set balance_xaf = balance_xaf - v_debit, updated_at = now()
+      where teacher_id = p_teacher_id;
+
+      update public.teacher_room_revenue_reversals
+      set recovered_xaf = v_debit,
+          status = case when v_debit >= amount_xaf then 'returned' else 'outstanding' end,
+          updated_at = now()
+      where id = v_reversal_id;
+
+      update public.payment_orders
+      set teacher_commission_xaf = greatest(teacher_commission_xaf - v_transaction.amount_xaf,0),
+          platform_revenue_xaf = platform_revenue_xaf + v_transaction.amount_xaf,
+          updated_at = now()
+      where id = v_transaction.payment_order_id;
+
+      v_reversed_total := v_reversed_total + v_transaction.amount_xaf;
+    end if;
+  end loop;
+
+  return jsonb_build_object(
+    'success',true,'status','missed','reversed_xaf',v_reversed_total
+  );
+end;
+$$;
+revoke all on function public.admin_finalize_teacher_room_obligation(uuid,uuid,date,boolean) from public, anon;
+grant execute on function public.admin_finalize_teacher_room_obligation(uuid,uuid,date,boolean) to authenticated;
