@@ -18,6 +18,7 @@ import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/photo_service.dart';
+import '../../student/pages/pages/payment_page.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
