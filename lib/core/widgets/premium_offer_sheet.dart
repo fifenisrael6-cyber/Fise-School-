@@ -43,6 +43,14 @@ Future<void> showPremiumOfferSheet({
                 : 'You have reached the free limit for $feature. Unlock access with Premium.',
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 8),
+          Text(
+            fr
+                ? 'Les quotas gratuits se renouvellent automatiquement 24 heures après leur utilisation.'
+                : 'Free quotas renew automatically 24 hours after use.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(16),
