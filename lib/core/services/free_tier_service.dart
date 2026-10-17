@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../offline/json_cache.dart';
+
 /// Consommation des droits gratuits enregistrée côté serveur.
 /// Les erreurs de vérification ne débloquent jamais un nouvel accès gratuit.
 class FreeTierService {
@@ -11,17 +13,25 @@ class FreeTierService {
   Future<bool> canAccessMultimedia() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
+    final cacheKey = 'multimedia_entitlement_${user.id}';
     try {
       final profile = await _client.from('profiles').select('role')
           .eq('id', user.id).maybeSingle();
-      if (profile?['role'] != 'student') return true;
+      if (profile?['role'] != 'student') {
+        await JsonCache.instance.write(cacheKey, true);
+        return true;
+      }
       final premium = await _client.rpc(
         'is_student_premium',
         params: {'p_user_id': user.id},
       );
-      return premium == true;
+      final allowed = premium == true;
+      await JsonCache.instance.write(cacheKey, allowed);
+      return allowed;
     } catch (_) {
-      return false;
+      // A previously verified Premium entitlement keeps downloaded multimedia
+      // available offline; otherwise fail closed for the free tier.
+      return await JsonCache.instance.read(cacheKey) == true;
     }
   }
 
