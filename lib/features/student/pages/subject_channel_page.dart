@@ -4,6 +4,7 @@ import 'dart:async';
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/services/free_tier_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
@@ -11,6 +12,7 @@ import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
+import 'pages/payment_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
@@ -440,8 +442,18 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             ...lessonAttachments.map(resourceItem),
           ];
 
-          void openFolder(String title, List<Widget> folderItems, String empty) {
-            Navigator.push(context, MaterialPageRoute(
+          void openFolder(
+            String title,
+            List<Widget> folderItems,
+            String empty, {
+            bool premiumOnly = false,
+          }) async {
+            if (premiumOnly && !await FreeTierService().canAccessMultimedia()) {
+              await _showPremiumRequired();
+              return;
+            }
+            if (!mounted) return;
+            await Navigator.push(context, MaterialPageRoute(
               builder: (_) => ChapterFolderPage(
                 title: title,
                 items: folderItems,
@@ -511,6 +523,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   'Photos',
                   photos.map(resourceItem).toList(),
                   _fr ? 'Aucune photo dans ce chapitre.' : 'No photos in this chapter.',
+                  premiumOnly: true,
                 ),
               ),
               ChapterFolderCard(
@@ -522,6 +535,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   'Audio',
                   audios.map(resourceItem).toList(),
                   _fr ? 'Aucun fichier audio dans ce chapitre.' : 'No audio files in this chapter.',
+                  premiumOnly: true,
                 ),
               ),
               ChapterFolderCard(
@@ -533,6 +547,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   _fr ? 'Vidéos' : 'Videos',
                   videos.map(resourceItem).toList(),
                   _fr ? 'Aucune vidéo dans ce chapitre.' : 'No videos in this chapter.',
+                  premiumOnly: true,
                 ),
               ),
               ChapterFolderCard(
@@ -544,6 +559,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   'PDF',
                   pdfs.map(resourceItem).toList(),
                   _fr ? 'Aucun PDF dans ce chapitre.' : 'No PDFs in this chapter.',
+                  premiumOnly: true,
                 ),
               ),
               ChapterFolderCard(
@@ -617,6 +633,36 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showPremiumRequired() async {
+    final goToPayment = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Fonctionnalité Premium' : 'Premium feature'),
+        content: Text(_fr
+            ? 'Les dossiers Photos, Audio, Vidéos et PDF sont réservés à Premium, même lorsqu’ils sont vides. Active Premium pour y accéder.'
+            : 'Photos, audio, video and PDF folders require Premium, even when empty. Upgrade to access them.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_fr ? 'Plus tard' : 'Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_fr ? 'Payer maintenant' : 'Pay now'),
+          ),
+        ],
+      ),
+    );
+    if (goToPayment == true && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
+        ),
+      );
+    }
   }
 
   Future<List<CourseResource>> _loadResources(String courseId) async {

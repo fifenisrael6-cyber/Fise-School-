@@ -86,18 +86,12 @@ serve(async (req) => {
       }
     }
 
-    if (!relatedClassId) {
-      return json({ error: "Choose an active classroom before purchasing Premium." }, 409);
-    }
-    if (!scientificTeacherId || !literaryTeacherId) {
-      return json({
-        error: "This classroom must have one assigned scientific teacher and one assigned literary teacher before Premium can be purchased.",
-      }, 409);
-    }
-
-    const scientificCommission = 200;
-    const literaryCommission = 200;
-    const platformRevenue = 1600;
+    // Never block Premium checkout because a classroom has not yet assigned
+    // both teaching vocations. Credit only teachers actually assigned to the room;
+    // the unallocated commission remains with the platform.
+    const scientificCommission = scientificTeacherId ? 200 : 0;
+    const literaryCommission = literaryTeacherId ? 200 : 0;
+    const platformRevenue = amount - scientificCommission - literaryCommission;
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
@@ -117,9 +111,11 @@ serve(async (req) => {
           name: name || "Fise School Student",
           ...(email ? { email } : {}),
         },
-        description: String(body?.description ?? "Abonnement Fise School"),
+        description: String(body?.description ?? "Abonnement Fise School Premium - 30 jours"),
         reference,
         callback,
+        locked_currency: "XAF",
+        locked_country: "CM",
       }),
     });
 

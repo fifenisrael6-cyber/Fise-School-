@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/private_message.dart';
 import '../offline/json_cache.dart';
+import '../offline/connectivity_service.dart';
 import '../offline/message_outbox.dart';
 
 class PrivateMessageService {
@@ -78,6 +79,14 @@ class PrivateMessageService {
 
   /// Enregistre le message dans la file d'envoi puis tente de l'envoyer.
   /// Sans réseau, il reste en attente (horloge) et part au retour du réseau.
+  Future<bool> canUseFreeMessageQuota(String feature) async {
+    final result = await _client.rpc(
+      'check_student_free_quota',
+      params: {'p_feature': feature},
+    );
+    return result is Map && result['allowed'] == true;
+  }
+
   Future<void> send({
     required String recipientId,
     required String body,
@@ -86,6 +95,24 @@ class PrivateMessageService {
     String? attachmentType,
     bool viewOnce = false,
   }) async {
+    // When online, show the Premium paywall before adding a message to the outbox.
+    // The database trigger still enforces the quota if two devices race or send offline.
+    try {
+      if (await ConnectivityService().isOnline()) {
+        final quota = await _client.rpc(
+          'check_student_free_quota',
+          params: {'p_feature': 'group_send'},
+        );
+        if (quota is Map && quota['allowed'] == false) {
+          throw StateError('FREE_MESSAGE_SEND_LIMIT: You have used your 2 free messages.');
+        }
+      }
+    } on StateError {
+      rethrow;
+    } catch (_) {
+      // Keep the offline-first outbox available if the quota preflight cannot reach the server.
+    }
+
     final queued = await MessageOutbox.instance.enqueue(
       scope: 'private',
       targetId: recipientId,

@@ -96,6 +96,16 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         }
       })
       .subscribe();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFreeReceiveQuota());
+  }
+
+  Future<void> _checkFreeReceiveQuota() async {
+    try {
+      final allowed = await _service.canUseFreeMessageQuota('group_receive');
+      if (!allowed && mounted) await _showPremiumRequired();
+    } catch (_) {
+      // Preserve offline chat; the server-side trigger remains authoritative.
+    }
   }
 
   @override
@@ -227,6 +237,36 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     }
   }
 
+  Future<void> _showPremiumRequired() async {
+    final goToPayment = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Quota gratuit atteint' : 'Free quota reached'),
+        content: Text(_isFrench
+            ? 'Tu as utilisé tes 2 messages gratuits. Paie 2 000 FCFA pour activer Premium pendant 30 jours et continuer.'
+            : 'You have used your 2 free messages. Pay 2,000 XAF to activate Premium for 30 days and continue.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_isFrench ? 'Plus tard' : 'Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_isFrench ? 'Payer maintenant' : 'Pay now'),
+          ),
+        ],
+      ),
+    );
+    if (goToPayment == true && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
+        ),
+      );
+    }
+  }
+
   Future<void> _send() async {
     final contact = _selected;
     final body = _composer.text.trim();
@@ -256,7 +296,12 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       }
       await _refreshMessages(contact);
     } catch (error) {
-      if (mounted) _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      final message = error.toString();
+      if (message.contains('FREE_MESSAGE_SEND_LIMIT')) {
+        await _showPremiumRequired();
+      } else if (mounted) {
+        _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      }
     } finally {
       if (mounted) {
         setState(() => _sending = false);

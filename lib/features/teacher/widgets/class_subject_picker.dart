@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
@@ -81,7 +82,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       'human_biology', 'geology', 'sciences', 'general_science',
       'technical_science', 'technical_science_en', 'informatique',
       'computer_science_en', 'fr_tech_informatique', 'en_tech_ict',
-      'technologie', 'technical_science', 'technical_math',
+      'technologie',
     };
     const literaryCodes = <String>{
       'francais', 'french_language', 'english_language', 'anglais',
