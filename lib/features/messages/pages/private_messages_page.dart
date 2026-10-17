@@ -18,7 +18,7 @@ import '../../../core/services/private_message_service.dart';
 import '../../../models/private_message.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/photo_service.dart';
-import '../../student/pages/pages/payment_page.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 
 class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
@@ -256,7 +256,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       }
       await _refreshMessages(contact);
     } catch (error) {
-      if (mounted) _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      if (!mounted) return;
+      if (error.toString().contains('FREE_PRIVATE_SEND_LIMIT')) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _isFrench ? 'la messagerie' : 'messaging',
+        );
+      } else {
+        _showMessage('${_isFrench ? 'Échec de l’envoi' : 'Message failed to send'}: $error');
+      }
     } finally {
       if (mounted) {
         setState(() => _sending = false);
