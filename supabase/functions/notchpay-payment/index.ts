@@ -86,9 +86,18 @@ serve(async (req) => {
       }
     }
 
-    const scientificCommission = scientificTeacherId ? 200 : 0;
-    const literaryCommission = literaryTeacherId ? 200 : 0;
-    const platformRevenue = amount - scientificCommission - literaryCommission;
+    if (!relatedClassId) {
+      return json({ error: "Choose an active classroom before purchasing Premium." }, 409);
+    }
+    if (!scientificTeacherId || !literaryTeacherId) {
+      return json({
+        error: "This classroom must have one assigned scientific teacher and one assigned literary teacher before Premium can be purchased.",
+      }, 409);
+    }
+
+    const scientificCommission = 200;
+    const literaryCommission = 200;
+    const platformRevenue = 1600;
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
