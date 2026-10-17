@@ -233,6 +233,10 @@ class ChapterLearningService {
 
   /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
   Future<List<ChapterQuizQuestion>> listQuizQuestions(String quizId) async {
+    final allowed = await FreeTierService(client: _client).consume('qcm', quizId);
+    if (!allowed) {
+      throw StateError('La version gratuite est limitée à deux QCM.');
+    }
     final rows = await _client
         .from('chapter_quiz_questions')
         .select('id,quiz_id,prompt_fr,prompt_en,options_fr,options_en,position')
