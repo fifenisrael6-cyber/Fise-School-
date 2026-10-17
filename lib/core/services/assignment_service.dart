@@ -97,15 +97,22 @@ class AssignmentService {
       );
       if (premium == true) return assignments;
       final freeTier = FreeTierService(client: _client);
-      final allowed = <Assignment>[];
-      for (final assignment in assignments) {
+      final previouslyGranted = await freeTier.cachedResourceIds('qcm');
+      final ordered = [...assignments]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final assignment in ordered) {
         if (await freeTier.consume('qcm', assignment.id)) {
-          allowed.add(assignment);
+          allowedIds.add(assignment.id);
         } else {
           break;
         }
       }
-      return allowed;
+      return assignments.where((assignment) => allowedIds.contains(assignment.id)).toList(growable: false);
     } catch (_) {
       // Fail closed if the online entitlement cannot be verified.
       return const <Assignment>[];
