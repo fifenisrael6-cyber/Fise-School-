@@ -199,10 +199,17 @@ end;
 $$;
 
 drop policy if exists "members read group messages" on public.message_group_messages;
+drop policy if exists "members read group messages since joining" on public.message_group_messages;
 create policy "members read group messages"
 on public.message_group_messages for select to authenticated
 using (
   public.is_message_group_member(group_id)
+  and exists (
+    select 1 from public.message_group_members member
+    where member.group_id = message_group_messages.group_id
+      and member.user_id = (select auth.uid())
+      and message_group_messages.created_at >= member.joined_at
+  )
   and not ((select auth.uid()) = any(coalesce(hidden_for, '{}'::uuid[])))
   and (
     not free_limited
