@@ -278,3 +278,99 @@ using (
 );
 
 revoke all on function public.apply_free_private_message_limits() from public, anon, authenticated;
+
+-- The chat clients read through SECURITY DEFINER RPCs, so apply recipient visibility
+-- inside those RPCs too; RLS alone would not constrain these queries.
+create or replace function public.list_message_group_messages(p_group_id uuid)
+returns table (
+  id uuid,
+  sender_id uuid,
+  sender_name text,
+  sender_role text,
+  body text,
+  attachment_path text,
+  attachment_name text,
+  attachment_type text,
+  created_at timestamptz,
+  view_once boolean,
+  viewed_by_me boolean,
+  deleted_at timestamptz,
+  delivered_count bigint,
+  read_count bigint,
+  recipient_count bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if (select auth.uid()) is null
+     or not public.is_message_group_member(p_group_id) then
+    raise exception 'Not a member of this group';
+  end if;
+
+  return query
+  select
+    m.id,
+    m.sender_id,
+    trim(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, '')),
+    p.role::text,
+    case when m.deleted_at is null then m.body else '' end,
+    case when m.deleted_at is null then m.attachment_path else null end,
+    case when m.deleted_at is null then m.attachment_name else null end,
+    case when m.deleted_at is null then m.attachment_type else null end,
+    m.created_at,
+    m.view_once,
+    exists (
+      select 1 from public.message_group_message_views v
+      where v.message_id = m.id and v.user_id = (select auth.uid())
+    ),
+    m.deleted_at,
+    (select count(*) from public.message_group_message_receipts r
+      where r.message_id = m.id and r.delivered_at is not null and r.user_id <> m.sender_id),
+    (select count(*) from public.message_group_message_receipts r
+      where r.message_id = m.id and r.read_at is not null and r.user_id <> m.sender_id),
+    (select count(*) from public.message_group_members gm
+      where gm.group_id = p_group_id and gm.user_id <> m.sender_id)
+  from public.message_group_messages m
+  left join public.profiles p on p.id = m.sender_id
+  where m.group_id = p_group_id
+    and not ((select auth.uid()) = any(coalesce(m.hidden_for, '{}'::uuid[])))
+    and (
+      not m.free_limited
+      or m.sender_id = (select auth.uid())
+      or (select auth.uid()) = any(coalesce(m.free_visible_to, '{}'::uuid[]))
+      or public.is_admin()
+    )
+  order by m.created_at asc;
+end;
+$$;
+
+create or replace function public.list_private_messages(target_user_id uuid)
+returns setof public.private_messages
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select m.*
+  from public.private_messages m
+  where (
+      (m.sender_id = auth.uid() and m.recipient_id = target_user_id)
+      or (m.sender_id = target_user_id and m.recipient_id = auth.uid())
+    )
+    and not (auth.uid() = any(coalesce(m.hidden_for, '{}'::uuid[])))
+    and (
+      not m.free_limited
+      or m.sender_id = auth.uid()
+      or auth.uid() = any(coalesce(m.free_visible_to, '{}'::uuid[]))
+      or public.is_admin()
+    )
+  order by m.created_at;
+$$;
+
+revoke all on function public.list_message_group_messages(uuid) from public, anon;
+revoke all on function public.list_private_messages(uuid) from public, anon;
+grant execute on function public.list_message_group_messages(uuid) to authenticated;
+grant execute on function public.list_private_messages(uuid) to authenticated;
