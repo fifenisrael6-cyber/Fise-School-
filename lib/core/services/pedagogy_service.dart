@@ -983,9 +983,25 @@ class ResourceService {
       .map((row) => CourseResource.fromMap(Map<String, dynamic>.from(row as Map)))
       .toList(growable: false);
 
+  bool _isMultimedia(CourseResource resource) {
+    final type = resource.resourceType.toLowerCase();
+    final mime = (resource.mimeType ?? '').toLowerCase();
+    return const {'video','audio','image','photo','multimedia'}.contains(type) ||
+        mime.startsWith('video/') || mime.startsWith('audio/') ||
+        mime.startsWith('image/');
+  }
+
+  Future<List<CourseResource>> _applyMultimediaEntitlement(
+      List<CourseResource> resources) async {
+    if (await FreeTierService(client: _client).canAccessMultimedia()) {
+      return resources;
+    }
+    return resources.where((resource) => !_isMultimedia(resource)).toList(growable: false);
+  }
+
   /// Liste des documents d'un cours (dernière copie locale sans réseau).
-  Future<List<CourseResource>> listForCourse(String courseId) {
-    return JsonCache.instance.cachedRead<List<CourseResource>>(
+  Future<List<CourseResource>> listForCourse(String courseId) async {
+    final resources = await JsonCache.instance.cachedRead<List<CourseResource>>(
       key: 'resources_course_$courseId',
       fetch: () async => await _client
           .from('course_resources')
@@ -994,11 +1010,12 @@ class ResourceService {
           .order('position') as Object?,
       decode: _decodeResources,
     );
+    return _applyMultimediaEntitlement(resources);
   }
 
   /// Liste des documents d'une leçon (dernière copie locale sans réseau).
-  Future<List<CourseResource>> listForLesson(String lessonId) {
-    return JsonCache.instance.cachedRead<List<CourseResource>>(
+  Future<List<CourseResource>> listForLesson(String lessonId) async {
+    final resources = await JsonCache.instance.cachedRead<List<CourseResource>>(
       key: 'resources_lesson_$lessonId',
       fetch: () async => await _client
           .from('course_resources')
@@ -1007,9 +1024,30 @@ class ResourceService {
           .order('position') as Object?,
       decode: _decodeResources,
     );
+    return _applyMultimediaEntitlement(resources);
   }
 
-  Future<String> createSignedUrl(String storagePath, {int expiresIn = 3600}) {
+  Future<String> createSignedUrl(String storagePath, {int expiresIn = 3600}) async {
+    final resource = await _client.from('course_resources')
+        .select('resource_type,mime_type')
+        .eq('storage_path', storagePath)
+        .maybeSingle();
+    if (resource != null) {
+      final item = CourseResource(
+        id: '',
+        courseId: '',
+        resourceType: resource['resource_type']?.toString() ?? '',
+        storagePath: storagePath,
+        fileName: '',
+        titleFr: '',
+        titleEn: '',
+        mimeType: resource['mime_type']?.toString(),
+      );
+      if (_isMultimedia(item) &&
+          !await FreeTierService(client: _client).canAccessMultimedia()) {
+        throw StateError('Le multimédia est réservé aux abonnés Premium.');
+      }
+    }
     return _client.storage.from(bucket).createSignedUrl(storagePath, expiresIn);
   }
 
