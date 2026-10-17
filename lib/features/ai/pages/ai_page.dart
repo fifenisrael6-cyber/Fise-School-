@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/gemini_service.dart';
 import '../../../core/services/photo_service.dart';
+import '../../../core/services/subscription_service.dart';
+import '../../student/pages/pages/premium_page.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../models/user_profile.dart';
 
@@ -45,6 +47,8 @@ class _AiPageState extends State<AiPage> {
   PickedAttachment? _attachment;
   PickedAttachment? _conversationAttachment;
   bool _sending = false;
+  bool _quotaReached = false;
+  bool _showPremiumButton = false;
 
   bool get _isFrench => widget.locale.languageCode != 'en';
 
@@ -90,6 +94,7 @@ class _AiPageState extends State<AiPage> {
   }
 
   Future<void> _sendText(String rawText) async {
+    if (_quotaReached) return;
     final text = rawText.trim();
     final selectedAttachment = _attachment;
     final incompleteExercisePrompt = RegExp(
@@ -180,6 +185,8 @@ class _AiPageState extends State<AiPage> {
       if (!mounted) {
         return;
       }
+      final quotaReached = error is AiQuotaExceededException;
+      final premiumFeature = error is AiPremiumFeatureException;
       final retryable = error is! AiServiceException || error.retryable;
       setState(() {
         _messages.add(_AiMessage(
@@ -188,10 +195,27 @@ class _AiPageState extends State<AiPage> {
           isError: true,
           canRetry: retryable,
         ));
+        if (quotaReached) _quotaReached = true;
+        if (quotaReached || premiumFeature) _showPremiumButton = true;
         _sending = false;
       });
     }
     _scrollToBottom();
+  }
+
+  Future<void> _openPremiumPage() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PremiumPage(locale: widget.locale, profile: widget.profile),
+      ),
+    );
+    final isPremium = await SubscriptionService().isPremium();
+    if (mounted && isPremium) {
+      setState(() {
+        _quotaReached = false;
+        _showPremiumButton = false;
+      });
+    }
   }
 
   /// Renvoie la dernière question après une erreur, sans la dupliquer.
@@ -479,7 +503,7 @@ class _AiPageState extends State<AiPage> {
           final action = actions[index];
           return ActionChip(
             label: Text(action.label),
-            onPressed: _sending ? null : () => _useQuickAction(action),
+            onPressed: (_sending || _quotaReached) ? null : () => _useQuickAction(action),
           );
         },
       ),
@@ -615,6 +639,23 @@ class _AiPageState extends State<AiPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_showPremiumButton) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _sending ? null : _openPremiumPage,
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: Text(_quotaReached
+                      ? (_isFrench
+                          ? 'Débloquer Premium — 2 000 FCFA / 30 jours'
+                          : 'Unlock Premium — 2,000 XAF / 30 days')
+                      : (_isFrench
+                          ? 'PDF et photos IA : Premium — 2 000 FCFA'
+                          : 'AI PDFs and photos: Premium — 2,000 XAF')),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             if (_attachment != null)
               Container(
                 width: double.infinity,
@@ -638,11 +679,12 @@ class _AiPageState extends State<AiPage> {
               children: [
                 IconButton(
                   tooltip: _isFrench ? 'Joindre' : 'Attach',
-                  onPressed: _sending ? null : _showAttachmentMenu,
+                  onPressed: (_sending || _quotaReached) ? null : _showAttachmentMenu,
                   icon: const Icon(Icons.add_circle_outline_rounded),
                 ),
                 Expanded(
                   child: TextField(
+                    enabled: !_quotaReached,
                     controller: _messageController,
                     focusNode: _inputFocus,
                     minLines: 1,
@@ -674,7 +716,7 @@ class _AiPageState extends State<AiPage> {
                 const SizedBox(width: 6),
                 IconButton.filled(
                   tooltip: _isFrench ? 'Envoyer' : 'Send',
-                  onPressed: _sending ? null : _sendMessage,
+                  onPressed: (_sending || _quotaReached) ? null : _sendMessage,
                   icon: _sending
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.send_rounded),
