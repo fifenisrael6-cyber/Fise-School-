@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/teacher_payment_code_service.dart';
 import '../../../models/user_profile.dart';
@@ -18,6 +19,8 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
   bool _loading = true;
   String? _code;
   int _balance = 0;
+  String? _vocation;
+  bool _savingVocation = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -33,10 +36,14 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
       // the legacy payment-code row, so group access and payments use one code.
       final sharedCode = await _service.createOrGetCode();
       final balance = await _service.getWalletBalance();
+      final vocationRow = await Supabase.instance.client
+          .from('profiles').select('teacher_vocation')
+          .eq('id', widget.profile.id).maybeSingle();
       if (mounted) {
         setState(() {
           _code = sharedCode.trim().toUpperCase();
           _balance = balance;
+          _vocation = vocationRow?['teacher_vocation']?.toString();
         });
       }
     } catch (e) {
@@ -83,6 +90,31 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
     }
   }
 
+  Future<void> _saveVocation(String? value) async {
+    if (value == null || _savingVocation) return;
+    setState(() => _savingVocation = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'set_my_teacher_vocation',
+        params: {'p_vocation': value},
+      );
+      if (mounted) {
+        setState(() => _vocation = value);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Filière enseignée enregistrée.' : 'Teaching stream saved.'),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Impossible d’enregistrer la filière.' : 'Unable to save the teaching stream.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _savingVocation = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,6 +131,39 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Icon(Icons.qr_code_2_rounded, size: 64, color: Color(0xFF166534)),
+                    const SizedBox(height: 18),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _fr ? 'Filière enseignée (obligatoire pour les commissions Premium)'
+                            : 'Teaching stream (required for Premium commissions)',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _vocation,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Filière' : 'Teaching stream',
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'scientific',
+                          child: Text(_fr ? 'Scientifique' : 'Scientific'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'literary',
+                          child: Text(_fr ? 'Littéraire' : 'Literary'),
+                        ),
+                      ],
+                      onChanged: _savingVocation ? null : _saveVocation,
+                    ),
+                    if (_savingVocation)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(),
+                      ),
                     const SizedBox(height: 18),
                     Text(
                       _fr ? 'Votre code unique' : 'Your unique code',

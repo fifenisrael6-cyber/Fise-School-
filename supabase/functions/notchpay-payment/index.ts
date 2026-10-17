@@ -32,29 +32,72 @@ serve(async (req) => {
     if (authError || !authData.user) return json({ error: "Invalid session." }, 401);
 
     const body = await req.json();
-    const amount = Number(body?.amount ?? 1000);
+    const amount = Number(body?.amount ?? 2000);
     const currency = String(body?.currency ?? "XAF").toUpperCase();
-    if (amount !== 1000 || currency !== "XAF") {
-      return json({ error: "Fise School Premium must be 1000 XAF." }, 400);
+    if (amount !== 2000 || currency !== "XAF") {
+      return json({ error: "Fise School Premium must be 2000 XAF." }, 400);
     }
 
     const { data: profile, error: profileError } = await admin
       .from("profiles")
-      .select("first_name,last_name,email")
+      .select("first_name,last_name,email,role")
       .eq("id", authData.user.id)
       .single();
     if (profileError) throw profileError;
-
-    const teacherCode = String(body?.teacher_code ?? "").trim();
-    let teacherId: string | null = null;
-    if (teacherCode) {
-      const { data: resolved, error: resolveError } = await admin.rpc(
-        "resolve_teacher_payment_code",
-        { p_code: teacherCode },
-      );
-      if (resolveError || !resolved) return json({ error: "Invalid teacher code." }, 400);
-      teacherId = String(resolved);
+    if (profile.role !== "student") {
+      return json({ error: "Only student accounts can purchase Premium." }, 403);
     }
+
+    let relatedClassId: string | null = null;
+    let scientificTeacherId: string | null = null;
+    let literaryTeacherId: string | null = null;
+    const { data: membership, error: membershipError } = await admin
+      .from("class_students")
+      .select("class_id")
+      .eq("student_id", authData.user.id)
+      .eq("is_active", true)
+      .order("joined_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (membershipError) throw membershipError;
+    relatedClassId = membership?.class_id?.toString() ?? null;
+
+    if (relatedClassId) {
+      const { data: assignments, error: assignmentError } = await admin
+        .from("class_teachers")
+        .select("teacher_id")
+        .eq("class_id", relatedClassId)
+        .eq("is_active", true);
+      if (assignmentError) throw assignmentError;
+      const teacherIds = [...new Set((assignments ?? [])
+        .map((row: { teacher_id?: string }) => row.teacher_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0))];
+      if (teacherIds.length > 0) {
+        const { data: teachers, error: teachersError } = await admin
+          .from("profiles")
+          .select("id,teacher_vocation")
+          .eq("role", "teacher")
+          .in("id", teacherIds);
+        if (teachersError) throw teachersError;
+        scientificTeacherId = (teachers ?? [])
+          .find((teacher: { teacher_vocation?: string }) => teacher.teacher_vocation === "scientific")?.id ?? null;
+        literaryTeacherId = (teachers ?? [])
+          .find((teacher: { teacher_vocation?: string }) => teacher.teacher_vocation === "literary")?.id ?? null;
+      }
+    }
+
+    if (!relatedClassId) {
+      return json({ error: "Choose an active classroom before purchasing Premium." }, 409);
+    }
+    if (!scientificTeacherId || !literaryTeacherId) {
+      return json({
+        error: "This classroom must have one assigned scientific teacher and one assigned literary teacher before Premium can be purchased.",
+      }, 409);
+    }
+
+    const scientificCommission = 200;
+    const literaryCommission = 200;
+    const platformRevenue = 1600;
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
@@ -99,16 +142,21 @@ serve(async (req) => {
       description: String(body?.description ?? "Abonnement Fise School"),
       provider: "notchpay",
       provider_transaction_id: providerTransactionId,
-      teacher_id: teacherId,
-      teacher_commission_xaf: teacherId ? 200 : 0,
-      platform_revenue_xaf: teacherId ? 800 : 1000,
+      teacher_id: null,
+      teacher_commission_xaf: scientificCommission + literaryCommission,
+      platform_revenue_xaf: platformRevenue,
+      scientific_teacher_id: scientificTeacherId,
+      literary_teacher_id: literaryTeacherId,
+      scientific_commission_xaf: scientificCommission,
+      literary_commission_xaf: literaryCommission,
+      related_class_id: relatedClassId,
     });
     if (insertError) throw insertError;
 
     return json({
       authorization_url: authorizationUrl,
       reference: returnedReference,
-      teacher_id: teacherId,
+      teacher_id: null,
     });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);

@@ -178,11 +178,46 @@ serve(async (req) => {
         : "Write a question or attach a document before sending." }, 400);
     }
 
+    // Free tier limits are enforced server-side; local/offline UI cannot bypass them.
+    let isPremiumStudent = false;
+    if (profile.role === "student") {
+      const { data: premiumData, error: premiumError } = await userClient.rpc(
+        "is_student_premium",
+        { p_user_id: userData.user.id },
+      );
+      if (premiumError) {
+        return json({ error: "Unable to verify subscription. Please retry." }, 503);
+      }
+      isPremiumStudent = premiumData === true;
+    }
+
     const isIncompleteExercisePrompt = /^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$/i;
     if (!attachment?.base64 && isIncompleteExercisePrompt.test(message)) {
       return json({ error: language === "fr"
         ? "Écris l'énoncé de l'exercice ou joins une photo/PDF avant d'envoyer."
         : "Write the exercise statement or attach a photo/PDF before sending." }, 400);
+    }
+
+    if (profile.role === "student" && !isPremiumStudent) {
+      if (attachment?.base64) {
+        return json({ error: language === "fr"
+          ? "La version gratuite ne permet pas d'envoyer des documents ni des photos à l'IA."
+          : "The free plan cannot send documents or photos to AI." }, 403);
+      }
+      const { data: quota, error: quotaError } = await userClient.rpc(
+        "consume_student_free_quota",
+        { p_feature: "ai_question", p_resource_id: null },
+      );
+      if (quotaError) {
+        return json({ error: language === "fr"
+          ? "Impossible de vérifier la limite IA. Réessaie dans un instant."
+          : "Unable to verify the AI limit. Please retry." }, 503);
+      }
+      if (quota?.allowed !== true) {
+        return json({ error: language === "fr"
+          ? "Tu as utilisé tes 3 questions IA gratuites. Passe à Premium pour continuer."
+          : "You have used your 3 free AI questions. Upgrade to Premium to continue." }, 429);
+      }
     }
 
     let attachmentPart: Record<string, unknown> | null = null;
@@ -248,43 +283,10 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    // Discover models enabled for this API key instead of relying on retired model names.
+    // Avoid a separate model-discovery request on every question; use the configured
+    // fast model immediately and keep one fallback for transient/model errors.
     const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\//, "");
-    let models: string[] = [];
-    try {
-      const listController = new AbortController();
-      const listTimeout = setTimeout(() => listController.abort(), 10000);
-      try {
-        const listResponse = await fetch(
-          "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
-          { headers: { "x-goog-api-key": apiKey }, signal: listController.signal },
-        );
-        const listData = await listResponse.json().catch(() => ({}));
-        if (!listResponse.ok) {
-          const safeBody = JSON.stringify(listData ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 1500);
-          console.error("[gemini-chat] Gemini model discovery failed", JSON.stringify({ status: listResponse.status, body: safeBody }));
-        } else {
-          const available = (Array.isArray(listData?.models) ? listData.models : [])
-            .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
-              && item.supportedGenerationMethods.includes("generateContent"))
-            .map((item: any) => String(item.name ?? "").replace(/^models\//, ""))
-            .filter((name: string) => name.length > 0);
-          const preferred = [
-            ...(configuredModel ? [configuredModel] : []),
-            ...available.filter((name: string) => /flash/i.test(name) && !/tts|image|embedding|robotics/i.test(name)),
-            ...available.filter((name: string) => !/tts|image|embedding|robotics/i.test(name)),
-          ];
-          models = [...new Set(preferred)].slice(0, 3);
-        }
-      } finally {
-        clearTimeout(listTimeout);
-      }
-    } catch (error) {
-      console.error("[gemini-chat] Gemini model discovery exception", error instanceof Error ? error.message : String(error));
-    }
-    if (!models.length) {
-      models = [...new Set([...(configuredModel ? [configuredModel] : []), "gemini-2.5-flash", "gemini-2.0-flash"])];
-    }
+    const models = [...new Set([configuredModel || "gemini-2.5-flash", "gemini-2.0-flash"])];
 
     let data: any = null;
     let lastError = "Gemini request failed.";

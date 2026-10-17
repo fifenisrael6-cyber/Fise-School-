@@ -11,9 +11,10 @@ class PastPaperService {
   final SupabaseClient _client;
   static const bucket = 'past-papers';
 
-  Future<List<PastPaper>> list({bool includeUnpublished = false}) {
-    final userId = _client.auth.currentUser?.id ?? 'anonymous';
-    return JsonCache.instance.cachedRead<List<PastPaper>>(
+  Future<List<PastPaper>> list({bool includeUnpublished = false}) async {
+    final user = _client.auth.currentUser;
+    final userId = user?.id ?? 'anonymous';
+    final papers = await JsonCache.instance.cachedRead<List<PastPaper>>(
       key: 'past_papers_${userId}_${includeUnpublished ? 'all' : 'published'}',
       fetch: () async {
         var query = _client.from('past_papers').select();
@@ -28,6 +29,38 @@ class PastPaperService {
           .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row as Map)))
           .toList(growable: false),
     );
+
+    // Admin screens need the complete catalogue. Student free access is limited
+    // to two distinct annals, tracked by Supabase rather than only by the UI.
+    if (includeUnpublished || user == null) return papers;
+    try {
+      final profile = await _client.from('profiles').select('role')
+          .eq('id', user.id).maybeSingle();
+      if (profile?['role'] != 'student') return papers;
+      final premium = await _client.rpc(
+        'is_student_premium',
+        params: {'p_user_id': user.id},
+      );
+      if (premium == true) return papers;
+
+      final allowed = <PastPaper>[];
+      for (final paper in papers) {
+        final quota = await _client.rpc(
+          'consume_student_free_quota',
+          params: {'p_feature': 'annal', 'p_resource_id': paper.id},
+        );
+        if (quota is Map && quota['allowed'] == true) {
+          allowed.add(paper);
+        } else {
+          break;
+        }
+      }
+      return allowed;
+    } catch (_) {
+      // Fail closed for online catalogue access if free-tier rights cannot be
+      // verified; previously cached content remains on the device for offline use.
+      return const <PastPaper>[];
+    }
   }
 
   Future<String> signedUrl(String path) =>

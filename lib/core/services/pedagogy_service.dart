@@ -12,6 +12,7 @@ import '../../models/user_profile.dart';
 import '../offline/json_cache.dart';
 import '../offline/offline_repository.dart';
 import '../offline/pending_progress.dart';
+import 'free_tier_service.dart';
 
 class SubjectService {
   final SupabaseClient _client;
@@ -453,8 +454,17 @@ class CourseService {
       final lessons = rows
           .map((row) => Lesson.fromMap(Map<String, dynamic>.from(row)))
           .toList(growable: false);
-      await OfflineRepository().saveLessons(lessons);
-      return lessons;
+      final freeTier = FreeTierService(client: _client);
+      final allowedLessons = <Lesson>[];
+      for (final lesson in lessons) {
+        if (await freeTier.consume('lesson', lesson.id)) {
+          allowedLessons.add(lesson);
+        } else {
+          break;
+        }
+      }
+      await OfflineRepository().saveLessons(allowedLessons);
+      return allowedLessons;
     } catch (_) {
       return OfflineRepository().getLessonsForCourse(courseId);
     }
@@ -975,9 +985,25 @@ class ResourceService {
       .map((row) => CourseResource.fromMap(Map<String, dynamic>.from(row as Map)))
       .toList(growable: false);
 
+  bool _isMultimedia(CourseResource resource) {
+    final type = resource.resourceType.toLowerCase();
+    final mime = (resource.mimeType ?? '').toLowerCase();
+    return const {'video','audio','image','photo','multimedia'}.contains(type) ||
+        mime.startsWith('video/') || mime.startsWith('audio/') ||
+        mime.startsWith('image/');
+  }
+
+  Future<List<CourseResource>> _applyMultimediaEntitlement(
+      List<CourseResource> resources) async {
+    if (await FreeTierService(client: _client).canAccessMultimedia()) {
+      return resources;
+    }
+    return resources.where((resource) => !_isMultimedia(resource)).toList(growable: false);
+  }
+
   /// Liste des documents d'un cours (dernière copie locale sans réseau).
-  Future<List<CourseResource>> listForCourse(String courseId) {
-    return JsonCache.instance.cachedRead<List<CourseResource>>(
+  Future<List<CourseResource>> listForCourse(String courseId) async {
+    final resources = await JsonCache.instance.cachedRead<List<CourseResource>>(
       key: 'resources_course_$courseId',
       fetch: () async => await _client
           .from('course_resources')
@@ -986,11 +1012,12 @@ class ResourceService {
           .order('position') as Object?,
       decode: _decodeResources,
     );
+    return _applyMultimediaEntitlement(resources);
   }
 
   /// Liste des documents d'une leçon (dernière copie locale sans réseau).
-  Future<List<CourseResource>> listForLesson(String lessonId) {
-    return JsonCache.instance.cachedRead<List<CourseResource>>(
+  Future<List<CourseResource>> listForLesson(String lessonId) async {
+    final resources = await JsonCache.instance.cachedRead<List<CourseResource>>(
       key: 'resources_lesson_$lessonId',
       fetch: () async => await _client
           .from('course_resources')
@@ -999,9 +1026,30 @@ class ResourceService {
           .order('position') as Object?,
       decode: _decodeResources,
     );
+    return _applyMultimediaEntitlement(resources);
   }
 
-  Future<String> createSignedUrl(String storagePath, {int expiresIn = 3600}) {
+  Future<String> createSignedUrl(String storagePath, {int expiresIn = 3600}) async {
+    final resource = await _client.from('course_resources')
+        .select('resource_type,mime_type')
+        .eq('storage_path', storagePath)
+        .maybeSingle();
+    if (resource != null) {
+      final item = CourseResource(
+        id: '',
+        courseId: '',
+        resourceType: resource['resource_type']?.toString() ?? '',
+        storagePath: storagePath,
+        fileName: '',
+        titleFr: '',
+        titleEn: '',
+        mimeType: resource['mime_type']?.toString(),
+      );
+      if (_isMultimedia(item) &&
+          !await FreeTierService(client: _client).canAccessMultimedia()) {
+        throw StateError('Le multimédia est réservé aux abonnés Premium.');
+      }
+    }
     return _client.storage.from(bucket).createSignedUrl(storagePath, expiresIn);
   }
 
@@ -1071,6 +1119,30 @@ class ResourceService {
           .insert(values)
           .select()
           .single();
+
+      // Compter les PDF/photos séparément pour chaque salle suivie.
+      final publicationKind = extension == 'pdf' || resourceType.toLowerCase() == 'pdf'
+          ? 'pdf'
+          : ((mimeType ?? '').startsWith('image/') ||
+                  const {'image', 'photo'}.contains(resourceType.toLowerCase())
+              ? 'photo'
+              : null);
+      if (publicationKind != null) {
+        try {
+          final course = await _client.from('courses').select('class_id')
+              .eq('id', courseId).maybeSingle();
+          final classId = course?['class_id']?.toString();
+          if (classId != null && classId.isNotEmpty) {
+            await _client.rpc('record_teacher_room_publication', params: {
+              'p_class_id': classId,
+              'p_kind': publicationKind,
+              'p_resource_id': row['id'].toString(),
+            });
+          }
+        } catch (_) {
+          // La publication reste disponible même si le suivi doit être réconcilié.
+        }
+      }
 
       // Invalider les listes : le nouveau fichier doit apparaître tout de suite
       // et non attendre la fin d'une actualisation de cache en arrière-plan.

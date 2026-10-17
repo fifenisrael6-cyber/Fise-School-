@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/chapter_learning.dart';
 import '../../models/user_profile.dart';
+import 'free_tier_service.dart';
 
 /// Accès Supabase au nouveau parcours Chapitre > Cours > Quiz > Exercices.
 /// Les autorisations effectives restent celles des politiques RLS de Supabase.
@@ -219,11 +220,25 @@ class ChapterLearningService {
       }
     }
 
-    return rows.map(ChapterQuiz.fromMap).toList();
+    final quizzes = rows.map(ChapterQuiz.fromMap).toList();
+    final freeTier = FreeTierService(client: _client);
+    final allowed = <ChapterQuiz>[];
+    for (final quiz in quizzes) {
+      if (await freeTier.consume('qcm', quiz.id)) {
+        allowed.add(quiz);
+      } else {
+        break;
+      }
+    }
+    return allowed;
   }
 
   /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
   Future<List<ChapterQuizQuestion>> listQuizQuestions(String quizId) async {
+    final allowed = await FreeTierService(client: _client).consume('qcm', quizId);
+    if (!allowed) {
+      throw StateError('La version gratuite est limitée à deux QCM.');
+    }
     final rows = await _client
         .from('chapter_quiz_questions')
         .select('id,quiz_id,prompt_fr,prompt_en,options_fr,options_en,position')
@@ -508,7 +523,35 @@ class ChapterLearningService {
     final row = id == null
         ? await _client.from('chapter_quizzes').insert(values).select().single()
         : await _client.from('chapter_quizzes').update(values).eq('id', id).select().single();
-    return Map<String, dynamic>.from(row);
+    final saved = Map<String, dynamic>.from(row);
+
+    // A published teacher QCM counts separately in every active classroom
+    // that the teacher follows. Generated official QCM (created_by = null)
+    // and admin-created content are not counted as teacher obligations.
+    if (visible && createdBy.trim().isNotEmpty) {
+      try {
+        final profile = await _client.from('profiles').select('role')
+            .eq('id', createdBy).maybeSingle();
+        if (profile?['role'] == 'teacher') {
+          final assignments = await _client.from('class_teachers')
+              .select('class_id')
+              .eq('teacher_id', createdBy)
+              .eq('is_active', true);
+          for (final assignment in assignments) {
+            final classId = assignment['class_id']?.toString();
+            if (classId == null || classId.isEmpty) continue;
+            await _client.rpc('record_teacher_room_publication', params: {
+              'p_class_id': classId,
+              'p_kind': 'qcm',
+              'p_resource_id': saved['id'].toString(),
+            });
+          }
+        }
+      } catch (_) {
+        // Keep QCM creation working; failed counters remain visible for admin review.
+      }
+    }
+    return saved;
   }
 
   Future<Map<String, dynamic>> saveQuizQuestion({
