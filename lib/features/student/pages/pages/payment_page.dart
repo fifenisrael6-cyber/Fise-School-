@@ -136,7 +136,12 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
         return;
       }
 
-      final message = error.toString().replaceFirst('Exception: ', '');
+      var message = error.toString().replaceFirst('Exception: ', '');
+      if (_isFrench && message.contains('Choose an active classroom')) {
+        message = 'Choisis d’abord une salle dans les paramètres avant de payer.';
+      } else if (_isFrench && message.contains('one assigned scientific teacher and one assigned literary teacher')) {
+        message = 'Ta salle doit avoir un enseignant scientifique et un enseignant littéraire affectés avant l’achat de Premium.';
+      }
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -271,6 +276,13 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
                       ),
 
                       const SizedBox(height: 24),
+
+                      OutlinedButton.icon(
+                        onPressed: _checkingPremium ? null : _refreshPremiumStatus,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: Text(_isFrench ? 'J’ai payé — vérifier l’activation' : 'I paid — check activation'),
+                      ),
+                      const SizedBox(height: 8),
 
                       FilledButton.icon(
                         onPressed: _loading ? null : _startPayment,
