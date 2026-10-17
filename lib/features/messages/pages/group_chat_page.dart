@@ -15,6 +15,7 @@ import '../../../core/offline/message_outbox.dart';
 import '../../../core/offline/message_attachment_offline.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
+import '../../../core/services/free_tier_service.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
@@ -86,6 +87,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _attachment = widget.initialAttachment;
     unawaited(_loadTeacherAccessCode());
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowReceiveQuotaOffer());
     // Messages en attente : la conversation se met à jour quand la file change
     // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
     _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
@@ -249,6 +251,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _maybeShowReceiveQuotaOffer() async {
+    if (widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('group_receive');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la réception des messages' : 'receiving messages',
+    );
+  }
+
   Future<void> _showPremiumRequired() async {
     await showPremiumOfferSheet(
       context: context,
@@ -262,6 +276,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final body = _composer.text.trim();
     if (_sending || (body.isEmpty && _attachment == null)) {
       return;
+    }
+
+    if (widget.profile.role.toLowerCase() == 'student') {
+      final quota = await FreeTierService().status('group_send');
+      if (quota != null && quota['premium'] != true && quota['allowed'] == false) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _fr ? 'la messagerie' : 'messaging',
+        );
+        return;
+      }
     }
 
     setState(() => _sending = true);
