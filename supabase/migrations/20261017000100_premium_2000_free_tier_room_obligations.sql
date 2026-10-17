@@ -518,3 +518,28 @@ update public.payment_orders
 set teacher_commission_xaf = case when teacher_id is null then 0 else 200 end,
     platform_revenue_xaf = greatest(amount - case when teacher_id is null then 0 else 200 end,0)
 where provider = 'notchpay' and status in ('PENDING','NOTPAY') and amount = 1000;
+
+
+-- Existing teacher accounts can set/update their vocation without an admin-side
+-- profile write. Only the authenticated teacher can change their own value.
+create or replace function public.set_my_teacher_vocation(p_vocation text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not public.check_profile_role(auth.uid(), 'teacher') then
+    raise exception 'Only teachers can set a teaching vocation';
+  end if;
+  if p_vocation not in ('scientific','literary') then
+    raise exception 'Vocation must be scientific or literary';
+  end if;
+  update public.profiles
+  set teacher_vocation = p_vocation
+  where id = auth.uid() and role = 'teacher';
+  return p_vocation;
+end;
+$$;
+revoke all on function public.set_my_teacher_vocation(text) from public, anon;
+grant execute on function public.set_my_teacher_vocation(text) to authenticated;
