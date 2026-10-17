@@ -128,7 +128,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF166534),
           foregroundColor: Colors.white,
-          title: Text(_fr ? 'Changer de salle' : 'Change classroom'),
+          title: Text(_fr ? 'Changer de classe ou de filière' : 'Change class or study track'),
           actions: [
             IconButton(
               onPressed: _loading ? null : _loadClasses,
@@ -146,8 +146,8 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                   children: [
                     Text(
                       _fr
-                          ? 'Choisissez librement une salle parmi les parcours scolaires disponibles. Aucun code enseignant ni mot de passe supplémentaire n’est nécessaire. Vous pourrez revenir à une salle précédente ou en choisir une autre plus tard.'
-                          : 'Choose a classroom from the available school pathways. No teacher code or additional password is required. You can return to a previous classroom or choose another one later.',
+                          ? 'Choisis la classe, la série ou la filière proposée qui correspond à ton parcours. Aucun code enseignant ni mot de passe supplémentaire n’est nécessaire. Ton compte reste le même.'
+                          : 'Choose the available class, series or study track that matches your pathway. No teacher code or extra password is required. Your account stays the same.',
                       style: const TextStyle(height: 1.45),
                     ),
                     if (_error != null) ...[
@@ -164,8 +164,8 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       const SizedBox(height: 24),
                       Text(
                         _fr
-                            ? 'Aucune salle active n’est disponible pour le moment.'
-                            : 'No active classrooms are available right now.',
+                            ? 'Aucune classe compatible n’est disponible. Vérifie le sous-système de ton profil ou réessaie après actualisation.'
+                            : 'No compatible classroom is available. Check your profile subsystem or refresh and try again.',
                       ),
                     ],
                     if (_classes.isNotEmpty) ...[
