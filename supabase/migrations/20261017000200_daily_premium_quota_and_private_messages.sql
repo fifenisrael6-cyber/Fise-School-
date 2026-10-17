@@ -278,4 +278,3 @@ using (
 );
 
 revoke all on function public.apply_free_private_message_limits() from public, anon, authenticated;
-grant execute on function public.apply_free_private_message_limits() to authenticated;
