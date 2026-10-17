@@ -280,3 +280,70 @@ $$;
 
 revoke all on function public.resolve_teacher_withdrawal(uuid, text, text, text) from public, anon;
 grant execute on function public.resolve_teacher_withdrawal(uuid, text, text, text) to authenticated;
+
+
+-- Read-only preflight for the private chat UI; the insert trigger below remains authoritative.
+create or replace function public.check_student_free_quota(p_feature text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_role text;
+  v_used integer := 0;
+  v_limit integer;
+begin
+  if v_user is null then raise exception 'Authentication required'; end if;
+  if p_feature <> 'group_send' then
+    return jsonb_build_object('allowed', false, 'reason', 'unknown_feature');
+  end if;
+
+  select role into v_role from public.profiles where id = v_user;
+  if v_role is distinct from 'student' or public.is_student_premium(v_user) then
+    return jsonb_build_object('allowed', true, 'premium', true);
+  end if;
+
+  v_limit := 2;
+  select coalesce(max(used_count), 0) into v_used
+  from public.student_free_usage
+  where user_id = v_user and feature = p_feature and resource_id is null;
+
+  return jsonb_build_object('allowed', v_used < v_limit, 'limit', v_limit, 'used', v_used);
+end;
+$$;
+
+revoke all on function public.check_student_free_quota(text) from public, anon;
+grant execute on function public.check_student_free_quota(text) to authenticated;
+
+-- Share the same two-message lifetime quota between group and private chat sends.
+create or replace function public.enforce_free_private_message_send()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+  v_quota jsonb;
+begin
+  if exists (select 1 from public.private_messages m where m.id = new.id) then
+    return new;
+  end if;
+
+  select p.role into v_role from public.profiles p where p.id = new.sender_id;
+  if v_role = 'student' and not public.is_student_premium(new.sender_id) then
+    v_quota := public.consume_free_quota_for_user(new.sender_id, 'group_send', null);
+    if coalesce((v_quota ->> 'allowed')::boolean, false) is not true then
+      raise exception 'FREE_MESSAGE_SEND_LIMIT: Tu as utilisé tes 2 messages gratuits. Passe à Premium pour continuer.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_free_private_message_send on public.private_messages;
+create trigger enforce_free_private_message_send
+before insert on public.private_messages
+for each row execute function public.enforce_free_private_message_send();
