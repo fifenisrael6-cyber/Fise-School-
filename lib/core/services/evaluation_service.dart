@@ -54,14 +54,22 @@ class EvaluationService {
       );
       if (premium == true) return result;
       final freeTier = FreeTierService(client: _client);
-      final allowed = <StudentEvaluation>[];
-      for (final evaluation in result.items) {
+      final previouslyGranted = await freeTier.cachedResourceIds('evaluation');
+      final ordered = [...result.items]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final evaluation in ordered) {
         if (await freeTier.consume('evaluation', evaluation.id)) {
-          allowed.add(evaluation);
+          allowedIds.add(evaluation.id);
         } else {
           break;
         }
       }
+      final allowed = result.items.where((evaluation) => allowedIds.contains(evaluation.id)).toList(growable: false);
       return StudentEvaluationList(serverOffset: result.serverOffset, items: allowed);
     } catch (_) {
       return const StudentEvaluationList(serverOffset: Duration.zero, items: []);
