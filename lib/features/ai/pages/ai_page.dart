@@ -183,8 +183,7 @@ class _AiPageState extends State<AiPage> {
       }
       final retryable = error is! AiServiceException || error.retryable;
       final rawError = error.toString().toLowerCase();
-      final quotaReached = rawError.contains('ai_quota_exceeded') ||
-          rawError.contains('questions ia gratuites') ||
+      final quotaReached = rawError.contains('questions ia gratuites') ||
           rawError.contains('free ai questions') ||
           rawError.contains('free plan cannot send documents') ||
           rawError.contains('ne permet pas d’envoyer des documents');
