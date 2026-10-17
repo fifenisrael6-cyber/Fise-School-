@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../offline/json_cache.dart';
 import '../../models/evaluation.dart';
+import 'free_tier_service.dart';
 
 /// Accès au système d'évaluation automatisée. Aucune clé secrète ici : toutes les
 /// autorisations sont imposées par les politiques RLS et les fonctions SQL de Supabase.
@@ -34,15 +35,37 @@ class EvaluationService {
 
   // ---------------------------------------------------------------- Élève --
 
-  Future<StudentEvaluationList> listMine() {
+  Future<StudentEvaluationList> listMine() async {
     final userId = _client.auth.currentUser?.id ?? 'anonymous';
-    return JsonCache.instance.cachedRead<StudentEvaluationList>(
+    final result = await JsonCache.instance.cachedRead<StudentEvaluationList>(
       key: 'student_evaluations_$userId',
       fetch: () async => await _client.rpc('list_my_evaluations') as Object?,
       decode: (raw) => StudentEvaluationList.fromMap(
         Map<String, dynamic>.from(raw as Map),
       ),
     );
+    try {
+      final profile = await _client.from('profiles').select('role')
+          .eq('id', userId).maybeSingle();
+      if (profile?['role'] != 'student') return result;
+      final premium = await _client.rpc(
+        'is_student_premium',
+        params: {'p_user_id': userId},
+      );
+      if (premium == true) return result;
+      final freeTier = FreeTierService(client: _client);
+      final allowed = <StudentEvaluation>[];
+      for (final evaluation in result.items) {
+        if (await freeTier.consume('evaluation', evaluation.id)) {
+          allowed.add(evaluation);
+        } else {
+          break;
+        }
+      }
+      return StudentEvaluationList(serverOffset: result.serverOffset, items: allowed);
+    } catch (_) {
+      return const StudentEvaluationList(serverOffset: Duration.zero, items: []);
+    }
   }
 
   String? get currentUserId => _client.auth.currentUser?.id;
