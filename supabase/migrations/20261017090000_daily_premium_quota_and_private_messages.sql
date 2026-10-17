@@ -336,6 +336,7 @@ begin
   from public.message_group_messages m
   left join public.profiles p on p.id = m.sender_id
   where m.group_id = p_group_id
+    and m.created_at >= v_joined_at
     and not ((select auth.uid()) = any(coalesce(m.hidden_for, '{}'::uuid[])))
     and (
       not m.free_limited
