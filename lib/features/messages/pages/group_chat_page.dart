@@ -19,7 +19,7 @@ import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
 import '../../../models/user_profile.dart';
-import '../../student/pages/pages/payment_page.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 
 /// Conversation d'un groupe, façon WhatsApp.
 class GroupChatPage extends StatefulWidget {
@@ -250,33 +250,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _showPremiumRequired() async {
-    final goToPayment = await showDialog<bool>(
+    await showPremiumOfferSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_fr ? 'Quota gratuit atteint' : 'Free quota reached'),
-        content: Text(_fr
-            ? 'Tu as utilisé tes 2 messages gratuits. Paie 2 000 FCFA pour activer Premium pendant 30 jours et continuer.'
-            : 'You have used your 2 free messages. Pay 2,000 XAF to activate Premium for 30 days and continue.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(_fr ? 'Plus tard' : 'Later'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(_fr ? 'Payer maintenant' : 'Pay now'),
-          ),
-        ],
-      ),
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la messagerie' : 'messaging',
     );
-    if (goToPayment == true && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
-        ),
-      );
-    }
   }
 
   Future<void> _send() async {
