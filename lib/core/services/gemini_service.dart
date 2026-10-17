@@ -198,6 +198,19 @@ class GeminiService {
 
   AiServiceException _messageForError(String raw, int? status, bool isFrench) {
     final code = raw.trim().toUpperCase();
+    final lowerRaw = raw.toLowerCase();
+    if (lowerRaw.contains('questions ia gratuites') || lowerRaw.contains('free ai questions')) {
+      return AiServiceException(
+        isFrench
+            ? 'Tu as utilisé tes 4 questions IA gratuites pour les dernières 24 heures. Passe à Premium pour continuer.'
+            : 'You have used your 4 free AI questions for the last 24 hours. Upgrade to Premium to continue.',
+        retryable: false,
+      );
+    }
+    if (lowerRaw.contains('version gratuite ne permet pas') ||
+        lowerRaw.contains('free plan cannot send documents')) {
+      return AiServiceException(raw, retryable: false);
+    }
     if (code == 'AI_QUOTA_EXCEEDED' || status == 429) {
       return AiServiceException(isFrench
           ? 'Le service IA a atteint sa limite temporaire. Réessaie dans quelques minutes.'
