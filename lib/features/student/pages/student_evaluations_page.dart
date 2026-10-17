@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/evaluation_service.dart';
+import '../../../core/services/free_tier_service.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/evaluation.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -43,6 +45,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
   StudentEvaluationList? _data;
   String? _error;
   bool _loading = true;
+  bool _quotaOfferShown = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -64,6 +67,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         _data = data;
         _loading = false;
       });
+      await _maybeShowEvaluationQuotaOffer();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -71,6 +75,19 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         _error = EvaluationService.friendlyError(e, fr: _fr);
       });
     }
+  }
+
+  Future<void> _maybeShowEvaluationQuotaOffer() async {
+    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('evaluation');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    _quotaOfferShown = true;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'les épreuves' : 'exams',
+    );
   }
 
   @override
