@@ -335,7 +335,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
             },
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-              itemCount: visibleCourses.length + 1,
+              itemCount: visibleCourses.length + (visibleCourses.isEmpty ? 2 : 1),
               separatorBuilder: (_, _) => const SizedBox(height: 14),
               itemBuilder: (_, index) {
                 if (index == 0) {
