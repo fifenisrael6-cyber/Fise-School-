@@ -215,8 +215,8 @@ serve(async (req) => {
       }
       if (quota?.allowed !== true) {
         return json({ error: language === "fr"
-          ? "Tu as utilisé tes 3 questions IA gratuites. Passe à Premium pour continuer."
-          : "You have used your 3 free AI questions. Upgrade to Premium to continue." }, 429);
+          ? "Tu as utilisé tes 4 questions IA gratuites. Passe à Premium pour continuer."
+          : "You have used your 4 free AI questions. Upgrade to Premium to continue." }, 429);
       }
     }
 
