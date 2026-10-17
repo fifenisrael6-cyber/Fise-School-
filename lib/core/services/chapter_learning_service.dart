@@ -222,15 +222,22 @@ class ChapterLearningService {
 
     final quizzes = rows.map(ChapterQuiz.fromMap).toList();
     final freeTier = FreeTierService(client: _client);
-    final allowed = <ChapterQuiz>[];
-    for (final quiz in quizzes) {
+    final previouslyGranted = await freeTier.cachedResourceIds('qcm');
+    final ordered = [...quizzes]..sort((a, b) {
+      final aGranted = previouslyGranted.contains(a.id);
+      final bGranted = previouslyGranted.contains(b.id);
+      if (aGranted == bGranted) return 0;
+      return aGranted ? -1 : 1;
+    });
+    final allowedIds = <String>{};
+    for (final quiz in ordered) {
       if (await freeTier.consume('qcm', quiz.id)) {
-        allowed.add(quiz);
+        allowedIds.add(quiz.id);
       } else {
         break;
       }
     }
-    return allowed;
+    return quizzes.where((quiz) => allowedIds.contains(quiz.id)).toList(growable: false);
   }
 
   /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
