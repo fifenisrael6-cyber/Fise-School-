@@ -117,9 +117,11 @@ serve(async (req) => {
           name: name || "Fise School Student",
           ...(email ? { email } : {}),
         },
-        description: String(body?.description ?? "Abonnement Fise School"),
+        description: String(body?.description ?? "Abonnement Fise School Premium - 30 jours"),
         reference,
         callback,
+        locked_currency: "XAF",
+        locked_country: "CM",
       }),
     });
 
