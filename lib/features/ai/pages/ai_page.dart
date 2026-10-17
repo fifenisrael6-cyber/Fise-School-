@@ -185,7 +185,9 @@ class _AiPageState extends State<AiPage> {
       final rawError = error.toString().toLowerCase();
       final quotaReached = rawError.contains('ai_quota_exceeded') ||
           rawError.contains('questions ia gratuites') ||
-          rawError.contains('free ai questions');
+          rawError.contains('free ai questions') ||
+          rawError.contains('free plan cannot send documents') ||
+          rawError.contains('ne permet pas d’envoyer des documents');
       setState(() {
         _messages.add(_AiMessage(
           text: _friendlyError(error),
@@ -200,7 +202,9 @@ class _AiPageState extends State<AiPage> {
           context: context,
           locale: widget.locale,
           profile: widget.profile,
-          feature: _isFrench ? 'l’assistant IA' : 'the AI assistant',
+          feature: rawError.contains('documents') || rawError.contains('photo')
+              ? (_isFrench ? 'les photos et PDF avec l’IA' : 'AI photos and PDFs')
+              : (_isFrench ? 'l’assistant IA' : 'the AI assistant'),
         );
       }
     }
