@@ -517,7 +517,35 @@ class ChapterLearningService {
     final row = id == null
         ? await _client.from('chapter_quizzes').insert(values).select().single()
         : await _client.from('chapter_quizzes').update(values).eq('id', id).select().single();
-    return Map<String, dynamic>.from(row);
+    final saved = Map<String, dynamic>.from(row);
+
+    // A published teacher QCM counts separately in every active classroom
+    // that the teacher follows. Generated official QCM (created_by = null)
+    // and admin-created content are not counted as teacher obligations.
+    if (visible && createdBy.trim().isNotEmpty) {
+      try {
+        final profile = await _client.from('profiles').select('role')
+            .eq('id', createdBy).maybeSingle();
+        if (profile?['role'] == 'teacher') {
+          final assignments = await _client.from('class_teachers')
+              .select('class_id')
+              .eq('teacher_id', createdBy)
+              .eq('is_active', true);
+          for (final assignment in assignments) {
+            final classId = assignment['class_id']?.toString();
+            if (classId == null || classId.isEmpty) continue;
+            await _client.rpc('record_teacher_room_publication', params: {
+              'p_class_id': classId,
+              'p_kind': 'qcm',
+              'p_resource_id': saved['id'].toString(),
+            });
+          }
+        }
+      } catch (_) {
+        // Keep QCM creation working; failed counters remain visible for admin review.
+      }
+    }
+    return saved;
   }
 
   Future<Map<String, dynamic>> saveQuizQuestion({
