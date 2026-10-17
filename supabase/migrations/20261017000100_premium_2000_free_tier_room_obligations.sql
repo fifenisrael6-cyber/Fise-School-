@@ -419,16 +419,12 @@ begin
   end if;
 
   if v_order.amount = 2000 and upper(v_order.currency) = 'XAF' then
-    v_total_commission :=
-      case when v_order.scientific_teacher_id is not null then 200 else 0 end
-      + case when v_order.literary_teacher_id is not null
-               and v_order.literary_teacher_id is distinct from v_order.scientific_teacher_id
-             then 200
-             when v_order.literary_teacher_id is not null
-               and v_order.scientific_teacher_id is null
-             then 200
-             else 0 end;
-    v_platform := greatest(2000 - v_total_commission, 0);
+    if v_order.scientific_teacher_id is null or v_order.literary_teacher_id is null
+       or v_order.scientific_teacher_id = v_order.literary_teacher_id then
+      raise exception 'Premium payment requires one distinct scientific and one literary teacher';
+    end if;
+    v_total_commission := 400;
+    v_platform := 1600;
   elsif v_order.amount = 1000 and upper(v_order.currency) = 'XAF' then
     -- Compatibility for old unpaid orders only.
     v_total_commission := greatest(coalesce(v_order.teacher_commission_xaf, 0), 0);
