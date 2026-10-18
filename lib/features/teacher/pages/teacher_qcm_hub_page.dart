@@ -5,7 +5,6 @@ import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 import 'create_assignment_page.dart';
-import 'qcm_builder_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
@@ -55,15 +54,10 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   Future<void> _openCreator({required bool linkedToCourse}) async {
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => linkedToCourse
-            ? CreateAssignmentPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              )
-            : QcmBuilderPage(
-                locale: widget.locale,
-                profile: widget.profile,
-              ),
+        builder: (_) => CreateAssignmentPage(
+          locale: widget.locale,
+          profile: widget.profile,
+        ),
       ),
     );
     if (!mounted) return;
