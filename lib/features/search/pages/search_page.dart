@@ -8,13 +8,12 @@ import '../../../core/services/search_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/search_result.dart';
 import '../../../models/user_profile.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../student/pages/assignments_page.dart';
 import '../../student/pages/course_detail_page.dart';
 import '../../student/pages/lesson_page.dart';
 import '../../student/pages/past_papers_page.dart';
 
-enum _Filter { all, courses, files, papers, assignments, forum, catalogue }
+enum _Filter { all, courses, files, papers, assignments, catalogue }
 
 class SearchPage extends StatefulWidget {
   final Locale locale;
@@ -110,7 +109,6 @@ class _SearchPageState extends State<SearchPage> {
     _Filter.files => _en ? 'Files' : 'Fichiers',
     _Filter.papers => _en ? 'Past papers' : 'Annales',
     _Filter.assignments => _en ? 'Assignments' : 'Devoirs',
-    _Filter.forum => 'Forum',
     _Filter.catalogue => 'Catalogue',
   };
 
@@ -127,7 +125,6 @@ class _SearchPageState extends State<SearchPage> {
           type == SearchResultType.chapterContent,
     _Filter.papers => type == SearchResultType.pastPaper,
     _Filter.assignments => type == SearchResultType.assignment,
-    _Filter.forum => type == SearchResultType.forum,
     _Filter.catalogue =>
       type == SearchResultType.exam ||
           type == SearchResultType.classItem ||
@@ -198,8 +195,7 @@ class _SearchPageState extends State<SearchPage> {
     SearchResultType.resource ||
     SearchResultType.fileContent => r.courseId != null,
     SearchResultType.pastPaper ||
-    SearchResultType.assignment ||
-    SearchResultType.forum => true,
+    SearchResultType.assignment => true,
     _ => false,
   };
 
@@ -258,13 +254,6 @@ class _SearchPageState extends State<SearchPage> {
               ),
             ),
           );
-        case SearchResultType.forum:
-          navigator.push(
-            MaterialPageRoute(
-              builder: (_) =>
-                  ForumPage(locale: widget.locale, profile: widget.profile),
-            ),
-          );
         default:
           break;
       }
@@ -304,7 +293,6 @@ class _SearchPageState extends State<SearchPage> {
       _en ? 'Inside a file' : 'Dans un fichier',
     SearchResultType.pastPaper => _en ? 'Past paper' : 'Annale',
     SearchResultType.assignment => _en ? 'Assignment' : 'Devoir',
-    SearchResultType.forum => 'Forum',
   };
 
   IconData _iconFor(SearchResultType type) => switch (type) {
@@ -319,7 +307,6 @@ class _SearchPageState extends State<SearchPage> {
     SearchResultType.fileContent => Icons.find_in_page_outlined,
     SearchResultType.pastPaper => Icons.description_outlined,
     SearchResultType.assignment => Icons.assignment_outlined,
-    SearchResultType.forum => Icons.forum_outlined,
   };
 
   void _onChanged(String value) {
