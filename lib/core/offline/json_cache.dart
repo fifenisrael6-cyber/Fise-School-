@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -85,19 +84,6 @@ class JsonCache {
     required Future<Object?> Function() fetch,
     required T Function(Object? raw) decode,
   }) async {
-    // Priorité à la dernière copie connue : une connexion lente ne doit pas
-    // retarder l'affichage des cours, annales et autres listes déjà consultés.
-    final cached = await read(key);
-    if (cached != null) {
-      try {
-        final decoded = decode(cached);
-        unawaited(_refreshInBackground(key, fetch));
-        return decoded;
-      } catch (_) {
-        // Cache ancien/illisible : tenter une lecture serveur ci-dessous.
-      }
-    }
-
     try {
       final raw = await fetch().timeout(networkTimeout);
       try {
@@ -107,20 +93,9 @@ class JsonCache {
       }
       return decode(raw);
     } catch (_) {
+      final cached = await read(key);
       if (cached == null) rethrow;
       return decode(cached);
-    }
-  }
-
-  Future<void> _refreshInBackground(
-    String key,
-    Future<Object?> Function() fetch,
-  ) async {
-    try {
-      final raw = await fetch().timeout(networkTimeout);
-      await write(key, raw);
-    } catch (_) {
-      // Réseau lent ou absent : la dernière copie locale reste utilisable.
     }
   }
 }

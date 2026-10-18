@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -15,56 +14,26 @@ class AiHistoryMessage {
   Map<String, String> toMap() => {'role': role, 'text': text};
 }
 
-/// Contexte scolaire envoyé à l'IA quand l'élève demande de l'aide depuis
-/// une leçon (classe, série, matière, chapitre, leçon en cours).
-/// Les champs vides sont simplement ignorés.
-class AiLessonContext {
-  final String? className;
-  final String? series;
-  final String? subject;
-  final String? chapter;
-  final String? lessonTitle;
-  final String? lessonContent;
+class AiDailyLimitReachedException implements Exception {
+  const AiDailyLimitReachedException(this.message);
 
-  const AiLessonContext({
-    this.className,
-    this.series,
-    this.subject,
-    this.chapter,
-    this.lessonTitle,
-    this.lessonContent,
-  });
+  final String message;
 
-  bool get isEmpty =>
-      [className, series, subject, chapter, lessonTitle, lessonContent]
-          .every((value) => value == null || value.trim().isEmpty);
-
-  Map<String, String> toMap() {
-    String clean(String? value, int max) {
-      final text = (value ?? '').trim();
-      return text.length <= max ? text : text.substring(0, max);
-    }
-
-    return {
-      'className': clean(className, 120),
-      'series': clean(series, 120),
-      'subject': clean(subject, 160),
-      'chapter': clean(chapter, 200),
-      'lessonTitle': clean(lessonTitle, 200),
-      // Le serveur limite aussi la taille ; on évite d'envoyer trop de texte
-      // sur une connexion faible.
-      'lessonContent': clean(lessonContent, 6000),
-    };
+  static AiDailyLimitReachedException messageForLanguage(String languageCode) {
+    return AiDailyLimitReachedException(
+      languageCode == 'en'
+          ? 'You’ve reached today’s question limit. Asking many questions without taking time to remember the answers won’t help you learn. Review your lessons first; we’ll continue tomorrow.'
+          : 'Tu as atteint ta limite de questions pour aujourd’hui. Poser beaucoup de questions sans prendre le temps de retenir les réponses ne t’aide pas à apprendre. Va d’abord relire tes cours ; nous continuerons demain.',
+    );
   }
+
+  @override
+  String toString() => message;
 }
 
-/// Erreur IA avec un message déjà lisible par l'utilisateur.
-class AiServiceException implements Exception {
+class AiPremiumRequiredException implements Exception {
+  const AiPremiumRequiredException(this.message);
   final String message;
-  final bool retryable;
-
-  const AiServiceException(this.message, {this.retryable = true});
-
   @override
   String toString() => message;
 }
@@ -77,53 +46,77 @@ class GeminiService {
 
   Future<String> ask({
     required String message,
-    UserProfile? profile,
+    required UserProfile profile,
     List<AiHistoryMessage> history = const [],
     Uint8List? attachmentBytes,
     String? attachmentMimeType,
     String? attachmentName,
-    String mode = 'student',
-    AiLessonContext? context,
-    /// Compatibilité avec les écrans qui envoient encore un contexte libre.
-    Map<String, dynamic>? schoolContext,
-    String languageCode = 'fr',
   }) async {
-    final isFrench = (profile?.preferredLanguage ?? languageCode) != 'en';
-    final cleanMessage = message.trim();
-    if (cleanMessage.isEmpty && attachmentBytes == null) {
-      throw AiServiceException(
-        isFrench ? 'Écris une question avant d’envoyer.' : 'Type a question first.',
-        retryable: false,
-      );
+    final FunctionResponse response;
+    try {
+      response = await _invokeGemini(
+      message: message, profile: profile, history: history,
+      attachmentBytes: attachmentBytes, attachmentMimeType: attachmentMimeType, attachmentName: attachmentName);
+    } on FunctionException catch (e) {
+      final details = e.details;
+      final Map<String, dynamic>? body = details is Map ? Map<String, dynamic>.from(details) : null;
+      final lang = profile.preferredLanguage == 'en' ? 'en' : 'fr';
+      if (body?['code'] == 'PREMIUM_REQUIRED' || e.status == 402) {
+        throw AiPremiumRequiredException((body?['message'] ?? '').toString());
+      }
+      if (body?['code'] == 'DAILY_LIMIT_REACHED' || (e.status == 429 && body?['kind'] == 'question')) {
+        throw AiDailyLimitReachedException.messageForLanguage(lang);
+      }
+      final msg = body?['message'] ?? body?['error'];
+      throw Exception(msg is String && msg.trim().isNotEmpty ? msg.trim() : 'AI_REQUEST_FAILED');
+    }
+    if (response.data is! Map) {
+      throw Exception('Réponse IA invalide.');
     }
 
-    final incompleteExercisePrompt = RegExp(
-      r'^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$',
-      caseSensitive: false,
-    );
-    if (attachmentBytes == null && incompleteExercisePrompt.hasMatch(cleanMessage)) {
-      throw AiServiceException(
-        isFrench
-            ? 'Écris l’énoncé de l’exercice ou joins une photo/PDF avant d’envoyer.'
-            : 'Write the exercise statement or attach a photo/PDF before sending.',
-        retryable: false,
+    final data = Map<String, dynamic>.from(response.data as Map);
+    final code = data['code'] ?? data['error'];
+    final quotaKind = data['kind']?.toString();
+    if (code == 'DAILY_LIMIT_REACHED' && quotaKind == 'question') {
+      throw AiDailyLimitReachedException.messageForLanguage(
+        profile.preferredLanguage == 'en' ? 'en' : 'fr',
       );
     }
+    final error = data['error'];
+    if (error is String && error.trim().isNotEmpty) {
+      final serverMessage = data['message'];
+      throw Exception(serverMessage is String && serverMessage.trim().isNotEmpty
+          ? serverMessage.trim()
+          : error.trim());
+    }
 
-    final lessonContext = context;
-    final body = <String, dynamic>{
-      'message': cleanMessage,
-      'history': history.take(20).map((item) => item.toMap()).toList(),
-      // Demande seulement : le serveur vérifie le rôle réel en base.
-      'mode': mode == 'admin' ? 'admin' : 'student',
-      'language': isFrench ? 'fr' : 'en',
-      if (lessonContext != null && !lessonContext.isEmpty)
-        'context': lessonContext.toMap(),
-      if (schoolContext != null && schoolContext.isNotEmpty)
-        'schoolContext': schoolContext,
-      // Gardé pour les anciennes versions déployées de la fonction.
-      // La fonction sécurisée ignore ces valeurs et lit le profil en base.
-      if (profile != null)
+    final text = data['text'];
+    if (text is! String || text.trim().isEmpty) {
+      throw Exception('L’assistant IA n’a retourné aucune réponse.');
+    }
+    return text.trim();
+  }
+
+  Future<FunctionResponse> _invokeGemini({
+    required String message,
+    required UserProfile profile,
+    required List<AiHistoryMessage> history,
+    Uint8List? attachmentBytes,
+    String? attachmentMimeType,
+    String? attachmentName,
+  }) {
+    return _client.functions.invoke(
+      'gemini-chat',
+      body: {
+        'message': message.trim(),
+        'history': history.take(6).map((item) => AiHistoryMessage(
+          role: item.role,
+          text: item.text.trim().length > 2500 ? item.text.trim().substring(0, 2500) : item.text.trim(),
+        ).toMap()).toList(),
+        'language': profile.preferredLanguage == 'en' ? 'en' : 'fr',
+        // Kept for backwards compatibility with older deployed functions.
+        // The secure function ignores these values and loads the profile from
+        // the authenticated Supabase user.
         'profile': {
           'subsystem': profile.subsystem,
           'sector': profile.sector,
@@ -131,149 +124,13 @@ class GeminiService {
           'examLevel': profile.examLevel,
           'exam': profile.exam,
         },
-      if (attachmentBytes != null)
-        'attachment': {
-          'name': attachmentName ?? 'attachment',
-          'mimeType': attachmentMimeType ?? 'application/octet-stream',
-          'base64': base64Encode(attachmentBytes),
-        },
-    };
-
-    try {
-      final response = await _client.functions
-          .invoke('gemini-chat', body: body)
-          .timeout(const Duration(seconds: 75));
-      return _readAnswer(response.data, isFrench);
-    } on AiServiceException {
-      rethrow;
-    } on FunctionException catch (error) {
-      throw _fromFunctionError(error, isFrench);
-    } on TimeoutException {
-      throw AiServiceException(
-        isFrench
-            ? 'La réponse prend trop de temps. Vérifie ta connexion puis réessaie.'
-            : 'The answer is taking too long. Check your connection and try again.',
-      );
-    } catch (_) {
-      throw AiServiceException(
-        isFrench
-            ? 'Impossible de joindre l’assistant. Vérifie ta connexion Internet puis réessaie.'
-            : 'Unable to reach the assistant. Check your Internet connection and try again.',
-      );
-    }
-  }
-
-  String _readAnswer(Object? data, bool isFrench) {
-    if (data is! Map) {
-      throw AiServiceException(
-        isFrench ? 'Réponse de l’assistant invalide. Réessaie.' : 'Invalid assistant response. Try again.',
-      );
-    }
-    final map = Map<String, dynamic>.from(data);
-    final error = map['error'];
-    if (error is String && error.trim().isNotEmpty) {
-      throw _messageForError(error.trim(), null, isFrench);
-    }
-    final text = map['text'];
-    if (text is! String || text.trim().isEmpty) {
-      throw AiServiceException(
-        isFrench
-            ? 'L’assistant n’a retourné aucune réponse. Reformule ta question puis réessaie.'
-            : 'The assistant returned no answer. Rephrase your question and try again.',
-      );
-    }
-    return text.trim();
-  }
-
-  AiServiceException _fromFunctionError(FunctionException error, bool isFrench) {
-    final details = error.details;
-    String? serverMessage;
-    if (details is Map && details['error'] is String) {
-      serverMessage = (details['error'] as String).trim();
-    } else if (details is String && details.trim().isNotEmpty) {
-      serverMessage = details.trim();
-    }
-    return _messageForError(serverMessage ?? '', error.status, isFrench);
-  }
-
-  AiServiceException _messageForError(String raw, int? status, bool isFrench) {
-    final code = raw.trim().toUpperCase();
-    final lowerRaw = raw.toLowerCase();
-    if (lowerRaw.contains('questions ia gratuites') || lowerRaw.contains('free ai questions')) {
-      return AiServiceException(
-        isFrench
-            ? 'Tu as utilisé tes 4 questions IA gratuites pour les dernières 24 heures. Passe à Premium pour continuer.'
-            : 'You have used your 4 free AI questions for the last 24 hours. Upgrade to Premium to continue.',
-        retryable: false,
-      );
-    }
-    if (lowerRaw.contains('version gratuite ne permet pas') ||
-        lowerRaw.contains('free plan cannot send documents')) {
-      return AiServiceException(raw, retryable: false);
-    }
-    if (code == 'AI_QUOTA_EXCEEDED' || status == 429) {
-      return AiServiceException(isFrench
-          ? 'Le service IA a atteint sa limite temporaire. Réessaie dans quelques minutes.'
-          : 'The AI service has reached its temporary limit. Try again in a few minutes.');
-    }
-    if (code == 'AI_MODEL_CONFIGURATION_ERROR') {
-      return AiServiceException(isFrench
-          ? 'Le modèle IA est momentanément indisponible. Réessaie dans un instant.'
-          : 'The AI model is temporarily unavailable. Please try again shortly.');
-    }
-    if (code == 'AI_PROVIDER_CONFIGURATION_ERROR') {
-      return AiServiceException(
-        isFrench
-            ? 'Le service IA est mal configuré. Le problème a été signalé au serveur.'
-            : 'The AI service is not configured correctly. The server has been notified.',
-        retryable: false,
-      );
-    }
-    if (code == 'AI_REQUEST_TIMEOUT' || status == 504) {
-      return AiServiceException(isFrench
-          ? 'Le service IA met trop de temps à répondre. Vérifie ta connexion puis réessaie.'
-          : 'The AI service is taking too long to respond. Check your connection and try again.');
-    }
-    if (code == 'AI_UPSTREAM_NETWORK_ERROR') {
-      return AiServiceException(isFrench
-          ? 'La connexion au fournisseur IA a échoué. Vérifie Internet puis réessaie.'
-          : 'The connection to the AI provider failed. Check your Internet and try again.');
-    }
-    if (code == 'AI_UPSTREAM_ERROR' || code == 'AI_TEMPORARILY_UNAVAILABLE') {
-      return AiServiceException(isFrench
-          ? 'Fise School AI rencontre un problème temporaire. Réessaie dans un instant.'
-          : 'Fise School AI is experiencing a temporary problem. Please try again shortly.');
-    }
-    if (status == 401 || raw.contains('Invalid or expired session') || raw.contains('Authentication required')) {
-      return AiServiceException(
-        isFrench ? 'Ta session a expiré. Reconnecte-toi puis réessaie.' : 'Your session expired. Sign in again.',
-        retryable: false,
-      );
-    }
-    if (status == 403 || raw.contains('administrateurs') || raw.contains('Administrator access')) {
-      return AiServiceException(
-        isFrench ? 'Cette fonction n’est pas autorisée pour ton compte.' : 'This feature is not allowed for your account.',
-        retryable: false,
-      );
-    }
-    if (status == 413 || raw.contains('trop volumineux') || raw.contains('too large')) {
-      return AiServiceException(
-        isFrench ? 'Fichier trop volumineux. La limite est de 8 Mo.' : 'File is too large. The limit is 8 MB.',
-        retryable: false,
-      );
-    }
-    if (status == 400 && raw.isNotEmpty && !raw.contains('required')) {
-      // Messages déjà rédigés par la fonction (ex. type de fichier refusé).
-      return AiServiceException(raw, retryable: false);
-    }
-    // Message déjà rédigé en clair par la fonction (réponse vide, demande bloquée).
-    if (raw.isNotEmpty && raw != 'AI_TEMPORARILY_UNAVAILABLE' && raw.length <= 200 && !raw.contains('GEMINI') && !raw.contains('Gemini') && !raw.contains('not configured')) {
-      return AiServiceException(raw);
-    }
-    return AiServiceException(
-      isFrench
-          ? 'L’assistant IA est temporairement indisponible. Réessaie dans un instant.'
-          : 'The AI assistant is temporarily unavailable. Try again in a moment.',
+        if (attachmentBytes != null)
+          'attachment': {
+            'name': attachmentName ?? 'attachment',
+            'mimeType': attachmentMimeType ?? 'application/octet-stream',
+            'base64': base64Encode(attachmentBytes),
+          },
+      },
     );
   }
 }

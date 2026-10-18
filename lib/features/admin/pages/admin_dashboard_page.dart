@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../ai/pages/admin_ai_studio_page.dart';
 import 'admin_assignments_page.dart';
-import 'admin_ai_page.dart';
 import 'admin_courses_page.dart';
+import 'admin_chapter_content_page.dart';
 import 'admin_grades_page.dart';
-import 'admin_publication_page.dart';
-import 'admin_evaluation_ai_page.dart';
+import 'admin_ai_courses_page.dart';
 import 'admin_past_papers_page.dart';
+import 'admin_evaluation_schedule_page.dart';
 import 'admin_pedagogy_page.dart';
 import 'admin_people_page.dart';
 import 'admin_promotion_page.dart';
@@ -30,11 +29,6 @@ class AdminDashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = <_AdminEntry>[
-      _AdminEntry(
-        icon: Icons.auto_awesome_rounded,
-        title: _isFrench ? 'IA pédagogique' : 'Pedagogical AI',
-        builder: (_) => AdminAiPage(locale: locale),
-      ),
       _AdminEntry(
         icon: Icons.school_rounded,
         title: _isFrench ? 'Gestion de l\u2019école' : 'School management',
@@ -66,24 +60,29 @@ class AdminDashboardPage extends StatelessWidget {
         builder: (_) => AdminPedagogyPage(locale: locale),
       ),
       _AdminEntry(
+        icon: Icons.account_tree_rounded,
+        title: _isFrench ? 'Chapitres et contenus' : 'Chapters and content',
+        builder: (_) => AdminChapterContentPage(locale: locale),
+      ),
+      _AdminEntry(
         icon: Icons.library_books_rounded,
         title: _isFrench ? 'Cours' : 'Courses',
         builder: (_) => AdminCoursesPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.auto_awesome_rounded,
-        title: _isFrench ? 'Assistant IA pédagogique' : 'Teaching AI assistant',
-        builder: (_) => AdminAiStudioPage(locale: locale),
-      ),
-      _AdminEntry(
-        icon: Icons.auto_awesome_rounded,
-        title: _isFrench ? 'Corrections IA des épreuves' : 'AI exam corrections',
-        builder: (_) => AdminEvaluationAiPage(locale: locale),
+        title: _isFrench ? 'IA pédagogique — créer les cours' : 'Teaching AI — create courses',
+        builder: (_) => AdminAiCoursesPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.assignment_rounded,
-        title: _isFrench ? 'Évaluations et examens' : 'Assessments and exams',
+        title: _isFrench ? 'Devoirs' : 'Assignments',
         builder: (_) => AdminAssignmentsPage(locale: locale),
+      ),
+      _AdminEntry(
+        icon: Icons.event_available_rounded,
+        title: _isFrench ? 'Calendrier des évaluations officielles' : 'Official exam schedule',
+        builder: (_) => AdminEvaluationSchedulePage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.calendar_month_rounded,
@@ -94,11 +93,6 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.grading_rounded,
         title: _isFrench ? 'Notes et bulletins' : 'Marks and report cards',
         builder: (_) => AdminGradesPage(locale: locale),
-      ),
-      _AdminEntry(
-        icon: Icons.event_available_rounded,
-        title: _isFrench ? 'Publication des bulletins' : 'Report card publication',
-        builder: (_) => AdminPublicationPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.history_edu_rounded,

@@ -123,10 +123,10 @@ function cleanHistory(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item) => item && typeof item === "object")
-    .slice(-20)
+    .slice(-6)
     .map((item: Record<string, unknown>) => ({
       role: item.role === "model" ? "model" : "user",
-      text: String(item.text ?? "").trim().slice(0, 12000),
+      text: String(item.text ?? "").trim().slice(0, 2500),
     }))
     .filter((item) => item.text.length > 0);
 }
@@ -135,6 +135,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
+  let refundQuotaUnit: (() => Promise<unknown>) | null = null;
   try {
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader.startsWith("Bearer ")) {
@@ -168,8 +169,37 @@ serve(async (req) => {
     if (profileError || !profile) return json({ error: "School profile unavailable." }, 403);
 
     const body = await req.json();
-    const message = String(body?.message ?? "").trim().slice(0, 12000);
     const language = profile.preferred_language === "en" ? "en" : "fr";
+    const action = String(body?.action ?? "chat");
+    if (action === "restore") {
+      const { data: conversations, error: restoreError } = await userClient
+        .from("ai_chat_conversations")
+        .select("id,title,created_at,updated_at,last_message_at")
+        .eq("user_id", userData.user.id)
+        .order("last_message_at", { ascending: false })
+        .limit(1);
+      if (restoreError) throw restoreError;
+      const conversation = conversations?.[0];
+      if (!conversation) return json({ conversation_id: null, history: [] });
+      const { data: savedMessages, error: messagesError } = await userClient
+        .from("ai_chat_messages")
+        .select("role,content,created_at")
+        .eq("conversation_id", conversation.id)
+        .eq("user_id", userData.user.id)
+        .order("id", { ascending: true })
+        .limit(40);
+      if (messagesError) throw messagesError;
+      return json({
+        conversation_id: conversation.id,
+        title: conversation.title,
+        history: (savedMessages ?? []).map((item: any) => ({
+          role: item.role,
+          text: item.content,
+          created_at: item.created_at,
+        })),
+      });
+    }
+    const message = String(body?.message ?? "").trim().slice(0, 12000);
     const attachment = body?.attachment;
 
     if (!message && !attachment?.base64) {
@@ -178,46 +208,11 @@ serve(async (req) => {
         : "Write a question or attach a document before sending." }, 400);
     }
 
-    // Free tier limits are enforced server-side; local/offline UI cannot bypass them.
-    let isPremiumStudent = false;
-    if (profile.role === "student") {
-      const { data: premiumData, error: premiumError } = await userClient.rpc(
-        "is_student_premium",
-        { p_user_id: userData.user.id },
-      );
-      if (premiumError) {
-        return json({ error: "Unable to verify subscription. Please retry." }, 503);
-      }
-      isPremiumStudent = premiumData === true;
-    }
-
     const isIncompleteExercisePrompt = /^(?:help me solve this exercise step by step|aide[- ]moi à résoudre cet exercice étape par étape)\s*:?\s*$/i;
     if (!attachment?.base64 && isIncompleteExercisePrompt.test(message)) {
       return json({ error: language === "fr"
         ? "Écris l'énoncé de l'exercice ou joins une photo/PDF avant d'envoyer."
         : "Write the exercise statement or attach a photo/PDF before sending." }, 400);
-    }
-
-    if (profile.role === "student" && !isPremiumStudent) {
-      if (attachment?.base64) {
-        return json({ error: language === "fr"
-          ? "La version gratuite ne permet pas d'envoyer des documents ni des photos à l'IA."
-          : "The free plan cannot send documents or photos to AI." }, 403);
-      }
-      const { data: quota, error: quotaError } = await userClient.rpc(
-        "consume_student_free_quota",
-        { p_feature: "ai_question", p_resource_id: null },
-      );
-      if (quotaError) {
-        return json({ error: language === "fr"
-          ? "Impossible de vérifier la limite IA. Réessaie dans un instant."
-          : "Unable to verify the AI limit. Please retry." }, 503);
-      }
-      if (quota?.allowed !== true) {
-        return json({ error: language === "fr"
-          ? "Tu as utilisé tes 4 questions IA gratuites. Passe à Premium pour continuer."
-          : "You have used your 4 free AI questions. Upgrade to Premium to continue." }, 429);
-      }
     }
 
     let attachmentPart: Record<string, unknown> | null = null;
@@ -240,6 +235,64 @@ serve(async (req) => {
       };
     }
 
+
+    // Enforce per-student daily quotas in Supabase (Africa/Douala calendar day).
+    // Count a non-empty message as one question; attached PDF/image also consumes its own quota.
+    const quotaKinds: string[] = [];
+    quotaKinds.push("question");
+    if (attachment?.base64) {
+      const quotaMime = String(attachment.mimeType ?? "").toLowerCase();
+      if (quotaMime === "application/pdf") {
+        const rawPdf = String(attachment.base64);
+        const encodedPdf = (rawPdf.includes(",") ? rawPdf.slice(rawPdf.indexOf(",") + 1) : rawPdf).replaceAll("\n", "").replaceAll("\r", "").replaceAll(" ", "");
+        const padding = encodedPdf.endsWith("==") ? 2 : encodedPdf.endsWith("=") ? 1 : 0;
+        const pdfBytes = Math.max(0, Math.floor(encodedPdf.length * 3 / 4) - padding);
+        if (pdfBytes > 10 * 1024 * 1024) {
+          return json({ error: "PDF_TOO_LARGE", maxBytes: 10 * 1024 * 1024,
+            message: language === "fr"
+              ? "Le fichier PDF dépasse la limite de 10 Mo. Choisis un fichier plus petit."
+              : "The PDF exceeds the 10 MB limit. Please choose a smaller file."
+          }, 413);
+        }
+      }
+
+      if (quotaMime === "application/pdf") quotaKinds.push("pdf");
+      else if (["image/jpeg", "image/png", "image/webp"].includes(quotaMime)) quotaKinds.push("photo");
+    }
+    if (quotaKinds.length) {
+      const { data: quota, error: quotaError } = await userClient.rpc("consume_ai_daily_limits", { p_kinds: quotaKinds });
+      if (quotaError) {
+        console.error("[gemini-chat] daily quota check failed:", quotaError.message);
+        return json({ error: language === "fr"
+          ? "Impossible de vérifier les limites quotidiennes. Réessaie dans un instant."
+          : "Could not verify daily limits. Please try again shortly." }, 503);
+      }
+      if (!quota?.allowed) {
+        if (quota?.code === "PREMIUM_REQUIRED") {
+          const premiumMessage = language === "fr"
+            ? "Les photos et les documents envoyés à l’IA sont réservés aux abonnés Premium."
+            : "Photos and documents sent to the AI are reserved for Premium subscribers.";
+          return json({ error: premiumMessage, code: "PREMIUM_REQUIRED", kind: String(quota.kind ?? "photo"), message: premiumMessage }, 402);
+        }
+        const limit = Number(quota.limit ?? 0);
+        const kind = String(quota.kind ?? "");
+        const label = kind === "question"
+          ? (language === "fr" ? "questions" : "questions")
+          : kind === "pdf" ? "PDF" : (language === "fr" ? "photos" : "photos");
+        const limitMessage = kind === "question"
+          ? (language === "fr"
+              ? "Tu as atteint ta limite de questions pour aujourd’hui. Poser beaucoup de questions sans prendre le temps de retenir les réponses ne t’aide pas à apprendre. Va d’abord relire tes cours ; nous continuerons demain."
+              : "You’ve reached today’s question limit. Asking many questions without taking time to remember the answers won’t help you learn. Review your lessons first; we’ll continue tomorrow.")
+          : (language === "fr"
+              ? `Limite quotidienne atteinte : ${limit} ${label} par jour. Réessaie demain.`
+              : `Daily limit reached: ${limit} ${label} per day. Try again tomorrow.`);
+        // This fixed response is returned before any Gemini generation request.
+        // Keep error human-readable for already-installed app versions.
+        return json({ error: limitMessage, code: "DAILY_LIMIT_REACHED", kind, limit, used: quota.used, resets_at: quota.resets_at ?? null, message: limitMessage }, 429);
+      }
+    }
+
+    refundQuotaUnit = () => userClient.rpc("refund_feature_quota", { p_feature: "ai_text" });
     let courseSearch = { found: false, context: "" };
     try {
       courseSearch = await findStudentCourseContext(
@@ -268,10 +321,38 @@ serve(async (req) => {
     const schoolContext = language === "en"
       ? `You are Fise School AI, an educational assistant for Cameroon.
 Authenticated student/teacher profile: first name=${profile.first_name ?? "unknown"}, role=${profile.role ?? "unknown"}, subsystem=${profile.subsystem ?? "unknown"}, sector=${profile.sector ?? "unknown"}, class=${profile.class_name ?? "unknown"}, exam level=${profile.exam_level_label ?? "unknown"}, exam=${profile.exam_label ?? "unknown"}.
-Teach clearly and accurately at the user's school level. When solving schoolwork, explain the reasoning instead of only giving a result. Never invent a Fise School course or curriculum detail. ${courseContextInstruction}`
+Teach clearly and accurately at the user's school level. Answer only the student's current question. Keep replies concise, normally 3–6 short sentences or a compact list. For school exercises, show only the essential reasoning and steps. Do not add unrelated background, extra suggestions, invitations, or a question at the end. Do not end with phrases like "Would you like..." or "Do you have another question?". Use history only when needed to understand the current question. Never invent a Fise School course or curriculum detail. ${courseContextInstruction}`
       : `Tu es Fise School AI, un assistant éducatif pour le Cameroun.
 Profil authentifié : prénom=${profile.first_name ?? "inconnu"}, rôle=${profile.role ?? "inconnu"}, sous-système=${profile.subsystem ?? "inconnu"}, secteur=${profile.sector ?? "inconnu"}, classe=${profile.class_name ?? "inconnue"}, niveau d'examen=${profile.exam_level_label ?? "inconnu"}, examen=${profile.exam_label ?? "inconnu"}.
-Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un exercice, explique le raisonnement et pas seulement le résultat. N'invente jamais un détail de programme ou de cours Fise School. ${courseContextInstruction}`;
+Explique clairement et correctement au niveau scolaire de l'utilisateur. Réponds uniquement à sa question actuelle et reste bref : normalement 3 à 6 phrases courtes ou une petite liste. Pour un exercice, donne seulement le raisonnement et les étapes indispensables. N'ajoute pas de développements hors sujet, de propositions supplémentaires ni de question à la fin. Ne termine pas par « Veux-tu... ? », « As-tu une autre question ? » ou une invitation similaire. Utilise l'historique uniquement s'il est nécessaire pour comprendre la question. N'invente jamais un détail de programme ou de cours Fise School. ${courseContextInstruction}`;
+
+    let conversationId = String(body?.conversation_id ?? "").trim();
+    if (conversationId) {
+      const { data: ownedConversation, error: ownershipError } = await userClient
+        .from("ai_chat_conversations")
+        .select("id")
+        .eq("id", conversationId)
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+      if (ownershipError) throw ownershipError;
+      if (!ownedConversation) return json({ error: "Conversation not found." }, 404);
+    } else {
+      const { data: createdConversation, error: createError } = await userClient
+        .from("ai_chat_conversations")
+        .insert({
+          user_id: userData.user.id,
+          title: (message || (language === "fr" ? "Document joint" : "Attached document")).slice(0, 160),
+        })
+        .select("id")
+        .single();
+      if (createError || !createdConversation) throw createError ?? new Error("Could not create chat backup.");
+      conversationId = createdConversation.id;
+    }
+
+    const { error: saveUserError } = await userClient
+      .from("ai_chat_messages")
+      .insert({ conversation_id: conversationId, user_id: userData.user.id, role: "user", content: message || "[Pièce jointe]" });
+    if (saveUserError) throw saveUserError;
 
     const history = cleanHistory(body?.history);
     const contents: Record<string, unknown>[] = history.map((item) => ({
@@ -283,10 +364,43 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    // Avoid a separate model-discovery request on every question; use the configured
-    // fast model immediately and keep one fallback for transient/model errors.
+    // Discover models enabled for this API key instead of relying on retired model names.
     const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\//, "");
-    const models = [...new Set([configuredModel || "gemini-2.5-flash", "gemini-2.0-flash"])];
+    let models: string[] = [];
+    try {
+      const listController = new AbortController();
+      const listTimeout = setTimeout(() => listController.abort(), 10000);
+      try {
+        const listResponse = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+          { headers: { "x-goog-api-key": apiKey }, signal: listController.signal },
+        );
+        const listData = await listResponse.json().catch(() => ({}));
+        if (!listResponse.ok) {
+          const safeBody = JSON.stringify(listData ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 1500);
+          console.error("[gemini-chat] Gemini model discovery failed", JSON.stringify({ status: listResponse.status, body: safeBody }));
+        } else {
+          const available = (Array.isArray(listData?.models) ? listData.models : [])
+            .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
+              && item.supportedGenerationMethods.includes("generateContent"))
+            .map((item: any) => String(item.name ?? "").replace(/^models\//, ""))
+            .filter((name: string) => name.length > 0);
+          const preferred = [
+            ...(configuredModel ? [configuredModel] : []),
+            ...available.filter((name: string) => /flash/i.test(name) && !/tts|image|embedding|robotics/i.test(name)),
+            ...available.filter((name: string) => !/tts|image|embedding|robotics/i.test(name)),
+          ];
+          models = [...new Set(preferred)].slice(0, 3);
+        }
+      } finally {
+        clearTimeout(listTimeout);
+      }
+    } catch (error) {
+      console.error("[gemini-chat] Gemini model discovery exception", error instanceof Error ? error.message : String(error));
+    }
+    if (!models.length) {
+      models = [...new Set([...(configuredModel ? [configuredModel] : []), "gemini-2.5-flash", "gemini-2.0-flash"])];
+    }
 
     let data: any = null;
     let lastError = "Gemini request failed.";
@@ -302,7 +416,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: schoolContext }] },
               contents,
-              generationConfig: { maxOutputTokens: 1536 },
+              generationConfig: { maxOutputTokens: 500 },
             }),
             signal: controller.signal,
           },
@@ -333,9 +447,18 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Pour un
       .trim();
 
     if (!text) throw new Error("Gemini returned an empty response.");
-    return json({ text });
+    const { error: saveAssistantError } = await userClient
+      .from("ai_chat_messages")
+      .insert({ conversation_id: conversationId, user_id: userData.user.id, role: "model", content: text });
+    if (saveAssistantError) {
+      // The answer is still returned if backup storage has a temporary problem.
+      console.error("[gemini-chat] assistant backup failed:", saveAssistantError.message);
+    }
+    return json({ text, conversation_id: conversationId });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    // La demande n'a pas abouti : on ne facture pas l'unité de quota à l'élève.
+    try { await refundQuotaUnit?.(); } catch (_) { /* best effort */ }
     // Never log request headers or the provider API key. Error details are capped.
     console.error("[gemini-chat] request failed:", detail.replaceAll(Deno.env.get("GEMINI_API_KEY") ?? "\u0000", "[REDACTED]").slice(0, 2000));
     if (/timeout|aborted|timed out/i.test(detail)) {

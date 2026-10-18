@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/assignment_service.dart';
-import '../../../core/services/free_tier_service.dart';
-import '../../../core/widgets/premium_offer_sheet.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 
@@ -28,7 +26,6 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
   late Future<List<Assignment>> _assignmentsFuture;
 
   bool get _isEnglish => widget.locale.languageCode == 'en';
-  bool _quotaOfferShown = false;
 
   @override
   void initState() {
@@ -40,62 +37,11 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
     _assignmentsFuture = _service.listStudentAssignments(
       studentId: widget.profile.id,
     );
-    _assignmentsFuture.then((_) => _maybeShowQcmQuotaOffer());
-  }
-
-  Future<void> _maybeShowQcmQuotaOffer() async {
-    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
-    final status = await FreeTierService().status('qcm');
-    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
-    _quotaOfferShown = true;
-    await showPremiumOfferSheet(
-      context: context,
-      locale: widget.locale,
-      profile: widget.profile,
-      feature: _isEnglish ? 'assessments and QCMs' : 'les évaluations et QCM',
-    );
   }
 
   Future<void> _refresh() async {
     setState(_loadAssignments);
     await _assignmentsFuture;
-  }
-
-  Future<void> _deleteAssignmentForMe(Assignment assignment) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_isEnglish ? 'Remove this QCM for me?' : 'Supprimer ce QCM pour moi ?'),
-        content: Text(_isEnglish
-            ? 'This QCM will disappear only from your list. The teacher and other students will keep their access.'
-            : 'Ce QCM disparaîtra uniquement de votre liste. L’enseignant et les autres élèves le conserveront.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(_isEnglish ? 'Cancel' : 'Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(_isEnglish ? 'Remove' : 'Supprimer'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await _service.hideAssignmentForMe(assignment.id);
-      if (!mounted) return;
-      setState(_loadAssignments);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isEnglish ? 'QCM removed from your list.' : 'QCM supprimé de votre liste.')),
-      );
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_isEnglish ? 'Unable to remove QCM' : 'Suppression impossible'}: $error')),
-        );
-      }
-    }
   }
 
   Future<void> _openAssignment(Assignment assignment) async {
@@ -147,7 +93,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
       backgroundColor: const Color(0xFFF5F8F6),
       appBar: AppBar(
         title: Text(
-          _isEnglish ? 'Assessments and exams' : 'Évaluations et examens',
+          _isEnglish ? 'Assignments' : 'Devoirs',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF166534),
@@ -223,7 +169,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isEnglish ? 'Your assessments' : 'Vos évaluations',
+                  _isEnglish ? 'Your assignments' : 'Vos devoirs',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -233,8 +179,8 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                 const SizedBox(height: 4),
                 Text(
                   _isEnglish
-                      ? '$count assessment${count > 1 ? 's' : ''}'
-                      : '$count évaluation${count > 1 ? 's' : ''}',
+                      ? '$count assignment${count > 1 ? 's' : ''}'
+                      : '$count devoir${count > 1 ? 's' : ''}',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.88),
                     fontSize: 14,
@@ -302,21 +248,9 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  PopupMenuButton<String>(
-                    tooltip: _isEnglish ? 'QCM options' : 'Options du QCM',
-                    onSelected: (value) {
-                      if (value == 'remove') _deleteAssignmentForMe(assignment);
-                    },
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'remove',
-                        child: Text(_isEnglish ? 'Remove for me' : 'Supprimer pour moi'),
-                      ),
-                    ],
-                    child: const Padding(
-                      padding: EdgeInsets.all(6),
-                      child: Icon(Icons.more_vert_rounded, color: Color(0xFF166534)),
-                    ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF166534),
                   ),
                 ],
               ),
@@ -348,16 +282,6 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                     text:
                         '${assignment.maxScore.toStringAsFixed(0)} ${_isEnglish ? 'pts' : 'pts'}',
                   ),
-                  if (assignment.resultsPublishAt != null)
-                    _buildInfoChip(
-                      icon: Icons.visibility_rounded,
-                      text: '${_isEnglish ? 'Results' : 'Résultats'} · ${_formatDueDate(assignment.resultsPublishAt)}',
-                    ),
-                  if (assignment.evaluationFileName != null && assignment.evaluationFileName!.isNotEmpty)
-                    _buildStatusChip(
-                      _isEnglish ? 'Official exam PDF' : 'Épreuve officielle PDF',
-                      const Color(0xFF166534),
-                    ),
                   if (assignment.status == 'closed')
                     _buildStatusChip(
                       _isEnglish ? 'Closed' : 'Fermé',
@@ -437,15 +361,15 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         const Icon(Icons.assignment_outlined, size: 72, color: Colors.grey),
         const SizedBox(height: 18),
         Text(
-          _isEnglish ? 'No assessments scheduled yet' : 'Aucune évaluation programmée pour le moment',
+          _isEnglish ? 'No assignments yet' : 'Aucun devoir pour le moment',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
         Text(
           _isEnglish
-              ? 'Official exams and assessments scheduled for your class by the administrator will appear here.'
-              : 'Les épreuves et évaluations programmées par l’administration pour votre classe apparaîtront ici.',
+              ? 'Published assignments for your class will appear here.'
+              : 'Les devoirs publiés pour votre classe apparaîtront ici.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.black54, height: 1.5),
         ),
@@ -467,8 +391,8 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         const SizedBox(height: 16),
         Text(
           _isEnglish
-              ? 'Unable to load assessments.'
-              : 'Impossible de charger les évaluations.',
+              ? 'Unable to load assignments.'
+              : 'Impossible de charger les devoirs.',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),

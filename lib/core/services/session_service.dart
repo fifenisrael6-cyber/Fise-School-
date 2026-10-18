@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
+import '../offline/app_database.dart';
 import '../offline/course_offline_service.dart';
-import '../offline/local_cleanup.dart';
+import '../offline/json_cache.dart';
+import '../offline/offline_repository.dart';
 import 'profile_service.dart';
 import 'push_service.dart';
 
@@ -125,21 +127,23 @@ class SupabaseSessionService implements SessionService {
 
   @override
   Future<void> signOut() async {
-    try {
-      await PushService.unregister();
-    } catch (_) {
-      // Push-token cleanup must not prevent local sign-out.
-    }
+    await PushService.unregister();
     // Do not leave another user's downloaded courses on a shared device.
     try {
       final userId = _client.auth.currentUser?.id;
       if (userId != null) {
         await CourseOfflineService().deleteUserFiles(userId);
       }
-      await clearLocalUserData();
+      await OfflineRepository().clearCourses();
+      await OfflineRepository().clearLessons();
+      await OfflineRepository().clearProgress();
+      if (userId != null) {
+        await AppDatabase().clearUserReadCaches(userId);
+      }
+      await JsonCache.instance.clearAll();
     } catch (_) {
       // Signing out must still succeed if local cache cleanup fails.
     }
-    await _client.auth.signOut(scope: SignOutScope.local);
+    await _client.auth.signOut();
   }
 }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/photo_service.dart';
-import '../../student/pages/pages/payment_page.dart';
+import '../../../core/services/profile_service.dart';
 import '../../../models/user_profile.dart';
+import '../../student/pages/pages/premium_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final Locale locale;
@@ -25,13 +27,16 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final _formKey = GlobalKey<FormState>();
 
+  late UserProfile _profile = widget.profile;
   late final _firstName = TextEditingController(text: widget.profile.firstName);
   late final _lastName = TextEditingController(text: widget.profile.lastName);
   late final _email = TextEditingController(text: widget.profile.email ?? '');
 
+  final _profiles = ProfileService();
   final _photos = PhotoService();
 
   late String _language = widget.profile.preferredLanguage;
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -82,35 +87,28 @@ class _ProfilePageState extends State<ProfilePage> {
               onChanged: (value) => setState(() => _language = value ?? 'fr'),
             ),
             const SizedBox(height: 24),
-            if (widget.profile.role.toLowerCase() == 'student') ...[
+            _schoolInfo(texts),
+            if (widget.profile.role == 'student') ...[
+              const SizedBox(height: 12),
               Card(
-                color: const Color(0xFFF0FDF4),
                 child: ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFDCFCE7),
-                    child: Icon(Icons.workspace_premium_rounded, color: Color(0xFF166534)),
-                  ),
-                  title: Text(
-                    widget.locale.languageCode == 'en' ? 'Fise School Premium' : 'Fise School Premium',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  subtitle: Text(
-                    widget.locale.languageCode == 'en'
-                        ? '2,000 XAF for 30 days · AI, courses, assessments and messaging'
-                        : '2 000 FCFA pour 30 jours · IA, cours, évaluations et messagerie',
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile),
-                    ),
-                  ),
+                  leading: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFB45309)),
+                  title: Text(texts.isEnglish ? 'Premium subscription' : 'Abonnement Premium'),
+                  subtitle: Text(texts.isEnglish
+                      ? '2,000 XAF for 30 days • quotas and status'
+                      : '2 000 FCFA pour 30 jours • quotas et état'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => PremiumPage(locale: widget.locale, profile: widget.profile),
+                  )),
                 ),
               ),
-              const SizedBox(height: 12),
             ],
-            _schoolInfo(texts),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _loading ? null : () => _save(texts),
+              child: Text(texts.save),
+            ),
           ],
         ),
       ),
@@ -125,11 +123,11 @@ class _ProfilePageState extends State<ProfilePage> {
         itemBuilder: (_) => [
           PopupMenuItem(value: 'camera', child: Text(texts.takePhoto)),
           PopupMenuItem(value: 'gallery', child: Text(texts.choosePhoto)),
-          if (widget.profile.avatarPath != null)
+          if (_profile.avatarPath != null)
             PopupMenuItem(value: 'delete', child: Text(texts.deletePhoto)),
         ],
         child: FutureBuilder<String?>(
-          future: _photos.signedUrl(widget.profile.avatarPath),
+          future: _photos.signedUrl(_profile.avatarPath),
           builder: (context, snapshot) => CircleAvatar(
             radius: 48,
             backgroundImage: snapshot.data == null
@@ -177,17 +175,69 @@ class _ProfilePageState extends State<ProfilePage> {
       ? AppTexts(widget.locale).requiredField
       : null;
 
+  Future<void> _save(AppTexts texts) async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final updated = await _profiles.updateEditableProfile(
+        firstName: _firstName.text,
+        lastName: _lastName.text,
+        preferredLanguage: _language,
+      );
+
+      widget.onSaved?.call(updated);
+
+      if (mounted) {
+        Navigator.pop(context, updated);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(texts.profileSaveError)));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  /// Met à jour l'écran et prévient le reste de l'application.
+  void _applyAvatar(String? path) {
+    final updated = UserProfile.fromMap({
+      ..._profile.toMap(),
+      'avatar_path': path,
+    });
+    setState(() => _profile = updated);
+    widget.onSaved?.call(updated);
+  }
+
   Future<void> _pickPhoto(String source, AppTexts texts) async {
     final XFile? file = source == 'camera'
-        ? await _photos.takePhoto()
-        : await _photos.pickFromGallery();
+        ? await _photos.takePhoto(maxWidth: 800)
+        : await _photos.pickFromGallery(maxWidth: 800);
 
     if (file == null) {
       return;
     }
 
+    final previous = _profile.avatarPath;
     try {
-      await _photos.uploadProfilePhoto(widget.profile.id, file);
+      final path = await _photos.uploadProfilePhoto(_profile.id, file);
+      if (!mounted) return;
+      _applyAvatar(path);
+      // Supprime l'ancienne photo pour ne pas encombrer le stockage.
+      if (previous != null && previous.isNotEmpty) {
+        try {
+          await Supabase.instance.client.storage
+              .from('profile-photos')
+              .remove([previous]);
+        } catch (_) {}
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -198,10 +248,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _deletePhoto(AppTexts texts) async {
     try {
-      await _photos.deleteProfilePhoto(
-        widget.profile.id,
-        widget.profile.avatarPath,
-      );
+      await _photos.deleteProfilePhoto(_profile.id, _profile.avatarPath);
+      if (!mounted) return;
+      _applyAvatar(null);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
