@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/search_result.dart';
 
 /// Recherche globale : catalogue, cours, leçons, chapitres, fichiers (titres,
-/// noms et contenu indexé des PDF), annales, devoirs et forum.
+/// noms et contenu indexé des PDF), annales et devoirs.
 ///
 /// Chaque source est interrogée séparément : si une table est inaccessible
 /// (droits RLS, migration non appliquée), les autres résultats restent affichés.
@@ -35,7 +35,6 @@ class SearchService {
       _chunks(key, terms),
       _pastPapers(key, terms),
       _assignments(key, terms),
-      _forumTopics(key, terms),
     ]);
 
     final all = groups.expand((g) => g).toList();
@@ -366,26 +365,6 @@ class SearchService {
                 type: SearchResultType.assignment,
                 title: [r['title_fr'], r['title_en']],
                 body: [r['instructions_fr'], r['instructions_en']],
-              ),
-            )
-            .toList();
-      });
-
-  Future<List<SearchResult>> _forumTopics(String key, List<String> terms) =>
-      _run(() async {
-        final rows = await _client
-            .from('forum_topics')
-            .select('id, title, description')
-            .or(_or(['title', 'description'], key))
-            .limit(_perSource);
-        return rows
-            .map(
-              (r) => _build(
-                r,
-                terms: terms,
-                type: SearchResultType.forum,
-                title: [r['title']],
-                body: [r['description']],
               ),
             )
             .toList();
