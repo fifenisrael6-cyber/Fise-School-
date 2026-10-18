@@ -139,7 +139,7 @@ class _CoursesPageState extends State<CoursesPage> {
                               onTap: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => SubjectChannelPage(
+                                  builder: (_) => ChapterLearningSubjectPage(
                                     locale: widget.locale,
                                     profile: widget.profile,
                                     subject: entry.subject,
@@ -193,16 +193,16 @@ class _CoursesPageState extends State<CoursesPage> {
                               onPressed: () => Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) => ChapterLearningSubjectPage(
+                                  builder: (_) => SubjectChannelPage(
                                     locale: widget.locale,
                                     profile: widget.profile,
                                     subject: entry.subject,
                                   ),
                                 ),
                               ),
-                              icon: const Icon(Icons.menu_book_outlined, size: 16),
+                              icon: const Icon(Icons.chat_bubble_outline, size: 16),
                               label: Text(
-                                _fr ? 'Programme' : 'Syllabus',
+                                _fr ? 'Cours et échanges' : 'Course feed',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 11),

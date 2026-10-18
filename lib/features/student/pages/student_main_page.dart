@@ -5,7 +5,6 @@ import '../../../models/user_profile.dart';
 import '../../../models/forum.dart';
 import '../../../core/services/forum_service.dart';
 import '../../ai/pages/ai_page.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../pages/courses_page.dart';
@@ -67,8 +66,8 @@ class _StudentMainPageState extends State<StudentMainPage> {
           locale: widget.locale,
           profile: _profile,
         ),
-        ForumPage(
-          key: ValueKey('forum-${_profile.className}'),
+        MessagesHubPage(
+          key: ValueKey('messages-${_profile.id}'),
           locale: widget.locale,
           profile: _profile,
         ),
@@ -91,7 +90,7 @@ class _StudentMainPageState extends State<StudentMainPage> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum), label: fr ? 'Forums' : 'Forums'),
+          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messages' : 'Messages'),
           NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
         ],
