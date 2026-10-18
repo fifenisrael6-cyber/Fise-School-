@@ -24,7 +24,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
   @override Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
     final pages = [
-      _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => setState(() => _index = 1), onMessages: () => setState(() => _index = 2)),
+      _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => setState(() => _index = 1)),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       MessagesHubPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
@@ -46,8 +46,8 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
 }
 
 class _TeacherHome extends StatelessWidget {
-  final Locale locale; final UserProfile profile; final VoidCallback onCourses; final VoidCallback onMessages;
-  const _TeacherHome({required this.locale, required this.profile, required this.onCourses, required this.onMessages});
+  final Locale locale; final UserProfile profile; final VoidCallback onCourses;
+  const _TeacherHome({required this.locale, required this.profile, required this.onCourses});
   @override Widget build(BuildContext context) {
     final fr = locale.languageCode == 'fr';
     return Scaffold(
@@ -56,7 +56,7 @@ class _TeacherHome extends StatelessWidget {
         Text('${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6), Text(fr ? 'Gérez vos salles, vos cours, vos messages et vos évaluations.' : 'Manage your classrooms, courses, messages and evaluations.'),
         const SizedBox(height: 16),
-        Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Mes salles' : 'My classrooms', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]), const SizedBox(height: 8), Text(fr ? 'Choisissez une salle pour publier vos contenus, échanger avec les élèves et organiser les évaluations.' : 'Choose a classroom to publish content, message students and organize evaluations.'), const SizedBox(height: 12), FilledButton.icon(onPressed: onMessages, icon: const Icon(Icons.chat_bubble_outline), label: Text(fr ? 'Ouvrir les messages' : 'Open messages'))]))),
+        Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Mes salles' : 'My classrooms', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]), const SizedBox(height: 8), Text(fr ? 'Choisissez une salle pour publier vos contenus, échanger avec les élèves et organiser les évaluations.' : 'Choose a classroom to publish content, message students and organize evaluations.'), const SizedBox(height: 12),]))),
         const SizedBox(height: 12),
         _TeacherAction(icon: Icons.menu_book_rounded, title: fr ? 'Cours et contenus' : 'Courses and content', subtitle: fr ? 'Publier un cours (PDF, photo, images) dans vos classes.' : 'Publish a course (PDF, photo, images) in your classes.', onTap: onCourses),
         _TeacherAction(icon: Icons.history_edu_rounded, title: fr ? 'Annales d’examens' : 'Past exam papers', subtitle: fr ? 'Consulter et ouvrir les sujets et corrigés publiés.' : 'View and open published exam papers and corrections.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale)))),
@@ -65,7 +65,6 @@ class _TeacherHome extends StatelessWidget {
         _TeacherAction(icon: Icons.grading_rounded, title: fr ? 'Notes' : 'Marks', subtitle: fr ? 'Saisir les notes de vos élèves par matière et par période.' : 'Enter your students\' marks by subject and period.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GradesEntryPage(locale: locale, profile: profile)))),
         
         _TeacherAction(icon: Icons.calendar_month_rounded, title: fr ? 'Emploi du temps' : 'Timetable', subtitle: fr ? 'Consultez vos créneaux de cours.' : 'View your teaching schedule.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherTimetablePage(locale: locale, profile: profile)))),
-        _TeacherAction(icon: Icons.chat_bubble_outline, title: fr ? 'Messages' : 'Messages', subtitle: fr ? 'Échanger avec les élèves de vos salles.' : 'Chat with students in your classrooms.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MessagesHubPage(locale: locale, profile: profile)))),
       ]),
     );
   }
