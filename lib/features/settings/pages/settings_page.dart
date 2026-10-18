@@ -120,6 +120,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: isFrench
                     ? 'Fermer la session Fise School sur cet appareil'
                     : 'Sign out of Fise School on this device',
+                isDestructive: true,
                 onTap: () async {
                   // Le nettoyage local et les notifications ne doivent jamais
                   // empêcher la déconnexion Supabase.
@@ -401,12 +402,14 @@ class _SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool isDestructive;
 
   const _SettingsTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.isDestructive = false,
   });
 
   @override
@@ -417,14 +420,18 @@ class _SettingsTile extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFDCFCE7),
+          color: isDestructive ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(icon, color: const Color(0xFF166534)),
+        child: Icon(icon, color: isDestructive ? Colors.red : const Color(0xFF166534)),
       ),
       title: Text(
         title,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          color: isDestructive ? Colors.red : null,
+        ),
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
@@ -433,7 +440,10 @@ class _SettingsTile extends StatelessWidget {
           style: const TextStyle(color: Colors.black54, fontSize: 12),
         ),
       ),
-      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: isDestructive ? Colors.red : Colors.grey,
+      ),
       onTap: onTap,
     );
   }

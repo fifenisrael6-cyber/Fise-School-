@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/user_profile.dart';
-import '../../ai/pages/ai_page.dart';
 import '../../forum/pages/forum_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
@@ -29,7 +28,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
       _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => setState(() => _index = 1), onForums: () => setState(() => _index = 2)),
       TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
       ForumPage(locale: widget.locale, profile: widget.profile),
-      AiPage(locale: widget.locale, profile: widget.profile),
       ProfilePage(locale: widget.locale, profile: widget.profile),
     ];
     return Scaffold(
@@ -41,7 +39,6 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
           NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum), label: fr ? 'Forums' : 'Forums'),
-          NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
         ],
       ),
