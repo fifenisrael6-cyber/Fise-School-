@@ -138,39 +138,138 @@ class ChapterLearningService {
         .limit(1);
     if (currentRows.isEmpty) return const <Map<String, dynamic>>[];
 
-    final current = Map<String, dynamic>.from(currentRows.first);
-    final chapterRows = await _client
-        .from('course_chapters')
-        .select('id,title_fr,title_en,position')
-        .eq('position', current['position'])
-        .eq('is_active', true);
-
-    final titleFr = (current['title_fr']?.toString() ?? '').trim().toLowerCase();
-    final titleEn = (current['title_en']?.toString() ?? '').trim().toLowerCase();
-    final chapterIds = chapterRows
-        .where((raw) {
-          final row = Map<String, dynamic>.from(raw);
-          return (row['title_fr']?.toString() ?? '').trim().toLowerCase() == titleFr &&
-              (row['title_en']?.toString() ?? '').trim().toLowerCase() == titleEn;
-        })
-        .map((row) => row['id'].toString())
-        .toSet()
-        .toList(growable: true);
-    if (!chapterIds.contains(chapterId)) chapterIds.add(chapterId);
-
+    // First load only this chapter's own published content. Never merge files
+    // from another chapter merely because the titles or positions match.
     final rows = await _client
         .from('chapter_content_items')
         .select()
-        .inFilter('chapter_id', chapterIds)
+        .eq('chapter_id', chapterId)
         .eq('is_published', true)
         .order('position');
+    final content = rows.map((row) => Map<String, dynamic>.from(row)).toList();
 
-    return rows
-        .map((row) => Map<String, dynamic>.from(row))
-        .where((row) =>
-            row['chapter_id'] == chapterId ||
-            const ['video', 'pdf', 'image', 'audio'].contains(row['content_type']))
-        .toList(growable: false);
+    // Restore legacy courses and lessons that were already linked to this
+    // chapter before the chapter-folder catalogue was introduced.
+    List<Map<String, dynamic>> courses = <Map<String, dynamic>>[];
+    try {
+      final legacyCourses = await _client
+          .from('courses')
+          .select('id,title_fr,title_en,content_fr,content_en')
+          .eq('chapter_id', chapterId)
+          .eq('status', 'published');
+      courses = legacyCourses
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    } catch (_) {
+      // Some deployments may not expose legacy course rows to this account.
+    }
+
+    final courseIds = courses.map((row) => row['id'].toString()).toList();
+    for (final course in courses) {
+      final bodyFr = course['content_fr']?.toString();
+      final bodyEn = course['content_en']?.toString();
+      if ((bodyFr ?? '').trim().isEmpty && (bodyEn ?? '').trim().isEmpty) {
+        continue;
+      }
+      content.add({
+        'id': 'legacy-course-${course['id']}',
+        'chapter_id': chapterId,
+        'content_type': 'course',
+        'title_fr': course['title_fr']?.toString() ?? 'Cours',
+        'title_en': course['title_en']?.toString() ?? 'Course',
+        'body_text_fr': bodyFr,
+        'body_text_en': bodyEn,
+        'position': 0,
+        'is_published': true,
+      });
+    }
+
+    if (courseIds.isNotEmpty) {
+      try {
+        final lessons = await _client
+            .from('lessons')
+            .select('id,course_id,title_fr,title_en,content_fr,content_en,position')
+            .inFilter('course_id', courseIds)
+            .eq('is_published', true)
+            .order('position');
+        for (final raw in lessons) {
+          final lesson = Map<String, dynamic>.from(raw);
+          final bodyFr = lesson['content_fr']?.toString();
+          final bodyEn = lesson['content_en']?.toString();
+          content.add({
+            'id': 'legacy-lesson-${lesson['id']}',
+            'chapter_id': chapterId,
+            'content_type': 'course',
+            'title_fr': lesson['title_fr']?.toString() ?? 'Leçon',
+            'title_en': lesson['title_en']?.toString() ?? 'Lesson',
+            'body_text_fr': bodyFr,
+            'body_text_en': bodyEn,
+            'position': (lesson['position'] as num?)?.toInt() ?? 0,
+            'is_published': true,
+          });
+        }
+      } catch (_) {
+        // Keep chapter content and course bodies visible if legacy lessons
+        // are not available under the current account's RLS policies.
+      }
+
+      try {
+        final resources = await _client
+            .from('course_resources')
+            .select('id,course_id,resource_type,storage_path,file_name,title_fr,title_en,mime_type,position')
+            .inFilter('course_id', courseIds)
+            .order('position');
+        for (final raw in resources) {
+          final resource = Map<String, dynamic>.from(raw);
+          final storagePath = resource['storage_path']?.toString() ?? '';
+          if (storagePath.isEmpty) continue;
+          final resourceType = (resource['resource_type']?.toString() ?? '').toLowerCase();
+          final mimeType = (resource['mime_type']?.toString() ?? '').toLowerCase();
+          final fileName = resource['file_name']?.toString() ?? 'Fichier';
+          final extension = fileName.contains('.')
+              ? fileName.split('.').last.toLowerCase()
+              : '';
+          String? type;
+          if (resourceType.contains('video') || mimeType.startsWith('video/') ||
+              const ['mp4', 'mov', 'webm', 'm4v'].contains(extension)) {
+            type = 'video';
+          } else if (resourceType.contains('audio') || mimeType.startsWith('audio/') ||
+              const ['mp3', 'm4a', 'wav', 'ogg', 'aac'].contains(extension)) {
+            type = 'audio';
+          } else if (resourceType.contains('image') || mimeType.startsWith('image/') ||
+              const ['png', 'jpg', 'jpeg', 'webp', 'gif'].contains(extension)) {
+            type = 'image';
+          } else if (resourceType.contains('pdf') || mimeType == 'application/pdf' ||
+              extension == 'pdf') {
+            type = 'pdf';
+          } else {
+            // Keep unknown document types out of PDF/image/audio/video readers.
+            continue;
+          }
+          content.add({
+            'id': 'legacy-resource-${resource['id']}',
+            'chapter_id': chapterId,
+            'content_type': type,
+            'title_fr': resource['title_fr']?.toString().trim().isNotEmpty == true
+                ? resource['title_fr'].toString()
+                : fileName,
+            'title_en': resource['title_en']?.toString().trim().isNotEmpty == true
+                ? resource['title_en'].toString()
+                : fileName,
+            'storage_path': 'legacy-course-resource:$storagePath',
+            'position': (resource['position'] as num?)?.toInt() ?? 0,
+            'is_published': true,
+          });
+        }
+      } catch (_) {
+        // Legacy media is optional; it must not hide the chapter's own content.
+      }
+    }
+
+    content.sort((a, b) =>
+        ((a['position'] as num?)?.toInt() ?? 0)
+            .compareTo((b['position'] as num?)?.toInt() ?? 0));
+    return content;
   }
 
   Future<List<ChapterLearningContentItem>> listContent(String chapterId) async {
