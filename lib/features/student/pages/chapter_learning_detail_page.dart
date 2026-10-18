@@ -270,14 +270,7 @@ class _ChapterLearningDetailPageState
                 if (_selectedFolder == null)
                   _buildResourceFolders(data.content)
                 else
-                  ..._contentForFolder(data.content, _selectedFolder!)
-                      .map(_contentCard)
-                      .toList()
-                      .ifEmpty(() => [
-                            _notice(_en
-                                ? 'This folder is empty for now.'
-                                : 'Ce dossier est vide pour le moment.')
-                          ]),
+                  _buildSelectedFolderContent(data.content, _selectedFolder!),
                 const SizedBox(height: 22),
                 Text(_en ? 'PRACTICE' : 'S’EXERCER',
                     style: const TextStyle(
@@ -311,6 +304,19 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.other =>
         _en ? 'Other documents' : 'Autres documents',
     };
+  }
+
+  Widget _buildSelectedFolderContent(
+    List<ChapterLearningContentItem> content,
+    _ChapterResourceFolder folder,
+  ) {
+    final items = _contentForFolder(content, folder);
+    if (items.isEmpty) {
+      return _notice(_en
+          ? 'This folder is empty for now.'
+          : 'Ce dossier est vide pour le moment.');
+    }
+    return Column(children: items.map(_contentCard).toList(growable: false));
   }
 
   List<ChapterLearningContentItem> _contentForFolder(
