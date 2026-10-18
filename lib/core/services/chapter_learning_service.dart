@@ -361,6 +361,21 @@ class ChapterLearningService {
     );
   }
 
+  /// Counts the official chapter titles available for this student's class/subject.
+  /// This count intentionally includes title-only MINESEC catalogue chapters,
+  /// even when the lesson content has not yet been uploaded.
+  Future<int> countChaptersForSubject(
+    String subjectId, {
+    UserProfile? profile,
+  }) async {
+    final curricula = await listCurricula(subjectId, profile: profile);
+    if (curricula.isEmpty) return 0;
+    final chapterLists = await Future.wait(
+      curricula.map((curriculum) => listChapters(curriculum.id)),
+    );
+    return chapterLists.fold<int>(0, (total, chapters) => total + chapters.length);
+  }
+
   Future<int> countPublishedLessonsForSubject(String subjectId) async {
     final curricula = await _client
         .from('curricula')
