@@ -1,614 +1,479 @@
-import 'dart:typed_data';
-
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../models/chapter_learning.dart';
+import '../offline/app_database.dart';
+
+import '../../models/chapter_learning_content.dart';
+import '../../models/pedagogy.dart';
 import '../../models/user_profile.dart';
-import 'free_tier_service.dart';
 
-/// Accès Supabase au nouveau parcours Chapitre > Cours > Quiz > Exercices.
-/// Les autorisations effectives restent celles des politiques RLS de Supabase.
-class ChapterLearningService {
-  ChapterLearningService({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+class ChapterLearningCounts {
+  const ChapterLearningCounts({
+    this.lessons = 0,
+    this.videos = 0,
+    this.pdfs = 0,
+    this.images = 0,
+    this.audios = 0,
+    this.quizzes = 0,
+    this.exercises = 0,
+  });
 
-  final SupabaseClient _client;
-  static const String storageBucket = 'chapter-content';
+  final int lessons;
+  final int videos;
+  final int pdfs;
+  final int images;
+  final int audios;
+  final int quizzes;
+  final int exercises;
 
-  String _clean(String? value) => (value ?? '').trim().toLowerCase();
+  int get total => lessons + videos + pdfs + images + audios + quizzes + exercises;
+}
 
-  /// Renvoie les chapitres publiables de la matière choisie, adaptés au profil.
-  /// Les compteurs sont calculés depuis les contenus publiés, jamais codés en dur.
-  Future<List<LearningChapter>> listChaptersForSubject({
-    required String subjectId,
-    required UserProfile profile,
-  }) async {
-    var curriculumQuery = _client
-        .from('curricula')
-        .select(
-          'id,subject_id,subsystem,sector,exam_level_id,series_id,specialty_id',
-        )
-        .eq('subject_id', subjectId)
-        .eq('is_active', true);
+class ChapterExerciseCorrection {
+  const ChapterExerciseCorrection({
+    required this.correctionFr,
+    required this.correctionEn,
+    this.explanationFr,
+    this.explanationEn,
+  });
 
-    final subsystem = _clean(profile.subsystem);
-    final sector = _clean(profile.sector);
-    if (subsystem.isNotEmpty) curriculumQuery = curriculumQuery.eq('subsystem', subsystem);
-    if (sector.isNotEmpty) curriculumQuery = curriculumQuery.eq('sector', sector);
+  final String correctionFr;
+  final String correctionEn;
+  final String? explanationFr;
+  final String? explanationEn;
 
-    final curriculumRows = List<Map<String, dynamic>>.from(await curriculumQuery);
-    final matching = curriculumRows.where((row) {
-      bool matchesOptionalId(String key, String? profileId) {
-        final curriculumId = row[key]?.toString();
-        return curriculumId == null ||
-            curriculumId.isEmpty ||
-            profileId == null ||
-            profileId.isEmpty ||
-            curriculumId == profileId;
-      }
-
-      return matchesOptionalId('exam_level_id', profile.examLevelId) &&
-          matchesOptionalId('series_id', profile.seriesId) &&
-          matchesOptionalId('specialty_id', profile.specialtyId);
-    }).toList();
-
-    if (matching.isEmpty) return const <LearningChapter>[];
-    final curriculumIds = matching.map((row) => row['id'].toString()).toList();
-
-    final chapterRows = List<Map<String, dynamic>>.from(
-      await _client
-          .from('course_chapters')
-          .select()
-          .inFilter('curriculum_id', curriculumIds)
-          .eq('is_active', true)
-          .order('position'),
+  factory ChapterExerciseCorrection.fromMap(Map<String, dynamic> map) {
+    return ChapterExerciseCorrection(
+      correctionFr: map['correction_fr'] as String? ?? '',
+      correctionEn: map['correction_en'] as String? ?? '',
+      explanationFr: map['explanation_fr'] as String?,
+      explanationEn: map['explanation_en'] as String?,
     );
-    if (chapterRows.isEmpty) return const <LearningChapter>[];
-
-    final chapterIds = chapterRows.map((row) => row['id'].toString()).toList();
-    final results = await Future.wait<dynamic>([
-      _client
-          .from('chapter_content_items')
-          .select('chapter_id,content_type')
-          .inFilter('chapter_id', chapterIds)
-          .eq('is_published', true)
-          .order('position'),
-      _client
-          .from('chapter_exercises')
-          .select('id,chapter_id')
-          .inFilter('chapter_id', chapterIds)
-          .eq('is_published', true),
-      _client
-          .from('chapter_quizzes')
-          .select('id,chapter_id')
-          .inFilter('chapter_id', chapterIds)
-          .eq('is_published', true)
-          .isFilter('created_by', null),
-      _client
-          .from('chapter_learning_progress')
-          .select('chapter_id,course_read')
-          .eq('student_id', profile.id)
-          .inFilter('chapter_id', chapterIds),
-      _client
-          .from('chapter_exercise_progress')
-          .select('exercise_id,completed')
-          .eq('student_id', profile.id)
-          .eq('completed', true),
-    ]);
-
-    final contentRows = List<Map<String, dynamic>>.from(results[0] as List);
-    final exerciseRows = List<Map<String, dynamic>>.from(results[1] as List);
-    final quizRows = List<Map<String, dynamic>>.from(results[2] as List);
-    final progressRows = List<Map<String, dynamic>>.from(results[3] as List);
-    final completedExerciseIds = List<Map<String, dynamic>>.from(results[4] as List)
-        .map((row) => row['exercise_id'].toString())
-        .toSet();
-
-    final curriculumById = <String, Map<String, dynamic>>{
-      for (final row in matching) row['id'].toString(): row,
-    };
-
-    return chapterRows.map((row) {
-      final chapterId = row['id'].toString();
-      final types = contentRows
-          .where((item) => item['chapter_id'].toString() == chapterId)
-          .map((item) => _clean(item['content_type']?.toString()))
-          .toList();
-      final chapterExercises = exerciseRows
-          .where((item) => item['chapter_id'].toString() == chapterId)
-          .toList();
-      final progress = progressRows.where(
-        (item) => item['chapter_id'].toString() == chapterId,
-      );
-      final read = progress.isNotEmpty && progress.first['course_read'] == true;
-      final completed = chapterExercises
-          .where((item) => completedExerciseIds.contains(item['id'].toString()))
-          .length;
-      final curriculumId = row['curriculum_id'].toString();
-      // The curriculum lookup ensures that the chapter belongs to a curriculum
-      // matched to the selected subject/profile.
-      if (!curriculumById.containsKey(curriculumId)) {
-        return LearningChapter.fromMap(row);
-      }
-      return LearningChapter.fromMap(
-        row,
-        lessonCount: types.where((type) => type == 'text' || type == 'lesson' || type == 'course').length,
-        videoCount: types.where((type) => type == 'video').length,
-        pdfCount: types.where((type) => type == 'pdf').length,
-        quizCount: quizRows.where((item) => item['chapter_id'].toString() == chapterId).length,
-        exerciseCount: chapterExercises.length,
-        courseRead: read,
-        completedExercises: completed,
-      );
-    }).toList();
   }
 
-  Future<List<ChapterContentItem>> listContent(String chapterId) async {
+  String correctionFor(String languageCode) =>
+      languageCode == 'en' ? correctionEn : correctionFr;
+
+  String? explanationFor(String languageCode) =>
+      languageCode == 'en' ? explanationEn : explanationFr;
+}
+
+/// Accès aux contenus de chapitre publiés. Les contrôles d'accès réels sont
+/// appliqués par les politiques RLS Supabase, pas seulement par l'interface.
+class ChapterLearningService {
+  static final Map<String, DateTime> _lastCacheRefresh = <String, DateTime>{};
+
+  final SupabaseClient _client;
+  final AppDatabase _database;
+
+  ChapterLearningService({SupabaseClient? client, AppDatabase? database})
+      : _client = client ?? Supabase.instance.client,
+        _database = database ?? AppDatabase();
+
+  String get _cacheUserId => _client.auth.currentUser?.id ?? 'offline-guest';
+
+  Future<List<Map<String, dynamic>>> _cachedRows(
+    String cacheKey,
+    Future<List<Map<String, dynamic>>> Function() fetch,
+  ) async {
+    // Keep the cache owner fixed for the whole operation so a background
+    // refresh cannot write one account's data into another account's cache.
+    final userId = _cacheUserId;
+    final cachedJson = await _database.getOfflineCatalogCache(userId, cacheKey);
+    if (cachedJson != null) {
+      try {
+        final decoded = jsonDecode(cachedJson) as List<dynamic>;
+        final cached = decoded
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false);
+        final refreshKey = '$userId:$cacheKey';
+        final lastRefresh = _lastCacheRefresh[refreshKey];
+        if (lastRefresh == null ||
+            DateTime.now().difference(lastRefresh) > const Duration(minutes: 2)) {
+          _lastCacheRefresh[refreshKey] = DateTime.now();
+          unawaited(_refreshRows(userId, cacheKey, fetch));
+        }
+        return cached;
+      } catch (_) {
+        // Ignore a malformed cache and rebuild it from the server.
+      }
+    }
+    try {
+      final rows = await fetch().timeout(const Duration(seconds: 5));
+      await _database.saveOfflineCatalogCache(userId, cacheKey, jsonEncode(rows));
+      return rows;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _refreshRows(
+    String userId,
+    String cacheKey,
+    Future<List<Map<String, dynamic>>> Function() fetch,
+  ) async {
+    try {
+      final rows = await fetch().timeout(const Duration(seconds: 5));
+      await _database.saveOfflineCatalogCache(userId, cacheKey, jsonEncode(rows));
+    } catch (_) {
+      // Keep the last successful local copy when offline.
+    }
+  }
+
+  /// Loads this chapter's own content plus media from genuinely equivalent
+  /// chapters in another stream. RLS independently verifies each source chapter.
+  Future<List<Map<String, dynamic>>> _contentRowsForChapter(String chapterId) =>
+      _cachedRows('chapter-content:$chapterId', () => _fetchContentRowsForChapter(chapterId));
+
+  Future<List<Map<String, dynamic>>> _fetchContentRowsForChapter(
+    String chapterId,
+  ) async {
+    final currentRows = await _client
+        .from('course_chapters')
+        .select('id,title_fr,title_en,position')
+        .eq('id', chapterId)
+        .eq('is_active', true)
+        .limit(1);
+    if (currentRows.isEmpty) return const <Map<String, dynamic>>[];
+
+    final current = Map<String, dynamic>.from(currentRows.first);
+    final chapterRows = await _client
+        .from('course_chapters')
+        .select('id,title_fr,title_en,position')
+        .eq('position', current['position'])
+        .eq('is_active', true);
+
+    final titleFr = (current['title_fr']?.toString() ?? '').trim().toLowerCase();
+    final titleEn = (current['title_en']?.toString() ?? '').trim().toLowerCase();
+    final chapterIds = chapterRows
+        .where((raw) {
+          final row = Map<String, dynamic>.from(raw);
+          return (row['title_fr']?.toString() ?? '').trim().toLowerCase() == titleFr &&
+              (row['title_en']?.toString() ?? '').trim().toLowerCase() == titleEn;
+        })
+        .map((row) => row['id'].toString())
+        .toSet()
+        .toList(growable: true);
+    if (!chapterIds.contains(chapterId)) chapterIds.add(chapterId);
+
     final rows = await _client
         .from('chapter_content_items')
         .select()
-        .eq('chapter_id', chapterId)
+        .inFilter('chapter_id', chapterIds)
         .eq('is_published', true)
         .order('position');
-    return List<Map<String, dynamic>>.from(rows)
-        .map(ChapterContentItem.fromMap)
-        .toList();
+
+    return rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .where((row) =>
+            row['chapter_id'] == chapterId ||
+            const ['video', 'pdf', 'image', 'audio'].contains(row['content_type']))
+        .toList(growable: false);
   }
 
-  Future<List<ChapterExercise>> listExercises({
-    required String chapterId,
-    required String studentId,
-  }) async {
-    final rows = await _client
-        .from('chapter_exercises')
-        .select()
-        .eq('chapter_id', chapterId)
-        .eq('is_published', true)
-        .order('position');
-    final exerciseRows = List<Map<String, dynamic>>.from(rows);
-    if (exerciseRows.isEmpty) return const <ChapterExercise>[];
-
-    final progressRows = List<Map<String, dynamic>>.from(
-      await _client
-          .from('chapter_exercise_progress')
-          .select('exercise_id,completed')
-          .eq('student_id', studentId)
-          .inFilter('exercise_id', exerciseRows.map((e) => e['id'].toString()).toList()),
-    );
-    final completed = progressRows
-        .where((row) => row['completed'] == true)
-        .map((row) => row['exercise_id'].toString())
-        .toSet();
-
-    return exerciseRows
-        .map((row) => ChapterExercise.fromMap(
-              row,
-              completed: completed.contains(row['id'].toString()),
-            ))
-        .toList();
+  Future<List<ChapterLearningContentItem>> listContent(String chapterId) async {
+    final rows = await _contentRowsForChapter(chapterId);
+    return rows
+        .map(ChapterLearningContentItem.fromMap)
+        .toList(growable: false);
   }
 
-  Future<List<ChapterQuiz>> listQuizzes(String chapterId) async {
-    Future<List<Map<String, dynamic>>> loadPublishedQuizzes() async {
-      final rows = await _client
+  Future<List<ChapterLearningExercise>> listExercises(String chapterId) async {
+    final rows = await _cachedRows('chapter-exercises:$chapterId', () async {
+      final result = await _client
+          .from('chapter_exercises')
+          .select()
+          .eq('chapter_id', chapterId)
+          .eq('is_published', true)
+          .order('position');
+      return result.map((row) => Map<String, dynamic>.from(row)).toList();
+    });
+    return rows.map(ChapterLearningExercise.fromMap).toList(growable: false);
+  }
+
+  Future<List<ChapterLearningQuiz>> listQuizzes(String chapterId) async {
+    final rows = await _cachedRows('chapter-quizzes:$chapterId', () async {
+      final result = await _client
           .from('chapter_quizzes')
           .select()
           .eq('chapter_id', chapterId)
           .eq('is_published', true)
           .isFilter('created_by', null)
           .order('position');
-      return List<Map<String, dynamic>>.from(rows);
-    }
-
-    var rows = await loadPublishedQuizzes();
-
-    // Si le chapitre contient déjà un cours mais que son QCM IA n'existe pas,
-    // déclencher la génération côté serveur à la première ouverture par l'élève.
-    // La fonction Edge ne consomme que les contenus publiés et garde la clé Gemini
-    // côté serveur. Une erreur IA ne bloque pas l'accès au cours.
-    if (rows.isEmpty && _client.auth.currentUser != null) {
-      try {
-        await _client.functions.invoke(
-          'chapter-quiz',
-          body: {'chapter_id': chapterId},
+      final maps = result.map((row) => Map<String, dynamic>.from(row)).toList();
+      return Future.wait(maps.map((map) async {
+        final quizId = map['id'].toString();
+        final questions = await _client
+            .from('chapter_quiz_questions')
+            .select()
+            .eq('quiz_id', quizId)
+            .order('position');
+        final questionMaps = questions
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+        await _database.saveOfflineCatalogCache(
+          _cacheUserId,
+          'chapter-quiz-questions:$quizId',
+          jsonEncode(questionMaps),
         );
-        rows = await loadPublishedQuizzes();
-      } catch (error) {
-        debugPrint('Génération du QCM intelligent impossible pour $chapterId: $error');
-      }
-    }
-
-    final quizzes = rows.map(ChapterQuiz.fromMap).toList();
-    final freeTier = FreeTierService(client: _client);
-    final previouslyGranted = await freeTier.cachedResourceIds('qcm');
-    final ordered = [...quizzes]..sort((a, b) {
-      final aGranted = previouslyGranted.contains(a.id);
-      final bGranted = previouslyGranted.contains(b.id);
-      if (aGranted == bGranted) return 0;
-      return aGranted ? -1 : 1;
+        return <String, dynamic>{...map, 'question_count': questions.length};
+      }));
     });
-    final allowedIds = <String>{};
-    for (final quiz in ordered) {
-      if (await freeTier.consume('qcm', quiz.id)) {
-        allowedIds.add(quiz.id);
-      } else {
-        break;
-      }
-    }
-    return quizzes.where((quiz) => allowedIds.contains(quiz.id)).toList(growable: false);
+    return rows
+        .map((map) => ChapterLearningQuiz.fromMap(
+              map,
+              questionCount: (map['question_count'] as num?)?.toInt() ?? 0,
+            ))
+        .toList(growable: false);
   }
 
-  /// Cette méthode ne sélectionne volontairement jamais la table des réponses.
-  Future<List<ChapterQuizQuestion>> listQuizQuestions(String quizId) async {
-    final allowed = await FreeTierService(client: _client).consume('qcm', quizId);
-    if (!allowed) {
-      throw StateError('La version gratuite est limitée à deux QCM.');
-    }
-    final rows = await _client
-        .from('chapter_quiz_questions')
-        .select('id,quiz_id,prompt_fr,prompt_en,options_fr,options_en,position')
-        .eq('quiz_id', quizId)
-        .order('position');
-    return List<Map<String, dynamic>>.from(rows)
-        .map(ChapterQuizQuestion.fromMap)
-        .toList();
+  Future<List<ChapterLearningQuizQuestion>> listQuizQuestions(String quizId) async {
+    final rows = await _cachedRows('chapter-quiz-questions:$quizId', () async {
+      final result = await _client
+          .from('chapter_quiz_questions')
+          .select()
+          .eq('quiz_id', quizId)
+          .order('position');
+      return result.map((row) => Map<String, dynamic>.from(row)).toList();
+    });
+    return rows.map(ChapterLearningQuizQuestion.fromMap).toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> getProgress({
-    required String chapterId,
-    required String studentId,
+  /// Le serveur vérifie les réponses à partir de la table privée des clés.
+  Future<Map<String, dynamic>> submitQuiz({
+    required String quizId,
+    required Map<String, int> answers,
   }) async {
-    final row = await _client
-        .from('chapter_learning_progress')
-        .select()
-        .eq('chapter_id', chapterId)
-        .eq('student_id', studentId)
-        .maybeSingle();
-    return row == null ? <String, dynamic>{} : Map<String, dynamic>.from(row);
+    final result = await _client.rpc(
+      'submit_chapter_quiz',
+      params: {
+        'p_quiz_id': quizId,
+        'p_answers': answers.map((key, value) => MapEntry(key, value)),
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<ChapterLearningCounts> getCounts(String chapterId) async {
+    final results = await Future.wait<dynamic>([
+      listContent(chapterId),
+      listExercises(chapterId),
+      _cachedRows('chapter-count-quizzes:$chapterId', () async {
+        final rows = await _client
+            .from('chapter_quizzes')
+            .select('id')
+            .eq('chapter_id', chapterId)
+            .eq('is_published', true);
+        return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+      }),
+    ]);
+    final content = results[0] as List<ChapterLearningContentItem>;
+    final exercises = results[1] as List<ChapterLearningExercise>;
+    final quizRows = results[2] as List<Map<String, dynamic>>;
+    return ChapterLearningCounts(
+      lessons: content.where((item) => item.type == ChapterLearningContentType.course).length,
+      videos: content.where((item) => item.type == ChapterLearningContentType.video).length,
+      pdfs: content.where((item) => item.type == ChapterLearningContentType.pdf).length,
+      images: content.where((item) => item.type == ChapterLearningContentType.image).length,
+      audios: content.where((item) => item.type == ChapterLearningContentType.audio).length,
+      exercises: exercises.length,
+      quizzes: quizRows.length,
+    );
+  }
+
+  Future<ChapterLearningProgress?> getProgress({
+    required String studentId,
+    required String chapterId,
+  }) async {
+    final rows = await _cachedRows('chapter-progress:$studentId:$chapterId', () async {
+      final result = await _client
+          .from('chapter_learning_progress')
+          .select()
+          .eq('student_id', studentId)
+          .eq('chapter_id', chapterId)
+          .limit(1);
+      return result.map((row) => Map<String, dynamic>.from(row)).toList();
+    });
+    if (rows.isEmpty) return null;
+    return ChapterLearningProgress.fromMap(rows.first);
   }
 
   Future<void> markCourseRead({
-    required String chapterId,
     required String studentId,
+    required String chapterId,
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('chapter_learning_progress').upsert(
-      {
-        'chapter_id': chapterId,
-        'student_id': studentId,
-        'course_read': true,
-        'course_read_at': now,
-        'last_opened_at': now,
-        'updated_at': now,
-      },
-      onConflict: 'student_id,chapter_id',
-    );
+    await _client.from('chapter_learning_progress').upsert({
+      'student_id': studentId,
+      'chapter_id': chapterId,
+      'course_read': true,
+      'course_read_at': now,
+      'last_opened_at': now,
+      'updated_at': now,
+    }, onConflict: 'student_id,chapter_id');
+  }
+
+  Future<Set<String>> completedExerciseIds({
+    required String studentId,
+    required List<String> exerciseIds,
+  }) async {
+    if (exerciseIds.isEmpty) return <String>{};
+    final ids = exerciseIds.toList()..sort();
+    final rows = await _cachedRows('completed-exercises:$studentId:${ids.join(',')}', () async {
+      final result = await _client
+          .from('chapter_exercise_progress')
+          .select('exercise_id')
+          .eq('student_id', studentId)
+          .eq('completed', true)
+          .inFilter('exercise_id', exerciseIds);
+      return result.map((row) => Map<String, dynamic>.from(row)).toList();
+    });
+    return rows.map((row) => row['exercise_id'].toString()).toSet();
   }
 
   Future<void> markExerciseCompleted({
-    required String exerciseId,
     required String studentId,
+    required String exerciseId,
     required bool completed,
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('chapter_exercise_progress').upsert(
-      {
-        'exercise_id': exerciseId,
-        'student_id': studentId,
-        'completed': completed,
-        'completed_at': completed ? now : null,
-        'updated_at': now,
-      },
-      onConflict: 'student_id,exercise_id',
-    );
+    await _client.from('chapter_exercise_progress').upsert({
+      'student_id': studentId,
+      'exercise_id': exerciseId,
+      'completed': completed,
+      'completed_at': completed ? now : null,
+      'updated_at': now,
+    }, onConflict: 'student_id,exercise_id');
   }
 
-  Future<Map<String, dynamic>> getExerciseCorrection(String exerciseId) async {
-    final result = await _client.rpc(
+  Future<ChapterExerciseCorrection?> getExerciseCorrection(
+    String exerciseId,
+  ) async {
+    final rows = await _client.rpc(
       'get_chapter_exercise_correction',
       params: {'p_exercise_id': exerciseId},
-    );
-    if (result is Map) return Map<String, dynamic>.from(result);
-    if (result is List && result.isNotEmpty && result.first is Map) {
-      return Map<String, dynamic>.from(result.first as Map);
-    }
-    return <String, dynamic>{};
-  }
-
-  Future<Map<String, dynamic>> checkQuizAnswer({
-    required String quizId,
-    required String questionId,
-    required int selectedOptionIndex,
-  }) async {
-    final result = await _client.rpc(
-      'check_chapter_quiz_answer',
-      params: {
-        'p_quiz_id': quizId,
-        'p_question_id': questionId,
-        'p_selected_option_index': selectedOptionIndex,
-      },
-    );
-    if (result is Map) return Map<String, dynamic>.from(result);
-    if (result is List && result.isNotEmpty && result.first is Map) {
-      return Map<String, dynamic>.from(result.first as Map);
-    }
-    throw StateError('La correction n’a retourné aucun résultat.');
-  }
-
-  Future<dynamic> submitQuiz({
-    required String quizId,
-    required Map<String, int> answers,
-  }) {
-    return _client.rpc(
-      'submit_chapter_quiz',
-      params: {'p_quiz_id': quizId, 'p_answers': answers},
+    ) as List;
+    if (rows.isEmpty) return null;
+    return ChapterExerciseCorrection.fromMap(
+      Map<String, dynamic>.from(rows.first as Map),
     );
   }
 
-  /// Upload privé ; le bucket et ses politiques RLS existent déjà dans Supabase.
-  Future<String> uploadContentFile({
-    required String path,
-    required Uint8List bytes,
-    required String contentType,
+  Future<int> countPublishedLessonsForSubject(String subjectId) async {
+    final curricula = await _client
+        .from('curricula')
+        .select('id')
+        .eq('subject_id', subjectId)
+        .eq('is_active', true);
+    if (curricula.isEmpty) return 0;
+
+    final curriculumIds = curricula.map((row) => row['id'] as String).toList();
+    final chapters = await _client
+        .from('course_chapters')
+        .select('id')
+        .inFilter('curriculum_id', curriculumIds)
+        .eq('is_active', true);
+    if (chapters.isEmpty) return 0;
+
+    final chapterIds = chapters.map((row) => row['id'] as String).toList();
+    final content = await _client
+        .from('chapter_content_items')
+        .select('id')
+        .inFilter('chapter_id', chapterIds)
+        .eq('content_type', 'course')
+        .eq('is_published', true);
+    return content.length;
+  }
+
+  Future<List<Curriculum>> listCurricula(
+    String subjectId, {
+    UserProfile? profile,
   }) async {
-    final safePath = path.replaceAll(RegExp(r'[^a-zA-Z0-9_./-]'), '_');
-    await _client.storage.from(storageBucket).uploadBinary(
-      safePath,
-      bytes,
-      fileOptions: FileOptions(
-        contentType: contentType,
-        upsert: false,
-      ),
+    final profileKey = profile?.id ?? _cacheUserId;
+    final rows = await _cachedRows(
+      'curricula:$profileKey:$subjectId',
+      () => _fetchCurriculumRows(subjectId, profile: profile),
     );
-    return safePath;
+    return rows.map(Curriculum.fromMap).toList(growable: false);
   }
 
-  Future<String> createSignedUrl(String storagePath, {int expiresIn = 900}) {
-    return _client.storage.from(storageBucket).createSignedUrl(
-      storagePath,
-      expiresIn,
-    );
-  }
-
-  // CRUD admin : les politiques RLS Supabase n'autorisent que l'administrateur.
-  Future<Map<String, dynamic>> saveChapter({
-    String? id,
-    required String curriculumId,
-    required String titleFr,
-    required String titleEn,
-    String? descriptionFr,
-    String? descriptionEn,
-    required int position,
-    required bool isActive,
+  Future<List<Map<String, dynamic>>> _fetchCurriculumRows(
+    String subjectId, {
+    UserProfile? profile,
   }) async {
-    final values = <String, dynamic>{
-      'curriculum_id': curriculumId,
-      'title_fr': titleFr.trim(),
-      'title_en': titleEn.trim(),
-      'description_fr': descriptionFr?.trim(),
-      'description_en': descriptionEn?.trim(),
-      'position': position,
-      'is_active': isActive,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    };
-    final row = id == null
-        ? await _client.from('course_chapters').insert(values).select().single()
-        : await _client.from('course_chapters').update(values).eq('id', id).select().single();
-    return Map<String, dynamic>.from(row);
-  }
+    final rows = await _client
+        .from('curricula')
+        .select()
+        .eq('subject_id', subjectId)
+        .eq('is_active', true)
+        .order('title_fr');
 
-  Future<void> setChapterVisible(String chapterId, bool visible) async {
-    await _client.from('course_chapters').update({
-      'is_active': visible,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', chapterId);
-  }
+    var filtered = rows.map((row) => Map<String, dynamic>.from(row)).toList();
 
-  Future<void> deleteChapter(String chapterId) async {
-    await _client.from('course_chapters').delete().eq('id', chapterId);
-  }
+    // Student view: only show programmes matching an active class membership
+    // and the subject assigned to that class. RLS remains the final authority.
+    if (profile != null) {
+      final memberships = await _client
+          .from('class_students')
+          .select('class_id')
+          .eq('student_id', profile.id)
+          .eq('is_active', true);
+      final memberClassIds = memberships
+          .map((row) => row['class_id'])
+          .whereType<String>()
+          .toSet()
+          .toList(growable: false);
+      if (memberClassIds.isEmpty) return const <Map<String, dynamic>>[];
 
-  Future<Map<String, dynamic>> saveContent({
-    String? id,
-    required String chapterId,
-    required String type,
-    required String titleFr,
-    required String titleEn,
-    String? bodyTextFr,
-    String? bodyTextEn,
-    String? externalUrl,
-    String? storagePath,
-    required int position,
-    required bool visible,
-    required String createdBy,
-  }) async {
-    final values = <String, dynamic>{
-      'chapter_id': chapterId,
-      'content_type': type,
-      'title_fr': titleFr.trim(),
-      'title_en': titleEn.trim(),
-      'body_text_fr': bodyTextFr,
-      'body_text_en': bodyTextEn,
-      'external_url': externalUrl,
-      'storage_path': storagePath,
-      'position': position,
-      'is_published': visible,
-      'created_by': createdBy,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    };
-    final row = id == null
-        ? await _client.from('chapter_content_items').insert(values).select().single()
-        : await _client.from('chapter_content_items').update(values).eq('id', id).select().single();
-    return Map<String, dynamic>.from(row);
-  }
+      final assignedRows = await _client
+          .from('class_subjects')
+          .select('class_id')
+          .eq('subject_id', subjectId)
+          .eq('is_active', true)
+          .inFilter('class_id', memberClassIds);
+      final assignedClassIds = assignedRows
+          .map((row) => row['class_id'])
+          .whereType<String>()
+          .toSet()
+          .toList(growable: false);
+      if (assignedClassIds.isEmpty) return const <Map<String, dynamic>>[];
 
-  Future<void> setContentVisible(String contentId, bool visible) async {
-    await _client.from('chapter_content_items').update({
-      'is_published': visible,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', contentId);
-  }
+      final classRows = await _client
+          .from('school_classes')
+          .select('id,subsystem,sector,exam_level_id,series_id,specialty_id')
+          .inFilter('id', assignedClassIds)
+          .eq('is_active', true);
+      final activeClasses =
+          classRows.map((row) => Map<String, dynamic>.from(row)).toList();
 
-  Future<void> deleteContent(String contentId) async {
-    await _client.from('chapter_content_items').delete().eq('id', contentId);
-  }
-
-  Future<Map<String, dynamic>> saveExercise({
-    String? id,
-    required String chapterId,
-    required String statementFr,
-    required String statementEn,
-    required String difficulty,
-    required int position,
-    required bool visible,
-    required String createdBy,
-    required String correctionFr,
-    required String correctionEn,
-    String? explanationFr,
-    String? explanationEn,
-  }) async {
-    final values = <String, dynamic>{
-      'chapter_id': chapterId,
-      'statement_fr': statementFr.trim(),
-      'statement_en': statementEn.trim(),
-      'difficulty': difficulty,
-      'position': position,
-      'is_published': visible,
-      'created_by': createdBy,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    };
-    final row = id == null
-        ? await _client.from('chapter_exercises').insert(values).select().single()
-        : await _client.from('chapter_exercises').update(values).eq('id', id).select().single();
-    final exercise = Map<String, dynamic>.from(row);
-    await _client.from('chapter_exercise_corrections').upsert({
-      'exercise_id': exercise['id'],
-      'correction_fr': correctionFr.trim(),
-      'correction_en': correctionEn.trim(),
-      'explanation_fr': explanationFr?.trim(),
-      'explanation_en': explanationEn?.trim(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, onConflict: 'exercise_id');
-    return exercise;
-  }
-
-  Future<void> setExerciseVisible(String exerciseId, bool visible) async {
-    await _client.from('chapter_exercises').update({
-      'is_published': visible,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', exerciseId);
-  }
-
-  Future<void> deleteExercise(String exerciseId) async {
-    await _client.from('chapter_exercises').delete().eq('id', exerciseId);
-  }
-
-  Future<Map<String, dynamic>> saveQuiz({
-    String? id,
-    required String chapterId,
-    required String titleFr,
-    required String titleEn,
-    String? descriptionFr,
-    String? descriptionEn,
-    required int position,
-    required bool visible,
-    required String createdBy,
-  }) async {
-    final values = <String, dynamic>{
-      'chapter_id': chapterId,
-      'title_fr': titleFr.trim(),
-      'title_en': titleEn.trim(),
-      'description_fr': descriptionFr?.trim(),
-      'description_en': descriptionEn?.trim(),
-      'position': position,
-      'is_published': visible,
-      'created_by': createdBy,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    };
-    final row = id == null
-        ? await _client.from('chapter_quizzes').insert(values).select().single()
-        : await _client.from('chapter_quizzes').update(values).eq('id', id).select().single();
-    final saved = Map<String, dynamic>.from(row);
-
-    // A published teacher QCM counts separately in every active classroom
-    // that the teacher follows. Generated official QCM (created_by = null)
-    // and admin-created content are not counted as teacher obligations.
-    if (visible && createdBy.trim().isNotEmpty) {
-      try {
-        final profile = await _client.from('profiles').select('role')
-            .eq('id', createdBy).maybeSingle();
-        if (profile?['role'] == 'teacher') {
-          final assignments = await _client.from('class_teachers')
-              .select('class_id')
-              .eq('teacher_id', createdBy)
-              .eq('is_active', true);
-          for (final assignment in assignments) {
-            final classId = assignment['class_id']?.toString();
-            if (classId == null || classId.isEmpty) continue;
-            await _client.rpc('record_teacher_room_publication', params: {
-              'p_class_id': classId,
-              'p_kind': 'qcm',
-              'p_resource_id': saved['id'].toString(),
-            });
-          }
-        }
-      } catch (_) {
-        // Keep QCM creation working; failed counters remain visible for admin review.
-      }
+      filtered = filtered.where((curriculum) {
+        return activeClasses.any((schoolClass) =>
+            curriculum['subsystem'] == schoolClass['subsystem'] &&
+            curriculum['sector'] == schoolClass['sector'] &&
+            (curriculum['exam_level_id'] == null ||
+                curriculum['exam_level_id'] == schoolClass['exam_level_id']) &&
+            (curriculum['series_id'] == null ||
+                curriculum['series_id'] == schoolClass['series_id']) &&
+            (curriculum['specialty_id'] == null ||
+                curriculum['specialty_id'] == schoolClass['specialty_id']));
+      }).toList(growable: false);
     }
-    return saved;
+
+    return filtered;
   }
 
-  Future<Map<String, dynamic>> saveQuizQuestion({
-    String? id,
-    required String quizId,
-    required String promptFr,
-    required String promptEn,
-    required List<String> optionsFr,
-    required List<String> optionsEn,
-    required int correctOptionIndex,
-    String? explanationFr,
-    String? explanationEn,
-    required int position,
-  }) async {
-    if (optionsFr.length < 2 || optionsEn.length != optionsFr.length) {
-      throw ArgumentError('Le QCM doit contenir au moins deux choix par langue.');
-    }
-    if (correctOptionIndex < 0 || correctOptionIndex >= optionsFr.length) {
-      throw ArgumentError.value(correctOptionIndex, 'correctOptionIndex');
-    }
-    final values = <String, dynamic>{
-      'quiz_id': quizId,
-      'prompt_fr': promptFr.trim(),
-      'prompt_en': promptEn.trim(),
-      'options_fr': optionsFr,
-      'options_en': optionsEn,
-      'position': position,
-    };
-    final row = id == null
-        ? await _client.from('chapter_quiz_questions').insert(values).select().single()
-        : await _client.from('chapter_quiz_questions').update(values).eq('id', id).select().single();
-    final question = Map<String, dynamic>.from(row);
-    await _client.from('chapter_quiz_answer_keys').upsert({
-      'question_id': question['id'],
-      'correct_option_index': correctOptionIndex,
-      'explanation_fr': explanationFr?.trim(),
-      'explanation_en': explanationEn?.trim(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, onConflict: 'question_id');
-    return question;
-  }
-
-  Future<void> setQuizVisible(String quizId, bool visible) async {
-    await _client.from('chapter_quizzes').update({
-      'is_published': visible,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', quizId);
-  }
-
-  Future<void> deleteQuiz(String quizId) async {
-    await _client.from('chapter_quizzes').delete().eq('id', quizId);
+  Future<List<CourseChapter>> listChapters(String curriculumId) async {
+    final rows = await _cachedRows('chapters:$curriculumId', () async {
+      final result = await _client
+          .from('course_chapters')
+          .select()
+          .eq('curriculum_id', curriculumId)
+          .eq('is_active', true)
+          .order('position');
+      return result.map((row) => Map<String, dynamic>.from(row)).toList();
+    });
+    return rows.map(CourseChapter.fromMap).toList(growable: false);
   }
 }

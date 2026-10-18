@@ -4,7 +4,7 @@ class MessageContact {
   final String lastName;
   final String role;
   final String? className;
-  final int unreadCount;
+  final String? avatarPath;
 
   const MessageContact({
     required this.id,
@@ -12,7 +12,7 @@ class MessageContact {
     required this.lastName,
     required this.role,
     this.className,
-    this.unreadCount = 0,
+    this.avatarPath,
   });
 
   factory MessageContact.fromMap(Map<String, dynamic> map) {
@@ -22,7 +22,7 @@ class MessageContact {
       lastName: map['last_name'] as String? ?? '',
       role: map['role'] as String? ?? '',
       className: map['class_name'] as String?,
-      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
+      avatarPath: map['avatar_path'] as String?,
     );
   }
 
@@ -35,19 +35,13 @@ class PrivateMessage {
   final String recipientId;
   final String body;
   final DateTime createdAt;
-  final DateTime? deliveredAt;
   final DateTime? readAt;
   final String? attachmentPath;
   final String? attachmentName;
   final String? attachmentType;
-  final bool viewOnce;
-  final DateTime? viewedAt;
-  final DateTime? deletedAt;
-
-  /// Message écrit sur cet appareil, pas encore reçu par le serveur
-  /// (file d'attente hors ligne). [failed] : refusé par le serveur.
-  final bool pending;
-  final bool failed;
+  final String? localAttachmentPath;
+  final String? replyToId;
+  final bool isPending;
 
   const PrivateMessage({
     required this.id,
@@ -55,16 +49,13 @@ class PrivateMessage {
     required this.recipientId,
     required this.body,
     required this.createdAt,
-    this.deliveredAt,
     this.readAt,
     this.attachmentPath,
     this.attachmentName,
     this.attachmentType,
-    this.viewOnce = false,
-    this.viewedAt,
-    this.deletedAt,
-    this.pending = false,
-    this.failed = false,
+    this.localAttachmentPath,
+    this.replyToId,
+    this.isPending = false,
   });
 
   factory PrivateMessage.fromMap(Map<String, dynamic> map) {
@@ -74,22 +65,15 @@ class PrivateMessage {
       recipientId: map['recipient_id'] as String,
       body: map['body'] as String,
       createdAt: DateTime.parse(map['created_at'] as String),
-      deliveredAt: map['delivered_at'] == null
-          ? null
-          : DateTime.parse(map['delivered_at'] as String),
       readAt: map['read_at'] == null
           ? null
           : DateTime.parse(map['read_at'] as String),
       attachmentPath: map['attachment_path'] as String?,
       attachmentName: map['attachment_name'] as String?,
       attachmentType: map['attachment_type'] as String?,
-      viewOnce: map['view_once'] == true,
-      viewedAt: map['viewed_at'] == null
-          ? null
-          : DateTime.tryParse(map['viewed_at'].toString()),
-      deletedAt: map['deleted_at'] == null
-          ? null
-          : DateTime.tryParse(map['deleted_at'].toString()),
+      localAttachmentPath: map['local_attachment_path'] as String?,
+      replyToId: map['reply_to_id'] as String?,
+      isPending: map['is_pending'] as bool? ?? false,
     );
   }
 }

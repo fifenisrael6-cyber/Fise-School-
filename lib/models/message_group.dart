@@ -8,7 +8,6 @@ class MessageGroup {
   final int memberCount;
   final String? lastBody;
   final DateTime? lastAt;
-  final int unreadCount;
 
   const MessageGroup({
     required this.id,
@@ -20,7 +19,6 @@ class MessageGroup {
     this.memberCount = 0,
     this.lastBody,
     this.lastAt,
-    this.unreadCount = 0,
   });
 
   factory MessageGroup.fromMap(Map<String, dynamic> map) {
@@ -35,7 +33,6 @@ class MessageGroup {
       memberCount: (map['member_count'] as num?)?.toInt() ?? 0,
       lastBody: map['last_body'] as String?,
       lastAt: last is String ? DateTime.tryParse(last) : null,
-      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -45,41 +42,30 @@ class GroupMessage {
   final String senderId;
   final String senderName;
   final String senderRole;
+  final String? senderAvatarPath;
   final String body;
   final String? attachmentPath;
   final String? attachmentName;
   final String? attachmentType;
   final DateTime createdAt;
-  final int deliveredCount;
-  final int readCount;
-  final int recipientCount;
-  final bool viewOnce;
-  final bool viewedByMe;
-  final DateTime? deletedAt;
-
-  /// Message écrit sur cet appareil, pas encore reçu par le serveur
-  /// (file d'attente hors ligne). [failed] : refusé par le serveur.
-  final bool pending;
-  final bool failed;
+  final String? localAttachmentPath;
+  final String? replyToId;
+  final bool isPending;
 
   const GroupMessage({
     required this.id,
     required this.senderId,
     required this.senderName,
     required this.senderRole,
+    this.senderAvatarPath,
     required this.body,
     required this.createdAt,
     this.attachmentPath,
     this.attachmentName,
     this.attachmentType,
-    this.deliveredCount = 0,
-    this.readCount = 0,
-    this.recipientCount = 0,
-    this.viewOnce = false,
-    this.viewedByMe = false,
-    this.deletedAt,
-    this.pending = false,
-    this.failed = false,
+    this.localAttachmentPath,
+    this.replyToId,
+    this.isPending = false,
   });
 
   factory GroupMessage.fromMap(Map<String, dynamic> map) {
@@ -88,19 +74,15 @@ class GroupMessage {
       senderId: map['sender_id'] as String,
       senderName: map['sender_name'] as String? ?? '',
       senderRole: map['sender_role'] as String? ?? '',
+      senderAvatarPath: map['sender_avatar_path'] as String?,
       body: map['body'] as String? ?? '',
       attachmentPath: map['attachment_path'] as String?,
       attachmentName: map['attachment_name'] as String?,
       attachmentType: map['attachment_type'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
-      deliveredCount: (map['delivered_count'] as num?)?.toInt() ?? 0,
-      readCount: (map['read_count'] as num?)?.toInt() ?? 0,
-      recipientCount: (map['recipient_count'] as num?)?.toInt() ?? 0,
-      viewOnce: map['view_once'] == true,
-      viewedByMe: map['viewed_by_me'] == true,
-      deletedAt: map['deleted_at'] == null
-          ? null
-          : DateTime.tryParse(map['deleted_at'].toString()),
+      localAttachmentPath: map['local_attachment_path'] as String?,
+      replyToId: map['reply_to_id'] as String?,
+      isPending: map['is_pending'] as bool? ?? false,
     );
   }
 }

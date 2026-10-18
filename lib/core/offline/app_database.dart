@@ -86,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -95,6 +95,8 @@ class AppDatabase extends _$AppDatabase {
           await _createDownloadedFilesTable();
           await _createOfflineQcmTables();
           await _createSmartLearningTables();
+          await _createMessageOfflineTables();
+          await _createOfflineCatalogCacheTable();
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -104,8 +106,54 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await _createSmartLearningTables();
           }
+          if (from < 4) {
+            await _createMessageOfflineTables();
+          }
+          if (from < 5) {
+            await _createOfflineCatalogCacheTable();
+          }
+          if (from < 6) {
+            await _addMessageReplyColumns();
+          }
         },
       );
+
+  Future<void> _createOfflineCatalogCacheTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS offline_catalog_cache (
+        user_id TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, cache_key)
+      )
+    ''');
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS offline_catalog_cache_updated_idx ON offline_catalog_cache(user_id, updated_at)',
+    );
+  }
+
+  Future<String?> getOfflineCatalogCache(String userId, String cacheKey) async {
+    final rows = await customSelect(
+      'SELECT data_json FROM offline_catalog_cache WHERE user_id = ? AND cache_key = ? LIMIT 1',
+      variables: [Variable(userId), Variable(cacheKey)],
+    ).get();
+    return rows.isEmpty ? null : rows.first.read<String>('data_json');
+  }
+
+  Future<void> saveOfflineCatalogCache(
+    String userId,
+    String cacheKey,
+    String dataJson,
+  ) async {
+    await customStatement(
+      '''INSERT INTO offline_catalog_cache(user_id, cache_key, data_json, updated_at)
+      VALUES(?,?,?,?)
+      ON CONFLICT(user_id, cache_key) DO UPDATE SET
+        data_json=excluded.data_json, updated_at=excluded.updated_at''',
+      [Variable(userId), Variable(cacheKey), Variable(dataJson), Variable(DateTime.now().toUtc().toIso8601String())],
+    );
+  }
 
   Future<void> _createDownloadedFilesTable() async {
     await customStatement('''
@@ -157,24 +205,24 @@ class AppDatabase extends _$AppDatabase {
       '''INSERT INTO downloaded_files(resource_id,course_id,user_id,file_name,mime_type,local_path,size_bytes,remote_updated_at,downloaded_at,last_opened_at,status)
       VALUES(?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(resource_id) DO UPDATE SET course_id=excluded.course_id,user_id=excluded.user_id,file_name=excluded.file_name,mime_type=excluded.mime_type,local_path=excluded.local_path,size_bytes=excluded.size_bytes,remote_updated_at=excluded.remote_updated_at,downloaded_at=excluded.downloaded_at,last_opened_at=excluded.last_opened_at,status=excluded.status''',
-      [file.resourceId, file.courseId, file.userId, file.fileName, file.mimeType ?? '', file.localPath, file.sizeBytes, file.remoteUpdatedAt?.toIso8601String() ?? '', file.downloadedAt?.toIso8601String() ?? '', file.lastOpenedAt?.toIso8601String() ?? '', file.status],
+      [Variable(file.resourceId), Variable(file.courseId), Variable(file.userId), Variable(file.fileName), Variable(file.mimeType ?? ''), Variable(file.localPath), Variable(file.sizeBytes), Variable(file.remoteUpdatedAt?.toIso8601String() ?? ''), Variable(file.downloadedAt?.toIso8601String() ?? ''), Variable(file.lastOpenedAt?.toIso8601String() ?? ''), Variable(file.status)],
     );
   }
 
   Future<void> updateDownloadedFileStatus(String resourceId, String userId, String status) async {
-    await customStatement('UPDATE downloaded_files SET status = ? WHERE resource_id = ? AND user_id = ?',  [status, resourceId, userId]);
+    await customStatement('UPDATE downloaded_files SET status = ? WHERE resource_id = ? AND user_id = ?',  [Variable(status), Variable(resourceId), Variable(userId)]);
   }
 
   Future<void> markDownloadedFileOpened(String resourceId, String userId) async {
-    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [DateTime.now().toIso8601String(), resourceId, userId]);
+    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [Variable(DateTime.now().toIso8601String()), Variable(resourceId), Variable(userId)]);
   }
 
   Future<void> deleteDownloadedFile(String resourceId, String userId) async {
-    await customStatement('DELETE FROM downloaded_files WHERE resource_id = ? AND user_id = ?',  [resourceId, userId]);
+    await customStatement('DELETE FROM downloaded_files WHERE resource_id = ? AND user_id = ?',  [Variable(resourceId), Variable(userId)]);
   }
 
   Future<void> deleteAllDownloadedFiles(String userId) async {
-    await customStatement('DELETE FROM downloaded_files WHERE user_id = ?',  [userId]);
+    await customStatement('DELETE FROM downloaded_files WHERE user_id = ?',  [Variable(userId)]);
   }
 
   Future<int> downloadedFilesSize(String userId) async {
@@ -239,7 +287,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcm({required String id, required String userId, required String kind, String? assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT INTO offline_qcm(id,user_id,kind,assignment_id,data_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id,user_id,kind) DO UPDATE SET assignment_id=excluded.assignment_id,data_json=excluded.data_json,updated_at=excluded.updated_at",
-       [id, userId, kind, assignmentId, dataJson, DateTime.now().toIso8601String()],
+       [Variable(id), Variable(userId), Variable(kind), Variable(assignmentId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
     );
   }
 
@@ -255,18 +303,18 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcmQueue({required String id, required String userId, required String submissionId, required String assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT OR REPLACE INTO offline_qcm_queue(id,user_id,submission_id,assignment_id,data_json,queued_at) VALUES(?,?,?,?,?,?)",
-       [id, userId, submissionId, assignmentId, dataJson, DateTime.now().toIso8601String()],
+       [Variable(id), Variable(userId), Variable(submissionId), Variable(assignmentId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
     );
   }
 
   Future<List<QueryRow>> getOfflineQcmQueue(String userId) => customSelect('SELECT * FROM offline_qcm_queue WHERE user_id = ? ORDER BY queued_at', variables: [Variable(userId)]).get();
 
-  Future<void> deleteOfflineQcmQueue(String id, String userId) => customStatement('DELETE FROM offline_qcm_queue WHERE id = ? AND user_id = ?',  [id, userId]);
+  Future<void> deleteOfflineQcmQueue(String id, String userId) => customStatement('DELETE FROM offline_qcm_queue WHERE id = ? AND user_id = ?',  [Variable(id), Variable(userId)]);
 
   Future<void> saveSmartLesson({required String userId, required String id, required String dataJson}) async {
     await customStatement(
       'INSERT INTO smart_lessons_cache(id,user_id,data_json,cached_at) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,data_json=excluded.data_json,cached_at=excluded.cached_at',
-       [id, userId, dataJson, DateTime.now().toIso8601String()],
+       [Variable(id), Variable(userId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
     );
   }
 
@@ -294,7 +342,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> queueSmartExercise({required String id, required String userId, required String lessonId, required String answersJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_queue(id,user_id,lesson_id,answers_json,queued_at) VALUES(?,?,?,?,?)',
-       [id, userId, lessonId, answersJson, DateTime.now().toIso8601String()],
+       [Variable(id), Variable(userId), Variable(lessonId), Variable(answersJson), Variable(DateTime.now().toIso8601String())],
     );
   }
 
@@ -305,13 +353,13 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteSmartExerciseQueue(String id, String userId) => customStatement(
     'DELETE FROM smart_exercise_queue WHERE id = ? AND user_id = ?',
-     [id, userId],
+     [Variable(id), Variable(userId)],
   );
 
   Future<void> saveSmartExerciseResult({required String id, required String userId, required String lessonId, required String dataJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_results(id,user_id,lesson_id,data_json,saved_at) VALUES(?,?,?,?,?)',
-       [id, userId, lessonId, dataJson, DateTime.now().toIso8601String()],
+       [Variable(id), Variable(userId), Variable(lessonId), Variable(dataJson), Variable(DateTime.now().toIso8601String())],
     );
   }
 
@@ -322,6 +370,180 @@ class AppDatabase extends _$AppDatabase {
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
+
+
+  Future<void> _addMessageReplyColumns() async {
+    for (final table in const ['message_cache', 'message_outbox']) {
+      try {
+        await customStatement('ALTER TABLE $table ADD COLUMN reply_to_id TEXT');
+      } catch (_) {
+        // La colonne existe déjà (table créée avec la nouvelle version).
+      }
+    }
+  }
+
+  Future<void> _createMessageOfflineTables() async {
+    await customStatement("""
+      CREATE TABLE IF NOT EXISTS message_cache (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('private','group')),
+        thread_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        sender_name TEXT NOT NULL DEFAULT '',
+        sender_role TEXT NOT NULL DEFAULT '',
+        recipient_id TEXT,
+        body TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        read_at TEXT,
+        attachment_path TEXT,
+        attachment_name TEXT,
+        attachment_type TEXT,
+        local_attachment_path TEXT,
+        reply_to_id TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'sent'
+      )
+    """);
+    await customStatement("""
+      CREATE INDEX IF NOT EXISTS message_cache_thread_idx
+      ON message_cache(user_id, kind, thread_id, created_at)
+    """);
+    await customStatement("""
+      CREATE TABLE IF NOT EXISTS message_outbox (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('private','group')),
+        thread_id TEXT NOT NULL,
+        recipient_id TEXT,
+        body TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        attachment_local_path TEXT,
+        attachment_name TEXT,
+        attachment_type TEXT,
+        reply_to_id TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0
+      )
+    """);
+    await customStatement("""
+      CREATE INDEX IF NOT EXISTS message_outbox_user_idx
+      ON message_outbox(user_id, kind, created_at)
+    """);
+    await customStatement("""
+      CREATE TABLE IF NOT EXISTS message_contacts_cache (
+        user_id TEXT NOT NULL,
+        contact_id TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        PRIMARY KEY(user_id, contact_id)
+      )
+    """);
+    await customStatement("""
+      CREATE TABLE IF NOT EXISTS message_groups_cache (
+        user_id TEXT NOT NULL,
+        group_id TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        PRIMARY KEY(user_id, group_id)
+      )
+    """);
+  }
+
+  Future<void> cacheMessage(Map<String, Object?> message) async {
+    await customStatement(
+      '''INSERT INTO message_cache(id,user_id,kind,thread_id,sender_id,sender_name,sender_role,recipient_id,body,created_at,read_at,attachment_path,attachment_name,attachment_type,local_attachment_path,reply_to_id,sync_status)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET
+        sender_name=CASE WHEN excluded.sender_name<>'' THEN excluded.sender_name ELSE message_cache.sender_name END,
+        sender_role=CASE WHEN excluded.sender_role<>'' THEN excluded.sender_role ELSE message_cache.sender_role END,
+        body=excluded.body, read_at=COALESCE(excluded.read_at,message_cache.read_at),
+        attachment_path=COALESCE(excluded.attachment_path,message_cache.attachment_path),
+        attachment_name=COALESCE(excluded.attachment_name,message_cache.attachment_name),
+        attachment_type=COALESCE(excluded.attachment_type,message_cache.attachment_type),
+        local_attachment_path=COALESCE(excluded.local_attachment_path,message_cache.local_attachment_path),
+        reply_to_id=COALESCE(excluded.reply_to_id,message_cache.reply_to_id),
+        sync_status=CASE WHEN message_cache.sync_status='pending' AND excluded.sync_status='sent' THEN 'sent' ELSE excluded.sync_status END''',
+      [Variable(message['id']), Variable(message['user_id']), Variable(message['kind']), Variable(message['thread_id']), Variable(message['sender_id']), Variable(message['sender_name'] ?? ''), Variable(message['sender_role'] ?? ''), Variable(message['recipient_id']), Variable(message['body'] ?? ''), Variable(message['created_at']), Variable(message['read_at']), Variable(message['attachment_path']), Variable(message['attachment_name']), Variable(message['attachment_type']), Variable(message['local_attachment_path']), Variable(message['reply_to_id']), Variable(message['sync_status'] ?? 'sent')],
+    );
+  }
+
+
+  Future<void> beginMessageCacheRefresh(String userId, String kind, String threadId) =>
+      customStatement(
+        "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending'",
+        [Variable(userId), Variable(kind), Variable(threadId)],
+      );
+
+  Future<List<QueryRow>> getCachedMessages(String userId, String kind, String threadId) =>
+      customSelect(
+        'SELECT * FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? ORDER BY created_at ASC',
+        variables: [Variable(userId), Variable(kind), Variable(threadId)],
+      ).get();
+
+  Future<void> queueMessage(Map<String, Object?> message) async {
+    await transaction(() async {
+      await cacheMessage({...message, 'sync_status': 'pending'});
+      await customStatement(
+        '''INSERT OR REPLACE INTO message_outbox(id,user_id,kind,thread_id,recipient_id,body,created_at,attachment_local_path,attachment_name,attachment_type,reply_to_id,attempts)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,COALESCE((SELECT attempts FROM message_outbox WHERE id=?),0))''',
+        [Variable(message['id']), Variable(message['user_id']), Variable(message['kind']), Variable(message['thread_id']), Variable(message['recipient_id']), Variable(message['body'] ?? ''), Variable(message['created_at']), Variable(message['attachment_local_path']), Variable(message['attachment_name']), Variable(message['attachment_type']), Variable(message['reply_to_id']), Variable(message['id'])],
+      );
+    });
+  }
+
+  Future<List<QueryRow>> getQueuedMessages(String userId, String kind) => customSelect(
+    'SELECT * FROM message_outbox WHERE user_id=? AND kind=? ORDER BY created_at ASC',
+    variables: [Variable(userId), Variable(kind)],
+  ).get();
+
+  Future<void> markMessageSent(String id, {String? attachmentPath}) async {
+    await transaction(() async {
+      await customStatement(
+        "UPDATE message_cache SET sync_status='sent', attachment_path=COALESCE(?,attachment_path) WHERE id=?",
+        [Variable(attachmentPath), Variable(id)],
+      );
+      await customStatement('DELETE FROM message_outbox WHERE id=?', [Variable(id)]);
+    });
+  }
+
+  /// Message refusé définitivement par le serveur (quota ou Premium requis) : on le retire
+  /// de la file d'envoi et du cache local pour ne pas le rejouer indéfiniment.
+  Future<void> discardRejectedMessage(String id) async {
+    await transaction(() async {
+      await customStatement('DELETE FROM message_outbox WHERE id=?', [Variable(id)]);
+      await customStatement("DELETE FROM message_cache WHERE id=? AND sync_status='pending'", [Variable(id)]);
+    });
+  }
+
+  Future<void> incrementMessageAttempts(String id) =>
+      customStatement('UPDATE message_outbox SET attempts=attempts+1 WHERE id=?', [Variable(id)]);
+
+  /// Déconnexion : efface les copies locales lisibles (messages, contacts, groupes, catalogue,
+  /// leçons intelligentes, QCM). Les envois non terminés (files d'attente) sont conservés
+  /// pour être envoyés à la prochaine connexion du même compte.
+  Future<void> clearUserReadCaches(String userId) async {
+    final v = [Variable(userId)];
+    await customStatement("DELETE FROM message_cache WHERE user_id=? AND sync_status<>'pending'", v);
+    await customStatement('DELETE FROM message_contacts_cache WHERE user_id=?', v);
+    await customStatement('DELETE FROM message_groups_cache WHERE user_id=?', v);
+    await customStatement('DELETE FROM offline_catalog_cache WHERE user_id=?', v);
+    await customStatement('DELETE FROM smart_lessons_cache WHERE user_id=?', v);
+    await customStatement('DELETE FROM smart_exercise_results WHERE user_id=?', v);
+    await customStatement('DELETE FROM offline_qcm WHERE user_id=?', v);
+  }
+
+  Future<void> cacheMessageContact(String userId, String contactId, String dataJson) =>
+      customStatement('INSERT OR REPLACE INTO message_contacts_cache(user_id,contact_id,data_json) VALUES(?,?,?)', [Variable(userId), Variable(contactId), Variable(dataJson)]);
+
+  Future<List<QueryRow>> getCachedMessageContacts(String userId) => customSelect(
+    'SELECT data_json FROM message_contacts_cache WHERE user_id=? ORDER BY contact_id',
+    variables: [Variable(userId)],
+  ).get();
+
+  Future<void> cacheMessageGroup(String userId, String groupId, String dataJson) =>
+      customStatement('INSERT OR REPLACE INTO message_groups_cache(user_id,group_id,data_json) VALUES(?,?,?)', [Variable(userId), Variable(groupId), Variable(dataJson)]);
+
+  Future<List<QueryRow>> getCachedMessageGroups(String userId) => customSelect(
+    'SELECT data_json FROM message_groups_cache WHERE user_id=? ORDER BY group_id',
+    variables: [Variable(userId)],
+  ).get();
 
   Future<List<CachedCourse>> getAllCourses() {
     return select(cachedCourses).get();

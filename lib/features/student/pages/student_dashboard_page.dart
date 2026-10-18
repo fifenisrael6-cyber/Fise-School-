@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
-import '../../../core/services/notification_service.dart';
 import '../../../models/user_profile.dart';
-import '../../messages/pages/messages_hub_page.dart';
+import '../../forum/pages/forum_page.dart';
+import '../../messages/pages/private_messages_page.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../search/pages/search_page.dart';
 import '../../settings/pages/profile_page.dart';
@@ -12,7 +11,6 @@ import '../../settings/pages/settings_page.dart';
 import 'assignments_page.dart';
 import 'courses_page.dart';
 import 'progress_page.dart';
-import 'student_evaluations_page.dart';
 import 'timetable_page.dart';
 
 class StudentDashboardPage extends StatelessWidget {
@@ -63,12 +61,12 @@ class StudentDashboardPage extends StatelessWidget {
               ),
             ),
             _DashboardItem(
-              Icons.fact_check_rounded,
-              locale.languageCode == 'fr' ? 'Mes épreuves' : 'My exams',
+              Icons.forum_rounded,
+              texts.forum,
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
+                  builder: (_) => ForumPage(locale: locale, profile: profile),
                 ),
               ),
             ),
@@ -78,7 +76,7 @@ class StudentDashboardPage extends StatelessWidget {
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => MessagesHubPage(locale: locale, profile: profile),
+                  builder: (_) => PrivateMessagesPage(locale: locale, profile: profile),
                 ),
               ),
             ),
@@ -143,12 +141,23 @@ class _DashboardScaffold extends StatelessWidget {
       appBar: AppBar(
         title: Text(title),
         actions: [
-          _UnreadNotificationIcon(userId: profile.id, locale: locale),
+          IconButton(
+            tooltip: texts.notifications,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NotificationsPage(locale: locale, userId: profile.id),
+              ),
+            ),
+            icon: const Icon(Icons.notifications_none_rounded),
+          ),
           IconButton(
             tooltip: texts.search,
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => SearchPage(locale: locale)),
+              MaterialPageRoute(
+                builder: (_) => SearchPage(locale: locale, profile: profile),
+              ),
             ),
             icon: const Icon(Icons.search_rounded),
           ),
@@ -268,122 +277,4 @@ class _DashboardItem {
   final VoidCallback? onTap;
 
   const _DashboardItem(this.icon, this.title, [this.onTap]);
-}
-
-
-/// Displays the current unread notification count on the dashboard bell.
-class _UnreadNotificationIcon extends StatefulWidget {
-  final String userId;
-  final Locale locale;
-
-  const _UnreadNotificationIcon({
-    required this.userId,
-    required this.locale,
-  });
-
-  @override
-  State<_UnreadNotificationIcon> createState() => _UnreadNotificationIconState();
-}
-
-class _UnreadNotificationIconState extends State<_UnreadNotificationIcon> {
-  final NotificationService _service = NotificationService();
-  late Future<int> _countFuture;
-  RealtimeChannel? _notificationsChannel;
-
-  @override
-  void initState() {
-    super.initState();
-    _countFuture = _service.unreadCount(widget.userId);
-    _notificationsChannel = Supabase.instance.client
-        .channel('dashboard-unread-${widget.userId}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: widget.userId,
-          ),
-          callback: (_) => _refreshCount(),
-        )
-        .subscribe();
-  }
-
-  @override
-  void dispose() {
-    _notificationsChannel?.unsubscribe();
-    super.dispose();
-  }
-
-  Future<void> _refreshCount() async {
-    final future = _service.unreadCount(widget.userId);
-    if (mounted) {
-      setState(() => _countFuture = future);
-    }
-    try {
-      await future;
-    } catch (_) {
-      // Keep the notifications button usable if the count query temporarily fails.
-    }
-  }
-
-  Future<void> _openNotifications() async {
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => NotificationsPage(
-          locale: widget.locale,
-          userId: widget.userId,
-        ),
-      ),
-    );
-    if (mounted) {
-      await _refreshCount();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final countFuture = _countFuture;
-    return IconButton(
-      tooltip: AppTexts(widget.locale).notifications,
-      onPressed: _openNotifications,
-      icon: FutureBuilder<int>(
-        future: countFuture,
-        builder: (context, snapshot) {
-          final count = snapshot.data ?? 0;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Icon(Icons.notifications_none_rounded),
-              if (count > 0)
-                Positioned(
-                  right: -7,
-                  top: -7,
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: Text(
-                      count > 99 ? '99+' : '$count',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 }

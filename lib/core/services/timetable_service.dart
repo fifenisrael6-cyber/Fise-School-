@@ -1,7 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/timetable_entry.dart';
-import '../offline/json_cache.dart';
 
 class TimetableService {
   TimetableService({SupabaseClient? client})
@@ -9,19 +8,7 @@ class TimetableService {
 
   final SupabaseClient _client;
 
-  List<TimetableEntry> _decode(Object? raw) => (raw as List)
-      .map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r as Map)))
-      .toList();
-
-  Future<List<TimetableEntry>> listForStudent(String studentId) {
-    return JsonCache.instance.cachedRead<List<TimetableEntry>>(
-      key: 'timetable_student_$studentId',
-      fetch: () => _fetchForStudent(studentId),
-      decode: _decode,
-    );
-  }
-
-  Future<Object?> _fetchForStudent(String studentId) async {
+  Future<List<TimetableEntry>> listForStudent(String studentId) async {
     final memberships = await _client
         .from('class_students')
         .select('class_id')
@@ -37,7 +24,7 @@ class TimetableService {
           .eq('is_active', true)
           .order('day_of_week')
           .order('start_time');
-      return rows;
+      return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
     }
     // Ancien emploi du temps individuel : uniquement pour un élève sans salle.
     final legacy = await _client
@@ -46,19 +33,11 @@ class TimetableService {
         .eq('student_id', studentId)
         .order('day_of_week')
         .order('start_time');
-    return legacy;
+    return legacy.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
   }
 
   /// Emploi du temps de la salle de l'élève (lecture seule). Vide si l'élève n'a pas de salle.
-  Future<List<TimetableEntry>> listClassTimetableForStudent(String studentId) {
-    return JsonCache.instance.cachedRead<List<TimetableEntry>>(
-      key: 'timetable_class_$studentId',
-      fetch: () => _fetchClassTimetable(studentId),
-      decode: _decode,
-    );
-  }
-
-  Future<Object?> _fetchClassTimetable(String studentId) async {
+  Future<List<TimetableEntry>> listClassTimetableForStudent(String studentId) async {
     final memberships = await _client
         .from('class_students')
         .select('class_id')
@@ -66,7 +45,7 @@ class TimetableService {
         .eq('is_active', true);
     final classIds = memberships.map((r) => r['class_id']?.toString()).whereType<String>().toList();
     if (classIds.isEmpty) {
-      return <Object?>[];
+      return const [];
     }
     final rows = await _client
         .from('class_timetable_entries')
@@ -75,21 +54,18 @@ class TimetableService {
         .eq('is_active', true)
         .order('day_of_week')
         .order('start_time');
-    return rows;
+    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
   }
 
   /// Emploi du temps que l'élève construit lui-même.
-  Future<List<TimetableEntry>> listPersonal(String studentId) {
-    return JsonCache.instance.cachedRead<List<TimetableEntry>>(
-      key: 'timetable_personal_$studentId',
-      fetch: () async => await _client
-          .from('student_timetable_entries')
-          .select('id, subject_id, day_of_week, start_time, end_time, subject, subject_en, teacher_name, room, notes')
-          .eq('student_id', studentId)
-          .order('day_of_week')
-          .order('start_time') as Object?,
-      decode: _decode,
-    );
+  Future<List<TimetableEntry>> listPersonal(String studentId) async {
+    final rows = await _client
+        .from('student_timetable_entries')
+        .select('id, subject_id, day_of_week, start_time, end_time, subject, subject_en, teacher_name, room, notes')
+        .eq('student_id', studentId)
+        .order('day_of_week')
+        .order('start_time');
+    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
   }
 
   Future<void> savePersonal({

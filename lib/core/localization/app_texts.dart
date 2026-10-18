@@ -138,8 +138,8 @@ class AppTexts {
       isEnglish ? 'No notifications.' : 'Aucune notification.';
   String get search => isEnglish ? 'Search' : 'Recherche';
   String get searchHint => isEnglish
-      ? 'Search the available catalogue and classes.'
-      : 'Rechercher dans le catalogue et les classes disponibles.';
+      ? 'Search courses, lessons, files, past papers, assignments and the forum.'
+      : 'Rechercher dans les cours, leçons, fichiers, annales, devoirs et le forum.';
   String get searchError =>
       isEnglish ? 'Search failed.' : 'La recherche a échoué.';
   String get noSearchResults => isEnglish ? 'No results.' : 'Aucun résultat.';
@@ -259,6 +259,7 @@ class AppTexts {
       : 'Le cours n’a pas pu être enregistré.';
   String get assignments => isEnglish ? 'Assignments' : 'Devoirs';
   String get notifications => isEnglish ? 'Notifications' : 'Notifications';
+  String get forum => isEnglish ? 'Forum' : 'Forum';
   String get messages => isEnglish ? 'Messages' : 'Messages';
   String get profile => isEnglish ? 'Profile' : 'Profil';
   String get login => isEnglish ? 'Log in' : 'Connexion';

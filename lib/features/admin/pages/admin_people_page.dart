@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/admin_school_service.dart';
@@ -128,9 +129,19 @@ class _AdminPeoplePageState extends State<AdminPeoplePage> {
       return;
     }
 
+    String? stream;
+    if (widget.role == 'teacher') {
+      try {
+        final row = await Supabase.instance.client
+            .from('profiles').select('teaching_stream').eq('id', person.id).maybeSingle();
+        stream = row?['teaching_stream'] as String?;
+      } catch (_) {}
+      if (!context.mounted) return;
+    }
+
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (_) => StatefulBuilder(builder: (dialogContext, setDialogState) => AlertDialog(
         title: Text('${person.firstName} ${person.lastName}'),
         content: SizedBox(
           width: 420,
@@ -145,6 +156,30 @@ class _AdminPeoplePageState extends State<AdminPeoplePage> {
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
               ...classes.map((item) => Text(item.displayName)),
+              if (widget.role == 'teacher') ...[
+                const SizedBox(height: 12),
+                const Text('Filière de l’enseignant (commission Premium)',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+                Wrap(spacing: 8, children: [
+                  for (final option in const {'scientific': 'Scientifique', 'literary': 'Littéraire'}.entries)
+                    ChoiceChip(
+                      label: Text(option.value),
+                      selected: stream == option.key,
+                      onSelected: (_) async {
+                        try {
+                          await Supabase.instance.client.rpc('admin_set_teacher_stream',
+                              params: {'p_teacher_id': person.id, 'p_stream': option.key});
+                          setDialogState(() => stream = option.key);
+                        } catch (_) {
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              const SnackBar(content: Text('Enregistrement impossible.')));
+                          }
+                        }
+                      },
+                    ),
+                ]),
+              ],
             ],
           ),
         ),
@@ -154,7 +189,7 @@ class _AdminPeoplePageState extends State<AdminPeoplePage> {
             child: Text(texts.back),
           ),
         ],
-      ),
+      )),
     );
   }
 }

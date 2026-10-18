@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/offline/local_cleanup.dart';
 import '../../../core/services/push_service.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../teacher/pages/teacher_payment_code_page.dart';
-import 'student_class_switch_page.dart';
+import 'student_class_change_page.dart';
 
 class SettingsPage extends StatefulWidget {
   final Locale locale;
@@ -45,22 +44,6 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsSection(
             title: isFrench ? 'Compte' : 'Account',
             children: [
-              if (profile.role.toLowerCase() == 'student')
-                _SettingsTile(
-                  icon: Icons.swap_horiz_rounded,
-                  title: isFrench ? 'Changer de classe' : 'Change classroom',
-                  subtitle: isFrench
-                      ? 'Option élève : saisir le code de groupe de votre enseignant'
-                      : 'Student option: enter your teacher’s group code',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StudentClassSwitchPage(locale: widget.locale),
-                      ),
-                    );
-                  },
-                ),
               _SettingsTile(
                 icon: Icons.person_outline_rounded,
                 title: isFrench ? 'Profil' : 'Profile',
@@ -71,6 +54,28 @@ class _SettingsPageState extends State<SettingsPage> {
                   Navigator.pop(context);
                 },
               ),
+              if (profile.role.toLowerCase() == 'student')
+                _SettingsTile(
+                  icon: Icons.school_outlined,
+                  title: isFrench ? 'Changer de salle' : 'Change classroom',
+                  subtitle: isFrench
+                      ? 'Passer en classe supérieure ou corriger ta salle'
+                      : 'Move up a level or correct your classroom',
+                  onTap: () async {
+                    final updated = await Navigator.push<UserProfile>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StudentClassChangePage(
+                          locale: widget.locale,
+                          profile: profile,
+                        ),
+                      ),
+                    );
+                    if (updated != null && context.mounted) {
+                      Navigator.pop(context, updated);
+                    }
+                  },
+                ),
               _SettingsTile(
                 icon: Icons.notifications_none_rounded,
                 title: isFrench ? 'Notifications' : 'Notifications',
@@ -109,7 +114,32 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                 ),
               ],
+              _SettingsTile(
+                icon: Icons.logout_rounded,
+                title: isFrench ? 'Se déconnecter' : 'Sign out',
+                subtitle: isFrench
+                    ? 'Fermer la session Fise School sur cet appareil'
+                    : 'Sign out of Fise School on this device',
+                onTap: () async {
+                  // Le nettoyage local et les notifications ne doivent jamais
+                  // empêcher la déconnexion Supabase.
+                  try {
+                    await PushService.unregister();
+                  } catch (_) {}
 
+                  try {
+                    await CourseOfflineService().deleteUserFiles(profile.id);
+                  } catch (_) {}
+
+                  try {
+                    await Supabase.instance.client.auth.signOut();
+                  } catch (_) {}
+
+                  if (context.mounted) {
+                    Navigator.popUntil(context, (route) => route.isFirst);
+                  }
+                },
+              ),
             ],
           ),
 
@@ -120,24 +150,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 ? 'Confidentialité et sécurité'
                 : 'Privacy and security',
             children: [
-              _SettingsTile(
-                icon: Icons.password_rounded,
-                title: isFrench ? 'Réinitialiser le mot de passe' : 'Reset password',
-                subtitle: isFrench
-                    ? 'Recevoir un lien par e-mail pour choisir un nouveau mot de passe'
-                    : 'Receive an email link to choose a new password',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => _SecurityPage(
-                        locale: widget.locale,
-                        profile: profile,
-                      ),
-                    ),
-                  );
-                },
-              ),
               _SettingsTile(
                 icon: Icons.lock_outline_rounded,
                 title: isFrench ? 'Confidentialité' : 'Privacy',
@@ -196,58 +208,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   );
                 },
               ),
-              _SettingsTile(
-                icon: Icons.logout_rounded,
-                title: isFrench ? 'Se déconnecter' : 'Sign out',
-                subtitle: isFrench
-                    ? 'Fermer la session Fise School sur cet appareil'
-                    : 'Sign out of Fise School on this device',
-                destructive: true,
-                onTap: () async {
-                  // Local cleanup must never prevent the authentication
-                  // session from being closed.
-                  try {
-                    await PushService.unregister();
-                  } catch (_) {}
-
-                  try {
-                    await CourseOfflineService().deleteUserFiles(profile.id);
-                  } catch (_) {}
-
-                  // Envoie ce qui est en attente (si réseau) puis efface les
-                  // données locales pour le prochain compte de ce téléphone.
-                  await clearLocalUserData();
-
-                  try {
-                    await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
-                  } catch (error) {
-                    // Some SDK/storage errors can be raised after the local
-                    // session has already been cleared. Treat that as success;
-                    // only show an error if a session is still present.
-                    debugPrint('Erreur de déconnexion locale : $error');
-                    if (Supabase.instance.client.auth.currentSession == null) {
-                      // Continue to the public home below.
-                    } else {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              isFrench
-                                  ? 'La session est toujours active. Réessayez et vérifiez les détails de connexion.'
-                                  : 'The session is still active. Please retry and check the connection details.',
-                            ),
-                          ),
-                        );
-                      }
-                      return;
-                    }
-                  }
-
-                  if (context.mounted) {
-                    Navigator.of(context).popUntil((route) => route.isFirst);
-                  }
-                },
-              )
             ],
           ),
 
@@ -441,14 +401,12 @@ class _SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
-  final bool destructive;
 
   const _SettingsTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.destructive = false,
   });
 
   @override
@@ -459,17 +417,14 @@ class _SettingsTile extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: destructive ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
+          color: const Color(0xFFDCFCE7),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(
-          icon,
-          color: destructive ? Colors.red : const Color(0xFF166534),
-        ),
+        child: Icon(icon, color: const Color(0xFF166534)),
       ),
       title: Text(
         title,
-        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: destructive ? Colors.red : null),
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
@@ -478,7 +433,7 @@ class _SettingsTile extends StatelessWidget {
           style: const TextStyle(color: Colors.black54, fontSize: 12),
         ),
       ),
-      trailing: Icon(Icons.chevron_right_rounded, color: destructive ? Colors.red : Colors.grey),
+      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
       onTap: onTap,
     );
   }
@@ -567,7 +522,10 @@ class _SecurityPageState extends State<_SecurityPage> {
     });
 
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: 'fiseschool://reset-password',
+      );
 
       if (!mounted) {
         return;

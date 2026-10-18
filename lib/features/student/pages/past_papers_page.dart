@@ -1,20 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
-import '../../../models/user_profile.dart';
-import '../../../core/services/free_tier_service.dart';
-import '../../../core/widgets/premium_offer_sheet.dart';
 import 'past_paper_viewer_page.dart';
+import '../../../core/services/quota_service.dart';
+import '../../../models/user_profile.dart';
+import '../../premium/premium_gate.dart';
 
-/// Annales d'examens : sujets et corrigés, filtrables par examen, année et matière.
 class PastPapersPage extends StatefulWidget {
   final Locale locale;
-  final UserProfile profile;
-  const PastPapersPage({super.key, required this.locale, required this.profile});
+  final UserProfile? profile;
+  const PastPapersPage({super.key, required this.locale, this.profile});
 
   @override
   State<PastPapersPage> createState() => _PastPapersPageState();
@@ -27,9 +28,10 @@ class _PastPapersPageState extends State<PastPapersPage> {
   String? _error;
   List<PastPaper> _papers = const [];
   Map<String, ExamDefinition> _exams = const {};
+  final Map<String, String> _localPaths = {};
+  final Set<String> _downloadingIds = {};
   String? _examId;
   int? _year;
-  bool _quotaOfferShown = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -52,83 +54,102 @@ class _PastPapersPageState extends State<PastPapersPage> {
     });
     try {
       final papers = await _service.list();
+      final localPaths = <String, String>{};
+      for (final paper in papers) {
+        final path = await _service.localFilePath(paper);
+        if (path != null) localPaths[paper.id] = path;
+      }
       Map<String, ExamDefinition> exams = {};
       try {
-        final list = await ExamCatalogService().getExams();
+        final list = await ExamCatalogService().getExams().timeout(const Duration(seconds: 2));
         exams = {for (final e in list) e.id: e};
-      } catch (_) {
-        // Les noms d'examens sont facultatifs : la liste reste utilisable.
-      }
-      if (!mounted) {
-        return;
-      }
+      } catch (_) {}
+      if (!mounted) return;
       setState(() {
         _papers = papers;
+        _localPaths..clear()..addAll(localPaths);
         _exams = exams;
         _loading = false;
       });
-      await _maybeShowAnnalQuotaOffer();
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _error = _fr
-            ? 'Impossible de charger les annales. Vérifiez votre connexion.'
-            : 'Unable to load past papers. Check your connection.';
+            ? 'Les annales ne sont pas encore en cache. Connecte-toi une fois pour les charger.'
+            : 'Past papers are not cached yet. Connect once to load them.';
         _loading = false;
       });
     }
   }
 
-  Future<void> _maybeShowAnnalQuotaOffer() async {
-    if (_quotaOfferShown || !mounted || widget.profile.role.toLowerCase() != 'student') return;
-    final status = await FreeTierService().status('annal');
-    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
-    _quotaOfferShown = true;
-    await showPremiumOfferSheet(
-      context: context,
-      locale: widget.locale,
-      profile: widget.profile,
-      feature: _fr ? 'les annales d’examens' : 'past exam papers',
-    );
-  }
-
   Future<void> _open(PastPaper paper) async {
+    // Quota annales : 2 / 24 h pour un élève gratuit. Un fichier déjà téléchargé
+    // reste lisible hors ligne même sans réseau (offlineFallback).
+    final profile = widget.profile;
+    if (profile != null) {
+      final allowed = await PremiumGate.ensure(
+        context,
+        profile: profile,
+        feature: QuotaFeature.annale,
+        resourceId: paper.id,
+        offlineFallback: _localPaths[paper.id] != null,
+      );
+      if (!allowed || !mounted) return;
+    }
     try {
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) throw StateError('session-unavailable');
-      final name = paper.fileName.toLowerCase();
-      final isPdf = name.endsWith('.pdf');
-      final isImage = name.endsWith('.png') ||
-          name.endsWith('.jpg') ||
-          name.endsWith('.jpeg') ||
-          name.endsWith('.webp');
-      if (!isPdf && !isImage) {
-        _snack(_fr
-            ? 'Format non pris en charge dans le lecteur intégré.'
-            : 'This file type is not supported by the in-app viewer.');
+      var localPath = _localPaths[paper.id];
+      localPath ??= await _service.localFilePath(paper);
+      if (localPath != null && File(localPath).existsSync()) {
+        if (!mounted) return;
+        await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => PastPaperViewerPage(
+            locale: widget.locale,
+            localPath: localPath!,
+            fileName: paper.fileName,
+          ),
+        ));
         return;
       }
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PastPaperViewerPage(
-            userId: userId,
-            resourceId: 'past-paper-${paper.id}',
-            signedUrlProvider: () => _service.signedUrl(paper.filePath),
-            title: paper.fileName,
-            isPdf: isPdf,
-          ),
-        ),
-      );
+      final url = await _service.signedUrl(paper.filePath);
+      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        _snack(_fr ? 'Aucune application pour ouvrir ce fichier.' : 'No app can open this file.');
+      }
     } catch (_) {
       if (mounted) {
         _snack(_fr
-            ? 'Impossible d’ouvrir ce fichier. Vérifiez son accès dans Supabase.'
-            : 'Unable to open this file. Check its access in Supabase.');
+            ? 'Fichier indisponible. Télécharge-le lorsque tu as Internet pour le lire hors ligne.'
+            : 'File unavailable. Download it while online to read it offline.');
       }
+    }
+  }
+
+  Future<void> _download(PastPaper paper) async {
+    if (_downloadingIds.contains(paper.id)) return;
+    final profile = widget.profile;
+    if (profile != null) {
+      final allowed = await PremiumGate.ensure(
+        context,
+        profile: profile,
+        feature: QuotaFeature.annale,
+        resourceId: paper.id,
+      );
+      if (!allowed || !mounted) return;
+    }
+    setState(() => _downloadingIds.add(paper.id));
+    try {
+      final path = await _service.download(paper);
+      if (!mounted) return;
+      setState(() => _localPaths[paper.id] = path);
+      _snack(_fr ? 'Annale enregistrée pour la lecture hors ligne.' : 'Past paper saved for offline reading.');
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Téléchargement impossible. Vérifie la connexion puis réessaie.'
+            : 'Download failed. Check your connection and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingIds.remove(paper.id));
     }
   }
 
@@ -137,29 +158,33 @@ class _PastPapersPageState extends State<PastPapersPage> {
 
   List<PastPaper> get _filtered {
     final q = _search.text.trim().toLowerCase();
-    return _papers.where((p) {
-      if (_examId != null && p.examId != _examId) {
-        return false;
-      }
-      if (_year != null && p.year != _year) {
-        return false;
-      }
+    return _papers.where((paper) {
+      if (_examId != null && paper.examId != _examId) return false;
+      if (_year != null && paper.year != _year) return false;
       if (q.isNotEmpty &&
-          !p.subjectFr.toLowerCase().contains(q) &&
-          !p.subjectEn.toLowerCase().contains(q)) {
-        return false;
-      }
+          !paper.subjectFr.toLowerCase().contains(q) &&
+          !paper.subjectEn.toLowerCase().contains(q)) return false;
       return true;
     }).toList(growable: false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final years = _papers.map((p) => p.year).toSet().toList()..sort((a, b) => b.compareTo(a));
-    final examIds = _papers.map((p) => p.examId).whereType<String>().toSet();
+    final years = _papers.map((paper) => paper.year).toSet().toList()
+      ..sort((a, b) => b.compareTo(a));
+    final examIds = _papers.map((paper) => paper.examId).whereType<String>().toSet();
     final items = _filtered;
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Annales d’examens' : 'Past exam papers')),
+      appBar: AppBar(
+        title: Text(_fr ? 'Annales d’examens' : 'Past exam papers'),
+        actions: [
+          IconButton(
+            tooltip: _fr ? 'Actualiser' : 'Refresh',
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -169,7 +194,11 @@ class _PastPapersPageState extends State<PastPapersPage> {
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Text(_error!, textAlign: TextAlign.center),
                       const SizedBox(height: 12),
-                      FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: Text(_fr ? 'Réessayer' : 'Retry')),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: Text(_fr ? 'Réessayer' : 'Retry'),
+                      ),
                     ]),
                   ),
                 )
@@ -193,15 +222,18 @@ class _PastPapersPageState extends State<PastPapersPage> {
                           child: DropdownButtonFormField<String?>(
                             isExpanded: true,
                             initialValue: _examId,
-                            decoration: InputDecoration(labelText: _fr ? 'Examen' : 'Exam', border: const OutlineInputBorder()),
+                            decoration: InputDecoration(
+                              labelText: _fr ? 'Examen' : 'Exam',
+                              border: const OutlineInputBorder(),
+                            ),
                             items: [
                               DropdownMenuItem<String?>(value: null, child: Text(_fr ? 'Tous' : 'All')),
                               ...examIds.map((id) => DropdownMenuItem<String?>(
-                                    value: id,
-                                    child: Text(_exams[id]?.labelFor(widget.locale.languageCode) ?? id, overflow: TextOverflow.ellipsis),
-                                  )),
+                                value: id,
+                                child: Text(_exams[id]?.labelFor(widget.locale.languageCode) ?? id, overflow: TextOverflow.ellipsis),
+                              )),
                             ],
-                            onChanged: (v) => setState(() => _examId = v),
+                            onChanged: (value) => setState(() => _examId = value),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -209,12 +241,15 @@ class _PastPapersPageState extends State<PastPapersPage> {
                           child: DropdownButtonFormField<int?>(
                             isExpanded: true,
                             initialValue: _year,
-                            decoration: InputDecoration(labelText: _fr ? 'Année' : 'Year', border: const OutlineInputBorder()),
+                            decoration: InputDecoration(
+                              labelText: _fr ? 'Année' : 'Year',
+                              border: const OutlineInputBorder(),
+                            ),
                             items: [
                               DropdownMenuItem<int?>(value: null, child: Text(_fr ? 'Toutes' : 'All')),
-                              ...years.map((y) => DropdownMenuItem<int?>(value: y, child: Text('$y'))),
+                              ...years.map((year) => DropdownMenuItem<int?>(value: year, child: Text('$year'))),
                             ],
-                            onChanged: (v) => setState(() => _year = v),
+                            onChanged: (value) => setState(() => _year = value),
                           ),
                         ),
                       ]),
@@ -225,29 +260,50 @@ class _PastPapersPageState extends State<PastPapersPage> {
                           child: Center(
                             child: Text(
                               _papers.isEmpty
-                                  ? (_fr ? 'Aucune annale n’est encore publiée.' : 'No past papers published yet.')
+                                  ? (_fr ? 'Aucune annale publiée ou enregistrée sur cet appareil.' : 'No past papers published or cached on this device.')
                                   : (_fr ? 'Aucun résultat pour ces filtres.' : 'No results for these filters.'),
                               textAlign: TextAlign.center,
                             ),
                           ),
                         ),
-                      ...items.map((p) {
-                        final exam = p.examId == null ? null : _exams[p.examId!];
+                      ...items.map((paper) {
+                        final exam = paper.examId == null ? null : _exams[paper.examId!];
                         final parts = <String>[
                           if (exam != null) exam.labelFor(widget.locale.languageCode),
-                          '${p.year}',
-                          if (p.session != null && p.session!.isNotEmpty) p.session!,
+                          '${paper.year}',
+                          if (paper.session != null && paper.session!.isNotEmpty) paper.session!,
                         ];
+                        final downloaded = _localPaths.containsKey(paper.id);
+                        final downloading = _downloadingIds.contains(paper.id);
                         return Card(
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: p.isCorrection ? const Color(0xFFDCFCE7) : const Color(0xFFE0F2FE),
-                              child: Icon(p.isCorrection ? Icons.task_alt : Icons.description_outlined, color: const Color(0xFF166534)),
+                              backgroundColor: paper.isCorrection ? const Color(0xFFDCFCE7) : const Color(0xFFE0F2FE),
+                              child: Icon(paper.isCorrection ? Icons.task_alt : Icons.description_outlined, color: const Color(0xFF166534)),
                             ),
-                            title: Text(p.subjectFor(widget.locale.languageCode), style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text('${p.isCorrection ? (_fr ? 'Corrigé' : 'Correction') : (_fr ? 'Sujet' : 'Paper')} · ${parts.join(' · ')}'),
-                            trailing: const Icon(Icons.open_in_new),
-                            onTap: () => _open(p),
+                            title: Text(paper.subjectFor(widget.locale.languageCode), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: Text(
+                              '${paper.isCorrection ? (_fr ? 'Corrigé' : 'Correction') : (_fr ? 'Sujet' : 'Paper')} · ${parts.join(' · ')}'
+                              '${downloaded ? (_fr ? '\nDisponible hors ligne' : '\nAvailable offline') : ''}',
+                            ),
+                            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                              if (downloading)
+                                const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                              else
+                                IconButton(
+                                  tooltip: downloaded
+                                      ? (_fr ? 'Déjà téléchargé' : 'Downloaded')
+                                      : (_fr ? 'Télécharger pour le mode hors ligne' : 'Download for offline'),
+                                  onPressed: downloaded ? null : () => _download(paper),
+                                  icon: Icon(downloaded ? Icons.download_done : Icons.download_for_offline_outlined),
+                                ),
+                              IconButton(
+                                tooltip: _fr ? 'Ouvrir' : 'Open',
+                                onPressed: () => _open(paper),
+                                icon: const Icon(Icons.open_in_new),
+                              ),
+                            ]),
+                            onTap: () => _open(paper),
                           ),
                         );
                       }),

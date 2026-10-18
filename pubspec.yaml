@@ -19,9 +19,7 @@ dependencies:
   file_picker: ^10.3.10
   url_launcher: ^6.3.2
   http: ^1.5.0
-  # Affichage des formules mathématiques dans les leçons
   flutter_math_fork: ^0.7.4
-  # Réception des fichiers partagés depuis Android
   receive_sharing_intent: ^1.8.1
   # Mode hors ligne
   connectivity_plus: ^7.3.1

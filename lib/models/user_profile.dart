@@ -16,6 +16,7 @@ class UserProfile {
   final String? track;
   final String? className;
   final String? avatarPath;
+  final String? languageOption;
 
   const UserProfile({
     required this.id,
@@ -35,6 +36,7 @@ class UserProfile {
     this.track,
     this.className,
     this.avatarPath,
+    this.languageOption,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -57,6 +59,7 @@ class UserProfile {
       track: map['track_label'] as String? ?? map['track'] as String?,
       className: map['class_name'] as String?,
       avatarPath: map['avatar_path'] as String?,
+      languageOption: map['language_option'] as String?,
     );
   }
 
@@ -79,6 +82,7 @@ class UserProfile {
       'track_label': track,
       'class_name': className,
       'avatar_path': avatarPath,
+      'language_option': languageOption,
     };
   }
 }
