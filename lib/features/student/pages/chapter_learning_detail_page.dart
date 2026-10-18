@@ -623,7 +623,16 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   Future<String?> _url() async {
     final path = widget.item.storagePath;
     if (path != null && path.isNotEmpty) {
-      return Supabase.instance.client.storage.from('chapter-content').createSignedUrl(path, 900);
+      const legacyPrefix = 'legacy-course-resource:';
+      if (path.startsWith(legacyPrefix)) {
+        final legacyPath = path.substring(legacyPrefix.length);
+        return Supabase.instance.client.storage
+            .from('cours-fichiers')
+            .createSignedUrl(legacyPath, 900);
+      }
+      return Supabase.instance.client.storage
+          .from('chapter-content')
+          .createSignedUrl(path, 900);
     }
     return widget.item.externalUrl;
   }
