@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/assignment.dart';
 import '../offline/offline_repository.dart';
@@ -224,8 +225,11 @@ class AssignmentService {
 
     final rows = await request.order('updated_at', ascending: false);
 
+    final prefs = await SharedPreferences.getInstance();
+    final hidden = prefs.getStringList('hidden_teacher_assignments_$teacherId')?.toSet() ?? <String>{};
     return rows
         .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
+        .where((assignment) => !hidden.contains(assignment.id))
         .toList(growable: false);
   }
 
@@ -318,6 +322,22 @@ class AssignmentService {
 
   Future<void> deleteAssignment(String assignmentId) async {
     await _client.from('assignments').delete().eq('id', assignmentId);
+  }
+
+  Future<void> deleteAssignmentForEveryone(String assignmentId, {required String teacherId}) async {
+    await _client.from('assignments').delete().eq('id', assignmentId).eq('teacher_id', teacherId);
+  }
+
+  Future<void> hideAssignmentForMe(String assignmentId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw const AuthException('Session utilisateur absente.');
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'hidden_teacher_assignments_$userId';
+    final hidden = prefs.getStringList(key) ?? <String>[];
+    if (!hidden.contains(assignmentId)) {
+      hidden.add(assignmentId);
+      await prefs.setStringList(key, hidden);
+    }
   }
 
   Future<void> publishAssignment(String assignmentId) async {
