@@ -17,6 +17,7 @@ import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
+import 'chapter_folder_page.dart';
 
 class ChapterLearningDetailPage extends StatefulWidget {
   const ChapterLearningDetailPage({
@@ -46,7 +47,6 @@ class _ChapterLearningDetailPageState
   final ChapterLearningService _service = ChapterLearningService();
   late Future<_ChapterData> _future;
   bool _savingRead = false;
-  _ChapterResourceFolder? _selectedFolder;
 
   bool get _en => widget.locale.languageCode == 'en';
   String get _chapterTitle =>
@@ -239,50 +239,23 @@ class _ChapterLearningDetailPageState
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    if (_selectedFolder != null)
-                      IconButton(
-                        tooltip: _en ? 'Back to folders' : 'Retour aux dossiers',
-                        onPressed: () => setState(() => _selectedFolder = null),
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      )
-                    else
-                      const Icon(Icons.folder_open_rounded, color: green),
+                    const Icon(Icons.folder_open_rounded,
+                        color: Color(0xFF166534)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        _selectedFolder == null
-                            ? (_en ? 'CHAPTER FILES' : 'FICHIERS DU CHAPITRE')
-                            : _folderTitle(_selectedFolder!),
+                        _en ? 'CHAPTER FOLDERS' : 'DOSSIERS DU CHAPITRE',
                         style: const TextStyle(
-                          color: green,
+                          color: Color(0xFF166534),
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                     ),
-                    if (_selectedFolder != null)
-                      TextButton(
-                        onPressed: () => setState(() => _selectedFolder = null),
-                        child: Text(_en ? 'Folders' : 'Dossiers'),
-                      ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (_selectedFolder == null)
-                  _buildResourceFolders(data.content)
-                else
-                  _buildSelectedFolderContent(data.content, _selectedFolder!),
+                _buildResourceFolders(data),
                 const SizedBox(height: 22),
-                Text(_en ? 'PRACTICE' : 'S’EXERCER',
-                    style: const TextStyle(
-                        color: green, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
-                if (data.exercises.isEmpty)
-                  _notice(_en
-                      ? 'No exercises have been published yet.'
-                      : 'Aucun exercice publié pour le moment.')
-                else
-                  for (final exercise in data.exercises)
-                    _exerciseCard(exercise, data.completedExerciseIds.contains(exercise.id)),
               ],
             ),
           );
@@ -293,81 +266,114 @@ class _ChapterLearningDetailPageState
 
   String _folderTitle(_ChapterResourceFolder folder) {
     return switch (folder) {
-      _ChapterResourceFolder.course =>
-        _en ? 'Courses and lessons' : 'Cours et leçons',
-      _ChapterResourceFolder.pdf => 'PDF',
-      _ChapterResourceFolder.audio =>
-        _en ? 'Audio files' : 'Fichiers audio',
+      _ChapterResourceFolder.course => _en ? 'Courses and lessons' : 'Cours et leçons',
+      _ChapterResourceFolder.documents => _en ? 'Documents (PDF and images)' : 'Documents (PDF et images)',
+      _ChapterResourceFolder.audio => _en ? 'Audio files' : 'Fichiers audio',
       _ChapterResourceFolder.video => _en ? 'Videos' : 'Vidéos',
-      _ChapterResourceFolder.image =>
-        _en ? 'Photos and images' : 'Photos et images',
-      _ChapterResourceFolder.other =>
-        _en ? 'Other documents' : 'Autres documents',
+      _ChapterResourceFolder.exercises => _en ? 'Exercises' : 'Exercices',
+      _ChapterResourceFolder.quizzes => _en ? 'AI quizzes' : 'QCM IA',
     };
   }
 
-  Widget _buildSelectedFolderContent(
-    List<ChapterLearningContentItem> content,
-    _ChapterResourceFolder folder,
-  ) {
-    final items = _contentForFolder(content, folder);
-    if (items.isEmpty) {
-      return _notice(_en
-          ? 'This folder is empty for now.'
-          : 'Ce dossier est vide pour le moment.');
+  List<Widget> _folderItems(_ChapterData data, _ChapterResourceFolder folder) {
+    switch (folder) {
+      case _ChapterResourceFolder.course:
+        return data.content
+            .where((item) => item.type == ChapterLearningContentType.course)
+            .map(_contentCard).toList(growable: false);
+      case _ChapterResourceFolder.documents:
+        return data.content
+            .where((item) => item.type == ChapterLearningContentType.pdf ||
+                item.type == ChapterLearningContentType.image)
+            .map(_contentCard).toList(growable: false);
+      case _ChapterResourceFolder.audio:
+        return data.content
+            .where((item) => item.type == ChapterLearningContentType.audio)
+            .map(_contentCard).toList(growable: false);
+      case _ChapterResourceFolder.video:
+        return data.content
+            .where((item) => item.type == ChapterLearningContentType.video)
+            .map(_contentCard).toList(growable: false);
+      case _ChapterResourceFolder.exercises:
+        return data.exercises
+            .map((exercise) => _exerciseCard(
+                exercise, data.completedExerciseIds.contains(exercise.id)))
+            .toList(growable: false);
+      case _ChapterResourceFolder.quizzes:
+        return data.quizzes.map(_quizFolderItem).toList(growable: false);
     }
-    return Column(children: items.map(_contentCard).toList(growable: false));
   }
 
-  List<ChapterLearningContentItem> _contentForFolder(
-    List<ChapterLearningContentItem> content,
-    _ChapterResourceFolder folder,
-  ) {
-    final type = switch (folder) {
-      _ChapterResourceFolder.course => ChapterLearningContentType.course,
-      _ChapterResourceFolder.pdf => ChapterLearningContentType.pdf,
-      _ChapterResourceFolder.audio => ChapterLearningContentType.audio,
-      _ChapterResourceFolder.video => ChapterLearningContentType.video,
-      _ChapterResourceFolder.image => ChapterLearningContentType.image,
-      _ChapterResourceFolder.other => null,
-    };
-    if (type == null) return const <ChapterLearningContentItem>[];
-    return content.where((item) => item.type == type).toList(growable: false);
-  }
-
-  Widget _buildResourceFolders(List<ChapterLearningContentItem> content) {
+  Widget _buildResourceFolders(_ChapterData data) {
     const folders = <_ChapterResourceFolder>[
       _ChapterResourceFolder.course,
-      _ChapterResourceFolder.pdf,
+      _ChapterResourceFolder.documents,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
-      _ChapterResourceFolder.image,
-      _ChapterResourceFolder.other,
+      _ChapterResourceFolder.exercises,
+      _ChapterResourceFolder.quizzes,
     ];
 
     return Column(
       children: [
         for (final folder in folders)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              leading: const Icon(
-                Icons.folder_rounded,
-                color: Color(0xFF166534),
-                size: 34,
+          Builder(builder: (context) {
+            final items = _folderItems(data, folder);
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.folder_rounded,
+                    color: Color(0xFF166534), size: 34),
+                title: Text(_folderTitle(folder),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                  '${items.length} ${_en ? 'item(s)' : 'élément(s)'}',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ChapterFolderPage(
+                      title: _folderTitle(folder),
+                      items: items,
+                      emptyMessage: _en
+                          ? 'No content has been published in this folder yet.'
+                          : 'Aucun contenu n’a encore été publié dans ce dossier.',
+                    ),
+                  ),
+                ),
               ),
-              title: Text(
-                _folderTitle(folder),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                '${folder == _ChapterResourceFolder.other ? 0 : _contentForFolder(content, folder).length} ${_en ? 'file(s)' : 'fichier(s)'}',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => setState(() => _selectedFolder = folder),
-            ),
-          ),
+            );
+          }),
       ],
+    );
+  }
+
+  Widget _quizFolderItem(ChapterLearningQuiz quiz) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.quiz_outlined, color: Color(0xFF166534)),
+        title: Text(quiz.titleFor(widget.locale.languageCode),
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text('${quiz.questionCount} ${_en ? 'questions' : 'questions'}'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () async {
+          final allowed = await PremiumGate.ensure(
+            context,
+            profile: widget.profile,
+            feature: QuotaFeature.qcm,
+            resourceId: quiz.id,
+            offlineFallback: true,
+          );
+          if (!allowed || !mounted) return;
+          Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => ChapterInteractiveQuizPage(
+              quiz: quiz,
+              locale: widget.locale,
+              profile: widget.profile,
+            ),
+          ));
+        },
+      ),
     );
   }
 
@@ -577,7 +583,7 @@ class _ChapterLearningDetailPageState
       );
 }
 
-enum _ChapterResourceFolder { course, pdf, audio, video, image, other }
+enum _ChapterResourceFolder { course, documents, audio, video, exercises, quizzes }
 
 class _ChapterData {
   const _ChapterData({
