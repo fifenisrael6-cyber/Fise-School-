@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../models/forum.dart';
+import '../../models/school_class.dart';
 import '../../models/grades.dart';
 
 class GradeService {
@@ -20,13 +20,13 @@ class GradeService {
         .toList(growable: false);
   }
 
-  Future<List<ForumClass>> listAllClasses() async {
+  Future<List<ClassroomInfo>> listAllClasses() async {
     final rows = await _client
         .from('school_classes')
         .select('id, name, display_name')
         .order('display_name');
     return rows
-        .map((r) => ForumClass.fromMap(Map<String, dynamic>.from(r)))
+        .map((r) => ClassroomInfo.fromMap(Map<String, dynamic>.from(r)))
         .toList(growable: false);
   }
 
