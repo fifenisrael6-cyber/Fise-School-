@@ -370,15 +370,15 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
       return;
     }
     try {
+      final localPath = await _papers.download(paper);
+      if (!mounted) return;
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => PastPaperViewerPage(
-            userId: widget.profile.id,
-            resourceId: 'past-paper-${paper.id}',
-            signedUrlProvider: () => _papers.signedUrl(paper.filePath),
-            title: paper.fileName,
-            isPdf: isPdf,
+            locale: widget.locale,
+            localPath: localPath,
+            fileName: paper.fileName,
           ),
         ),
       );

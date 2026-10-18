@@ -80,13 +80,6 @@ class _AdminAiPageState extends State<AdminAiPage> {
         message: text,
         profile: _profile!,
         history: history,
-        mode: 'admin',
-        schoolContext: {
-          'target': context,
-          'instruction': _fr
-              ? 'Respecter le programme camerounais fourni et ne pas inventer les données officielles.'
-              : 'Respect the supplied Cameroon curriculum context and do not invent official data.',
-        },
       );
       if (!mounted) return;
       setState(() {

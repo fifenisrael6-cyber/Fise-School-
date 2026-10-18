@@ -174,6 +174,28 @@ class PastPaperService {
     }
   }
 
+  Future<void> updateMetadata({
+    required String id,
+    required String examId,
+    required String subsystem,
+    required int year,
+    required String subjectFr,
+    required String subjectEn,
+    required String kind,
+    required String session,
+  }) async {
+    await _client.from('past_papers').update({
+      'exam_id': examId,
+      'subsystem': subsystem,
+      'exam_year': year,
+      'subject_fr': subjectFr.trim(),
+      'subject_en': subjectEn.trim().isEmpty ? subjectFr.trim() : subjectEn.trim(),
+      'kind': kind,
+      'session_label': session.trim().isEmpty ? null : session.trim(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+  }
+
   Future<void> setPublished(String id, bool published) async {
     await _client
         .from('past_papers')

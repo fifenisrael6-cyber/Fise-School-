@@ -57,7 +57,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.exam,
               title: [r['name_fr'], r['name_en']],
               subtitle: r['name_en'],
@@ -79,7 +79,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.classItem,
               title: [r['display_name'], r['name']],
               subtitle: r['name'],
@@ -101,7 +101,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.subject,
               title: [r['name_fr'], r['name_en']],
               subtitle: r['name_en'],
@@ -134,7 +134,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.course,
               title: [r['title_fr'], r['title_en']],
               body: [
@@ -179,7 +179,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.lesson,
               title: [r['title_fr'], r['title_en']],
               body: [
@@ -219,7 +219,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.chapter,
               title: [r['title_fr'], r['title_en']],
               body: [r['description_fr'], r['description_en']],
@@ -248,7 +248,7 @@ class SearchService {
             .map(
               (r) => _build(
                 r,
-                terms,
+                terms: terms,
                 type: SearchResultType.chapterContent,
                 title: [r['title_fr'], r['title_en']],
                 body: [r['body_text_fr'], r['body_text_en']],
@@ -279,7 +279,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.resource,
               title: [r['title_fr'], r['title_en'], r['file_name']],
               body: [r['index_preview']],
@@ -303,7 +303,7 @@ class SearchService {
           .map(
             (r) => _build(
               r,
-              terms,
+              terms: terms,
               type: SearchResultType.fileContent,
               title: [r['title']],
               body: [r['content']],
@@ -335,7 +335,7 @@ class SearchService {
           final kind = r['kind'] == 'correction' ? 'Corrigé' : 'Sujet';
           return _build(
             r,
-            terms,
+            terms: terms,
             type: SearchResultType.pastPaper,
             title: [r['subject_fr'], r['subject_en'], r['file_name']],
             subtitle: '$kind · ${r['exam_year']}',
@@ -362,7 +362,7 @@ class SearchService {
             .map(
               (r) => _build(
                 r,
-                terms,
+                terms: terms,
                 type: SearchResultType.assignment,
                 title: [r['title_fr'], r['title_en']],
                 body: [r['instructions_fr'], r['instructions_en']],
@@ -382,7 +382,7 @@ class SearchService {
             .map(
               (r) => _build(
                 r,
-                terms,
+                terms: terms,
                 type: SearchResultType.forum,
                 title: [r['title']],
                 body: [r['description']],

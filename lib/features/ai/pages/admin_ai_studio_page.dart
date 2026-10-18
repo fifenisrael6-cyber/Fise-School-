@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/gemini_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../models/user_profile.dart';
 
 /// Assistant IA pour l'administrateur : aide à PRÉPARER du contenu
 /// pédagogique. Le résultat est un brouillon modifiable. Cette page ne publie
@@ -192,14 +194,17 @@ class _AdminAiStudioPageState extends State<AdminAiStudioPage> {
 
     try {
       if (!await _connectivity.isOnline()) {
-        throw AiServiceException(_isFrench
+        throw StateError(_isFrench
             ? 'Pas de connexion Internet. Reconnecte-toi puis réessaie.'
             : 'No Internet connection. Reconnect and try again.');
       }
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) throw StateError(_isFrench ? 'Session utilisateur absente.' : 'User session is missing.');
+      final row = await Supabase.instance.client.from('profiles').select().eq('id', user.id).single();
+      final profile = UserProfile.fromMap(Map<String, dynamic>.from(row));
       final answer = await _gemini.ask(
         message: _buildPrompt(),
-        mode: 'admin',
-        languageCode: _isFrench ? 'fr' : 'en',
+        profile: profile,
       );
       if (!mounted) {
         return;
