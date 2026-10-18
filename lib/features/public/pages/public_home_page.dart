@@ -291,7 +291,7 @@ class PublicHomePage extends StatelessWidget {
       (Icons.menu_book_rounded, texts.courses),
       (Icons.assignment_rounded, texts.assignments),
       (Icons.download_rounded, 'Téléchargement local'),
-      (Icons.forum_rounded, texts.forum),
+      (Icons.chat_bubble_outline_rounded, texts.messages),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 42, 16, 32),
