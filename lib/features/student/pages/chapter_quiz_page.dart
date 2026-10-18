@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
-import '../../../models/chapter_learning.dart';
+import '../../../models/chapter_learning_content.dart';
 
 class ChapterQuizPage extends StatefulWidget {
   final Locale locale;
@@ -24,8 +24,8 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
   bool _loading = true;
   bool _submitting = false;
   String? _error;
-  ChapterQuiz? _quiz;
-  List<ChapterQuizQuestion> _questions = const [];
+  ChapterLearningQuiz? _quiz;
+  List<ChapterLearningQuizQuestion> _questions = const [];
   final Map<String, int> _answers = {};
   final Map<String, Map<String, dynamic>> _instantFeedback = {};
   final Set<String> _checkingAnswers = {};
@@ -68,43 +68,13 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
     }
   }
 
-  Future<void> _checkAnswer(ChapterQuizQuestion question, int selectedIndex) async {
-    try {
-      final feedback = await _service.checkQuizAnswer(
-        quizId: question.quizId,
-        questionId: question.id,
-        selectedOptionIndex: selectedIndex,
-      );
-      if (!mounted) return;
-      setState(() {
-        _checkingAnswers.remove(question.id);
-        _instantFeedback[question.id] = feedback;
-        _lockedAnswers.add(question.id);
-      });
-      final correct = feedback['is_correct'] == true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(correct
-              ? (_fr ? 'Bonne réponse !' : 'Correct answer!')
-              : (_fr ? 'Mauvaise réponse.' : 'Incorrect answer.')),
-          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _checkingAnswers.remove(question.id);
-        _answers.remove(question.id);
-        _instantFeedback.remove(question.id);
-        _lockedAnswers.remove(question.id);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr
-            ? 'Impossible de vérifier cette réponse. Vérifie ta connexion.'
-            : 'Unable to check this answer. Check your connection.')),
-      );
-    }
+  Future<void> _checkAnswer(ChapterLearningQuizQuestion question, int selectedIndex) async {
+    if (!mounted) return;
+    setState(() {
+      _checkingAnswers.remove(question.id);
+      _answers[question.id] = selectedIndex;
+      _lockedAnswers.remove(question.id);
+    });
   }
 
   Future<void> _submit() async {
@@ -120,9 +90,6 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
       final raw = await _service.submitQuiz(quizId: quiz.id, answers: _answers);
       Map<String, dynamic>? result;
       if (raw is Map) result = Map<String, dynamic>.from(raw);
-      if (raw is List && raw.isNotEmpty && raw.first is Map) {
-        result = Map<String, dynamic>.from(raw.first as Map);
-      }
       if (result == null || result['score'] == null) {
         throw StateError(_fr ? 'La correction n’a pas retourné de résultat.' : 'The correction returned no result.');
       }
