@@ -46,7 +46,7 @@ class _ChapterLearningDetailPageState
   final ChapterLearningService _service = ChapterLearningService();
   late Future<_ChapterData> _future;
   bool _savingRead = false;
-  ChapterLearningContentType? _selectedFolder;
+  _ChapterResourceFolder? _selectedFolder;
 
   bool get _en => widget.locale.languageCode == 'en';
   String get _chapterTitle =>
@@ -267,17 +267,17 @@ class _ChapterLearningDetailPageState
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (data.content.isEmpty)
-                  _notice(_en
-                      ? 'No published lesson, video, photo, audio or PDF yet.'
-                      : 'Aucun cours, photo, audio, vidéo ou PDF publié pour le moment.')
-                else if (_selectedFolder == null)
+                if (_selectedFolder == null)
                   _buildResourceFolders(data.content)
                 else
-                  for (final item in data.content.where(
-                    (item) => item.type == _selectedFolder,
-                  ))
-                    _contentCard(item),
+                  ..._contentForFolder(data.content, _selectedFolder!)
+                      .map(_contentCard)
+                      .toList()
+                      .ifEmpty(() => [
+                            _notice(_en
+                                ? 'This folder is empty for now.'
+                                : 'Ce dossier est vide pour le moment.')
+                          ]),
                 const SizedBox(height: 22),
                 Text(_en ? 'PRACTICE' : 'S’EXERCER',
                     style: const TextStyle(
@@ -298,37 +298,46 @@ class _ChapterLearningDetailPageState
     );
   }
 
-  String _folderTitle(ChapterLearningContentType type) {
-    return switch (type) {
-      ChapterLearningContentType.course => _en ? 'Lessons and courses' : 'Cours et leçons',
-      ChapterLearningContentType.pdf => 'PDF',
-      ChapterLearningContentType.image => _en ? 'Photos and images' : 'Photos et images',
-      ChapterLearningContentType.audio => _en ? 'Audio files' : 'Fichiers audio',
-      ChapterLearningContentType.video => _en ? 'Videos' : 'Vidéos',
+  String _folderTitle(_ChapterResourceFolder folder) {
+    return switch (folder) {
+      _ChapterResourceFolder.course =>
+        _en ? 'Courses and lessons' : 'Cours et leçons',
+      _ChapterResourceFolder.pdf => 'PDF',
+      _ChapterResourceFolder.audio =>
+        _en ? 'Audio files' : 'Fichiers audio',
+      _ChapterResourceFolder.video => _en ? 'Videos' : 'Vidéos',
+      _ChapterResourceFolder.image =>
+        _en ? 'Photos and images' : 'Photos et images',
+      _ChapterResourceFolder.other =>
+        _en ? 'Other documents' : 'Autres documents',
     };
   }
 
-  Widget _buildResourceFolders(List<ChapterLearningContentItem> content) {
-    const types = <ChapterLearningContentType>[
-      ChapterLearningContentType.course,
-      ChapterLearningContentType.pdf,
-      ChapterLearningContentType.image,
-      ChapterLearningContentType.audio,
-      ChapterLearningContentType.video,
-    ];
-    final folders = types
-        .map((type) => MapEntry(
-              type,
-              content.where((item) => item.type == type).length,
-            ))
-        .where((entry) => entry.value > 0)
-        .toList(growable: false);
+  List<ChapterLearningContentItem> _contentForFolder(
+    List<ChapterLearningContentItem> content,
+    _ChapterResourceFolder folder,
+  ) {
+    final type = switch (folder) {
+      _ChapterResourceFolder.course => ChapterLearningContentType.course,
+      _ChapterResourceFolder.pdf => ChapterLearningContentType.pdf,
+      _ChapterResourceFolder.audio => ChapterLearningContentType.audio,
+      _ChapterResourceFolder.video => ChapterLearningContentType.video,
+      _ChapterResourceFolder.image => ChapterLearningContentType.image,
+      _ChapterResourceFolder.other => null,
+    };
+    if (type == null) return const <ChapterLearningContentItem>[];
+    return content.where((item) => item.type == type).toList(growable: false);
+  }
 
-    if (folders.isEmpty) {
-      return _notice(_en
-          ? 'No resources have been published in this chapter yet.'
-          : 'Aucune ressource publiée dans ce chapitre pour le moment.');
-    }
+  Widget _buildResourceFolders(List<ChapterLearningContentItem> content) {
+    const folders = <_ChapterResourceFolder>[
+      _ChapterResourceFolder.course,
+      _ChapterResourceFolder.pdf,
+      _ChapterResourceFolder.audio,
+      _ChapterResourceFolder.video,
+      _ChapterResourceFolder.image,
+      _ChapterResourceFolder.other,
+    ];
 
     return Column(
       children: [
@@ -342,14 +351,14 @@ class _ChapterLearningDetailPageState
                 size: 34,
               ),
               title: Text(
-                _folderTitle(folder.key),
+                _folderTitle(folder),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: Text(
-                '${folder.value} ${_en ? 'file(s)' : 'fichier(s)'}',
+                '${folder == _ChapterResourceFolder.other ? 0 : _contentForFolder(content, folder).length} ${_en ? 'file(s)' : 'fichier(s)'}',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => setState(() => _selectedFolder = folder.key),
+              onTap: () => setState(() => _selectedFolder = folder),
             ),
           ),
       ],
@@ -561,6 +570,8 @@ class _ChapterLearningDetailPageState
         child: Text(text, textAlign: TextAlign.center),
       );
 }
+
+enum _ChapterResourceFolder { course, pdf, audio, video, image, other }
 
 class _ChapterData {
   const _ChapterData({
