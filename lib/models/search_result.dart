@@ -10,7 +10,6 @@ enum SearchResultType {
   fileContent,
   pastPaper,
   assignment,
-  forum,
 }
 
 class SearchResult {
