@@ -1,0 +1,29 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Diagnose Flutter APK build",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"-v"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Fise School APK release",
+			"type": "shell",
+			"command": "flutter",
+			"args": [
+				"build",
+				"apk",
+				"--release"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

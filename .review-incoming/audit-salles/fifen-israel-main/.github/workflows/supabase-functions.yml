@@ -1,0 +1,62 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy gemini-chat
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/gemini-chat/')
+        run: supabase functions deploy gemini-chat --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy notchpay-payment
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/notchpay-payment/') || contains(toJSON(github.event.commits), 'supabase/functions/_shared/')
+        run: supabase functions deploy notchpay-payment --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy notchpay-callback
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/notchpay-callback/') || contains(toJSON(github.event.commits), 'supabase/functions/_shared/')
+        run: supabase functions deploy notchpay-callback --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy notchpay-webhook
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/notchpay-webhook/') || contains(toJSON(github.event.commits), 'supabase/functions/_shared/')
+        run: supabase functions deploy notchpay-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy notchpay-verify
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/notchpay-verify/') || contains(toJSON(github.event.commits), 'supabase/functions/_shared/')
+        run: supabase functions deploy notchpay-verify --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy send-push
+        if: github.event_name == 'workflow_dispatch' || contains(toJSON(github.event.commits), 'supabase/functions/send-push/')
+        run: supabase functions deploy send-push --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}

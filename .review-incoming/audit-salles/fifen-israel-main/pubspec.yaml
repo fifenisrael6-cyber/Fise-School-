@@ -1,0 +1,66 @@
+name: fise_school
+
+description: "A new Flutter project."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  image_picker: ^1.2.1
+  supabase_flutter: ^2.17.2
+  file_picker: ^10.3.10
+  url_launcher: ^6.3.2
+  http: ^1.5.0
+  # Mode hors ligne
+  connectivity_plus: ^7.3.1
+  drift: ^2.28.1
+  sqlite3_flutter_libs: ^0.6.0+eol
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  shared_preferences: ^2.5.3
+  pdfx: ^2.9.2
+  audioplayers: ^6.5.0
+  # Notes vocales
+  record: ^6.1.1
+  video_player: ^2.10.0
+  webview_flutter: ^4.13.0
+  # Notifications en arrière-plan (Firebase Cloud Messaging)
+  firebase_core: ^4.2.0
+  firebase_messaging: ^16.0.4
+  # Bulletins en PDF
+  pdf: ^3.11.3
+  printing: ^5.14.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+  # Génération de la base locale Drift
+  drift_dev: ^2.28.1
+  build_runner: ^2.5.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icon/fise_school.png
+    - assets/icon/fise_school_foreground.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/fise_school.png"
+  remove_alpha_ios: true
+  adaptive_icon_background: "#0B4715"
+  adaptive_icon_foreground: "assets/icon/fise_school_foreground.png"

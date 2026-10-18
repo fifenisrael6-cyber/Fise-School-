@@ -1,0 +1,390 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/services/group_message_service.dart';
+import '../../../core/services/photo_service.dart';
+import '../../../core/services/pedagogy_service.dart';
+import '../../../models/message_group.dart';
+import '../../../models/school_class.dart';
+import '../../../core/services/quota_service.dart';
+import '../../../models/user_profile.dart';
+import '../../premium/premium_gate.dart';
+import 'group_chat_page.dart';
+import 'private_messages_page.dart';
+
+/// Espace Messages façon WhatsApp : liste des groupes et accès aux messages
+/// privés. Le code FISE personnel de l'enseignant permet de rejoindre les
+/// groupes autorisés pour la classe de l'élève.
+class MessagesHubPage extends StatefulWidget {
+  final Locale locale;
+  final UserProfile profile;
+
+  const MessagesHubPage({super.key, required this.locale, required this.profile});
+
+  @override
+  State<MessagesHubPage> createState() => _MessagesHubPageState();
+}
+
+class _MessagesHubPageState extends State<MessagesHubPage> {
+  final GroupMessageService _service = GroupMessageService();
+  late Future<List<MessageGroup>> _groupsFuture;
+
+  bool get _fr => widget.locale.languageCode == 'fr';
+  bool get _isTeacher => widget.profile.role == 'teacher' || widget.profile.role == 'admin';
+
+  @override
+  void initState() {
+    super.initState();
+    _groupsFuture = _service.listGroups();
+  }
+
+  Future<void> _reload() async {
+    setState(() => _groupsFuture = _service.listGroups());
+    await _groupsFuture;
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _formatTime(DateTime? value) {
+    if (value == null) {
+      return '';
+    }
+    final local = value.toLocal();
+    final now = DateTime.now();
+    if (local.year == now.year && local.month == now.month && local.day == now.day) {
+      return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    }
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _openGroup(MessageGroup group) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupChatPage(
+          locale: widget.locale,
+          profile: widget.profile,
+          group: group,
+        ),
+      ),
+    );
+    if (mounted) {
+      _reload();
+    }
+  }
+
+  /// Raccourci caméra façon WhatsApp : photo, puis choix du groupe destinataire.
+  Future<void> _quickCamera() async {
+    final groups = await _groupsFuture.catchError((_) => const <MessageGroup>[]);
+    if (!mounted) {
+      return;
+    }
+    if (groups.isEmpty) {
+      _snack(_fr
+          ? 'Rejoignez d’abord un groupe pour envoyer une photo.'
+          : 'Join a group first to send a photo.');
+      return;
+    }
+
+    final photo = await PhotoService().takePhoto();
+    if (photo == null || !mounted) {
+      return;
+    }
+
+    final target = await showModalBottomSheet<MessageGroup>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                _fr ? 'Envoyer la photo à…' : 'Send the photo to…',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+            ),
+            ...groups.map(
+              (group) => ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFF166534),
+                  child: Icon(Icons.group_rounded, color: Colors.white),
+                ),
+                title: Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () => Navigator.pop(sheetContext, group),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (target == null || !mounted) {
+      return;
+    }
+    final canSend = await PremiumGate.canSend(
+      context,
+      profile: widget.profile,
+      feature: QuotaFeature.msgSent,
+      hasAttachment: true,
+    );
+    if (!canSend || !mounted) return;
+
+    try {
+      final bytes = await photo.readAsBytes();
+      await _service.send(
+        groupId: target.id,
+        body: '',
+        attachmentBytes: bytes,
+        attachmentName: 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        attachmentType: 'image/jpeg',
+      );
+      await _reload();
+      _snack(_fr ? 'Photo envoyée.' : 'Photo sent.');
+    } catch (_) {
+      _snack(_fr ? 'Envoi impossible.' : 'Unable to send.');
+    }
+  }
+
+  Future<void> _createGroup() async {
+    List<SchoolClass> classes = const [];
+    try {
+      classes = await CourseService().listTeacherClasses(widget.profile.id);
+    } catch (_) {
+      classes = const [];
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final nameController = TextEditingController();
+    String? classId;
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_fr ? 'Créer un groupe' : 'Create a group'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: _fr ? 'Nom du groupe' : 'Group name',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: classId,
+                decoration: InputDecoration(
+                  labelText: _fr ? 'Salle (facultatif)' : 'Classroom (optional)',
+                  border: const OutlineInputBorder(),
+                ),
+                items: classes
+                    .map(
+                      (c) => DropdownMenuItem<String>(value: c.id, child: Text(c.displayName)),
+                    )
+                    .toList(),
+                onChanged: (value) => setDialogState(() => classId = value),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_fr ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(_fr ? 'Créer' : 'Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final name = nameController.text.trim();
+    nameController.dispose();
+
+    if (created != true || name.isEmpty) {
+      return;
+    }
+
+    try {
+      await _service.createGroup(name: name, classId: classId);
+      await _reload();
+      _snack(_fr
+          ? 'Groupe créé. Ouvrez-le pour voir le code d’invitation.'
+          : 'Group created. Open it to see the invitation code.');
+    } catch (error) {
+      _snack('$error');
+    }
+  }
+
+  Future<void> _joinGroup() async {
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Rejoindre un groupe' : 'Join a group'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          decoration: InputDecoration(
+            labelText: _fr ? 'Code donné par votre professeur' : 'Code from your teacher',
+            hintText: 'FISE-XXXXXX',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Rejoindre' : 'Join'),
+          ),
+        ],
+      ),
+    );
+
+    final code = controller.text.trim();
+    controller.dispose();
+
+    if (confirmed != true || code.isEmpty) {
+      return;
+    }
+
+    try {
+      await _service.joinWithCode(code);
+      await _reload();
+      _snack(_fr ? 'Groupes autorisés ajoutés.' : 'Eligible groups added.');
+    } catch (_) {
+      _snack(_fr ? 'Code invalide.' : 'Invalid code.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_fr ? 'Messages' : 'Messages'),
+        actions: [
+          IconButton(
+            tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
+            icon: const Icon(Icons.camera_alt_rounded),
+            onPressed: _quickCamera,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isTeacher ? _createGroup : _joinGroup,
+        icon: Icon(_isTeacher ? Icons.group_add_rounded : Icons.vpn_key_rounded),
+        label: Text(
+          _isTeacher
+              ? (_fr ? 'Nouveau groupe' : 'New group')
+              : (_fr ? 'Rejoindre avec un code' : 'Join with a code'),
+        ),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        child: FutureBuilder<List<MessageGroup>>(
+          future: _groupsFuture,
+          builder: (context, snapshot) {
+            final groups = snapshot.data ?? const <MessageGroup>[];
+
+            return ListView(
+              padding: const EdgeInsets.only(bottom: 90),
+              children: [
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFDCFCE7),
+                    child: Icon(Icons.person_rounded, color: Color(0xFF166534)),
+                  ),
+                  title: Text(
+                    _fr ? 'Messages privés' : 'Private messages',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(_fr ? 'Discussions individuelles' : 'One-to-one chats'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PrivateMessagesPage(
+                        locale: widget.locale,
+                        profile: widget.profile,
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (snapshot.hasError)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('${snapshot.error}', textAlign: TextAlign.center),
+                  )
+                else if (groups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      _isTeacher
+                          ? (_fr
+                              ? 'Aucun groupe. Créez vos groupes puis partagez votre code FISE unique.'
+                              : 'No group yet. Create groups and share your single FISE code.')
+                          : (_fr
+                              ? 'Vous n’êtes dans aucun groupe. Demandez le code FISE unique à votre professeur.'
+                              : 'You are not in any group. Ask your teacher for their unique FISE code.'),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  ...groups.map(
+                    (group) => ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFF166534),
+                        child: Text(
+                          group.name.isEmpty ? '?' : group.name.substring(0, 1).toUpperCase(),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      title: Text(
+                        group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        group.lastBody ??
+                            (group.className ??
+                                '${group.memberCount} ${_fr ? 'membre(s)' : 'member(s)'}'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        _formatTime(group.lastAt),
+                        style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                      onTap: () => _openGroup(group),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
