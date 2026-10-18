@@ -106,8 +106,8 @@ class _CoursesPageState extends State<CoursesPage> {
                     ),
                     subtitle: Text(
                       _fr
-                          ? 'Choisis une matière pour voir le programme, les leçons et les exercices.'
-                          : 'Choose a subject to see the programme, lessons and exercises.',
+                          ? 'Choisis une matière pour consulter les chapitres du programme MINESEC et leurs contenus.'
+                          : 'Choose a subject to browse MINESEC programme chapters and their resources.',
                     ),
                   ),
                 ),
@@ -166,13 +166,13 @@ class _CoursesPageState extends State<CoursesPage> {
                                     ),
                                     const SizedBox(height: 6),
                                     FutureBuilder<int>(
-                                      future: _learning.countPublishedLessonsForSubject(entry.subject.id),
+                                      future: _learning.countChaptersForSubject(entry.subject.id, profile: widget.profile),
                                       builder: (context, countSnapshot) {
                                         final count = countSnapshot.data;
                                         return Text(
                                           countSnapshot.connectionState == ConnectionState.waiting
                                               ? (_fr ? 'Chargement…' : 'Loading…')
-                                              : '${count ?? 0} ${_fr ? 'leçons' : 'lessons'}',
+                                              : '${count ?? 0} ${_fr ? 'chapitres' : 'chapters'}',
                                           textAlign: TextAlign.center,
                                           style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700),
                                         );
