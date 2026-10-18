@@ -34,19 +34,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final channel = Supabase.instance.client.channel('notifications-${widget.userId}');
     _realtime = channel
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
+          event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: widget.userId,
-          ),
-          callback: (_) {
-            if (mounted) {
-              setState(() => _future = _service.listForUser(widget.userId));
-            }
-          },
+          callback: (_) { if (mounted) setState(() => _future = _service.listForUser(widget.userId)); },
         )
         .subscribe();
   }
@@ -97,20 +88,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 subtitle: Text('${item.body}\n${_formatTime(item.createdAt)}'),
                 isThreeLine: true,
                 onTap: () async {
-                  try {
-                    await _service.markRead(item.id, userId: widget.userId);
-                    if (mounted) {
-                      setState(() => _future = _service.listForUser(widget.userId));
-                    }
-                  } catch (_) {
-                    if (mounted) {
-                      final message = widget.locale.languageCode == 'en'
-                          ? 'Could not mark this notification as read. Please retry.'
-                          : 'Impossible de marquer cette notification comme lue. Réessayez.';
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(message)),
-                      );
-                    }
+                  await _service.markRead(item.id);
+                  if (mounted) {
+                    setState(() => _future = _service.listForUser(widget.userId));
                   }
                 },
               );
@@ -127,6 +107,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'assignment': return Icons.assignment_outlined;
       case 'course': return Icons.menu_book_outlined;
       case 'timetable': return Icons.calendar_month_outlined;
+      case 'forum': return Icons.forum_outlined;
       case 'submission': return Icons.task_alt_outlined;
       default: return Icons.notifications_outlined;
     }
@@ -138,20 +119,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _markAll() async {
-    try {
-      await _service.markAllRead(widget.userId);
-      if (mounted) {
-        setState(() => _future = _service.listForUser(widget.userId));
-      }
-    } catch (_) {
-      if (mounted) {
-        final message = widget.locale.languageCode == 'en'
-            ? 'Could not mark notifications as read. Please retry.'
-            : 'Impossible de marquer les notifications comme lues. Réessayez.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
+    await _service.markAllRead(widget.userId);
+
+    if (mounted) {
+      setState(() => _future = _service.listForUser(widget.userId));
     }
   }
 }

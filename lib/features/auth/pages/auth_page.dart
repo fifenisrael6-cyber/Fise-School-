@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
+import '../../../core/services/auth_messages.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../models/exam_catalog.dart';
+import 'forgot_password_page.dart';
 
 class AuthPage extends StatefulWidget {
   final Locale locale;
@@ -38,7 +40,6 @@ class _AuthPageState extends State<AuthPage> {
 
   late bool _isRegistering = widget.startInRegisterMode;
   late String _role = widget.initialRole;
-  String? _teacherVocation;
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -49,9 +50,6 @@ class _AuthPageState extends State<AuthPage> {
   ExamCatalogEntry? _track;
   List<ExamLevel> _levels = const [];
   List<ExamCatalogEntry> _tracks = const [];
-  List<Map<String, dynamic>> _classes = const [];
-  String? _selectedClassId;
-  String? _languageOption;
   bool _loadingLevels = false;
   bool _catalogError = false;
 
@@ -76,9 +74,6 @@ class _AuthPageState extends State<AuthPage> {
     setState(() {
       _level = null;
       _track = null;
-      _languageOption = null;
-      _selectedClassId = null;
-      _classes = const [];
       _levels = const [];
       _tracks = const [];
       _catalogError = false;
@@ -112,10 +107,7 @@ class _AuthPageState extends State<AuthPage> {
   Future<void> _loadTracks(ExamLevel level) async {
     setState(() {
       _track = null;
-      _languageOption = null;
-      _selectedClassId = null;
       _tracks = const [];
-      _classes = const [];
     });
     try {
       final tracks = level.sector == ExamSector.general
@@ -127,40 +119,6 @@ class _AuthPageState extends State<AuthPage> {
       setState(() => _tracks = tracks);
     } catch (_) {
       // Série/spécialité facultative : une erreur ne bloque pas l'inscription.
-    }
-  }
-
-  Future<void> _sendPasswordReset(AppTexts texts) async {
-    final email = _emailController.text.trim().toLowerCase();
-    if (_validEmail(email, texts) != null) {
-      _showError(
-        _lang == 'en'
-            ? 'Enter your email address first.'
-            : 'Saisissez d’abord votre adresse e-mail.',
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      await _authService.sendPasswordReset(email: email);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _lang == 'en'
-                ? 'If this account exists, a password reset email has been sent. Check your inbox and spam folder.'
-                : 'Si ce compte existe, un e-mail de réinitialisation a été envoyé. Vérifiez votre boîte de réception et les courriers indésirables.',
-          ),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    } on AuthException catch (error) {
-      if (mounted) _showError(error.message);
-    } catch (_) {
-      if (mounted) _showError(texts.networkError);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -189,10 +147,7 @@ class _AuthPageState extends State<AuthPage> {
           examLevel: level?.labelFor(_lang),
           exam: level?.exam?.labelFor(_lang),
           track: _track?.labelFor(_lang),
-          languageOption: _languageOption,
-          className: _selectedClassName(level),
-          classId: _selectedClassId,
-          teacherVocation: _isStudent ? null : _teacherVocation,
+          className: level?.labelFor(_lang),
         );
       } else {
         await _authService.signIn(
@@ -204,12 +159,16 @@ class _AuthPageState extends State<AuthPage> {
         return;
       }
 
-      final message = !_isRegistering
-          ? texts.login
-          : (signedIn ? texts.accountCreatedWelcome : texts.accountCreated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      // Pas de message après une simple connexion : le tableau de bord suffit.
+      if (_isRegistering) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              signedIn ? texts.accountCreatedWelcome : texts.accountCreated,
+            ),
+          ),
+        );
+      }
       // AuthGate affiche le tableau de bord dès que la session existe : on
       // revient donc à la racine (auparavant la page d'inscription restait ouverte).
       if (!_isRegistering || signedIn) {
@@ -221,7 +180,13 @@ class _AuthPageState extends State<AuthPage> {
       }
     } on AuthException catch (error) {
       if (mounted) {
-        _showError(error.message);
+        _showError(
+          AuthMessages.from(
+            error,
+            english: _lang == 'en',
+            registering: _isRegistering,
+          ),
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -311,24 +276,25 @@ class _AuthPageState extends State<AuthPage> {
                         return null;
                       },
                     ),
-                    if (!_isRegistering) ...[
+                    if (!_isRegistering)
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          key: const ValueKey('forgot-password'),
                           onPressed: _isLoading
                               ? null
-                              : () => _sendPasswordReset(texts),
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => ForgotPasswordPage(locale: widget.locale),
+                                    ),
+                                  ),
                           child: Text(
-                            _lang == 'en'
-                                ? 'Forgot password?'
-                                : 'Mot de passe oublié ?',
+                            widget.locale.languageCode == 'fr'
+                                ? 'Mot de passe oublié ?'
+                                : 'Forgot password?',
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
                     FilledButton(
                       onPressed: _isLoading ? null : () => _submit(texts),
                       child: _isLoading
@@ -382,31 +348,6 @@ class _AuthPageState extends State<AuthPage> {
           }
         },
       ),
-      if (_role == 'teacher') ...[
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          key: const ValueKey('teacher-vocation'),
-          initialValue: _teacherVocation,
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: _lang == 'en' ? 'Teaching stream' : 'Filière enseignée',
-          ),
-          items: [
-            DropdownMenuItem(
-              value: 'scientific',
-              child: Text(_lang == 'en' ? 'Scientific' : 'Scientifique'),
-            ),
-            DropdownMenuItem(
-              value: 'literary',
-              child: Text(_lang == 'en' ? 'Literary' : 'Littéraire'),
-            ),
-          ],
-          validator: (value) => _role == 'teacher' && value == null
-              ? texts.selectionRequired
-              : null,
-          onChanged: (value) => setState(() => _teacherVocation = value),
-        ),
-      ],
       const SizedBox(height: 14),
       _field(_firstNameController, texts.firstName, texts),
       const SizedBox(height: 14),
@@ -487,51 +428,6 @@ class _AuthPageState extends State<AuthPage> {
     ];
   }
 
-
-  String? _selectedClassName(ExamLevel? level) {
-    if (_selectedClassId == null) return level?.labelFor(_lang);
-    for (final item in _classes) {
-      if (item['id']?.toString() == _selectedClassId) {
-        return item['display_name']?.toString() ?? item['name']?.toString();
-      }
-    }
-    return level?.labelFor(_lang);
-  }
-
-  Future<void> _loadClasses() async {
-    final level = _level;
-    final subsystem = _subsystem;
-    final sector = _sector;
-    if (level == null || subsystem == null || sector == null) {
-      setState(() {
-        _classes = const [];
-        _selectedClassId = null;
-      });
-      return;
-    }
-    try {
-      final rows = await Supabase.instance.client
-          .from('school_classes')
-          .select('id, display_name, name, series_id, specialty_id, language_option')
-          .eq('is_active', true)
-          .eq('exam_level_id', level.id)
-          .eq('subsystem', subsystem.name)
-          .eq('sector', sector.name)
-          .order('display_name');
-      if (!mounted) return;
-      setState(() {
-        _classes = List<Map<String, dynamic>>.from(rows);
-        if (_selectedClassId != null &&
-            !_classes.any((item) => item['id']?.toString() == _selectedClassId)) {
-          _selectedClassId = null;
-        }
-      });
-    } catch (_) {
-      if (mounted) setState(() => _classes = const []);
-    } finally {
-    }
-  }
-
   List<Widget> _classFields(AppTexts texts) {
     if (_subsystem == null || _sector == null) {
       return const [];
@@ -580,17 +476,17 @@ class _AuthPageState extends State<AuthPage> {
         ],
         validator: (value) => value == null ? texts.selectionRequired : null,
         onChanged: (value) {
-          setState(() { _level = value; _track = null; _languageOption = null; _selectedClassId = null; _classes = const []; });
-          if (value != null) { _loadTracks(value); _loadClasses(); }
+          setState(() => _level = value);
+          if (value != null) {
+            _loadTracks(value);
+          }
         },
       ),
       if (level != null) ...[
         const SizedBox(height: 10),
         _levelInfo(texts, level, curriculum),
       ],
-
       if (_tracks.isNotEmpty) ...[
-
         const SizedBox(height: 14),
         DropdownButtonFormField<ExamCatalogEntry>(
           key: ValueKey('track-${level?.id}'),
@@ -607,108 +503,10 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
-          validator: (value) => value == null ? texts.selectionRequired : null,
-          onChanged: (value) => setState(() {
-            _track = value;
-            _languageOption = null;
-            _selectedClassId = null;
-          }),
+          onChanged: (value) => setState(() => _track = value),
         ),
       ],
-      if (_availableLanguageOptions().isNotEmpty) ...[
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          key: ValueKey('language-option-${level?.id}-${_track?.code}'),
-          initialValue: _languageOption,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Langue / option'),
-          items: [
-            for (final option in _availableLanguageOptions())
-              DropdownMenuItem(value: option.$1, child: Text(option.$2)),
-          ],
-          validator: (value) => value == null ? texts.selectionRequired : null,
-          onChanged: (value) => setState(() {
-            _languageOption = value;
-            _selectedClassId = null;
-          }),
-        ),
-      ],
-      const SizedBox(height: 14),
-      Builder(builder: (context) {
-        final compatible = _compatibleClasses();
-        if (compatible.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Aucune salle ne correspond à ces choix. L’administration doit créer la salle correspondante.',
-                textAlign: TextAlign.center,
-              ),
-              FormField<String>(
-                validator: (_) => compatible.isEmpty || _selectedClassId == null
-                    ? 'Aucune salle disponible pour cette classe.'
-                    : null,
-                builder: (_) => const SizedBox.shrink(),
-              ),
-            ],
-          );
-        }
-        return DropdownButtonFormField<String>(
-          key: ValueKey('school-room-${level?.id}-${_track?.id}-$_languageOption'),
-          initialValue: compatible.any((item) => item['id']?.toString() == _selectedClassId)
-              ? _selectedClassId
-              : null,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: texts.classLabel),
-          items: [
-            for (final item in compatible)
-              DropdownMenuItem(
-                value: item['id'].toString(),
-                child: Text(item['display_name']?.toString() ?? item['name']?.toString() ?? 'Salle scolaire'),
-              ),
-          ],
-          validator: (value) => value == null ? texts.selectionRequired : null,
-          onChanged: (value) => setState(() => _selectedClassId = value),
-        );
-      }),
     ];
-  }
-
-  List<(String, String)> _availableLanguageOptions() {
-    if (_subsystem != ExamSubsystem.francophone || _sector != ExamSector.general) return const [];
-    if (_level?.code == 'fr_general_troisieme' ||
-        (_level != null && _level!.levelOrder >= 5 && (_track?.code == 'a2' || _track?.code == 'a4'))) {
-      return const [
-        ('allemand', 'Allemand'), ('espagnol', 'Espagnol'), ('arabe', 'Arabe'),
-        ('italien', 'Italien'), ('chinois', 'Chinois'),
-      ];
-    }
-    if (_level != null && _level!.levelOrder >= 5 && _track?.code == 'a5') {
-      return const [
-        ('allemand_espagnol', 'Allemand + Espagnol'), ('allemand_arabe', 'Allemand + Arabe'),
-        ('allemand_italien', 'Allemand + Italien'), ('allemand_chinois', 'Allemand + Chinois'),
-        ('espagnol_allemand', 'Espagnol + Allemand'), ('espagnol_arabe', 'Espagnol + Arabe'),
-        ('espagnol_italien', 'Espagnol + Italien'), ('espagnol_chinois', 'Espagnol + Chinois'),
-        ('arabe_allemand', 'Arabe + Allemand'), ('arabe_espagnol', 'Arabe + Espagnol'),
-        ('arabe_italien', 'Arabe + Italien'), ('arabe_chinois', 'Arabe + Chinois'),
-        ('italien_allemand', 'Italien + Allemand'), ('italien_espagnol', 'Italien + Espagnol'),
-        ('italien_arabe', 'Italien + Arabe'), ('italien_chinois', 'Italien + Chinois'),
-        ('chinois_allemand', 'Chinois + Allemand'), ('chinois_espagnol', 'Chinois + Espagnol'),
-        ('chinois_arabe', 'Chinois + Arabe'), ('chinois_italien', 'Chinois + Italien'),
-      ];
-    }
-    return const [];
-  }
-
-  List<Map<String, dynamic>> _compatibleClasses() {
-    if (_tracks.isNotEmpty && _track == null) return const [];
-    return _classes.where((item) {
-      final seriesId = _sector == ExamSector.general ? _track?.id : null;
-      final specialtyId = _sector == ExamSector.technical ? _track?.id : null;
-      return item['series_id']?.toString() == seriesId &&
-          item['specialty_id']?.toString() == specialtyId &&
-          item['language_option']?.toString() == _languageOption;
-    }).toList(growable: false);
   }
 
   Widget _levelInfo(AppTexts texts, ExamLevel level, String? curriculum) {

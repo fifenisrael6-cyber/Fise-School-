@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'connectivity_service.dart';
 import 'json_cache.dart';
-import 'message_outbox.dart';
 import 'offline_repository.dart';
 import 'pending_progress.dart';
 
@@ -14,17 +13,9 @@ Future<void> clearLocalUserData() async {
   try {
     if (await ConnectivityService().isOnline()) {
       await PendingProgress.instance.flush(Supabase.instance.client);
-      await MessageOutbox.instance.flush(Supabase.instance.client);
     }
   } catch (e) {
-    debugPrint('Envoi des éléments en attente impossible : $e');
-  }
-
-  try {
-    // Les messages non partis ne doivent pas rester pour le compte suivant.
-    await MessageOutbox.instance.clear();
-  } catch (e) {
-    debugPrint('Nettoyage de la file des messages impossible : $e');
+    debugPrint('Envoi de la progression en attente impossible : $e');
   }
 
   try {

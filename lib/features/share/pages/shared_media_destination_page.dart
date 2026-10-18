@@ -24,7 +24,7 @@ class SharedMediaDestinationPage extends StatelessWidget {
 
   bool get _annalsAcceptFiles => files.every((file) {
         final mime = (file.mimeType ?? '').toLowerCase();
-        final name = (file.path ?? '').toLowerCase();
+        final name = file.path.toLowerCase();
         return mime.startsWith('image/') ||
             mime == 'application/pdf' ||
             name.endsWith('.pdf') ||
@@ -75,7 +75,7 @@ class SharedMediaDestinationPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ...files.map((file) {
-              final name = (file.path ?? '').split('/').last;
+              final name = file.path.split('/').last;
               final mime = (file.mimeType ?? '').toLowerCase();
               final icon = mime.startsWith('image/')
                   ? Icons.image_outlined

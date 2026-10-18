@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/notchpay_service.dart';
+import '../../../../core/services/quota_service.dart';
 import '../../../../core/services/subscription_service.dart';
 import '../../../../models/user_profile.dart';
 
@@ -22,6 +23,7 @@ class _PremiumPageState extends State<PremiumPage> {
   final NotchPayService _notchPayService = NotchPayService();
 
   SubscriptionInfo? _subscriptionInfo;
+  QuotaStatus? _quota;
 
   bool _loading = true;
   bool _processingPayment = false;
@@ -42,6 +44,13 @@ class _PremiumPageState extends State<PremiumPage> {
     });
 
     try {
+      // Retour tardif : si un paiement est en attente, on le revérifie auprès de Notch Pay.
+      try {
+        await QuotaService().verifyPayment();
+      } catch (_) {}
+      try {
+        _quota = await QuotaService().status();
+      } catch (_) {}
       final info = await _subscriptionService.getSubscriptionInfo();
 
       if (!mounted) {
@@ -200,6 +209,40 @@ class _PremiumPageState extends State<PremiumPage> {
         });
       }
     }
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
+      '${d.hour.toString().padLeft(2, '0')}h${d.minute.toString().padLeft(2, '0')}';
+
+  List<Widget> _statusAndQuotas(bool fr) {
+    final q = _quota;
+    if (q == null) return const [];
+    final label = switch (q.state) {
+      'premium' => fr
+          ? 'Premium actif${q.premiumExpiresAt == null ? '' : ' jusqu’au ${_fmt(q.premiumExpiresAt!)}'}'
+          : 'Premium active${q.premiumExpiresAt == null ? '' : ' until ${_fmt(q.premiumExpiresAt!)}'}',
+      'pending' => fr ? 'Paiement en attente de confirmation' : 'Payment awaiting confirmation',
+      'expired' => fr ? 'Abonnement expiré' : 'Subscription expired',
+      _ => fr ? 'Compte gratuit' : 'Free account',
+    };
+    final widgets = <Widget>[
+      Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+    ];
+    if (!q.premium) {
+      widgets.add(const SizedBox(height: 8));
+      widgets.add(Text(fr ? 'Quotas gratuits (par période de 24 h)' : 'Free quotas (per 24 h)',
+          style: const TextStyle(fontWeight: FontWeight.w700)));
+      for (final f in QuotaFeature.values) {
+        final item = q.quotas[f.key];
+        if (item == null) continue;
+        final reset = item.resetsAt == null
+            ? ''
+            : (fr ? ' • renouvelé le ${_fmt(item.resetsAt!)}' : ' • resets ${_fmt(item.resetsAt!)}');
+        widgets.add(Text('${f.label(fr)} : ${item.remaining}/${item.limit}$reset'));
+      }
+    }
+    return widgets;
   }
 
   void _showMessage(String message) {
@@ -466,8 +509,8 @@ class _PremiumPageState extends State<PremiumPage> {
             const SizedBox(height: 12),
             Text(
               isFrench
-                  ? '2000 FCFA pour 30 jours de Premium.'
-                  : '2000 XAF for 30 days of Premium.',
+                  ? '2 000 FCFA pour 30 jours de Premium.'
+                  : '2,000 XAF for 30 days of Premium.',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -476,6 +519,8 @@ class _PremiumPageState extends State<PremiumPage> {
                   ? 'Le paiement est effectué de manière sécurisée via Notch Pay.'
                   : 'Payment is securely processed through Notch Pay.',
             ),
+            const SizedBox(height: 12),
+            ..._statusAndQuotas(isFrench),
             const SizedBox(height: 18),
             if (isPremium)
               OutlinedButton.icon(
@@ -506,8 +551,8 @@ class _PremiumPageState extends State<PremiumPage> {
                             ? 'Ouverture du paiement...'
                             : 'Opening payment...'
                       : isFrench
-                      ? 'Activer Premium — 2000 FCFA'
-                      : 'Activate Premium — 2000 XAF',
+                      ? 'Activer Premium — 2 000 FCFA'
+                      : 'Activate Premium — 2,000 XAF',
                 ),
               ),
             const SizedBox(height: 10),

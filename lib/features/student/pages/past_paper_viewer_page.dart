@@ -2,79 +2,61 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/offline/course_offline_service.dart';
-
-/// Ouvre une annale dans Fise School et conserve la copie après sa première ouverture.
 class PastPaperViewerPage extends StatefulWidget {
+  final Locale locale;
+  final String localPath;
+  final String fileName;
+
   const PastPaperViewerPage({
     super.key,
-    required this.userId,
-    required this.resourceId,
-    required this.signedUrlProvider,
-    required this.title,
-    required this.isPdf,
+    required this.locale,
+    required this.localPath,
+    required this.fileName,
   });
-
-  final String userId;
-  final String resourceId;
-  final Future<String> Function() signedUrlProvider;
-  final String title;
-  final bool isPdf;
 
   @override
   State<PastPaperViewerPage> createState() => _PastPaperViewerPageState();
 }
 
 class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
-  String? _localPath;
   PdfControllerPinch? _pdfController;
-  String? _error;
-  bool _loading = true;
+  bool _openingExternal = false;
 
-  String get _imageMime {
-    final name = widget.title.toLowerCase();
-    if (name.endsWith('.png')) return 'image/png';
-    if (name.endsWith('.webp')) return 'image/webp';
-    return 'image/jpeg';
-  }
+  bool get _fr => widget.locale.languageCode != 'en';
+  bool get _isPdf => widget.fileName.toLowerCase().endsWith('.pdf');
+  bool get _isImage => RegExp(r'\.(png|jpe?g|webp)$', caseSensitive: false)
+      .hasMatch(widget.fileName);
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (_isPdf && File(widget.localPath).existsSync()) {
+      _pdfController = PdfControllerPinch(
+        document: PdfDocument.openFile(widget.localPath),
+      );
+    }
+    if (!_isPdf && !_isImage) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openExternal());
+    }
   }
 
-  Future<void> _load() async {
-    try {
-      final localPath = await CourseOfflineService().openExternalFile(
-        userId: widget.userId,
-        resourceId: widget.resourceId,
-        courseId: 'past-papers',
-        fileName: widget.title,
-        mimeType: widget.isPdf ? 'application/pdf' : _imageMime,
-        signedUrlProvider: widget.signedUrlProvider,
-      );
-      final controller = widget.isPdf
-          ? PdfControllerPinch(document: PdfDocument.openFile(localPath))
-          : null;
-      if (!mounted) {
-        controller?.dispose();
-        return;
-      }
-      setState(() {
-        _localPath = localPath;
-        _pdfController = controller;
-        _loading = false;
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = 'Impossible d’ouvrir ce document. Connectez-vous pour le télécharger une première fois.';
-          _loading = false;
-        });
-      }
+  Future<void> _openExternal() async {
+    if (_openingExternal) return;
+    _openingExternal = true;
+    final ok = await launchUrl(
+      Uri.file(widget.localPath),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_fr
+            ? 'Aucune application compatible pour ce type de fichier.'
+            : 'No compatible app found for this file type.'),
+      ));
     }
+    _openingExternal = false;
   }
 
   @override
@@ -85,25 +67,30 @@ class _PastPaperViewerPageState extends State<PastPaperViewerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final path = _localPath;
+    final file = File(widget.localPath);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(_error!, textAlign: TextAlign.center),
-                  ),
-                )
-              : widget.isPdf
-                  ? PdfViewPinch(controller: _pdfController!)
-                  : InteractiveViewer(
-                      minScale: 0.5,
-                      maxScale: 5,
-                      child: Center(
-                        child: Image.file(File(path!), fit: BoxFit.contain),
+      appBar: AppBar(
+        title: Text(widget.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+      body: !file.existsSync()
+          ? Center(child: Text(_fr
+              ? 'Le fichier téléchargé est introuvable.'
+              : 'Downloaded file not found.'))
+          : _isPdf
+              ? (_pdfController == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : PdfViewPinch(controller: _pdfController!))
+              : _isImage
+                  ? Center(
+                      child: InteractiveViewer(
+                        child: Image.file(file, fit: BoxFit.contain),
+                      ),
+                    )
+                  : Center(
+                      child: FilledButton.icon(
+                        onPressed: _openExternal,
+                        icon: const Icon(Icons.open_in_new),
+                        label: Text(_fr ? 'Ouvrir le document' : 'Open document'),
                       ),
                     ),
     );

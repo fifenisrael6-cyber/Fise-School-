@@ -1,212 +1,78 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/widgets/swipe_tabs_shell.dart';
 import '../../../models/user_profile.dart';
+import '../../ai/pages/ai_page.dart';
+import '../../forum/pages/forum_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
-import '../../messages/pages/messages_hub_page.dart';
 import 'teacher_courses_page.dart';
+import 'qcm_builder_page.dart';
+import 'teacher_evaluation_publication_page.dart';
+import 'teacher_timetable_page.dart';
 import 'grades_entry_page.dart';
-import 'teacher_past_papers_page.dart';
-import 'teacher_evaluations_page.dart';
-import 'teacher_qcm_hub_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
+import '../../student/pages/past_papers_page.dart';
 
 class TeacherMainPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final Future<void> Function() onSignOut;
-
-  const TeacherMainPage({
-    super.key,
-    required this.locale,
-    required this.profile,
-    required this.onSignOut,
-  });
-
-  @override
-  State<TeacherMainPage> createState() => _TeacherMainPageState();
+  const TeacherMainPage({super.key, required this.locale, required this.profile, required this.onSignOut});
+  @override State<TeacherMainPage> createState() => _TeacherMainPageState();
 }
 
 class _TeacherMainPageState extends State<TeacherMainPage> {
-  @override
-  Widget build(BuildContext context) {
+  int _index = 0;
+  @override Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
-    return SwipeTabsShell(
-      // Les noms restent visibles sur tous les onglets.
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      pagesBuilder: (goToTab) => [
-        _TeacherHome(locale: widget.locale, profile: widget.profile),
-        _TeacherQuizzes(locale: widget.locale, profile: widget.profile),
-        TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
-        MessagesHubPage(locale: widget.locale, profile: widget.profile),
-        TeacherPastPapersPage(locale: widget.locale, profile: widget.profile),
-        ProfilePage(locale: widget.locale, profile: widget.profile),
-      ],
-      destinations: [
-        NavigationDestination(
-          icon: const Icon(Icons.home_outlined),
-          selectedIcon: const Icon(Icons.home),
-          label: fr ? 'Accueil' : 'Home',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.quiz_outlined),
-          selectedIcon: const Icon(Icons.quiz),
-          label: fr ? 'QCM' : 'Quizzes',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.menu_book_outlined),
-          selectedIcon: const Icon(Icons.menu_book),
-          label: fr ? 'Cours' : 'Courses',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.chat_bubble_outline),
-          selectedIcon: const Icon(Icons.chat_bubble),
-          label: 'Messages',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.history_edu_outlined),
-          selectedIcon: const Icon(Icons.history_edu),
-          label: fr ? 'Annales' : 'Exam papers',
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.person_outline),
-          selectedIcon: const Icon(Icons.person),
-          label: fr ? 'Profil' : 'Profile',
-        ),
-      ],
+    final pages = [
+      _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => setState(() => _index = 1), onForums: () => setState(() => _index = 2)),
+      TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
+      ForumPage(locale: widget.locale, profile: widget.profile),
+      AiPage(locale: widget.locale, profile: widget.profile),
+      ProfilePage(locale: widget.locale, profile: widget.profile),
+    ];
+    return Scaffold(
+      body: IndexedStack(index: _index, children: pages),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (v) => setState(() => _index = v),
+        destinations: [
+          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
+          NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum), label: fr ? 'Forums' : 'Forums'),
+          NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
+          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
+        ],
+      ),
     );
   }
 }
 
 class _TeacherHome extends StatelessWidget {
-  final Locale locale;
-  final UserProfile profile;
-
-  const _TeacherHome({required this.locale, required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
+  final Locale locale; final UserProfile profile; final VoidCallback onCourses; final VoidCallback onForums;
+  const _TeacherHome({required this.locale, required this.profile, required this.onCourses, required this.onForums});
+  @override Widget build(BuildContext context) {
     final fr = locale.languageCode == 'fr';
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.assignment_outlined),
-            tooltip: fr ? 'Épreuves PDF et corrections' : 'PDF exams and corrections',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: fr ? 'Paramètres' : 'Settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
-            ),
-          ),
-        ],
-      ),
-      body: _TeacherHomeContent(locale: locale, profile: profile),
-    );
-  }
-}
-
-class _TeacherQuizzes extends StatelessWidget {
-  final Locale locale;
-  final UserProfile profile;
-
-  const _TeacherQuizzes({required this.locale, required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
-    final fr = locale.languageCode == 'fr';
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(fr ? 'Espace QCM' : 'Quiz workspace', style: const TextStyle(fontWeight: FontWeight.w800)),
-      ),
-      body: TeacherQcmHubPage(locale: locale, profile: profile, embedded: true),
-    );
-  }
-}
-
-class _TeacherHomeContent extends StatelessWidget {
-  final Locale locale;
-  final UserProfile profile;
-
-  const _TeacherHomeContent({required this.locale, required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
-    final fr = locale.languageCode == 'fr';
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        Text(
-          '${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}',
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-        ),
+      appBar: AppBar(title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)), actions: [IconButton(icon: const Icon(Icons.settings_outlined), tooltip: fr ? 'Paramètres' : 'Settings', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile))))]),
+      body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
+        Text('${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6), Text(fr ? 'Gérez vos salles, vos cours et vos forums.' : 'Manage your classrooms, courses and forums.'),
         const SizedBox(height: 16),
-        _TeacherAction(
-          icon: Icons.grading_rounded,
-          title: fr ? 'Notes' : 'Marks',
-          subtitle: fr
-              ? 'Saisir les notes de vos élèves par matière et période.'
-              : 'Enter students’ marks by subject and period.',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => GradesEntryPage(locale: locale, profile: profile)),
-          ),
-        ),
+        Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Mes salles' : 'My classrooms', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]), const SizedBox(height: 8), Text(fr ? 'Choisissez toujours une salle avant de publier un contenu ou de créer un forum.' : 'Always choose a classroom before publishing content or creating a forum.'), const SizedBox(height: 12), FilledButton.icon(onPressed: onForums, icon: const Icon(Icons.forum_outlined), label: Text(fr ? 'Créer un forum' : 'Create a forum'))]))),
         const SizedBox(height: 12),
-        _TeacherAction(
-          icon: Icons.assignment_outlined,
-          title: fr ? 'Évaluations' : 'Assessments',
-          subtitle: fr
-              ? 'Publier les épreuves PDF, consulter les remises et corriger les copies.'
-              : 'Publish PDF exams, review student submissions and mark their work.',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile),
-            ),
-          ),
-        ),
-      ],
+        _TeacherAction(icon: Icons.menu_book_rounded, title: fr ? 'Cours et contenus' : 'Courses and content', subtitle: fr ? 'Publier un cours (PDF, photo, images) dans vos classes.' : 'Publish a course (PDF, photo, images) in your classes.', onTap: onCourses),
+        _TeacherAction(icon: Icons.history_edu_rounded, title: fr ? 'Annales d’examens' : 'Past exam papers', subtitle: fr ? 'Consulter et ouvrir les sujets et corrigés publiés.' : 'View and open published exam papers and corrections.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale)))),
+        _TeacherAction(icon: Icons.quiz_rounded, title: fr ? 'QCM générés par l’IA' : 'AI-generated quizzes', subtitle: fr ? 'Consulter les QCM générés à partir des cours publiés.' : 'View quizzes generated from published courses.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => QcmBuilderPage(locale: locale, profile: profile)))),
+        _TeacherAction(icon: Icons.picture_as_pdf_rounded, title: fr ? 'Évaluations officielles' : 'Official exams', subtitle: fr ? 'Joindre le sujet PDF au calendrier programmé par l’administration.' : 'Attach the PDF to an exam scheduled by the administrator.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherEvaluationPublicationPage(locale: locale, profile: profile)))),
+        _TeacherAction(icon: Icons.grading_rounded, title: fr ? 'Notes' : 'Marks', subtitle: fr ? 'Saisir les notes de vos élèves par matière et par période.' : 'Enter your students\' marks by subject and period.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GradesEntryPage(locale: locale, profile: profile)))),
+        _TeacherAction(icon: Icons.forum_rounded, title: fr ? 'Forums' : 'Forums', subtitle: fr ? 'Chaque forum est rattaché à une salle.' : 'Every forum belongs to a classroom.', onTap: onForums),
+        _TeacherAction(icon: Icons.calendar_month_rounded, title: fr ? 'Emploi du temps' : 'Timetable', subtitle: fr ? 'Consultez vos créneaux de cours.' : 'View your teaching schedule.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherTimetablePage(locale: locale, profile: profile)))),
+        _TeacherAction(icon: Icons.chat_bubble_outline, title: fr ? 'Messages' : 'Messages', subtitle: fr ? 'Échanger avec les élèves de vos salles.' : 'Chat with students in your classrooms.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MessagesHubPage(locale: locale, profile: profile)))),
+      ]),
     );
   }
 }
 
-class _TeacherAction extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _TeacherAction({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(bottom: 10),
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-          leading: CircleAvatar(
-            backgroundColor: const Color(0xFFDCFCE7),
-            child: Icon(icon, color: const Color(0xFF166534)),
-          ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: onTap,
-        ),
-      );
-}
+class _TeacherAction extends StatelessWidget { final IconData icon; final String title; final String subtitle; final VoidCallback onTap; const _TeacherAction({required this.icon, required this.title, required this.subtitle, required this.onTap}); @override Widget build(BuildContext context) => Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7), leading: CircleAvatar(backgroundColor: const Color(0xFFDCFCE7), child: Icon(icon, color: const Color(0xFF166534))), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(subtitle), trailing: const Icon(Icons.chevron_right_rounded), onTap: onTap)); }

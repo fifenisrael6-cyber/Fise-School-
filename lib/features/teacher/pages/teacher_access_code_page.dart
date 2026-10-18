@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
@@ -54,7 +53,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _error = _isFrench
@@ -111,14 +110,12 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     }
   }
 
-  Future<void> _copyToClipboard(String code) async {
-    await Clipboard.setData(ClipboardData(text: code));
-    if (!mounted) return;
+  void _copyToClipboard(String code) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           _isFrench
-              ? 'Code copié : $code'
+              ? 'Code copié: $code'
               : 'Code copied: $code',
         ),
         duration: const Duration(seconds: 2),
@@ -199,8 +196,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                       Center(
                         child: Text(
                           _isFrench
-                              ? 'Ce code FISE unique sert à retrouver vos groupes et à sélectionner la salle de l’élève. Utilisez le même code pour les fonctions de paiement compatibles.'
-                              : 'This unique FISE code lets students find your groups and select their classroom. The same code is used by compatible payment features.',
+                              ? 'Les élèves doivent saisir ce code pour accéder au forum de la classe.'
+                              : 'Students must enter this code to access the class forum.',
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
@@ -268,9 +265,9 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                 decoration: InputDecoration(
                   labelText: _isFrench ? 'Nouveau code' : 'New code',
                   hintText: _isFrench
-                      ? 'Ex: ABC123'
-                      : 'Ex: ABC123',
-                  prefixText: 'FISE-',
+                      ? 'Ex: fise123ABC'
+                      : 'Ex: fise123ABC',
+                  prefixText: 'fise',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
