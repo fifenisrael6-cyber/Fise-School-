@@ -54,7 +54,6 @@ class CourseOfflineService {
   StreamSubscription<bool>? _connectionSubscription;
 
   static const int _maxParallel = 2;
-  static const int _maxVideoBytes = 25 * 1024 * 1024;
   final StreamController<OfflineDownloadProgress> _progress = StreamController.broadcast();
   int _active = 0;
   final List<_DownloadJob> _queue = [];
@@ -78,7 +77,7 @@ class CourseOfflineService {
     }
     try {
       final rows = await _db.getDownloadedFiles(userId: userId);
-      for (final row in rows.where((item) => item.status == 'queued')) {
+      for (final row in rows.where((item) => item.status == 'queued' && item.lastOpenedAt != null)) {
         if (_queuedIds.contains(row.resourceId)) {
           continue;
         }
@@ -157,10 +156,13 @@ class CourseOfflineService {
     final resources = await _resources.listForCourse(course.id);
     final lessons = await LessonService().listCourseLessons(course.id);
     await OfflineRepository().saveLessons(lessons);
-    // Cache the published QCM/devoirs attached to this course so the existing
-    // offline repository can answer them without a network connection.
+    // Cache both directly linked QCMs and older QCMs associated with this
+    // course's subject. The course page filters the cached results by class
+    // and course, so unrelated assignments are never displayed there.
     try {
-      await AssignmentService().listStudentAssignments(studentId: userId, courseId: course.id);
+      final assignments = AssignmentService();
+      await assignments.listStudentAssignments(studentId: userId, courseId: course.id);
+      await assignments.listStudentAssignments(studentId: userId, subjectId: course.subjectId);
     } catch (_) {
       // Resource downloads and course caching must continue even if one QCM fails.
     }
@@ -171,9 +173,96 @@ class CourseOfflineService {
         await _db.deleteDownloadedFile(old.resourceId, userId);
       }
     }
-    for (final resource in resources) {
-      await _enqueueResource(userId: userId, resource: resource);
+    // Les cours et leurs métadonnées peuvent être mis en cache, mais les
+    // fichiers joints ne sont jamais pré-téléchargés en masse. Un fichier est
+    // stocké durablement lorsqu'un utilisateur l'ouvre pour la première fois.
+  }
+
+  /// Télécharge un fichier à sa première ouverture et renvoie toujours sa copie
+  /// locale. Les ouvertures suivantes fonctionnent sans Internet.
+  Future<String> openResource({
+    required String userId,
+    required CourseResource resource,
+  }) {
+    return openExternalFile(
+      userId: userId,
+      resourceId: resource.id,
+      courseId: resource.courseId,
+      fileName: resource.fileName,
+      mimeType: resource.mimeType,
+      signedUrlProvider: () {
+        final path = resource.storagePath.trim();
+        if (path.isEmpty) throw StateError('resource-storage-path-empty');
+        return _resources.createSignedUrl(path);
+      },
+    );
+  }
+
+  /// Même cache local pour les épreuves et les annales de leurs buckets privés.
+  /// Le lien signé n'est demandé que si aucune copie locale valide n'existe.
+  Future<String> openExternalFile({
+    required String userId,
+    required String resourceId,
+    required String courseId,
+    required String fileName,
+    required String? mimeType,
+    required Future<String> Function() signedUrlProvider,
+  }) async {
+    final existing = await _db.getDownloadedFile(resourceId, userId);
+    if (existing != null &&
+        existing.status == 'done' &&
+        File(existing.localPath).existsSync()) {
+      await _db.markDownloadedFileOpened(resourceId, userId);
+      return existing.localPath;
     }
+
+    if (!await _connectivity.isOnline()) {
+      throw const SocketException('offline-file-not-downloaded');
+    }
+
+    final signedUrl = await signedUrlProvider().timeout(const Duration(seconds: 12));
+    if (signedUrl.trim().isEmpty) {
+      throw StateError('signed-url-unavailable');
+    }
+    final response = await http
+        .get(Uri.parse(signedUrl))
+        .timeout(const Duration(seconds: 45));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('Resource download failed: ${response.statusCode}');
+    }
+    final bytes = response.bodyBytes;
+    if (bytes.isEmpty) throw const FormatException('empty-file');
+
+    // Ne supprime jamais un document déjà ouvert pour faire de la place :
+    // les fichiers enregistrés par l'utilisateur restent disponibles hors ligne.
+    if (!await _hasSpace(userId, bytes.length)) {
+      throw const FileSystemException('Not enough space for offline file.');
+    }
+
+    final base = await getApplicationDocumentsDirectory();
+    final directory = Directory(p.join(base.path, 'offline', userId, courseId));
+    await directory.create(recursive: true);
+    final localPath = p.join(directory.path, _safeFileName(fileName, resourceId));
+    final part = File('$localPath.part');
+    await part.writeAsBytes(bytes, flush: true);
+    final destination = File(localPath);
+    if (destination.existsSync()) await destination.delete();
+    await part.rename(localPath);
+
+    final now = DateTime.now().toUtc();
+    await _db.upsertDownloadedFile(DownloadedFileRecord(
+      resourceId: resourceId,
+      courseId: courseId,
+      userId: userId,
+      fileName: fileName,
+      mimeType: mimeType,
+      localPath: localPath,
+      sizeBytes: bytes.length,
+      downloadedAt: now,
+      lastOpenedAt: now,
+      status: 'done',
+    ));
+    return localPath;
   }
 
   Future<void> queueResource({required String userId, required CourseResource resource, bool manual = false}) async {
@@ -187,10 +276,6 @@ class CourseOfflineService {
   }
 
   Future<void> _enqueueResource({required String userId, required CourseResource resource, bool force = false}) async {
-    if (!force && resource.resourceType == 'video' && (resource.fileSize ?? (_maxVideoBytes + 1)) > _maxVideoBytes) {
-      return;
-    }
-
     final existing = await _db.getDownloadedFile(resource.id, userId);
     final remoteUpdatedAt = await _remoteUpdatedAt(resource.id);
     final localValid = existing != null && existing.status == 'done' && File(existing.localPath).existsSync();
@@ -260,13 +345,12 @@ class CourseOfflineService {
         }
       }
 
+      // Un nouveau téléchargement ne doit pas effacer des fichiers déjà
+      // ouverts et conservés hors ligne.
       if (!await _hasSpace(job.userId, resource.fileSize ?? 0)) {
-        await enforceStorageLimit(job.userId, extraBytes: resource.fileSize ?? 0);
-        if (!await _hasSpace(job.userId, resource.fileSize ?? 0)) {
-          await _db.updateDownloadedFileStatus(resource.id, job.userId, 'failed');
-          _progress.add(OfflineDownloadProgress(resourceId: resource.id, received: 0, total: resource.fileSize ?? 0, status: 'failed'));
-          return;
-        }
+        await _db.updateDownloadedFileStatus(resource.id, job.userId, 'failed');
+        _progress.add(OfflineDownloadProgress(resourceId: resource.id, received: 0, total: resource.fileSize ?? 0, status: 'failed'));
+        return;
       }
 
       await _db.updateDownloadedFileStatus(resource.id, job.userId, 'downloading');
@@ -325,30 +409,13 @@ class CourseOfflineService {
     }
   }
 
-  Future<bool> _hasSpace(String userId, int extraBytes) async {
-    final limit = (await _settings.limitMb()) * 1024 * 1024;
-    return (await usedBytes(userId)) + extraBytes <= limit;
-  }
+  // Pas de quota artificiel : Android reste responsable de signaler
+  // lorsque le stockage réel du téléphone est plein.
+  Future<bool> _hasSpace(String userId, int extraBytes) async => true;
 
-  Future<void> enforceStorageLimit(String userId, {int extraBytes = 0}) async {
-    final limit = (await _settings.limitMb()) * 1024 * 1024;
-    var used = await usedBytes(userId);
-    if (used + extraBytes <= limit) {
-      return;
-    }
-    final files = await _db.getDownloadedFiles(userId: userId);
-    for (final file in files) {
-      if (file.status != 'done') {
-        continue;
-      }
-      try { await File(file.localPath).delete(); } catch (_) {}
-      await _db.deleteDownloadedFile(file.resourceId, userId);
-      used -= file.sizeBytes;
-      if (used + extraBytes <= limit) {
-        break;
-      }
-    }
-  }
+  // Conservé pour compatibilité avec les anciennes pages; ne supprime plus
+  // les fichiers téléchargés automatiquement.
+  Future<void> enforceStorageLimit(String userId, {int extraBytes = 0}) async {}
 
   Future<void> markOpened(String userId, String resourceId) => _db.markDownloadedFileOpened(resourceId, userId);
 

@@ -1,32 +1,40 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../widgets/voice_message_bubble.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdfx/pdfx.dart';
+import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
 
+import '../../../core/offline/message_outbox.dart';
+import '../../../core/offline/message_attachment_offline.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/group_message_service.dart';
+import '../../../core/services/free_tier_service.dart';
+import '../../../core/services/teacher_access_code_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/message_group.dart';
-import '../../../core/services/message_quota_events.dart';
-import '../widgets/message_media.dart';
-import '../widgets/message_reply.dart';
-import '../widgets/user_avatar.dart';
-import '../widgets/voice_recorder.dart';
-import '../../../core/services/quota_service.dart';
-import '../../premium/premium_gate.dart';
 import '../../../models/user_profile.dart';
+import '../../../core/widgets/premium_offer_sheet.dart';
 
 /// Conversation d'un groupe, façon WhatsApp.
 class GroupChatPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final MessageGroup group;
+  final PickedAttachment? initialAttachment;
 
   const GroupChatPage({
     super.key,
     required this.locale,
     required this.profile,
     required this.group,
+    this.initialAttachment,
   });
 
   @override
@@ -37,24 +45,55 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final GroupMessageService _service = GroupMessageService();
   final PhotoService _photoService = PhotoService();
   final TextEditingController _composer = TextEditingController();
+  final AudioRecorder _recorder = AudioRecorder();
+  bool _recordingVoice = false;
+  Timer? _voiceLimitTimer;
+  final Stopwatch _voiceStopwatch = Stopwatch();
+  Timer? _voiceTicker;
+  Duration _voiceElapsed = Duration.zero;
 
   List<GroupMessage> _messages = const [];
   bool _loading = true;
   bool _sending = false;
   PickedAttachment? _attachment;
-  GroupMessage? _replyTo;
+  bool _viewOnce = false;
   RealtimeChannel? _channel;
+  StreamSubscription<void>? _outboxSubscription;
   String? _inviteCode;
+  bool _announcementOnly = false;
+  bool _updatingGroup = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
 
+  Future<void> _loadTeacherAccessCode() async {
+    if (!_isOwner) return;
+    try {
+      final codes = await TeacherAccessCodeService()
+          .getTeacherAccessCodes(widget.profile.id);
+      if (!mounted) return;
+      setState(() {
+        _inviteCode = codes.isEmpty ? null : codes.first.displayCode;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _inviteCode = null);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    MessageQuotaEvents.denied.addListener(_onMessageDenied);
-    _inviteCode = widget.group.inviteCode;
+    _inviteCode = null;
+    _attachment = widget.initialAttachment;
+    unawaited(_loadTeacherAccessCode());
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowReceiveQuotaOffer());
+    // Messages en attente : la conversation se met à jour quand la file change
+    // (envoi réussi au retour du réseau, échec...), et on relance l'envoi.
+    _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
+      if (mounted) _load(showLoader: false, markRead: false);
+    });
+    unawaited(MessageOutbox.instance.flush());
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')
       ..onPostgresChanges(
@@ -68,53 +107,108 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) => _load(showLoader: false),
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_group_message_receipts',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_groups',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false, markRead: false),
+      )
       ..subscribe();
-  }
-
-  bool _gateOpen = false;
-
-  /// Le serveur a refusé un envoi (quota gratuit épuisé ou pièce jointe réservée) :
-  /// on ouvre la fenêtre Premium ; si le paiement est confirmé, l'élève peut renvoyer son message.
-  Future<void> _onMessageDenied() async {
-    if (!mounted || _gateOpen) return;
-    _gateOpen = true;
-    final premiumOnly = MessageQuotaEvents.lastKind == 'premium';
-    final ok = await PremiumGate.openForServerDenial(
-      context,
-      profile: widget.profile,
-      feature: QuotaFeature.msgSent,
-      premiumOnly: premiumOnly,
-    );
-    _gateOpen = false;
-    if (ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(widget.profile.preferredLanguage == 'en'
-            ? 'Premium is active. Please send your message again.'
-            : 'Premium activé. Renvoie ton message.'),
-      ));
-    }
   }
 
   @override
   void dispose() {
-    MessageQuotaEvents.denied.removeListener(_onMessageDenied);
     _composer.dispose();
     _channel?.unsubscribe();
+    _outboxSubscription?.cancel();
+    _voiceLimitTimer?.cancel();
+    _voiceTicker?.cancel();
+    _voiceStopwatch.stop();
+    unawaited(_recorder.dispose());
     super.dispose();
   }
 
-  Future<void> _load({bool showLoader = true}) async {
+  Future<void> _load({bool showLoader = true, bool markRead = true}) async {
     if (showLoader && mounted) {
       setState(() => _loading = true);
     }
     try {
+      try {
+        final isMember = await _service.isMember(widget.group.id);
+        if (!isMember) {
+          if (mounted) Navigator.of(context).pop(true);
+          return;
+        }
+      } catch (_) {
+        // Offline: keep the last local view; the server still guards every action.
+      }
+      if (markRead) {
+        // Receipts are supplementary: keep the chat usable if the new receipt
+        // migration has not reached the connected Supabase project yet.
+        try {
+          await _service.markMessagesDelivered(widget.group.id);
+          await _service.markMessagesRead(widget.group.id);
+        } catch (_) {
+          // The conversation itself must still load.
+        }
+      }
+      try {
+        final announcementOnly =
+            await _service.getAnnouncementOnly(widget.group.id);
+        if (mounted) {
+          setState(() => _announcementOnly = announcementOnly);
+        }
+      } catch (_) {
+        // The server-side trigger still enforces the mode if this read fails.
+      }
       final messages = await _service.listMessages(widget.group.id);
       if (mounted) {
         setState(() => _messages = messages);
       }
-    } catch (error) {
-      if (mounted) {
-        _snack('$error');
+    } catch (_) {
+      // Sans réseau et sans copie locale : message clair plutôt qu'une erreur brute.
+      if (mounted && showLoader) {
+        _snack(_fr
+            ? 'Impossible de charger la conversation sans connexion.'
+            : 'Could not load the conversation while offline.');
       }
     } finally {
       if (mounted) {
@@ -123,31 +217,59 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
-  GroupMessage? _findMessage(String? id) {
-    if (id == null) return null;
-    for (final m in _messages) {
-      if (m.id == id) return m;
+  Future<void> _pendingActions(GroupMessage message) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.refresh_rounded),
+              title: Text(_fr ? 'Renvoyer' : 'Retry'),
+              onTap: () => Navigator.pop(sheetContext, 'retry'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: Text(_fr ? 'Supprimer' : 'Delete'),
+              onTap: () => Navigator.pop(sheetContext, 'discard'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == 'retry') {
+      await MessageOutbox.instance.retry(message.id);
+    } else if (action == 'discard') {
+      await MessageOutbox.instance.discard(message.id);
     }
-    return null;
-  }
-
-  String _authorOf(GroupMessage m) =>
-      m.senderId == widget.profile.id ? (_fr ? 'Vous' : 'You') : m.senderName;
-
-  String _snippetOf(GroupMessage m) => replySnippet(
-        body: m.body,
-        hasAttachment: m.attachmentPath != null || m.localAttachmentPath != null,
-        attachmentName: m.attachmentName,
-        attachmentType: m.attachmentType,
-        french: _fr,
-      );
-
-  void _startReply(GroupMessage message) {
-    setState(() => _replyTo = message);
   }
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _maybeShowReceiveQuotaOffer() async {
+    if (widget.profile.role.toLowerCase() != 'student') return;
+    final status = await FreeTierService().status('group_receive');
+    if (!mounted || status == null || status['premium'] == true || status['allowed'] == true) return;
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la réception des messages' : 'receiving messages',
+    );
+  }
+
+  Future<void> _showPremiumRequired() async {
+    await showPremiumOfferSheet(
+      context: context,
+      locale: widget.locale,
+      profile: widget.profile,
+      feature: _fr ? 'la messagerie' : 'messaging',
+    );
   }
 
   Future<void> _send() async {
@@ -156,15 +278,25 @@ class _GroupChatPageState extends State<GroupChatPage> {
       return;
     }
 
-    // Limite gratuite atteinte / pièce jointe réservée : fenêtre Premium tout de suite,
-    // sans que le message apparaisse dans la conversation.
-    final canSend = await PremiumGate.canSend(
-      context,
-      profile: widget.profile,
-      feature: QuotaFeature.msgSent,
-      hasAttachment: _attachment != null,
-    );
-    if (!canSend || !mounted) return;
+    if (widget.profile.role.toLowerCase() == 'student') {
+      final quota = await FreeTierService().status('group_send');
+      if (!mounted) return;
+      if (quota == null) {
+        _snack(_fr
+            ? 'Impossible de vérifier le quota. Vérifie ta connexion puis réessaie.'
+            : 'Could not verify your quota. Check your connection and try again.');
+        return;
+      }
+      if (quota['premium'] != true && quota['allowed'] == false) {
+        await showPremiumOfferSheet(
+          context: context,
+          locale: widget.locale,
+          profile: widget.profile,
+          feature: _fr ? 'la messagerie' : 'messaging',
+        );
+        return;
+      }
+    }
 
     setState(() => _sending = true);
     try {
@@ -174,18 +306,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
         attachmentBytes: _attachment?.bytes,
         attachmentName: _attachment?.name,
         attachmentType: _attachment?.mimeType,
-        replyToId: _replyTo?.id,
+        viewOnce: _viewOnce,
       );
       _composer.clear();
       if (mounted) {
         setState(() {
           _attachment = null;
-          _replyTo = null;
+          _viewOnce = false;
         });
       }
       await _load(showLoader: false);
     } catch (error) {
-      _snack('$error');
+      final message = error.toString();
+      if (message.contains('FREE_GROUP_SEND_LIMIT')) {
+        await _showPremiumRequired();
+      } else {
+        _snack(message);
+      }
     } finally {
       if (mounted) {
         setState(() => _sending = false);
@@ -211,18 +348,348 @@ class _GroupChatPageState extends State<GroupChatPage> {
     });
   }
 
+  Future<void> _pickGalleryPhoto() async {
+    final file = await _photoService.pickFromGallery();
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final extension = file.name.toLowerCase().split('.').last;
+    setState(() {
+      _attachment = PickedAttachment(
+        bytes: bytes,
+        name: file.name.isEmpty
+            ? 'photo-${DateTime.now().millisecondsSinceEpoch}.jpg'
+            : file.name,
+        mimeType: extension == 'png'
+            ? 'image/png'
+            : extension == 'webp'
+                ? 'image/webp'
+                : 'image/jpeg',
+      );
+    });
+  }
+
   Future<void> _pickAttachment() async {
     final attachment = await _photoService.pickFile(
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mp3', 'm4a'],
+      allowedExtensions: [
+        'jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mov',
+        'mp3', 'm4a', 'aac', 'txt', 'csv', 'doc', 'docx',
+        'xls', 'xlsx', 'ppt', 'pptx',
+      ],
     );
     if (attachment != null && mounted) {
       setState(() => _attachment = attachment);
     }
   }
 
+  Future<void> _chooseAttachment() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: Text(_fr ? 'Prendre une photo' : 'Take a photo'),
+              onTap: () => Navigator.pop(sheetContext, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: Text(_fr ? 'Choisir une photo' : 'Choose a photo'),
+              onTap: () => Navigator.pop(sheetContext, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file_rounded),
+              title: Text(_fr ? 'Fichier ou PDF' : 'File or PDF'),
+              onTap: () => Navigator.pop(sheetContext, 'file'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'camera') {
+      await _takePhoto();
+    } else if (action == 'gallery') {
+      await _pickGalleryPhoto();
+    } else if (action == 'file') {
+      await _pickAttachment();
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_recordingVoice) {
+      _voiceLimitTimer?.cancel();
+      _voiceLimitTimer = null;
+      _voiceTicker?.cancel();
+      _voiceTicker = null;
+      _voiceStopwatch.stop();
+      try {
+        final path = await _recorder.stop();
+        if (path == null) {
+          if (mounted) setState(() => _recordingVoice = false);
+          return;
+        }
+        final bytes = await File(path).readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          _recordingVoice = false;
+          _attachment = PickedAttachment(
+            bytes: bytes,
+            name: 'voice-${DateTime.now().millisecondsSinceEpoch}.m4a',
+            mimeType: 'audio/mp4',
+          );
+        });
+      } catch (error) {
+        if (mounted) {
+          setState(() => _recordingVoice = false);
+          _snack('${_fr ? 'Échec de l’enregistrement' : 'Recording failed'}: $error');
+        }
+      }
+      return;
+    }
+
+    try {
+      if (!await _recorder.hasPermission()) {
+        _snack(_fr
+            ? 'Autorise le microphone pour enregistrer un message vocal.'
+            : 'Allow microphone access to record a voice message.');
+        return;
+      }
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/fise_group_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+      _voiceStopwatch.reset();
+      _voiceStopwatch.start();
+      _voiceTicker?.cancel();
+      _voiceTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || !_recordingVoice) return;
+        setState(() => _voiceElapsed = _voiceStopwatch.elapsed);
+      });
+      if (mounted) setState(() { _recordingVoice = true; _voiceElapsed = Duration.zero; });
+      _voiceLimitTimer?.cancel();
+      _voiceLimitTimer = Timer(const Duration(minutes: 40), () {
+        if (!mounted || !_recordingVoice) return;
+        _voiceLimitTimer = null;
+        unawaited(_toggleVoiceRecording());
+        _snack(_fr ? 'La limite de 40 minutes est atteinte. Le vocal est en cours de préparation.' : 'The 40-minute limit is reached. Preparing your voice message.');
+      });
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de démarrer le microphone' : 'Could not start the microphone'}: $error');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteMessage(GroupMessage message) async {
+    final mine = message.senderId == widget.profile.id;
+    final forEveryone = await showDialog<bool?>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer le message ?' : 'Delete message?'),
+        content: Text(_fr
+            ? 'Choisis si tu veux retirer le message uniquement ici ou pour tous les membres.'
+            : 'Choose whether to remove the message only for you or for all members.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, null),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Pour moi' : 'For me'),
+          ),
+          if (mine)
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(_fr ? 'Pour tout le monde' : 'For everyone'),
+            ),
+        ],
+      ),
+    );
+    if (forEveryone == null) return;
+    try {
+      await _service.deleteMessage(
+        groupId: widget.group.id,
+        message: message,
+        forEveryone: forEveryone,
+      );
+      await _load(showLoader: false, markRead: false);
+      if (mounted) {
+        _snack(forEveryone
+            ? (_fr ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
+            : (_fr ? 'Message retiré de ta conversation.' : 'Message removed from your conversation.'));
+      }
+    } catch (error) {
+      if (mounted) _snack('${_fr ? 'Suppression impossible' : 'Could not delete message'}: $error');
+    }
+  }
+
+  Future<void> _openAttachment(
+    GroupMessage message,
+    String url, {
+    bool cacheOffline = true,
+  }) async {
+    final name = message.attachmentName ?? (_fr ? 'Pièce jointe' : 'Attachment');
+    if (!cacheOffline) {
+      // Respecter strictement le comportement éphémère des vues uniques.
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => _GroupAttachmentViewer(
+          url: url,
+          name: name,
+          mimeType: message.attachmentType ?? '',
+          isFrench: _fr,
+        ),
+      ));
+      return;
+    }
+
+    try {
+      final opened = await MessageAttachmentOfflineService().open(
+        userId: widget.profile.id,
+        conversationId: 'group-' + widget.group.id,
+        messageId: message.id,
+        fileName: name,
+        mimeType: message.attachmentType ?? '',
+        signedUrl: url,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: widget.locale,
+          userId: widget.profile.id,
+          resource: opened.resource,
+          localPath: opened.localPath,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Ce fichier doit être ouvert une première fois avec Internet pour rester disponible hors ligne.'
+            : 'Open this file once while online to keep it available offline.');
+      }
+    }
+  }
+
+  Future<void> _openViewOnceAttachment(GroupMessage message) async {
+    try {
+      final url = await _service.openViewOnceAttachment(message.id);
+      if (!mounted) return;
+      await _openAttachment(message, url, cacheOffline: false);
+      await _load(showLoader: false, markRead: false);
+    } catch (_) {
+      if (mounted) {
+        _snack(_fr
+            ? 'Cette pièce jointe a déjà été ouverte ou n’est plus disponible.'
+            : 'This attachment has already been opened or is unavailable.');
+      }
+    }
+  }
+
+  String _formatElapsed(Duration value) {
+    final minutes = value.inMinutes.toString().padLeft(2, '0');
+    final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
   String _formatTime(DateTime value) {
     final local = value.toLocal();
     return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _toggleAnnouncementMode() async {
+    if (_updatingGroup) return;
+    setState(() => _updatingGroup = true);
+    try {
+      final enabled = await _service.setAnnouncementOnly(
+        widget.group.id,
+        !_announcementOnly,
+      );
+      if (!mounted) return;
+      setState(() => _announcementOnly = enabled);
+      _snack(enabled
+          ? (_fr
+              ? 'Groupe verrouillé : seul l’enseignant peut écrire.'
+              : 'Group locked: only the teacher can send messages.')
+          : (_fr
+              ? 'Les messages des membres sont de nouveau autorisés.'
+              : 'Member messages are enabled again.'));
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de modifier le groupe' : 'Could not update group'}: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _updatingGroup = false);
+    }
+  }
+
+  Future<void> _confirmLeaveGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Quitter le groupe ?' : 'Leave group?'),
+        content: Text(_fr
+            ? 'Le groupe disparaîtra de ta liste. Tu pourras le rejoindre de nouveau si tu y es autorisé.'
+            : 'The group will disappear from your list. You can rejoin if you are still eligible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Quitter' : 'Leave'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _service.leaveGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de quitter le groupe' : 'Could not leave group'}: $error');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer définitivement le groupe ?' : 'Delete group permanently?'),
+        content: Text(_fr
+            ? 'Le groupe et son historique de messages seront supprimés pour tous les membres. Cette action est irréversible.'
+            : 'The group and its message history will be removed for all members. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer le groupe' : 'Delete group'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _service.deleteGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de supprimer le groupe' : 'Could not delete group'}: $error');
+      }
+    }
   }
 
   Future<void> _showInfo() async {
@@ -267,7 +734,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _fr ? 'Code FISE unique de l’enseignant' : 'Teacher shared FISE code',
+                          _fr ? 'Code d’invitation' : 'Invitation code',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 6),
@@ -292,6 +759,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                               icon: const Icon(Icons.copy_rounded, size: 18),
                               label: Text(_fr ? 'Copier' : 'Copy'),
                             ),
+                            const SizedBox(width: 8),
 
                           ],
                         ),
@@ -300,6 +768,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   ),
                   const SizedBox(height: 14),
                 ],
+                if (_announcementOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _fr
+                          ? 'Mode annonces activé : seul le propriétaire peut écrire.'
+                          : 'Announcement mode is on: only the owner can send messages.',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 Text(
                   '${_fr ? 'Membres' : 'Members'} (${members.length})',
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -318,7 +796,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           ? (_fr ? 'Enseignant' : 'Teacher')
                           : (_fr ? 'Élève' : 'Student'),
                     ),
-                    trailing: _isOwner && member.userId != widget.profile.id
+                    trailing: _isOwner && member.role == 'student' && member.userId != widget.profile.id
                         ? IconButton(
                             tooltip: _fr ? 'Retirer du groupe' : 'Remove from group',
                             icon: const Icon(Icons.person_remove_alt_1_rounded),
@@ -380,10 +858,60 @@ class _GroupChatPageState extends State<GroupChatPage> {
             icon: Icon(_isOwner ? Icons.vpn_key_rounded : Icons.info_outline_rounded),
             onPressed: _showInfo,
           ),
+          PopupMenuButton<String>(
+            onSelected: (action) {
+              if (action == 'toggle_mode') {
+                _toggleAnnouncementMode();
+              } else if (action == 'leave') {
+                _confirmLeaveGroup();
+              } else if (action == 'delete_group') {
+                _confirmDeleteGroup();
+              }
+            },
+            itemBuilder: (context) => [
+              if (_isOwner)
+                PopupMenuItem(
+                  value: 'toggle_mode',
+                  child: Text(_announcementOnly
+                      ? (_fr ? 'Autoriser les messages des membres' : 'Allow member messages')
+                      : (_fr ? 'Verrouiller : enseignant uniquement' : 'Lock: teacher only')),
+                ),
+              if (!_isOwner)
+                PopupMenuItem(
+                  value: 'leave',
+                  child: Text(_fr ? 'Quitter le groupe' : 'Leave group'),
+                ),
+              if (_isOwner)
+                PopupMenuItem(
+                  value: 'delete_group',
+                  child: Text(_fr ? 'Supprimer le groupe' : 'Delete group'),
+                ),
+            ],
+          ),
         ],
       ),
       body: Column(
         children: [
+          if (_announcementOnly)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFFF3CD),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              child: Row(
+                children: [
+                  const Icon(Icons.lock_rounded, size: 18, color: Color(0xFF795548)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _fr
+                          ? 'Mode annonces : seul l’enseignant peut envoyer des messages.'
+                          : 'Announcement mode: only the teacher can send messages.',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -398,58 +926,83 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         itemBuilder: (context, index) => _bubble(reversed[index]),
                       ),
           ),
-          SafeArea(
+          if (_announcementOnly && !_isOwner)
+            Container(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                _fr
+                    ? 'La conversation est verrouillée par l’enseignant.'
+                    : 'The teacher has locked this conversation.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600),
+              ),
+            ),
+          if (!(_announcementOnly && !_isOwner))
+            SafeArea(
             top: false,
             child: Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_replyTo != null)
-                    ReplyComposerBar(
-                      author: _authorOf(_replyTo!),
-                      snippet: _snippetOf(_replyTo!),
-                      french: _fr,
-                      onCancel: () => setState(() => _replyTo = null),
-                    ),
-                  Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  IconButton(
-                    tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
-                    onPressed: _sending ? null : _takePhoto,
-                    icon: const Icon(Icons.camera_alt_rounded),
+                  IconButton.filledTonal(
+                    tooltip: _fr ? 'Ajouter une pièce jointe' : 'Add attachment',
+                    onPressed: _sending || _recordingVoice ? null : _chooseAttachment,
+                    icon: const Icon(Icons.add_rounded),
                   ),
                   IconButton(
-                    tooltip: _fr ? 'Joindre un fichier' : 'Attach a file',
-                    onPressed: _sending ? null : _pickAttachment,
-                    icon: const Icon(Icons.attach_file_rounded),
+                    tooltip: _viewOnce
+                        ? (_fr ? 'Désactiver la vue unique' : 'Turn off view once')
+                        : (_fr ? 'Envoyer en vue unique' : 'Send as view once'),
+                    onPressed: _sending
+                        ? null
+                        : () {
+                            if (_attachment == null) {
+                              _snack(_fr
+                                  ? 'Ajoute une photo ou un fichier avant d’activer la vue unique.'
+                                  : 'Attach a photo or file before enabling view once.');
+                              return;
+                            }
+                            setState(() => _viewOnce = !_viewOnce);
+                          },
+                    icon: Icon(
+                      _viewOnce ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                      color: _viewOnce ? const Color(0xFF166534) : null,
+                    ),
                   ),
-                  VoiceRecorderButton(
-                    french: _fr,
-                    enabled: !_sending,
-                    onRecorded: (voice) {
-                      setState(() => _attachment = voice);
-                      _send();
-                    },
+                  IconButton(
+                    tooltip: _recordingVoice
+                        ? (_fr ? 'Arrêter et joindre le vocal' : 'Stop and attach voice')
+                        : (_fr ? 'Enregistrer un vocal' : 'Record a voice message'),
+                    onPressed: _sending ? null : _toggleVoiceRecording,
+                    icon: Icon(
+                      _recordingVoice ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                      color: _recordingVoice ? Colors.red : null,
+                    ),
                   ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
                       minLines: 1,
-                      maxLines: 6,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.newline,
+                       maxLines: 8,
                       textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
-                        hintText: _attachment != null
-                            ? '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}'
+                        hintText: _recordingVoice
+                            ? '${_fr ? 'Enregistrement vocal' : 'Recording voice message'} • ${_formatElapsed(_voiceElapsed)}'
+                            : _attachment != null
+                            ? (_viewOnce
+                                ? '${_fr ? 'Vue unique' : 'View once'} : ${_attachment!.name}'
+                                : '${_fr ? 'Pièce jointe' : 'Attachment'} : ${_attachment!.name}')
                             : (_fr ? 'Écrire un message...' : 'Write a message...'),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                        filled: true,
+                        fillColor: const Color(0xFFF4F6F5),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF166534), width: 1.5)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         isDense: true,
                       ),
                     ),
@@ -468,8 +1021,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   ),
                 ],
               ),
-                ],
-              ),
             ),
           ),
         ],
@@ -480,25 +1031,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Widget _bubble(GroupMessage message) {
     final mine = message.senderId == widget.profile.id;
     final isTeacher = message.senderRole == 'teacher';
-    final quoted = _findMessage(message.replyToId);
 
-    return SwipeToReply(
-      enabled: !message.isPending,
-      onReply: () => _startReply(message),
-      child: Row(
-      mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        if (!mine)
-          Padding(
-            padding: const EdgeInsets.only(right: 6, bottom: 8),
-            child: UserAvatar(path: message.senderAvatarPath, name: message.senderName),
-          ),
-        Flexible(
-      child: Container(
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () => (message.pending || message.failed)
+            ? _pendingActions(message)
+            : _confirmDeleteMessage(message),
+        child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
         decoration: BoxDecoration(
           color: mine ? const Color(0xFFDCF8C6) : Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -516,42 +1059,298 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   color: isTeacher ? const Color(0xFF166534) : Colors.blueGrey.shade700,
                 ),
               ),
-            if (message.replyToId != null)
-              QuotedMessage(
-                author: quoted == null ? '' : _authorOf(quoted),
-                snippet: quoted == null
-                    ? (_fr ? 'Message indisponible' : 'Message unavailable')
-                    : _snippetOf(quoted),
-              ),
-            if (message.body.isNotEmpty) Text(message.body),
-            if (message.attachmentPath != null || message.localAttachmentPath != null)
-              MessageAttachmentView(
-                name: message.attachmentName,
-                type: message.attachmentType,
-                localPath: message.localAttachmentPath,
-                remotePath: message.attachmentPath,
-                resolveUrl: _service.signedAttachmentUrl,
-                french: _fr,
-              ),
+            if (message.deletedAt != null)
+              Text(
+                _fr ? 'Ce message a été supprimé' : 'This message was deleted',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+              )
+            else ...[
+              if (message.body.isNotEmpty) Text(message.body),
+              if (message.attachmentPath == null && message.attachmentName != null)
+                Text(_attachmentDisplayLabel(message), style: const TextStyle(fontStyle: FontStyle.italic)),
+              if (message.attachmentPath != null) _attachmentView(message),
+            ],
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                '${_formatTime(message.createdAt)}${message.isPending ? '  ◷' : ''}',
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(fontSize: 10, color: Colors.black45),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    Tooltip(
+                      message: message.failed
+                          ? (_fr ? 'Échec de l’envoi — appuie longuement pour renvoyer' : 'Failed to send — long press to retry')
+                          : message.pending
+                          ? (_fr ? 'En attente de connexion' : 'Waiting for connection')
+                          : message.readCount > 0
+                              ? (message.recipientCount > 0 && message.readCount >= message.recipientCount
+                                  ? (_fr ? 'Lu par tous' : 'Read by everyone')
+                                  : (_fr ? 'Lu par ${message.readCount} membre(s)' : 'Read by ${message.readCount} member(s)'))
+                              : message.recipientCount > 0 && message.deliveredCount >= message.recipientCount
+                                  ? (_fr ? 'Reçu par tous' : 'Delivered to everyone')
+                                  : message.deliveredCount > 0
+                                      ? (_fr ? 'Reçu' : 'Delivered')
+                                      : (_fr ? 'Envoyé' : 'Sent'),
+                      child: Icon(
+                        message.failed
+                            ? Icons.error_outline_rounded
+                            : message.pending
+                            ? Icons.schedule_rounded
+                            : message.deliveredCount > 0 || message.readCount > 0
+                                ? Icons.done_all_rounded
+                                : Icons.done_rounded,
+                        size: 14,
+                        color: message.failed
+                            ? Colors.red
+                            : message.readCount > 0
+                                ? const Color(0xFF128C7E)
+                                : message.deliveredCount > 0
+                                    ? Colors.black54
+                                    : Colors.black45,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
         ),
-      ),
         ),
-        if (mine)
-          Padding(
-            padding: const EdgeInsets.only(left: 6, bottom: 8),
-            child: OwnAvatar(profile: widget.profile),
-          ),
-      ],
-    ),
+      ),
     );
+  }
+
+  String _attachmentDisplayLabel(GroupMessage message) {
+    final type = (message.attachmentType ?? '').toLowerCase();
+    final name = (message.attachmentName ?? '').toLowerCase();
+    if (type.startsWith('audio/') ||
+        name.startsWith('voice-') ||
+        name.endsWith('.m4a')) {
+      return _fr ? '🎤 Message vocal' : '🎤 Voice message';
+    }
+    if (type.startsWith('image/')) {
+      return _fr ? '📷 Photo' : '📷 Photo';
+    }
+    return _fr ? '📎 Fichier' : '📎 File';
+  }
+
+  Widget _attachmentView(GroupMessage message) {
+    final type = message.attachmentType ?? '';
+
+    // Never create a normal signed URL for a view-once message. The Edge
+    // Function atomically claims the view before returning a short-lived URL.
+    if (message.viewOnce) {
+      if (message.senderId == widget.profile.id) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Text(_fr ? 'Envoyé en vue unique' : 'Sent as view once'),
+            ],
+          ),
+        );
+      }
+      if (message.viewedByMe) {
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.visibility_off_rounded, size: 18),
+              const SizedBox(width: 6),
+              Text(_fr ? 'Déjà ouvert' : 'Already opened'),
+            ],
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: OutlinedButton.icon(
+          onPressed: () => _openViewOnceAttachment(message),
+          icon: const Icon(Icons.visibility_off_rounded),
+          label: Text(_fr ? 'Ouvrir une fois' : 'Open once'),
+        ),
+      );
+    }
+
+    return FutureBuilder<String?>(
+      future: _service.signedAttachmentUrl(message.attachmentPath),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        if (url != null &&
+            (type.startsWith('audio/') ||
+                (message.attachmentName ?? '').toLowerCase().startsWith('voice-') ||
+                (message.attachmentName ?? '').toLowerCase().endsWith('.m4a'))) {
+          return VoiceMessageBubble(url: url, isFrench: _fr);
+        }
+
+        if (url != null && type.startsWith('image/')) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: GestureDetector(
+              onTap: () => _openAttachment(message, url),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  url,
+                  width: 220,
+                  height: 180,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return TextButton.icon(
+          onPressed: () => _openAttachment(message, url ?? ''),
+          icon: Icon(type == 'application/pdf'
+              ? Icons.picture_as_pdf_rounded
+              : type.startsWith('video/')
+                  ? Icons.videocam_rounded
+                  : Icons.attach_file_rounded),
+          label: Text(_attachmentDisplayLabel(message)),
+        );
+      },
+    );
+  }
+}
+
+
+class _GroupAttachmentViewer extends StatefulWidget {
+  final String url;
+  final String name;
+  final String mimeType;
+  final bool isFrench;
+
+  const _GroupAttachmentViewer({
+    required this.url,
+    required this.name,
+    required this.mimeType,
+    required this.isFrench,
+  });
+
+  @override
+  State<_GroupAttachmentViewer> createState() => _GroupAttachmentViewerState();
+}
+
+class _GroupAttachmentViewerState extends State<_GroupAttachmentViewer> {
+  PdfControllerPinch? _pdfController;
+  VideoPlayerController? _videoController;
+  bool _loading = false;
+  String? _error;
+
+  bool get _isPdf => widget.mimeType.toLowerCase().contains('pdf');
+  bool get _isVideo => widget.mimeType.toLowerCase().startsWith('video/');
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isPdf) {
+      _loadPdf();
+    } else if (_isVideo) {
+      _loadVideo();
+    }
+  }
+
+  Future<void> _loadPdf() async {
+    setState(() => _loading = true);
+    try {
+      final response = await http.get(Uri.parse(widget.url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      final controller = PdfControllerPinch(
+        document: PdfDocument.openData(Future.value(response.bodyBytes)),
+      );
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _pdfController = controller;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = widget.isFrench ? 'Impossible d’ouvrir ce PDF.' : 'Unable to open this PDF.';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadVideo() async {
+    setState(() => _loading = true);
+    try {
+      final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() {
+        _videoController = controller;
+        _loading = false;
+      });
+      await controller.play();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = widget.isFrench ? 'Impossible de lire cette vidéo.' : 'Unable to play this video.';
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pdfController?.dispose();
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = widget.mimeType.toLowerCase().startsWith('image/');
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        backgroundColor: const Color(0xFF166534),
+        foregroundColor: Colors.white,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : _isPdf
+                  ? (_pdfController == null
+                      ? Center(child: Text(widget.isFrench ? 'PDF indisponible.' : 'PDF unavailable.'))
+                      : PdfViewPinch(controller: _pdfController!))
+                  : _isVideo
+                      ? (_videoController == null
+                          ? Center(child: Text(widget.isFrench ? 'Vidéo indisponible.' : 'Video unavailable.'))
+                          : Center(
+                              child: AspectRatio(
+                                aspectRatio: _videoController!.value.aspectRatio > 0
+                                    ? _videoController!.value.aspectRatio
+                                    : 16 / 9,
+                                child: VideoPlayer(_videoController!),
+                              ),
+                            ))
+                      : isImage
+                          ? Center(child: InteractiveViewer(child: Image.network(widget.url, fit: BoxFit.contain)))
+                          : Center(child: Text(widget.isFrench ? 'Type de fichier non pris en charge.' : 'Unsupported file type.')));
   }
 }

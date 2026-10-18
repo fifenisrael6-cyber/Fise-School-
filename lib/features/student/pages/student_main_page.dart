@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
+import '../../../core/widgets/swipe_tabs_shell.dart';
 import '../../../models/user_profile.dart';
-import '../../../models/forum.dart';
-import '../../../core/services/forum_service.dart';
 import '../../ai/pages/ai_page.dart';
-import '../../forum/pages/forum_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../pages/courses_page.dart';
 import '../pages/assignments_page.dart';
+import '../pages/student_evaluations_page.dart';
 import '../pages/progress_page.dart';
 import '../pages/timetable_page.dart';
 import '../pages/past_papers_page.dart';
-import '../pages/student_evaluations_page.dart';
 import '../pages/bulletin_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../notifications/pages/notifications_page.dart';
-import '../../notifications/widgets/unread_notification_icon.dart';
 
 class StudentMainPage extends StatefulWidget {
   final Locale locale;
@@ -36,66 +33,30 @@ class StudentMainPage extends StatefulWidget {
 }
 
 class _StudentMainPageState extends State<StudentMainPage> {
-  int _index = 0;
-  late UserProfile _profile;
-
-  @override
-  void initState() {
-    super.initState();
-    _profile = widget.profile;
-  }
-
-  @override
-  void didUpdateWidget(covariant StudentMainPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.profile.id != widget.profile.id) {
-      _profile = widget.profile;
-    }
-  }
-
-  List<Widget> get _pages => [
-        _StudentHome(
-          locale: widget.locale,
-          profile: _profile,
-          onOpenTab: (index) => setState(() => _index = index),
-          onSignOut: widget.onSignOut,
-          onProfileChanged: (updated) => setState(() => _profile = updated),
-        ),
-        // La clé force le rechargement de ces onglets quand l'élève change de salle.
-        CoursesPage(
-          key: ValueKey('courses-${_profile.className}'),
-          locale: widget.locale,
-          profile: _profile,
-        ),
-        ForumPage(
-          key: ValueKey('forum-${_profile.className}'),
-          locale: widget.locale,
-          profile: _profile,
-        ),
-        AiPage(locale: widget.locale, profile: _profile),
-        ProfilePage(
-          locale: widget.locale,
-          profile: _profile,
-          onSaved: (updated) => setState(() => _profile = updated),
-        ),
-      ];
-
   @override
   Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
-    return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
-          NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum), label: fr ? 'Forums' : 'Forums'),
-          NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
-          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
-        ],
-      ),
+    return SwipeTabsShell(
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      pagesBuilder: (goToTab) => [
+        _StudentHome(
+          locale: widget.locale,
+          profile: widget.profile,
+          onOpenTab: goToTab,
+          onSignOut: widget.onSignOut,
+        ),
+        CoursesPage(locale: widget.locale, profile: widget.profile),
+        MessagesHubPage(locale: widget.locale, profile: widget.profile),
+        AiPage(locale: widget.locale, profile: widget.profile),
+        ProfilePage(locale: widget.locale, profile: widget.profile),
+      ],
+      destinations: [
+        NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
+        NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+        NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: 'Messages'),
+        NavigationDestination(icon: const Icon(Icons.auto_awesome_outlined), selectedIcon: const Icon(Icons.auto_awesome), label: 'IA'),
+        NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
+      ],
     );
   }
 }
@@ -105,9 +66,8 @@ class _StudentHome extends StatelessWidget {
   final UserProfile profile;
   final ValueChanged<int> onOpenTab;
   final Future<void> Function() onSignOut;
-  final ValueChanged<UserProfile> onProfileChanged;
 
-  const _StudentHome({required this.locale, required this.profile, required this.onOpenTab, required this.onSignOut, required this.onProfileChanged});
+  const _StudentHome({required this.locale, required this.profile, required this.onOpenTab, required this.onSignOut});
 
   @override
   Widget build(BuildContext context) {
@@ -117,10 +77,24 @@ class _StudentHome extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
-          IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () async {
-            final updated = await Navigator.push<UserProfile>(context, MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)));
-            if (updated != null) onProfileChanged(updated);
-          }),
+          IconButton(
+            icon: const Icon(Icons.assignment_outlined),
+            tooltip: fr ? 'Épreuves' : 'Exams',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: fr ? 'Paramètres' : 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile)),
+            ),
+          ),
         ],
       ),
       body: ListView(
@@ -133,34 +107,30 @@ class _StudentHome extends StatelessWidget {
           _RoomCard(profile: profile, locale: locale),
           const SizedBox(height: 14),
           _QuickCard(
+            icon: Icons.insights_outlined,
+            title: fr ? 'Progression' : 'Progress',
+            subtitle: fr ? 'Consulte ta progression scolaire.' : 'View your learning progress.',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(locale: locale, profile: profile))),
+          ),
+          _QuickCard(
             icon: Icons.history_edu_rounded,
             title: fr ? 'Annales d\'examens' : 'Past exam papers',
             subtitle: fr ? 'Sujets et corrigés des années précédentes.' : 'Papers and corrected exams from previous years.',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale, profile: profile))),
           ),
           _QuickCard(
-            icon: Icons.event_available_rounded,
-            title: fr ? 'Calendrier des évaluations' : 'Exam schedule',
-            subtitle: fr ? 'Dates officielles et accès au sujet PDF pendant l’épreuve.' : 'Official dates and PDF access during the exam.',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StudentEvaluationsPage(locale: locale, profile: profile))),
-          ),
-          _QuickCard(
             icon: Icons.grading_rounded,
             title: fr ? 'Notes et bulletin' : 'Marks and report card',
             subtitle: fr ? 'Consulte tes notes, ton rang et exporte ton bulletin en PDF.' : 'See your marks, rank and export your report card.',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinPage(locale: locale, studentId: profile.id, studentName: '${profile.firstName} ${profile.lastName}'.trim(), className: profile.className))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinPage(locale: locale, studentId: profile.id, studentName: profile.firstName))),
           ),
           const SizedBox(height: 8),
           Row(children: [
-            Expanded(child: _SmallAction(icon: Icons.notifications_outlined, leading: UnreadNotificationIcon(userId: profile.id), label: fr ? 'Notifications' : 'Notifications', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(locale: locale, userId: profile.id))))),
-            const SizedBox(width: 10),
-            Expanded(child: _SmallAction(icon: Icons.chat_bubble_outline, label: fr ? 'Messages' : 'Messages', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MessagesHubPage(locale: locale, profile: profile))))),
+            Expanded(child: _SmallAction(icon: Icons.notifications_outlined, label: fr ? 'Notifications' : 'Notifications', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(locale: locale, userId: profile.id))))),
           ]),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: _SmallAction(icon: Icons.assignment_outlined, label: fr ? 'QCM' : 'Quizzes', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignmentsPage(locale: locale, profile: profile))))),
-            const SizedBox(width: 10),
-            Expanded(child: _SmallAction(icon: Icons.insights_outlined, label: fr ? 'Progression' : 'Progress', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressPage(locale: locale, profile: profile))))),
             const SizedBox(width: 10),
             Expanded(child: _SmallAction(icon: Icons.calendar_month_outlined, label: fr ? 'Emploi du temps' : 'Schedule', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TimetablePage(locale: locale, profile: profile))))),
           ]),
@@ -184,19 +154,11 @@ class _RoomCard extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Ma salle' : 'My classroom', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
           const SizedBox(height: 10),
-          FutureBuilder<List<ForumClass>>(
-            future: ForumService().listClasses(profile),
-            builder: (context, snapshot) {
-              final rooms = snapshot.data ?? const <ForumClass>[];
-              if (rooms.isEmpty) {
-                return Text(profile.className?.trim().isNotEmpty == true
-                    ? profile.className!
-                    : (fr ? 'Salle non affectée.' : 'No classroom assigned yet.'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800));
-              }
-              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ...rooms.map((room) => Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(room.displayName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)))),
-              ]);
-            },
+          Text(
+            profile.className?.trim().isNotEmpty == true
+                ? profile.className!
+                : (fr ? 'Salle non affectée.' : 'No classroom assigned yet.'),
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           if (profile.examLevel != null || profile.subsystem != null) ...[const SizedBox(height: 8), Text([profile.examLevel, profile.subsystem, profile.sector].whereType<String>().where((v) => v.trim().isNotEmpty).join(' • '))],
         ]),
@@ -234,16 +196,10 @@ class _QuickCard extends StatelessWidget {
 
 class _SmallAction extends StatelessWidget {
   final IconData icon;
-  final Widget? leading;
   final String label;
   final VoidCallback onTap;
 
-  const _SmallAction({
-    required this.icon,
-    this.leading,
-    required this.label,
-    required this.onTap,
-  });
+  const _SmallAction({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) => Card(
@@ -252,7 +208,7 @@ class _SmallAction extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [leading ?? Icon(icon, color: const Color(0xFF166534), size: 24), const SizedBox(height: 8), Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))]),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: const Color(0xFF166534), size: 24), const SizedBox(height: 8), Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))]),
       ),
     ),
   );

@@ -1,13 +1,12 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
 import '../offline/json_cache.dart';
-import '../offline/connectivity_service.dart';
 
 class ProfileService {
   SupabaseClient get _client => Supabase.instance.client;
-
-  String _cacheKey(String userId) => 'profile_$userId';
 
   Future<UserProfile?> getCurrentProfile() async {
     final user = _client.auth.currentUser;
@@ -15,9 +14,18 @@ class ProfileService {
       return null;
     }
 
-    // Do not wait for a remote request when Android reports no network.
-    if (!await ConnectivityService().isOnline()) {
-      return _readCachedProfile(user.id);
+    final cacheKey = 'profile_${user.id}';
+    // Un compte déjà utilisé sur cet appareil retrouve immédiatement son
+    // interface locale. La mise à jour serveur se fait sans bloquer l'écran.
+    final cached = await JsonCache.instance.read(cacheKey);
+    if (cached is Map) {
+      try {
+        final profile = UserProfile.fromMap(Map<String, dynamic>.from(cached));
+        unawaited(_refreshProfile(cacheKey, user.id));
+        return profile;
+      } catch (_) {
+        // Cache invalide : réessayer avec les données serveur.
+      }
     }
 
     try {
@@ -26,31 +34,39 @@ class ProfileService {
           .select()
           .eq('id', user.id)
           .maybeSingle()
-          .timeout(const Duration(seconds: 2));
-
+          .timeout(JsonCache.networkTimeout);
       if (data == null) {
-        return await _readCachedProfile(user.id);
+        return null;
       }
-      final profile = UserProfile.fromMap(Map<String, dynamic>.from(data));
       try {
-        await JsonCache.instance.write(_cacheKey(user.id), profile.toMap());
+        await JsonCache.instance.write(cacheKey, data);
       } catch (_) {}
-      return profile;
+      return UserProfile.fromMap(data);
     } catch (_) {
-      // The last known profile lets a previously signed-in user open the app
-      // immediately without a network connection.
-      return await _readCachedProfile(user.id);
+      // Relecture défensive si un cache a été écrit entre temps.
+      final fallback = await JsonCache.instance.read(cacheKey);
+      if (fallback is Map) {
+        return UserProfile.fromMap(Map<String, dynamic>.from(fallback));
+      }
+      rethrow;
     }
   }
 
-  Future<UserProfile?> _readCachedProfile(String userId) async {
-    final raw = await JsonCache.instance.read(_cacheKey(userId));
-    if (raw is! Map) return null;
+  Future<void> _refreshProfile(String cacheKey, String userId) async {
     try {
-      final profile = UserProfile.fromMap(Map<String, dynamic>.from(raw));
-      return profile.id == userId ? profile : null;
+      final data = await _client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle()
+          .timeout(JsonCache.networkTimeout);
+      if (data == null) {
+        await JsonCache.instance.remove(cacheKey);
+        return;
+      }
+      await JsonCache.instance.write(cacheKey, data);
     } catch (_) {
-      return null;
+      // Le réseau reste facultatif pour l'affichage de l'espace utilisateur.
     }
   }
 
@@ -73,9 +89,7 @@ class ProfileService {
         .eq('id', user.id)
         .select()
         .single();
-    final profile = UserProfile.fromMap(Map<String, dynamic>.from(data));
-    await JsonCache.instance.write(_cacheKey(user.id), profile.toMap());
-    return profile;
+    return UserProfile.fromMap(data);
   }
 
   Future<UserProfile> saveCurrentProfile({
@@ -119,19 +133,12 @@ class ProfileService {
       className: className,
     );
 
-    final payload = profile.toMap();
-    // Do not erase an existing language option during legacy signup/profile
-    // saves that do not yet pass this optional field.
-    if (profile.languageOption == null) {
-      payload.remove('language_option');
-    }
     final data = await _client
         .from('profiles')
-        .upsert(payload)
+        .upsert(profile.toMap())
         .select()
         .single();
-    final saved = UserProfile.fromMap(Map<String, dynamic>.from(data));
-    await JsonCache.instance.write(_cacheKey(user.id), saved.toMap());
-    return saved;
+
+    return UserProfile.fromMap(data);
   }
 }

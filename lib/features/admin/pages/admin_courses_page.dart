@@ -1,9 +1,14 @@
 
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/pedagogy_service.dart';
 import 'school_classes_page.dart';
 
@@ -40,24 +45,27 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       _error = null;
     });
     try {
-      final rows = await _client
-          .from('courses')
-          .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
-          .order('created_at', ascending: false);
-      if (!mounted) {
-        return;
-      }
+      final userId = _client.auth.currentUser?.id ?? 'anonymous';
+      final rows = await JsonCache.instance.cachedRead<List<Map<String, dynamic>>>(
+        key: 'admin_courses_$userId',
+        fetch: () async => await _client
+            .from('courses')
+            .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
+            .order('created_at', ascending: false) as Object?,
+        decode: (raw) => (raw as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false),
+      );
+      if (!mounted) return;
       setState(() {
-        _items = List<Map<String, dynamic>>.from(rows);
+        _items = rows;
         _loading = false;
       });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = error.toString();
       });
     }
   }
@@ -106,7 +114,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
 
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
-      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,is_active').eq('is_active', true).order('display_name'),
+      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,is_active,exam_level_id,series_id,specialty_id').eq('is_active', true).order('display_name'),
     );
     if (!mounted) {
       return;
@@ -133,22 +141,68 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     bool published = true;
     bool saving = false;
 
-    Future<void> loadSubjects(StateSetter setDialog) async {
-      final rows = await _client.from('class_subjects').select('subject_id,subjects(id,name_fr,name_en,code)').eq('class_id', selectedClass!['id']).eq('is_active', true).order('position');
-      subjects = List<Map<String, dynamic>>.from(rows);
-      selectedSubject = subjects.isEmpty ? null : subjects.first['subjects'] as Map<String, dynamic>;
+    Future<void> loadCurricula(StateSetter setDialog) async {
       curricula = [];
       chapters = [];
       selectedCurriculum = null;
       selectedChapter = null;
-      if (selectedSubject != null) {
-        curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', selectedSubject!['id']).eq('is_active', true).order('title_fr'));
-        selectedCurriculum = curricula.isEmpty ? null : curricula.first;
-        if (selectedCurriculum != null) {
-          chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position'));
-          selectedChapter = chapters.isEmpty ? null : chapters.first;
-        }
+      final classroom = selectedClass;
+      final subject = selectedSubject;
+      if (classroom == null || subject == null) {
+        setDialog(() {});
+        return;
       }
+
+      dynamic query = _client
+          .from('curricula')
+          .select()
+          .eq('subject_id', subject['id'])
+          .eq('subsystem', classroom['subsystem'])
+          .eq('sector', classroom['sector'])
+          .eq('is_active', true);
+      final levelId = classroom['exam_level_id'];
+      query = levelId == null
+          ? query.isFilter('exam_level_id', null)
+          : query.eq('exam_level_id', levelId);
+      final seriesId = classroom['series_id'];
+      query = seriesId == null
+          ? query.isFilter('series_id', null)
+          : query.eq('series_id', seriesId);
+      final specialtyId = classroom['specialty_id'];
+      query = specialtyId == null
+          ? query.isFilter('specialty_id', null)
+          : query.eq('specialty_id', specialtyId);
+
+      curricula = List<Map<String, dynamic>>.from(
+        await query.order('title_fr'),
+      );
+      selectedCurriculum = curricula.isEmpty ? null : curricula.first;
+      if (selectedCurriculum != null) {
+        chapters = List<Map<String, dynamic>>.from(
+          await _client
+              .from('course_chapters')
+              .select()
+              .eq('curriculum_id', selectedCurriculum!['id'])
+              .eq('is_active', true)
+              .order('position'),
+        );
+        selectedChapter = chapters.isEmpty ? null : chapters.first;
+      }
+      setDialog(() {});
+    }
+
+    Future<void> loadSubjects(StateSetter setDialog) async {
+      final rows = await _client
+          .from('class_subjects')
+          .select('subject_id,subjects(id,name_fr,name_en,code)')
+          .eq('class_id', selectedClass!['id'])
+          .eq('is_active', true)
+          .order('position');
+      subjects = List<Map<String, dynamic>>.from(rows);
+      selectedSubject = subjects.isEmpty
+          ? null
+          : Map<String, dynamic>.from(subjects.first['subjects'] as Map);
+      await loadCurricula(setDialog);
       setDialog(() {});
     }
 
@@ -184,22 +238,21 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                       decoration: InputDecoration(labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom'),
                       items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
                       onChanged: saving ? null : (value) async {
-                        selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
-                        if (value != null) { curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', value['id']).eq('is_active', true).order('title_fr')); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
-                        setDialog(() {});
+                        selectedSubject = value;
+                        await loadCurricula(setDialog);
                       },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedCurriculum,
-                      decoration: InputDecoration(labelText: _fr ? 'Programme (facultatif)' : 'Curriculum (optional)'),
+                      decoration: InputDecoration(labelText: _fr ? 'Programme' : 'Curriculum'),
                       items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
                       onChanged: saving ? null : (value) async { selectedCurriculum = value; selectedChapter = null; chapters = value == null ? [] : List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', value['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; setDialog(() {}); },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedChapter,
-                      decoration: InputDecoration(labelText: _fr ? 'Chapitre (facultatif)' : 'Chapter (optional)'),
+                      decoration: InputDecoration(labelText: _fr ? 'Chapitre' : 'Chapter'),
                       items: chapters.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
                       onChanged: saving ? null : (value) => setDialog(() => selectedChapter = value),
                     ),
@@ -216,7 +269,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     SwitchListTile(value: published, onChanged: saving ? null : (v) => setDialog(() => published = v), title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'), contentPadding: EdgeInsets.zero),
                     const SizedBox(height: 8),
                     FilledButton.icon(
-                      onPressed: saving || selectedSubject == null || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
+                      onPressed: saving || selectedSubject == null || selectedCurriculum == null || selectedChapter == null || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
                         setDialog(() => saving = true);
                         try {
                           await _courses.saveCourse(
@@ -233,38 +286,19 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             contentEn: contentEn.text,
                             status: published ? 'published' : 'draft',
                           );
+                          if (published) {
+                            // Generate the chapter's AI QCM in the background.
+                            // Course publication remains successful if Gemini is temporarily unavailable.
+                            unawaited(_courses.generateChapterQuiz(selectedChapter!['id'].toString()));
+                          }
                           if (sheetContext.mounted) {
                             Navigator.pop(sheetContext);
                           }
                           await _load();
-                        } on PostgrestException catch (e) {
-                          setDialog(() => saving = false);
-                          if (!sheetContext.mounted) {
-                            return;
-                          }
-                          final message = e.code == 'P0001' &&
-                                  e.message.toLowerCase().contains('curriculum is not active')
-                              ? (_fr
-                                  ? 'Le programme sélectionné est inactif. Choisissez un programme actif ou créez le cours sans programme.'
-                                  : 'The selected curriculum is inactive. Choose an active curriculum or create the course without a curriculum.')
-                              : (_fr
-                                  ? 'Impossible de créer le cours : ' + e.message
-                                  : 'Unable to create the course: ' + e.message);
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
-                            SnackBar(content: Text(message)),
-                          );
                         } catch (e) {
                           setDialog(() => saving = false);
                           if (sheetContext.mounted) {
-                            ScaffoldMessenger.of(sheetContext).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _fr
-                                      ? 'Impossible de créer le cours.'
-                                      : 'Unable to create the course.',
-                                ),
-                              ),
-                            );
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text(e.toString())));
                           }
                         }
                       },
@@ -320,6 +354,83 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     } catch (e) { _snack(_fr ? 'Échec de l’envoi : $e' : 'Upload failed: $e'); }
   }
 
+  Future<void> _viewResources(Map<String, dynamic> course) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      _snack(_fr ? 'Connectez-vous pour ouvrir les fichiers.' : 'Sign in to open files.');
+      return;
+    }
+    try {
+      final resources = await _resources.listForCourse(course['id'].toString());
+      if (!mounted) return;
+      if (resources.isEmpty) {
+        _snack(_fr ? 'Aucun fichier dans ce cours.' : 'No files in this course.');
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.72,
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              itemCount: resources.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final resource = resources[index];
+                final icon = switch (resource.resourceType) {
+                  'pdf' => Icons.picture_as_pdf_rounded,
+                  'image' => Icons.image_rounded,
+                  'video' => Icons.video_library_rounded,
+                  'audio' => Icons.audiotrack_rounded,
+                  _ => Icons.insert_drive_file_rounded,
+                };
+                return ListTile(
+                  leading: Icon(icon, color: const Color(0xFF166534)),
+                  title: Text(resource.fileName, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(_fr ? 'Téléchargé à la première ouverture' : 'Downloaded when first opened'),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    try {
+                      final localPath = await CourseOfflineService().openResource(
+                        userId: userId,
+                        resource: resource,
+                      );
+                      if (!mounted) return;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OfflineResourceViewer(
+                            locale: widget.locale,
+                            userId: userId,
+                            resource: resource,
+                            localPath: localPath,
+                          ),
+                        ),
+                      );
+                    } catch (_) {
+                      if (mounted) {
+                        _snack(_fr
+                            ? 'Ouvrez ce fichier une première fois avec Internet pour le garder hors ligne.'
+                            : 'Open this file once while online to keep it available offline.');
+                      }
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        _snack(_fr ? 'Impossible de charger les fichiers : $error' : 'Unable to load files: $error');
+      }
+    }
+  }
+
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   @override
@@ -348,7 +459,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           final c = _items[i];
           final room = (c['school_classes'] is Map) ? Map<String, dynamic>.from(c['school_classes'] as Map) : <String, dynamic>{};
           final subject = (c['subjects'] is Map) ? Map<String, dynamic>.from(c['subjects'] as Map) : <String, dynamic>{};
-          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'resource') _addResource(c); }, itemBuilder: (_) => [PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file'))])));
+          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'resource') _addResource(c); if (v == 'open') _viewResources(Map<String, dynamic>.from(c)); }, itemBuilder: (_) => [PopupMenuItem(value: 'open', child: Text(_fr ? 'Ouvrir les fichiers' : 'Open files')), PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file'))])));
         })))
       ]),
     );

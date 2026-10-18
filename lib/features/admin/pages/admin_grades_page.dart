@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/grade_service.dart';
-import '../../../models/forum.dart';
 import '../../../models/grades.dart';
 import '../../student/pages/bulletin_page.dart';
 import '../../teacher/pages/grades_entry_page.dart';
@@ -184,7 +183,7 @@ class _CoefficientsTab extends StatefulWidget {
 
 class _CoefficientsTabState extends State<_CoefficientsTab> {
   final _service = GradeService();
-  List<ForumClass> _classes = const [];
+  List<GradeClassOption> _classes = const [];
   List<GradeSubject> _subjects = const [];
   String? _classId;
   bool _loading = true;
@@ -234,7 +233,7 @@ class _CoefficientsTabState extends State<_CoefficientsTab> {
       if (mounted) {
         setState(() => _subjects = s);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         _snack(_fr ? 'Matières indisponibles.' : 'Subjects unavailable.');
       }
@@ -322,7 +321,7 @@ class _BulletinsTab extends StatefulWidget {
 
 class _BulletinsTabState extends State<_BulletinsTab> {
   final _service = GradeService();
-  List<ForumClass> _classes = const [];
+  List<GradeClassOption> _classes = const [];
   List<RosterStudent> _roster = const [];
   String? _classId;
   bool _loading = true;
@@ -369,7 +368,7 @@ class _BulletinsTabState extends State<_BulletinsTab> {
       if (mounted) {
         setState(() => _roster = r);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_fr ? 'Liste des élèves indisponible.' : 'Student list unavailable.')),

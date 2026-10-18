@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/services/forum_service.dart';
 import '../../../core/services/grade_service.dart';
-import '../../../models/forum.dart';
 import '../../../models/grades.dart';
 import '../../../models/user_profile.dart';
 
@@ -30,7 +28,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
   bool _saving = false;
   String? _error;
 
-  List<ForumClass> _classes = const [];
+  List<GradeClassOption> _classes = const [];
   List<GradeSubject> _subjects = const [];
   List<GradePeriod> _periods = const [];
   List<RosterStudent> _roster = const [];
@@ -74,7 +72,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
     try {
       final classes = widget.asAdmin
           ? await _service.listAllClasses()
-          : await ForumService().listClasses(widget.profile!);
+          : await _service.listTeacherClasses(widget.profile!.id);
       final periods = await _service.listPeriods();
       if (!mounted) {
         return;
@@ -84,7 +82,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         _periods = periods;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -112,7 +110,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         return;
       }
       setState(() => _subjects = subjects);
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         _snack(_fr ? 'Matières indisponibles.' : 'Subjects unavailable.');
       }
@@ -143,7 +141,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
         _roster = roster;
         _loadingGrid = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }

@@ -1,11 +1,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/admin_school_service.dart';
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
 import '../../../models/exam_catalog.dart';
 import '../../../models/past_paper.dart';
+import '../../student/pages/past_paper_viewer_page.dart';
 import '../../../models/school_class.dart';
 import '../widgets/class_target_picker.dart';
 
@@ -335,6 +337,37 @@ class _AdminPastPapersPageState extends State<AdminPastPapersPage> {
     }
   }
 
+  Future<void> _openPaper(PastPaper paper) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr ? 'Session indisponible.' : 'Session unavailable.')),
+      );
+      return;
+    }
+    final name = paper.fileName.toLowerCase();
+    final isPdf = name.endsWith('.pdf');
+    final isImage = ['.png', '.jpg', '.jpeg', '.webp'].any(name.endsWith);
+    if (!isPdf && !isImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr ? 'Format non pris en charge.' : 'Unsupported file format.')),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PastPaperViewerPage(
+          userId: userId,
+          resourceId: 'past-paper-${paper.id}',
+          signedUrlProvider: () => _service.signedUrl(paper.filePath),
+          title: paper.fileName,
+          isPdf: isPdf,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -361,6 +394,7 @@ class _AdminPastPapersPageState extends State<AdminPastPapersPage> {
                           final exam = _examName(p.examId);
                           return Card(
                             child: ListTile(
+                              onTap: () => _openPaper(p),
                               leading: Icon(p.isCorrection ? Icons.task_alt : Icons.description_outlined),
                               title: Text(p.subjectFor(widget.locale.languageCode), style: const TextStyle(fontWeight: FontWeight.w700)),
                               subtitle: Text([if (exam.isNotEmpty) exam, '${p.year}', _audienceLabel(p), p.isPublished ? (_fr ? 'publiée' : 'published') : (_fr ? 'masquée' : 'hidden')].join(' · ')),

@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,25 +23,12 @@ class PhotoService {
   PhotoService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  /// Dernière photo de profil connue de l'utilisateur connecté. Les écrans de
-  /// messagerie l'écoutent pour afficher la nouvelle photo tout de suite,
-  /// sans attendre un redémarrage de l'application.
-  static final ValueNotifier<({String userId, String? path})?> ownAvatar =
-      ValueNotifier(null);
-
-  Future<XFile?> takePhoto({double? maxWidth}) {
-    return _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
-      maxWidth: maxWidth,
-    );
+  Future<XFile?> takePhoto() {
+    return _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
   }
 
-  Future<XFile?> pickFromGallery({double? maxWidth}) => _picker.pickImage(
-    source: ImageSource.gallery,
-    imageQuality: 85,
-    maxWidth: maxWidth,
-  );
+  Future<XFile?> pickFromGallery() =>
+      _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
 
   Future<PickedAttachment?> pickFile({
     List<String>? allowedExtensions,
@@ -80,6 +66,8 @@ class PhotoService {
         return 'application/pdf';
       case 'mp4':
         return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
       case 'mp3':
       case 'm4a':
       case 'aac':
@@ -119,7 +107,6 @@ class PhotoService {
       ),
     );
     await _client.from('profiles').update({'avatar_path': path}).eq('id', userId);
-    ownAvatar.value = (userId: userId, path: path);
     return path;
   }
 
@@ -128,7 +115,6 @@ class PhotoService {
       await _client.storage.from('profile-photos').remove([path]);
     }
     await _client.from('profiles').update({'avatar_path': null}).eq('id', userId);
-    ownAvatar.value = (userId: userId, path: null);
   }
 
   Future<String?> signedUrl(String? path) async {

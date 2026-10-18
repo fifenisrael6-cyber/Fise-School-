@@ -1,14 +1,9 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/past_paper.dart';
 import '../offline/json_cache.dart';
-import '../offline/connectivity_service.dart';
+import 'free_tier_service.dart';
 
 class PastPaperService {
   PastPaperService({SupabaseClient? client})
@@ -16,81 +11,65 @@ class PastPaperService {
 
   final SupabaseClient _client;
   static const bucket = 'past-papers';
-  static const _timeout = Duration(seconds: 3);
-
-  String _cacheKey() => 'past_papers_${_client.auth.currentUser?.id ?? 'signed_out'}';
 
   Future<List<PastPaper>> list({bool includeUnpublished = false}) async {
-    final key = _cacheKey();
-    if (!await ConnectivityService().isOnline()) {
-      final cached = await JsonCache.instance.read(key);
-      if (cached is List) {
-        return cached.whereType<Map>()
-            .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row)))
-            .where((paper) => includeUnpublished || paper.isPublished)
-            .toList(growable: false);
-      }
-    }
+    final user = _client.auth.currentUser;
+    final userId = user?.id ?? 'anonymous';
+    final papers = await JsonCache.instance.cachedRead<List<PastPaper>>(
+      key: 'past_papers_${userId}_${includeUnpublished ? 'all' : 'published'}',
+      fetch: () async {
+        var query = _client.from('past_papers').select();
+        if (!includeUnpublished) {
+          query = query.eq('is_published', true);
+        }
+        return await query
+            .order('exam_year', ascending: false)
+            .order('subject_fr') as Object?;
+      },
+      decode: (raw) => (raw as List)
+          .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row as Map)))
+          .toList(growable: false),
+    );
+
+    // Admin screens need the complete catalogue. Student free access is limited
+    // to two distinct annals, tracked by Supabase rather than only by the UI.
+    if (includeUnpublished || user == null) return papers;
     try {
-      var query = _client.from('past_papers').select();
-      if (!includeUnpublished) {
-        query = query.eq('is_published', true);
+      final profile = await _client.from('profiles').select('role')
+          .eq('id', user.id).maybeSingle();
+      if (profile?['role'] != 'student') return papers;
+      final premium = await _client.rpc(
+        'is_student_premium',
+        params: {'p_user_id': user.id},
+      );
+      if (premium == true) return papers;
+
+      final freeTier = FreeTierService(client: _client);
+      final previouslyGranted = await freeTier.cachedResourceIds('annal');
+      final ordered = [...papers]..sort((a, b) {
+        final aGranted = previouslyGranted.contains(a.id);
+        final bGranted = previouslyGranted.contains(b.id);
+        if (aGranted == bGranted) return 0;
+        return aGranted ? -1 : 1;
+      });
+      final allowedIds = <String>{};
+      for (final paper in ordered) {
+        if (await freeTier.consume('annal', paper.id)) {
+          allowedIds.add(paper.id);
+        } else {
+          break;
+        }
       }
-      final rows = await query
-          .order('exam_year', ascending: false)
-          .order('subject_fr')
-          .timeout(_timeout);
-      final raw = rows.map((row) => Map<String, dynamic>.from(row)).toList();
-      try {
-        await JsonCache.instance.write(key, raw);
-      } catch (_) {}
-      return raw.map(PastPaper.fromMap).toList(growable: false);
+      return papers.where((paper) => allowedIds.contains(paper.id)).toList(growable: false);
     } catch (_) {
-      final cached = await JsonCache.instance.read(key);
-      if (cached is List) {
-        final papers = cached
-            .whereType<Map>()
-            .map((row) => PastPaper.fromMap(Map<String, dynamic>.from(row)))
-            .where((paper) => includeUnpublished || paper.isPublished)
-            .toList(growable: false);
-        return papers;
-      }
-      rethrow;
+      // Fail closed for online catalogue access if free-tier rights cannot be
+      // verified; previously cached content remains on the device for offline use.
+      return const <PastPaper>[];
     }
   }
 
   Future<String> signedUrl(String path) =>
-      _client.storage.from(bucket).createSignedUrl(path, 3600).timeout(_timeout);
-
-  Future<String?> localFilePath(PastPaper paper) async {
-    try {
-      final base = await getApplicationDocumentsDirectory();
-      final dir = Directory(p.join(base.path, 'fise_past_papers',
-          _client.auth.currentUser?.id ?? 'signed_out'));
-      final safe = paper.fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      final file = File(p.join(dir.path, '${paper.id}_$safe'));
-      if (await file.exists() && await file.length() > 0) return file.path;
-    } catch (_) {}
-    return null;
-  }
-
-  Future<String> download(PastPaper paper) async {
-    final existing = await localFilePath(paper);
-    if (existing != null) return existing;
-    final url = await signedUrl(paper.filePath);
-    final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 45));
-    if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) {
-      throw HttpException('Téléchargement du document impossible (HTTP ${response.statusCode}).');
-    }
-    final base = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(base.path, 'fise_past_papers',
-        _client.auth.currentUser?.id ?? 'signed_out'));
-    await dir.create(recursive: true);
-    final safe = paper.fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    final file = File(p.join(dir.path, '${paper.id}_$safe'));
-    await file.writeAsBytes(response.bodyBytes, flush: true);
-    return file.path;
-  }
+      _client.storage.from(bucket).createSignedUrl(path, 3600);
 
   String _safeName(String name) =>
       name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
@@ -126,12 +105,15 @@ class PastPaperService {
     if (user == null) {
       throw const AuthException('Session utilisateur absente.');
     }
+    if (examId == null || examId.trim().isEmpty) {
+      throw ArgumentError('Une annale doit être associée à un examen.');
+    }
     final bytes = file.bytes;
     if (bytes == null || bytes.isEmpty) {
       throw StateError('Fichier illisible ou vide.');
     }
     final path =
-        '${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
+        '${user.id}/${DateTime.now().millisecondsSinceEpoch}/${_safeName(file.name)}';
     await _client.storage.from(bucket).uploadBinary(
           path,
           bytes,
@@ -155,10 +137,16 @@ class PastPaperService {
         'file_path': path,
         'file_name': file.name,
         'created_by': user.id,
+        'is_published': false,
       }).select('id').single();
       paperId = row['id'].toString();
-      // Liste vide = visible par toutes les salles.
-      await setTargets(paperId, classIds);
+      // Les annales d'examen sont diffusées par examen, pas par salle.
+      // Les anciennes cibles restent possibles pour les appels d'administration
+      // qui les utilisent encore; l'enseignant ne fournit plus de cibles de salles.
+      if (classIds.isNotEmpty) {
+        await setTargets(paperId, classIds);
+      }
+      await setPublished(paperId, true);
     } catch (_) {
       // Nettoyage : ne pas laisser un fichier orphelin ni une annale ouverte à tous
       // si l'enregistrement des salles échoue.
@@ -175,10 +163,67 @@ class PastPaperService {
   }
 
   Future<void> setPublished(String id, bool published) async {
-    await _client
+    final updated = await _client
         .from('past_papers')
-        .update({'is_published': published, 'updated_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', id);
+        .update({
+          'is_published': published,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+    if (updated == null) {
+      throw StateError(
+        'Publication refusée : vérifiez les salles destinataires et vos autorisations.',
+      );
+    }
+  }
+
+  Future<void> updateMetadata({
+    required String id,
+    required String examId,
+    required String subsystem,
+    required int year,
+    required String subjectFr,
+    required String subjectEn,
+    required String kind,
+    String? session,
+  }) async {
+    if (examId.trim().isEmpty) {
+      throw ArgumentError('Une annale doit être associée à un examen.');
+    }
+    if (year < 1990 || year > 2100) {
+      throw ArgumentError('Année d’épreuve invalide.');
+    }
+    if (subjectFr.trim().isEmpty) {
+      throw ArgumentError('La matière est obligatoire.');
+    }
+
+    final updated = await _client
+        .from('past_papers')
+        .update({
+          'exam_id': examId,
+          'subsystem': subsystem,
+          'exam_year': year,
+          'session_label': (session == null || session.trim().isEmpty)
+              ? null
+              : session.trim(),
+          'subject_fr': subjectFr.trim(),
+          'subject_en': subjectEn.trim().isEmpty
+              ? subjectFr.trim()
+              : subjectEn.trim(),
+          'kind': kind,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+
+    if (updated == null) {
+      throw StateError(
+        'Modification refusée : vérifiez vos autorisations et le sous-système de l’examen.',
+      );
+    }
   }
 
   Future<void> delete(PastPaper paper) async {

@@ -42,6 +42,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   Lesson? _selectedLesson;
 
   String _status = 'draft';
+  DateTime? _startsAt;
   DateTime? _dueAt;
   bool _saving = false;
 
@@ -102,6 +103,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
         instructionsEn: _instructionsEnController.text.trim().isEmpty
             ? null
             : _instructionsEnController.text.trim(),
+        startsAt: _startsAt,
         dueAt: _dueAt,
         status: _status,
         maxScore: maxScore,
@@ -219,15 +221,55 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       return;
     }
 
+    final selected = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+    if (_startsAt != null && !selected.isAfter(_startsAt!)) {
+      _showMessage(_isEnglish ? 'The deadline must be after the opening time.' : 'La date limite doit être après l’ouverture.');
+      return;
+    }
     setState(() {
-      _dueAt = DateTime(
-        pickedDate.year,
-        pickedDate.month,
-        pickedDate.day,
-        pickedTime.hour,
-        pickedTime.minute,
-      );
+      _dueAt = selected;
     });
+  }
+
+  Future<void> _pickStartDate() async {
+    final now = DateTime.now();
+    final pickedDate = await showDatePicker(
+      context: context,
+      firstDate: now,
+      lastDate: DateTime(now.year + 5, now.month, now.day),
+      initialDate: _startsAt ?? now,
+    );
+    if (!mounted || pickedDate == null) return;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: _startsAt != null
+          ? TimeOfDay.fromDateTime(_startsAt!)
+          : TimeOfDay.now(),
+    );
+    if (!mounted || pickedTime == null) return;
+    final selected = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+    if (_dueAt != null && !selected.isBefore(_dueAt!)) {
+      _showMessage(_isEnglish ? 'The start must be before the deadline.' : 'Le début doit précéder la date limite.');
+      return;
+    }
+    setState(() => _startsAt = selected);
+  }
+
+  String _formatStartDate() {
+    if (_startsAt == null) return _isEnglish ? 'Immediately when published' : 'Dès la publication';
+    final date = _startsAt!.toLocal();
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$day/$month/$year • $hour:$minute';
   }
 
   String _formatDueDate() {
@@ -277,6 +319,8 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
             _buildInstructionsSection(),
             const SizedBox(height: 18),
             _buildScoreField(),
+            const SizedBox(height: 14),
+            _buildStartDateField(),
             const SizedBox(height: 14),
             _buildDeadlineField(),
             const SizedBox(height: 14),
@@ -517,6 +561,27 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
 
         return null;
       },
+    );
+  }
+
+  Widget _buildStartDateField() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(15),
+      onTap: _pickStartDate,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: _isEnglish ? 'Opening date/time (optional)' : 'Date et heure d’ouverture (facultatif)',
+          prefixIcon: const Icon(Icons.schedule_rounded),
+          suffixIcon: _startsAt == null ? const Icon(Icons.calendar_month_rounded) : IconButton(
+            onPressed: () => setState(() => _startsAt = null),
+            icon: const Icon(Icons.clear_rounded),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        ),
+        child: Text(_formatStartDate(), style: TextStyle(color: _startsAt == null ? Colors.black45 : Colors.black87, fontWeight: _startsAt == null ? FontWeight.normal : FontWeight.w600)),
+      ),
     );
   }
 

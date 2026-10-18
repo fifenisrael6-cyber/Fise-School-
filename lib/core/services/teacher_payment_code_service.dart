@@ -6,25 +6,24 @@ class TeacherPaymentCodeService {
   TeacherPaymentCodeService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  Future<String> saveCode(String code) async {
-    final result = await _client.rpc(
-      'set_teacher_fise_code',
-      params: {'p_code': code.trim().toUpperCase()},
-    );
+  Future<String> createOrGetCode() async {
+    final result = await _client.rpc('create_teacher_payment_code');
     return result.toString();
   }
 
   Future<String?> resolveTeacherId(String code) async {
     final result = await _client.rpc(
       'resolve_teacher_payment_code',
-      params: {'p_code': code.trim().toUpperCase()},
+      params: {'p_code': code.trim()},
     );
     return result?.toString();
   }
 
   Future<int> getWalletBalance() async {
     final user = _client.auth.currentUser;
-    if (user == null) return 0;
+    if (user == null) {
+      return 0;
+    }
     final row = await _client
         .from('teacher_wallets')
         .select('balance_xaf')
@@ -35,7 +34,9 @@ class TeacherPaymentCodeService {
 
   Future<Map<String, dynamic>?> getOwnCode() async {
     final user = _client.auth.currentUser;
-    if (user == null) return null;
+    if (user == null) {
+      return null;
+    }
     final row = await _client
         .from('teacher_payment_codes')
         .select('code, active, created_at')

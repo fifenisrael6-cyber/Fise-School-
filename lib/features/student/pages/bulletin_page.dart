@@ -60,7 +60,7 @@ class _BulletinPageState extends State<BulletinPage> {
       if (periods.isNotEmpty) {
         await _select(periods.last);
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -87,7 +87,7 @@ class _BulletinPageState extends State<BulletinPage> {
         _bulletin = bulletin;
         _loadingBulletin = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -114,7 +114,7 @@ class _BulletinPageState extends State<BulletinPage> {
         periodLabel: p.labelFor(_lang),
         fr: _fr,
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
@@ -203,6 +203,16 @@ class _BulletinPageState extends State<BulletinPage> {
             const SizedBox(height: 6),
             Text('${_fr ? 'Rang' : 'Rank'} : ${b.rank ?? '-'} / ${b.classSize}'),
             Text('${_fr ? 'Moyenne de la classe' : 'Class average'} : ${_f(b.classAverage)}'),
+            if (b.averageGap != null)
+              Text(
+                '${_fr ? 'Écart avec la classe' : 'Gap to class average'} : '
+                '${b.averageGap! >= 0 ? '+' : ''}${_f(b.averageGap)}',
+              ),
+            if (b.progress != null)
+              Text(
+                '${_fr ? 'Progression depuis la période précédente' : 'Progress since previous period'} : '
+                '${b.progress! >= 0 ? '+' : ''}${_f(b.progress)}',
+              ),
             Text('${_fr ? 'Appréciation' : 'Remark'} : ${Bulletin.appreciation(b.average, _fr)}'),
           ]),
         ),

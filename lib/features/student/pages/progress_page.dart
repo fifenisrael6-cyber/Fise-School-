@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/smart_course_service.dart';
 import '../../../models/smart_learning.dart';
 import '../../../models/user_profile.dart';
@@ -36,6 +37,20 @@ class _ProgressPageState extends State<ProgressPage> {
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
+  /// Lit des lignes sur le serveur ; sans réseau, reprend la dernière copie.
+  Future<List<Map<String, dynamic>>> _rows(
+    String key,
+    Future<Object?> Function() fetch,
+  ) {
+    return JsonCache.instance.cachedRead<List<Map<String, dynamic>>>(
+      key: 'progress_${widget.profile.id}_$key',
+      fetch: fetch,
+      decode: (raw) => (raw as List)
+          .map((row) => Map<String, dynamic>.from(row as Map))
+          .toList(),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -49,11 +64,14 @@ class _ProgressPageState extends State<ProgressPage> {
     });
 
     try {
-      final memberships = await _client
-          .from('class_students')
-          .select('class_id')
-          .eq('student_id', widget.profile.id)
-          .eq('is_active', true);
+      final memberships = await _rows(
+        'memberships',
+        () async => await _client
+            .from('class_students')
+            .select('class_id')
+            .eq('student_id', widget.profile.id)
+            .eq('is_active', true) as Object?,
+      );
 
       final classIds = memberships
           .map((row) => row['class_id']?.toString())
@@ -80,12 +98,15 @@ class _ProgressPageState extends State<ProgressPage> {
 
       unawaited(_loadSmartComparison(classIds.first));
 
-      final courseRows = await _client
-          .from('courses')
-          .select()
-          .eq('status', 'published')
-          .inFilter('class_id', classIds)
-          .order('updated_at', ascending: false);
+      final courseRows = await _rows(
+        'courses',
+        () async => await _client
+            .from('courses')
+            .select()
+            .eq('status', 'published')
+            .inFilter('class_id', classIds)
+            .order('updated_at', ascending: false) as Object?,
+      );
 
       final List<_CourseProgressData> courseResults = [];
 
@@ -103,12 +124,15 @@ class _ProgressPageState extends State<ProgressPage> {
           continue;
         }
 
-        final lessonsRows = await _client
-            .from('lessons')
-            .select()
-            .eq('course_id', courseId)
-            .eq('is_published', true)
-            .order('position');
+        final lessonsRows = await _rows(
+          'lessons_$courseId',
+          () async => await _client
+              .from('lessons')
+              .select()
+              .eq('course_id', courseId)
+              .eq('is_published', true)
+              .order('position') as Object?,
+        );
 
         final lessonIds = lessonsRows
             .map((row) => row['id']?.toString())
@@ -120,11 +144,14 @@ class _ProgressPageState extends State<ProgressPage> {
           continue;
         }
 
-        final progressRows = await _client
-            .from('lesson_progress')
-            .select()
-            .eq('student_id', widget.profile.id)
-            .inFilter('lesson_id', lessonIds);
+        final progressRows = await _rows(
+          'progress_$courseId',
+          () async => await _client
+              .from('lesson_progress')
+              .select()
+              .eq('student_id', widget.profile.id)
+              .inFilter('lesson_id', lessonIds) as Object?,
+        );
 
         final progressByLesson = <String, Map<String, dynamic>>{};
 
@@ -201,7 +228,7 @@ class _ProgressPageState extends State<ProgressPage> {
         _courses = courseResults;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) {
         return;
       }

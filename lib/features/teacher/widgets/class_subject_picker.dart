@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
@@ -11,12 +12,14 @@ import '../../../models/school_class.dart';
 class ClassSubjectPicker extends StatefulWidget {
   final Locale locale;
   final String teacherId;
+  final bool includeCompatibleClasses;
   final void Function(List<SchoolClass> classes, Subject? subject) onChanged;
 
   const ClassSubjectPicker({
     super.key,
     required this.locale,
     required this.teacherId,
+    this.includeCompatibleClasses = false,
     required this.onChanged,
   });
 
@@ -36,13 +39,186 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
+  String? _teacherVocation;
+
   @override
   void initState() {
     super.initState();
-    _classesFuture = _service.listTeacherClasses(widget.teacherId).then((list) {
+    _loadTeacherVocation();
+    _loadFollowedClasses();
+  }
+
+  Future<void> _loadTeacherVocation() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles')
+          .select('teacher_vocation')
+          .eq('id', widget.teacherId)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        final value = row?['teacher_vocation']?.toString().toLowerCase();
+        _teacherVocation = value == 'scientific' || value == 'literary'
+            ? value
+            : null;
+      });
+      if (_selectedIds.isNotEmpty) await _reloadSubjects();
+    } catch (_) {
+      // If older teacher profiles have no vocation, preserve existing behaviour.
+    }
+  }
+
+  bool _matchesTeacherVocation(Subject subject) {
+    final vocation = _teacherVocation;
+    if (vocation == null) return true;
+    final code = subject.code.toLowerCase().replaceAll('-', '_');
+    final label = '${subject.nameFr} ${subject.nameEn}'.toLowerCase();
+
+    const scientificCodes = <String>{
+      'mathematiques', 'mathematics_en', 'additional_mathematics',
+      'further_mathematics', 'technical_math', 'technical_math_en',
+      'physique', 'physics_en', 'chimie', 'chemistry_en',
+      'fr_tech_physique_chimie', 'pct', 'svt', 'biology_en',
+      'human_biology', 'geology', 'sciences', 'general_science',
+      'technical_science', 'technical_science_en', 'informatique',
+      'computer_science_en', 'fr_tech_informatique', 'en_tech_ict',
+      'technologie',
+    };
+    const literaryCodes = <String>{
+      'francais', 'french_language', 'english_language', 'anglais',
+      'en_tech_english', 'allemand', 'espagnol', 'italien', 'arabe',
+      'chinois', 'latin', 'grec', 'seconde_langue', 'langues_nationales',
+      'histoire', 'history_en', 'geographie', 'geography_en',
+      'fr_tech_histoire_geo', 'philosophie', 'philosophy_en',
+      'litterature', 'literature_in_english', 'logic', 'economics',
+      'commerce', 'commerce_fr', 'accounting', 'comptabilite_fr',
+      'education_civique', 'citizenship_en', 'fr_tech_ecm',
+      'en_tech_citizenship', 'religious_studies',
+    };
+
+    if (vocation == 'literary') {
+      if (scientificCodes.contains(code)) return false;
+      if (label.contains('mathemat') || label.contains('mathématique') ||
+          label.contains('physics') || label.contains('physique') ||
+          label.contains('chemistry') || label.contains('chimie') ||
+          label.contains('biology') || label.contains('biologie') ||
+          label.contains('science') || label.contains('sciences') ||
+          label.contains('computer science') || label.contains('informatique') ||
+          label.contains('geology') || label.contains('géologie')) {
+        return false;
+      }
+      return true;
+    }
+
+    if (literaryCodes.contains(code)) return false;
+    if (label.contains('philosoph') || label.contains('history') ||
+        label.contains('histoire') || label.contains('geography') ||
+        label.contains('géographie') || label.contains('literature') ||
+        label.contains('littérature') || label.contains('language') ||
+        label.contains('langue') || label.contains('french') ||
+        label.contains('français') || label.contains('english') ||
+        label.contains('anglais') || label.contains('economics') ||
+        label.contains('économie') || label.contains('commerce') ||
+        label.contains('accounting') || label.contains('comptabilité')) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _loadFollowedClasses() async {
+    _classesFuture = _service.listTeacherSelectedClasses().then((list) {
       _allClasses = list;
       return list;
     });
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _chooseFollowedClasses() async {
+    List<SchoolClass> all;
+    Set<String> existing;
+    try {
+      all = await _service.listTeacherCompatibleClasses();
+      existing = await _service.listTeacherFollowedClassIds();
+    } catch (error) {
+      _snack('${_fr ? 'Impossible de charger les salles' : 'Unable to load classrooms'}: $error');
+      return;
+    }
+    if (!mounted) return;
+    final selected = existing.isEmpty
+        ? all.map((c) => c.id).toSet()
+        : existing.intersection(all.map((c) => c.id).toSet());
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        final draft = <String>{...selected};
+        return StatefulBuilder(
+          builder: (context, refreshDialog) => AlertDialog(
+            title: Text(_fr ? 'Salles à suivre' : 'Classrooms to follow'),
+            content: SizedBox(
+              width: 480,
+              height: MediaQuery.of(context).size.height * 0.55,
+              child: all.isEmpty
+                  ? Text(_fr ? 'Aucune salle compatible.' : 'No compatible classrooms.')
+                  : ListView(
+                      children: [
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(_fr ? 'Tout sélectionner' : 'Select all'),
+                          value: all.isNotEmpty && all.every((c) => draft.contains(c.id)),
+                          onChanged: (value) => refreshDialog(() {
+                            if (value == true) {
+                              draft.addAll(all.map((c) => c.id));
+                            } else {
+                              draft.clear();
+                            }
+                          }),
+                        ),
+                        const Divider(),
+                        ...all.map((schoolClass) => CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${all.indexOf(schoolClass) + 1}. ${schoolClass.displayName}'),
+                          subtitle: Text(schoolClass.name),
+                          value: draft.contains(schoolClass.id),
+                          onChanged: (value) => refreshDialog(() {
+                            if (value == true) {
+                              draft.add(schoolClass.id);
+                            } else {
+                              draft.remove(schoolClass.id);
+                            }
+                          }),
+                        )),
+                      ],
+                    ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_fr ? 'Annuler' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: draft.isEmpty ? null : () => Navigator.pop(dialogContext, draft),
+                child: Text(_fr ? 'Enregistrer' : 'Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (result == null) return;
+    try {
+      await _service.saveTeacherFollowedClasses(result.toList(growable: false));
+      if (!mounted) return;
+      setState(() {
+        _selectedIds.clear();
+        _subject = null;
+        _subjects = const [];
+      });
+      await _loadFollowedClasses();
+      _notify();
+      _snack(_fr ? 'Salles suivies enregistrées.' : 'Followed classrooms saved.');
+    } catch (error) {
+      _snack('${_fr ? 'Enregistrement impossible' : 'Unable to save'}: $error');
+    }
   }
 
   List<SchoolClass> get _selectedClasses => _allClasses
@@ -63,9 +239,9 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   }
 
   Future<void> _reloadSubjects() async {
-    final classes = _selectedClasses;
+    final selected = _selectedClasses;
 
-    if (classes.isEmpty) {
+    if (selected.isEmpty) {
       setState(() {
         _subjects = const [];
         _subject = null;
@@ -77,10 +253,15 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     setState(() => _loadingSubjects = true);
 
     try {
+      // Only the classrooms explicitly selected in the form determine
+      // which subjects are offered. Expanding to every compatible series here
+      // incorrectly intersected hundreds of curricula and often produced an
+      // empty subject list. Cohort expansion belongs to publication, where
+      // each destination is filtered independently by its own class_subjects.
       Map<String, Subject>? common;
-      for (final schoolClass in classes) {
+      for (final schoolClass in selected) {
         final list = await _service.listSubjectsForClass(schoolClass.id);
-        final byId = {for (final s in list) s.id: s};
+        final byId = {for (final subject in list) subject.id: subject};
         if (common == null) {
           common = byId;
         } else {
@@ -91,11 +272,13 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         }
       }
 
-      if (!mounted) {
-        return;
-      }
-
-      final subjects = (common ?? <String, Subject>{}).values.toList();
+      if (!mounted) return;
+      final subjects = (common ?? <String, Subject>{}).values
+          .where(_matchesTeacherVocation)
+          .toList()
+        ..sort((a, b) => a.labelFor(_fr ? 'fr' : 'en')
+            .toLowerCase()
+            .compareTo(b.labelFor(_fr ? 'fr' : 'en').toLowerCase()));
       setState(() {
         _subjects = subjects;
         if (_subject != null && !subjects.any((s) => s.id == _subject!.id)) {
@@ -104,14 +287,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       });
       _notify();
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       _snack('${_fr ? 'Chargement impossible' : 'Unable to load'}: $error');
     } finally {
-      if (mounted) {
-        setState(() => _loadingSubjects = false);
-      }
+      if (mounted) setState(() => _loadingSubjects = false);
     }
   }
 
@@ -231,9 +410,24 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _fr ? 'Salles disponibles pour vos activités' : 'Classrooms available for your activities',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _chooseFollowedClasses,
+              icon: const Icon(Icons.tune_rounded),
+              label: Text(_fr ? 'Salles suivies' : 'Followed rooms'),
+            ),
+          ],
+        ),
         Text(
           _fr ? 'Choisir la ou les classes où publier' : 'Choose the class(es) to publish in',
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         FutureBuilder<List<SchoolClass>>(
@@ -248,8 +442,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
             final classes = snapshot.data ?? const <SchoolClass>[];
             if (classes.isEmpty) {
               return Text(_fr
-                  ? 'Aucune salle ne vous est affectée. Contactez l’administration.'
-                  : 'No classroom is assigned to you. Contact the administration.');
+                  ? 'Aucune salle compatible avec votre sous-système et votre secteur. Vérifiez votre profil auprès de l’administration.'
+                  : 'No classroom matches your subsystem and sector. Check your profile with the administrator.');
             }
             return Wrap(
               spacing: 8,

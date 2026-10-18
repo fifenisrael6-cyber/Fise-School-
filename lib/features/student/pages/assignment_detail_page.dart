@@ -1,10 +1,14 @@
-import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/offline_repository.dart';
+import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
+import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 
 class AssignmentDetailPage extends StatefulWidget {
@@ -33,6 +37,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   final Map<String, TextEditingController> _answerControllers = {};
   final Map<String, String?> _selectedAnswers = {};
+  final Map<String, Map<String, dynamic>> _qcmFeedback = {};
+  final Set<String> _checkingQcm = {};
 
   bool _loadingSubmission = true;
   bool _saving = false;
@@ -56,6 +62,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       setState(() { _submission = submission; _loadingSubmission = false; });
       if (submission == null) {
         return;
+      }
+      if (submission.status == 'submitted') {
+        // Retry a previous transient AI error when the student reopens a saved submission.
+        unawaited(_service.requestAiCorrection(submission.id));
       }
       final answers = await _service.listAnswers(submission.id);
       await _applyAnswers(answers);
@@ -336,8 +346,89 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     }
   }
 
+  bool get _isNotStarted {
+    final start = widget.assignment.startsAt;
+    return start != null && DateTime.now().isBefore(start.toLocal());
+  }
+
   bool get _isClosed {
-    return widget.assignment.status == 'closed';
+    final deadline = widget.assignment.dueAt;
+    return widget.assignment.status == 'closed' ||
+        (deadline != null &&
+            !DateTime.now().isBefore(deadline.toLocal()));
+  }
+
+  Future<void> _openOfficialExamPdf() async {
+    final storagePath = widget.assignment.evaluationFilePath;
+    if (storagePath == null ||
+        storagePath.trim().isEmpty ||
+        _isNotStarted ||
+        _isClosed) {
+      return;
+    }
+
+    final fileName = widget.assignment.evaluationFileName?.trim().isNotEmpty == true
+        ? widget.assignment.evaluationFileName!.trim()
+        : widget.assignment.titleFor(widget.locale) + '.pdf';
+    try {
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'assignment-exam-' + widget.assignment.id,
+        courseId: 'assignment-files',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () => Supabase.instance.client.storage
+            .from('assignment-files')
+            .createSignedUrl(storagePath, 900),
+      );
+      if (!mounted) return;
+      final resource = CourseResource(
+        id: 'assignment-exam-' + widget.assignment.id,
+        courseId: 'assignment-files',
+        resourceType: 'pdf',
+        storagePath: storagePath,
+        fileName: fileName,
+        titleFr: widget.assignment.titleFr,
+        titleEn: widget.assignment.titleEn,
+        mimeType: 'application/pdf',
+      );
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineResourceViewer(
+          locale: widget.locale,
+          userId: widget.profile.id,
+          resource: resource,
+          localPath: localPath,
+        ),
+      ));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isEnglish
+                ? 'Open this exam PDF online once to make it available offline.'
+                : 'Ouvrez ce PDF une première fois avec Internet pour le garder hors ligne.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildOfficialExamPdfButton() {
+    final enabled = !_isNotStarted && !_isClosed;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.picture_as_pdf_rounded),
+        title: Text(widget.assignment.evaluationFileName ??
+            (_isEnglish ? 'Official exam PDF' : 'Épreuve officielle PDF')),
+        subtitle: Text(enabled
+            ? (_isEnglish ? 'Open during the evaluation window' : 'Disponible pendant la période de l’évaluation')
+            : (_isNotStarted
+                ? (_isEnglish ? 'Available when the exam starts' : 'Disponible à l’ouverture de l’épreuve')
+                : (_isEnglish ? 'Evaluation closed' : 'Évaluation terminée'))),
+        trailing: const Icon(Icons.open_in_new_rounded),
+        onTap: enabled ? _openOfficialExamPdf : null,
+      ),
+    );
   }
 
   bool get _isDraftSubmission {
@@ -418,6 +509,10 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                         children: [
                           _buildHeader(title, instructions),
+                          if (widget.assignment.evaluationFilePath != null) ...[
+                            const SizedBox(height: 12),
+                            _buildOfficialExamPdfButton(),
+                          ],
                           const SizedBox(height: 18),
                           if (_isSubmitted) _buildSubmissionStatus(),
                           if (_isSubmitted) const SizedBox(height: 14),
@@ -434,7 +529,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
                     ),
                     if (questions.isNotEmpty &&
                         _isDraftSubmission &&
-                        !_isClosed)
+                        !_isClosed &&
+                        !_isNotStarted)
                       _buildBottomActions(questions),
                   ],
                 );
@@ -502,10 +598,28 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (widget.assignment.startsAt != null)
+                _buildHeaderChip(
+                  Icons.play_circle_outline_rounded,
+                  '${_isEnglish ? 'Starts' : 'Début'} : ${_formatDueDate(widget.assignment.startsAt)}',
+                ),
+              _buildHeaderChip(
+                Icons.visibility_rounded,
+                widget.assignment.resultsPublishAt != null
+                    ? '${_isEnglish ? 'Results release' : 'Publication des résultats'} : ${_formatDueDate(widget.assignment.resultsPublishAt)}'
+                    : (_isEnglish
+                        ? 'Results release: not scheduled'
+                        : 'Publication des résultats : non programmée'),
+              ),
               _buildHeaderChip(
                 Icons.calendar_today_rounded,
                 _formatDueDate(widget.assignment.dueAt),
               ),
+              if (_isNotStarted)
+                _buildHeaderChip(
+                  Icons.schedule_rounded,
+                  _isEnglish ? 'Not started yet' : 'Pas encore ouvert',
+                ),
               _buildHeaderChip(
                 Icons.grade_rounded,
                 '${widget.assignment.maxScore.toStringAsFixed(0)} pts',
@@ -612,83 +726,104 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     );
   }
 
-  /// Mélange les options d'un QCM de façon stable pour cet élève, afin que la
-  /// bonne réponse ne reste pas toujours à la place choisie par l'enseignant.
-  /// La correction se fait sur le texte de l'option : l'ordre n'a aucun effet.
-  List<String> _arrangedOptions(AssignmentQuestion question) {
-    final options = List<String>.of(question.options);
-    final pinned = RegExp(
-      r'^(toutes?\s+les\s+(réponses|options|propositions)|aucune?\s+(des|de\s+ces)|all\s+of\s+the\s+above|none\s+of\s+the\s+above)',
-      caseSensitive: false,
-    );
-    if (options.any(pinned.hasMatch)) return options;
-    final seed = '${question.id}|${widget.profile.id}'.codeUnits.fold<int>(
-      7,
-      (hash, unit) => (hash * 31 + unit) & 0x7fffffff,
-    );
-    options.shuffle(math.Random(seed));
-    return options;
-  }
-
-  Widget _buildAnswerWidget(AssignmentQuestion question) {
-    final enabled = _isDraftSubmission && !_isClosed;
-
-    if (question.isQcm) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: _arrangedOptions(question).map((option) {
-            return RadioListTile<String>(
-              value: option,
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(option, style: const TextStyle(height: 1.35)),
-            );
-          }).toList(),
+  Future<void> _checkAssignmentQcmAnswer(
+    AssignmentQuestion question,
+    String selectedOption,
+  ) async {
+    try {
+      final feedback = await _service.checkQcmAnswer(
+        questionId: question.id,
+        selectedOption: selectedOption,
+      );
+      if (!mounted) return;
+      setState(() {
+        _checkingQcm.remove(question.id);
+        _qcmFeedback[question.id] = feedback;
+      });
+      final correct = feedback['is_correct'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect answer.' : 'Mauvaise réponse.')),
+          backgroundColor: correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _checkingQcm.remove(question.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEnglish
+              ? 'Unable to check this answer. Check your connection.'
+              : 'Impossible de vérifier cette réponse. Vérifie ta connexion.'),
         ),
       );
     }
+  }
 
-    if (question.isTrueFalse) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
+  Widget _buildAnswerWidget(AssignmentQuestion question) {
+    final enabled = _isDraftSubmission && !_isClosed && !_isNotStarted;
 
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: [
-            RadioListTile<String>(
-              value: 'true',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'True' : 'Vrai'),
+    if (question.isQcm || question.isTrueFalse) {
+      final options = question.isQcm
+          ? question.options
+          : <String>[_isEnglish ? 'True' : 'Vrai', _isEnglish ? 'False' : 'Faux'];
+      final selected = _selectedAnswers[question.id];
+      final feedback = _qcmFeedback[question.id];
+      final correctOption = feedback?['correct_option']?.toString();
+      final hasFeedback = feedback != null;
+      return Column(
+        children: [
+          RadioGroup<String>(
+            groupValue: selected,
+            onChanged: (value) {
+              if (!enabled || value == null) return;
+              setState(() {
+                _selectedAnswers[question.id] = value;
+                _qcmFeedback.remove(question.id);
+                _checkingQcm.add(question.id);
+              });
+              _saveAnswer(question);
+              _checkAssignmentQcmAnswer(question, value);
+            },
+            child: Column(
+              children: options.map((option) {
+                final isCorrect = hasFeedback &&
+                    correctOption != null &&
+                    _normalizeAnswer(correctOption) == _normalizeAnswer(option);
+                final isSelected = selected != null &&
+                    _normalizeAnswer(selected) == _normalizeAnswer(option);
+                final isWrongSelected = hasFeedback && isSelected &&
+                    feedback['is_correct'] != true;
+                return RadioListTile<String>(
+                  value: option,
+                  enabled: enabled && !_checkingQcm.contains(question.id),
+                  activeColor: const Color(0xFF166534),
+                  contentPadding: EdgeInsets.zero,
+                  tileColor: isCorrect
+                      ? const Color(0xFFE8F5E9)
+                      : (isWrongSelected ? const Color(0xFFFFEBEE) : null),
+                  title: Text(option, style: const TextStyle(height: 1.35)),
+                  secondary: _checkingQcm.contains(question.id)
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : (isCorrect
+                          ? const Icon(Icons.check_circle, color: Color(0xFF2E7D32))
+                          : (isWrongSelected
+                              ? const Icon(Icons.cancel, color: Color(0xFFC62828))
+                              : null)),
+                );
+              }).toList(),
             ),
-            RadioListTile<String>(
-              value: 'false',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'False' : 'Faux'),
-            ),
-          ],
-        ),
+          ),
+          if (selected != null && hasFeedback)
+            _buildImmediateFeedback(feedback['is_correct'] == true),
+        ],
       );
     }
 
@@ -723,45 +858,84 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     );
   }
 
+  String _normalizeAnswer(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Widget _buildImmediateFeedback(bool correct) {
+    final color = correct ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: correct ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Icon(correct ? Icons.check_circle : Icons.cancel, color: color),
+        const SizedBox(width: 8),
+        Expanded(child: Text(
+          correct
+              ? (_isEnglish ? 'Correct answer! Well done.' : 'Bonne réponse ! Bravo.')
+              : (_isEnglish ? 'Incorrect. The correct answer is marked in green.' : 'Mauvaise réponse. La bonne réponse est indiquée en vert.'),
+          style: TextStyle(color: color, fontWeight: FontWeight.w700),
+        )),
+      ]),
+    );
+  }
+
   Widget _buildSubmissionStatus() {
     final submission = _submission;
-
-    if (submission == null) {
-      return const SizedBox.shrink();
-    }
+    if (submission == null) return const SizedBox.shrink();
 
     final corrected = submission.status == 'corrected';
+    final feedback = submission.feedbackFor(widget.locale)?.trim();
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: corrected ? const Color(0xFFE7F7EC) : const Color(0xFFEAF3FF),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            corrected
-                ? Icons.task_alt_rounded
-                : Icons.check_circle_outline_rounded,
-            color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              corrected
-                  ? (_isEnglish
-                        ? 'Your assignment has been corrected.'
-                        : 'Votre devoir a été corrigé.')
-                  : (_isEnglish
-                        ? 'Your assignment has been submitted.'
-                        : 'Votre devoir a été envoyé.'),
-              style: TextStyle(
+          Row(
+            children: [
+              Icon(
+                corrected ? Icons.task_alt_rounded : Icons.check_circle_outline_rounded,
                 color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
-                fontWeight: FontWeight.w700,
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  corrected
+                      ? (_isEnglish
+                          ? 'Your assignment has been corrected and the result is published.'
+                          : 'Votre devoir est corrigé et le résultat est publié.')
+                      : (_isEnglish
+                          ? 'Your assignment has been submitted. The result will appear after its scheduled release.'
+                          : 'Votre devoir a été envoyé. Le résultat apparaîtra à la date de publication prévue.'),
+                  style: TextStyle(
+                    color: corrected ? const Color(0xFF166534) : Colors.blueAccent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (corrected && submission.score != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              '${_isEnglish ? 'Published score' : 'Note publiée'} : ${submission.score!.toStringAsFixed(2)} / ${widget.assignment.maxScore.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ],
+          if (corrected && feedback != null && feedback.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(feedback, style: const TextStyle(height: 1.4)),
+          ],
         ],
       ),
     );
@@ -809,7 +983,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _saving || _submitting
+                onPressed: _saving || _submitting || _isNotStarted || _isClosed
                     ? null
                     : () => _saveCurrentAnswers(questions),
                 icon: _saving
@@ -825,7 +999,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
-                onPressed: _saving || _submitting
+                onPressed: _saving || _submitting || _isNotStarted || _isClosed
                     ? null
                     : () => _submitAssignment(questions),
                 icon: _submitting

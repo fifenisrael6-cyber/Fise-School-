@@ -6,13 +6,15 @@ import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
 import '../../notifications/pages/notifications_page.dart';
-import '../../forum/pages/forum_page.dart';
-import '../../messages/pages/private_messages_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
-import 'create_assignment_page.dart';
+import 'teacher_qcm_hub_page.dart';
 import 'teacher_courses_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
+import 'qcm_builder_page.dart';
+import 'create_assignment_page.dart';
+import 'teacher_evaluations_page.dart';
 
 class TeacherDashboardPage extends StatelessWidget {
   final Locale locale;
@@ -68,7 +70,6 @@ class TeacherDashboardPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(texts.welcomeBack),
                       ],
                     ),
                   ),
@@ -152,6 +153,34 @@ class TeacherDashboardPage extends StatelessWidget {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
+                          builder: (_) => TeacherQcmHubPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.fact_check_rounded,
+                      locale.languageCode == 'fr' ? 'Épreuves PDF et corrections' : 'PDF exams and grading',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TeacherEvaluationsPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.assignment_add,
+                      locale.languageCode == 'fr'
+                          ? 'Proposer un exercice d’évaluation'
+                          : 'Propose an assessment exercise',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
                           builder: (_) => CreateAssignmentPage(
                             locale: locale,
                             profile: profile,
@@ -186,13 +215,15 @@ class TeacherDashboardPage extends StatelessWidget {
                       ),
                     ),
                     _Tile(
-                      Icons.forum_rounded,
-                      texts.forum,
+                      Icons.history_edu_rounded,
+                      locale.languageCode == 'fr' ? 'Annales des examens' : 'Exam papers',
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ForumPage(locale: locale, profile: profile),
+                          builder: (_) => QcmBuilderPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
                         ),
                       ),
                     ),
@@ -202,7 +233,7 @@ class TeacherDashboardPage extends StatelessWidget {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => PrivateMessagesPage(
+                          builder: (_) => MessagesHubPage(
                             locale: locale,
                             profile: profile,
                           ),
@@ -324,6 +355,93 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
     }
   }
 
+  Future<void> _manageFollowedClasses() async {
+    List<SchoolClass> all;
+    Set<String> existing;
+    try {
+      all = await _service.listTeacherCompatibleClasses();
+      existing = await _service.listTeacherFollowedClassIds();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isFrench ? 'Impossible de charger les salles' : 'Unable to load classrooms'}: $error')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final availableIds = all.map((c) => c.id).toSet();
+    final draft = existing.isEmpty ? <String>{...availableIds} : existing.intersection(availableIds);
+    final selected = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refreshDialog) => AlertDialog(
+          title: Text(_isFrench ? 'Salles à suivre' : 'Classrooms to follow'),
+          content: SizedBox(
+            width: 480,
+            height: MediaQuery.of(context).size.height * 0.55,
+            child: ListView(
+              children: [
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_isFrench ? 'Tout sélectionner' : 'Select all'),
+                  value: all.isNotEmpty && all.every((room) => draft.contains(room.id)),
+                  onChanged: (value) => refreshDialog(() {
+                    if (value == true) {
+                      draft.addAll(availableIds);
+                    } else {
+                      draft.clear();
+                    }
+                  }),
+                ),
+                const Divider(),
+                ...all.map((room) => CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(room.displayName),
+                  subtitle: Text(room.name),
+                  value: draft.contains(room.id),
+                  onChanged: (value) => refreshDialog(() {
+                    if (value == true) {
+                      draft.add(room.id);
+                    } else {
+                      draft.remove(room.id);
+                    }
+                  }),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: draft.isEmpty ? null : () => Navigator.pop(dialogContext, draft),
+              child: Text(_isFrench ? 'Enregistrer' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null) return;
+    try {
+      await _service.saveTeacherFollowedClasses(selected.toList(growable: false));
+      await _loadClasses();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isFrench ? 'Salles suivies enregistrées.' : 'Followed classrooms saved.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isFrench ? 'Enregistrement impossible' : 'Unable to save'}: $error')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -332,6 +450,13 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
           _isFrench ? 'Mes classes' : 'My classes',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: _manageFollowedClasses,
+            icon: const Icon(Icons.tune_rounded),
+            label: Text(_isFrench ? 'Salles suivies' : 'Followed rooms'),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadClasses,
