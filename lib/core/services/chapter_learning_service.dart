@@ -489,6 +489,14 @@ class ChapterLearningService {
           .order('position');
       return result.map((row) => Map<String, dynamic>.from(row)).toList();
     });
-    return rows.map(CourseChapter.fromMap).toList(growable: false);
+    // Do not present generic placeholder headings as if they were official
+    // MINESEC chapters. Keep sourced titles and legacy titled chapters.
+    final titledRows = rows.where((row) {
+      final source = (row['source_title']?.toString() ?? '').toLowerCase();
+      return !source.contains('structure provisoire') &&
+          !source.contains('titre provisoire') &&
+          !source.contains('à confirmer');
+    });
+    return titledRows.map(CourseChapter.fromMap).toList(growable: false);
   }
 }
