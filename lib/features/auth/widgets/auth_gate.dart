@@ -75,7 +75,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   void _handleSharedMedia(List<SharedMediaFile> files) {
-    final usable = files.where((file) => file.path.trim().isNotEmpty).toList();
+    final usable = files.where((file) => (file.path ?? '').trim().isNotEmpty).toList();
     if (!mounted || usable.isEmpty) return;
     setState(() => _sharedFiles = usable);
     ReceiveSharingIntent.instance.reset();
@@ -89,10 +89,12 @@ class _AuthGateState extends State<AuthGate> {
     if (profile == null) return;
     final attachments = <PickedAttachment>[];
     for (final file in files) {
+      final path = file.path?.trim();
+      if (path == null || path.isEmpty) continue;
       try {
-        final bytes = await File(file.path).readAsBytes();
+        final bytes = await File(path).readAsBytes();
         if (bytes.isEmpty) continue;
-        final name = file.path.split('/').last;
+        final name = path.split('/').last;
         final mime = (file.mimeType?.trim().isNotEmpty == true)
             ? file.mimeType!.trim()
             : _mimeTypeFromName(name);
