@@ -1,16 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
-import '../../../core/services/photo_service.dart';
 import '../../../core/offline/connectivity_service.dart';
-import '../../../core/offline/message_outbox.dart';
-import '../../../core/offline/pending_progress.dart';
 import '../../../core/offline/sync_service.dart';
 import '../../admin/pages/admin_dashboard_page.dart';
 import '../../public/pages/public_home_page.dart';
@@ -18,10 +13,6 @@ import '../../student/pages/student_main_page.dart';
 import '../../../core/services/push_service.dart';
 import '../../../models/user_profile.dart';
 import '../../teacher/pages/teacher_main_page.dart';
-import '../../teacher/pages/teacher_courses_page.dart';
-import '../../teacher/pages/teacher_past_papers_page.dart';
-import '../../messages/pages/messages_hub_page.dart';
-import '../../share/pages/shared_media_destination_page.dart';
 
 class AuthGate extends StatefulWidget {
   final Locale locale;
@@ -45,8 +36,6 @@ class _AuthGateState extends State<AuthGate> {
   int _eventCount = 0;
   StreamSubscription<bool>? _connectivitySubscription;
   String? _syncedStudentId;
-  StreamSubscription<List<SharedMediaFile>>? _sharedMediaSubscription;
-  List<SharedMediaFile>? _sharedFiles;
 
   @override
   void initState() {
@@ -57,86 +46,11 @@ class _AuthGateState extends State<AuthGate> {
       _updateState(state);
     });
     _load();
-    _sharedMediaSubscription = ReceiveSharingIntent.instance
-        .getMediaStream()
-        .listen(_handleSharedMedia, onError: (_) {});
-    ReceiveSharingIntent.instance.getInitialMedia().then(_handleSharedMedia)
-        .catchError((_) {});
     _connectivitySubscription = ConnectivityService().connectionStream.listen((online) {
       if (online && _state.status == SessionStatus.authenticated) {
-        // Retour du réseau : on envoie d'abord ce qui a été écrit hors ligne
-        // (messages, progression), puis on rafraîchit les cours de l'élève.
-        _flushPending();
-        if (_state.profile?.role.toLowerCase() == 'student') {
-          _syncStudentOfflineCache(_state.profile!);
-        }
+        _syncStudentOfflineCache(_state.profile!);
       }
     });
-  }
-
-  void _handleSharedMedia(List<SharedMediaFile> files) {
-    final usable = files.where((file) => file.path.trim().isNotEmpty).toList();
-    if (!mounted || usable.isEmpty) return;
-    setState(() => _sharedFiles = usable);
-    ReceiveSharingIntent.instance.reset();
-  }
-
-  Future<void> _openSharedDestination(String destination) async {
-    final files = _sharedFiles;
-    if (files == null || files.isEmpty) return;
-    setState(() => _sharedFiles = null);
-    final profile = _state.profile;
-    if (profile == null) return;
-    final attachments = <PickedAttachment>[];
-    for (final file in files) {
-      try {
-        final bytes = await File(file.path).readAsBytes();
-        if (bytes.isEmpty) continue;
-        final name = file.path.split('/').last;
-        final mime = (file.mimeType?.trim().isNotEmpty == true)
-            ? file.mimeType!.trim()
-            : _mimeTypeFromName(name);
-        attachments.add(PickedAttachment(bytes: bytes, name: name, mimeType: mime));
-      } catch (_) {
-        // Ignore an unreadable item but continue processing the other shared files.
-      }
-    }
-    if (attachments.isEmpty || !mounted) return;
-    Widget? page;
-    switch (destination) {
-      case 'courses':
-        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
-          page = TeacherCoursesPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
-        }
-        break;
-      case 'annals':
-        if (profile.role.toLowerCase() == 'teacher' || profile.role.toLowerCase() == 'admin') {
-          page = TeacherPastPapersPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
-        }
-        break;
-      case 'private':
-      case 'groups':
-        page = MessagesHubPage(locale: widget.locale, profile: profile, initialSharedAttachments: attachments);
-        break;
-    }
-    if (page != null && mounted) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page!));
-    }
-  }
-
-  String _mimeTypeFromName(String name) {
-    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
-    switch (ext) {
-      case 'jpg': case 'jpeg': return 'image/jpeg';
-      case 'png': return 'image/png';
-      case 'webp': return 'image/webp';
-      case 'gif': return 'image/gif';
-      case 'mp4': return 'video/mp4';
-      case 'mov': return 'video/quicktime';
-      case 'webm': return 'video/webm';
-      case 'pdf': return 'application/pdf';
-      default: return 'application/octet-stream';
-    }
   }
 
   Future<void> _load() async {
@@ -163,29 +77,11 @@ class _AuthGateState extends State<AuthGate> {
       PushService.registerForUser(state.profile!.id);
     }
 
-    if (state.status == SessionStatus.authenticated) {
-      // Messages ou progression restés en attente depuis la dernière session.
-      _flushPending();
-    }
-
     if (state.status == SessionStatus.authenticated &&
         state.profile?.role.toLowerCase() == 'student') {
       _syncStudentOfflineCache(state.profile!);
     } else if (state.status == SessionStatus.signedOut) {
       _syncedStudentId = null;
-    }
-  }
-
-  /// Envoie les éléments écrits hors ligne (messages, progression des leçons).
-  /// Ne lève jamais d'erreur : ce qui ne part pas reste en file.
-  Future<void> _flushPending() async {
-    try {
-      if (!await ConnectivityService().isOnline()) return;
-      final client = Supabase.instance.client;
-      await PendingProgress.instance.flush(client);
-      await MessageOutbox.instance.flush(client);
-    } catch (_) {
-      // Réessayé au prochain retour du réseau.
     }
   }
 
@@ -211,7 +107,6 @@ class _AuthGateState extends State<AuthGate> {
   void dispose() {
     _subscription?.cancel();
     _connectivitySubscription?.cancel();
-    _sharedMediaSubscription?.cancel();
     super.dispose();
   }
 
@@ -230,22 +125,18 @@ class _AuthGateState extends State<AuthGate> {
         );
 
       case SessionStatus.authenticated:
-        if (_sharedFiles != null && _sharedFiles!.isNotEmpty) {
-          return SharedMediaDestinationPage(
-            locale: widget.locale,
-            profile: _state.profile!,
-            files: _sharedFiles!,
-            onChoose: _openSharedDestination,
-            onCancel: () => setState(() => _sharedFiles = null),
-          );
-        }
         return _authenticatedPage(_state, texts);
 
       case SessionStatus.profileMissing:
-        return _messagePage(texts.profileUnavailable, texts);
+        return _messagePage(texts.profileUnavailable, texts, canRetry: true);
 
       case SessionStatus.error:
-        return _messagePage(texts.sessionError, texts, detail: _state.message);
+        return _messagePage(
+          texts.sessionError,
+          texts,
+          detail: _state.message,
+          canRetry: true,
+        );
     }
   }
 
@@ -284,7 +175,12 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  Widget _messagePage(String message, AppTexts texts, {String? detail}) {
+  Widget _messagePage(
+    String message,
+    AppTexts texts, {
+    String? detail,
+    bool canRetry = false,
+  }) {
     return Scaffold(
       appBar: AppBar(title: Text(texts.appName)),
       body: Center(
@@ -296,11 +192,28 @@ class _AuthGateState extends State<AuthGate> {
               const Icon(Icons.info_outline_rounded, size: 54),
               const SizedBox(height: 16),
               Text(message, textAlign: TextAlign.center),
-              if (detail != null) ...[
+              // Le détail technique (en anglais) n'est utile qu'au développeur.
+              if (detail != null && kDebugMode) ...[
                 const SizedBox(height: 8),
                 Text(detail, textAlign: TextAlign.center),
               ],
               const SizedBox(height: 24),
+              if (canRetry) ...[
+                FilledButton(
+                  onPressed: () {
+                    setState(() => _state = const SessionState.loading());
+                    _load();
+                  },
+                  child: Text(texts.retry),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () async {
+                    await widget.sessionService.signOut();
+                  },
+                  child: Text(texts.signOut),
+                ),
+              ] else
               FilledButton(
                 onPressed: () async {
                   await widget.sessionService.signOut();

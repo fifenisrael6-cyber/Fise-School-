@@ -99,6 +99,7 @@ async function ensureLesson(admin: ReturnType<typeof createClient>, apiKey: stri
   }, { onConflict: "chunk_id,language" }).select("id,chunk_id,language,text,generated_at").single();
   if (lessonError) throw lessonError;
 
+  const slotPlan = shuffleInPlace([0, 1, 2, 3]); // une bonne réponse par lettre A-D, ordre aléatoire
   const questions: any[] = [];
   const answerKey: Record<string, string> = {};
   const explanations: Record<string, string> = {};
@@ -108,8 +109,9 @@ async function ensureLesson(admin: ReturnType<typeof createClient>, apiKey: stri
     const choices = Array.isArray(item.choices) ? item.choices.slice(0, 4).map((x: unknown) => String(x).slice(0, 800)) : [];
     const correct = Number(item.correct_index);
     if (choices.length !== 4 || !Number.isInteger(correct) || correct < 0 || correct > 3) throw new Error("AI_INVALID_EXERCISE");
-    questions.push({ id, question: String(item.question ?? "").slice(0, 1200), choices });
-    answerKey[id] = String(correct);
+    const arranged = arrangeChoices(choices, correct, slotPlan[i]);
+    questions.push({ id, question: String(item.question ?? "").slice(0, 1200), choices: arranged.choices });
+    answerKey[id] = String(arranged.correct);
     explanations[id] = String(item.explanation ?? "").slice(0, 1500);
   }
 
@@ -123,6 +125,29 @@ async function ensureLesson(admin: ReturnType<typeof createClient>, apiKey: stri
   }, { onConflict: "lesson_id" });
   if (exerciseError) throw exerciseError;
   return { lesson, exerciseReady: true, cached: false };
+}
+
+
+// Mélange les choix et répartit la bonne réponse (le modèle IA la place presque toujours en A/B).
+function randomInt(max: number): number {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return buf[0] % max;
+}
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+const PINNED_LAST = /^(toutes?\s+les\s+(r[ée]ponses|options|propositions)|aucune?\s+(des|de\s+ces)|all\s+of\s+the\s+above|none\s+of\s+the\s+above)/i;
+function arrangeChoices(choices: string[], correct: number, target: number): { choices: string[]; correct: number } {
+  if (choices.some((c) => PINNED_LAST.test(c))) return { choices, correct };
+  const order = [0, 1, 2, 3].filter((i) => i !== correct);
+  shuffleInPlace(order);
+  order.splice(target, 0, correct);
+  return { choices: order.map((i) => choices[i]), correct: target };
 }
 
 async function normalRequest(admin: ReturnType<typeof createClient>, userId: string, body: any, apiKey: string) {

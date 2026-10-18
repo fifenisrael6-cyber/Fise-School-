@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'connectivity_service.dart';
-import 'message_outbox.dart';
 import 'pending_progress.dart';
 
 /// Enveloppe l'application : affiche une barre « mode hors ligne » en haut
@@ -29,7 +28,6 @@ class OfflineAwareShell extends StatefulWidget {
 class _OfflineAwareShellState extends State<OfflineAwareShell> {
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _subscription;
-  StreamSubscription<void>? _outboxSubscription;
   bool _offline = false;
   int _pending = 0;
 
@@ -40,17 +38,10 @@ class _OfflineAwareShellState extends State<OfflineAwareShell> {
       if (mounted) _setOnline(online);
     }).catchError((Object _) {});
     _subscription = _connectivity.connectionStream.listen(_setOnline);
-    // Le nombre d'éléments en attente suit la file d'envoi des messages.
-    _outboxSubscription = MessageOutbox.instance.changes.listen((_) {
-      if (_offline) _setOnline(false);
-    });
   }
 
   Future<void> _setOnline(bool online) async {
-    final pending = online
-        ? 0
-        : await PendingProgress.instance.count() +
-            await MessageOutbox.instance.count();
+    final pending = online ? 0 : await PendingProgress.instance.count();
     if (!mounted) return;
     setState(() {
       _offline = !online;
@@ -61,7 +52,6 @@ class _OfflineAwareShellState extends State<OfflineAwareShell> {
   @override
   void dispose() {
     _subscription?.cancel();
-    _outboxSubscription?.cancel();
     super.dispose();
   }
 
@@ -69,8 +59,8 @@ class _OfflineAwareShellState extends State<OfflineAwareShell> {
   Widget build(BuildContext context) {
     final fr = widget.languageCode != 'en';
     final base = fr
-        ? 'Mode hors ligne — vos cours et conversations restent consultables'
-        : 'Offline mode — your courses and conversations remain available';
+        ? 'Mode hors ligne — vos cours téléchargés restent disponibles'
+        : 'Offline mode — your downloaded courses remain available';
     final waiting = fr ? "en attente d'envoi" : 'waiting to sync';
     final message = _pending > 0 ? '$base ($_pending $waiting)' : base;
 

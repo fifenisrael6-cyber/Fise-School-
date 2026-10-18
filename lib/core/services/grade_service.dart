@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/forum.dart';
 import '../../models/grades.dart';
-import '../offline/json_cache.dart';
 
 class GradeService {
   GradeService({SupabaseClient? client})
@@ -9,53 +9,24 @@ class GradeService {
 
   final SupabaseClient _client;
 
-  Future<List<GradePeriod>> listPeriods({bool onlyPublished = false}) {
-    return JsonCache.instance.cachedRead<List<GradePeriod>>(
-      key: 'grade_periods_${onlyPublished ? 'published' : 'all'}',
-      fetch: () async {
-        var query = _client.from('grade_periods').select();
-        if (onlyPublished) {
-          query = query.eq('is_published', true);
-        }
-        return await query.order('position') as Object?;
-      },
-      decode: (raw) => (raw as List)
-          .map((r) => GradePeriod.fromMap(Map<String, dynamic>.from(r as Map)))
-          .toList(growable: false),
-    );
-  }
-
-  Future<List<GradeClassOption>> listTeacherClasses(String teacherId) async {
-    final assignments = await _client
-        .from('class_teachers')
-        .select('class_id')
-        .eq('teacher_id', teacherId)
-        .eq('is_active', true);
-    final classIds = assignments
-        .map((row) => row['class_id'])
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    if (classIds.isEmpty) return const <GradeClassOption>[];
-
-    final rows = await _client
-        .from('school_classes')
-        .select('id, name, display_name')
-        .inFilter('id', classIds)
-        .order('display_name');
+  Future<List<GradePeriod>> listPeriods({bool onlyPublished = false}) async {
+    var query = _client.from('grade_periods').select();
+    if (onlyPublished) {
+      query = query.eq('is_published', true);
+    }
+    final rows = await query.order('position');
     return rows
-        .map((row) => GradeClassOption.fromMap(Map<String, dynamic>.from(row)))
+        .map((r) => GradePeriod.fromMap(Map<String, dynamic>.from(r)))
         .toList(growable: false);
   }
 
-  Future<List<GradeClassOption>> listAllClasses() async {
+  Future<List<ForumClass>> listAllClasses() async {
     final rows = await _client
         .from('school_classes')
         .select('id, name, display_name')
         .order('display_name');
     return rows
-        .map((r) => GradeClassOption.fromMap(Map<String, dynamic>.from(r)))
+        .map((r) => ForumClass.fromMap(Map<String, dynamic>.from(r)))
         .toList(growable: false);
   }
 
@@ -130,16 +101,12 @@ class GradeService {
         .upsert(rows, onConflict: 'student_id,subject_id,period_id');
   }
 
-  /// Bulletin d'un élève pour une période. Sans réseau : dernière copie locale.
-  Future<Bulletin> bulletin(String studentId, String periodId) {
-    return JsonCache.instance.cachedRead<Bulletin>(
-      key: 'bulletin_${studentId}_$periodId',
-      fetch: () async => await _client.rpc(
-        'get_student_bulletin',
-        params: {'p_student_id': studentId, 'p_period_id': periodId},
-      ) as Object?,
-      decode: (raw) => Bulletin.fromMap(Map<String, dynamic>.from(raw as Map)),
+  Future<Bulletin> bulletin(String studentId, String periodId) async {
+    final res = await _client.rpc(
+      'get_student_bulletin',
+      params: {'p_student_id': studentId, 'p_period_id': periodId},
     );
+    return Bulletin.fromMap(Map<String, dynamic>.from(res as Map));
   }
 
   Future<void> createPeriod(String label, int position) async {

@@ -2,12 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fise School utilise le micro pour enregistrer vos messages vocaux.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Fise School utilise la caméra pour prendre des photos de profil, de devoirs et de documents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Fise School a besoin d’accéder à vos photos pour choisir votre photo de profil.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fiseschool</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

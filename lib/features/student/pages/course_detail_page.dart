@@ -4,14 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
-import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
-import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
+import '../../../core/services/quota_service.dart';
+import '../../premium/premium_gate.dart';
 
 class CourseDetailPage extends StatefulWidget {
   final Locale locale;
@@ -31,15 +30,12 @@ class CourseDetailPage extends StatefulWidget {
 
 class _CourseDetailPageState extends State<CourseDetailPage> {
   final LessonService _lessonService = LessonService();
-  final AssignmentService _assignmentService = AssignmentService();
   final CourseOfflineService _offline = CourseOfflineService();
   final ConnectivityService _connectivity = ConnectivityService();
   StreamSubscription<bool>? _connectionSubscription;
   bool _offlineMode = false;
 
   late Future<List<Lesson>> _lessonsFuture;
-  late Future<List<Assignment>> _qcmsFuture;
-  late Future<List<Assignment>> _evaluationsFuture;
 
   String get _courseTitle {
     return widget.locale.languageCode == 'en'
@@ -63,8 +59,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   void initState() {
     super.initState();
     _loadLessons();
-    _qcmsFuture = _loadQcms();
-    _evaluationsFuture = _loadEvaluations();
     _prepareOffline();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
@@ -83,83 +77,24 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     super.dispose();
   }
 
-  Future<List<CourseResource>> _loadResources() async {
-    try {
-      final resources = await ResourceService().listForCourse(widget.course.id);
-      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: widget.course));
-      return resources;
-    } catch (_) {
-      return _offline.resourcesForCourse(widget.profile.id, widget.course.id);
-    }
-  }
-
   void _loadLessons() {
     _lessonsFuture = _lessonService.listCourseLessons(widget.course.id);
   }
 
-  Future<List<Assignment>> _loadQcms() async {
-    try {
-      // Load both explicitly linked QCMs and older subject-level QCMs that
-      // target this exact class. This preserves existing published QCMs while
-      // new ones gain a direct course link whenever the match is unambiguous.
-      final linked = await _assignmentService.listStudentAssignments(
-        studentId: widget.profile.id,
-        courseId: widget.course.id,
-      );
-      final subjectAssignments = await _assignmentService.listStudentAssignments(
-        studentId: widget.profile.id,
-        subjectId: widget.course.subjectId,
-      );
-      final candidates = <String, Assignment>{
-        for (final assignment in [...linked, ...subjectAssignments])
-          assignment.id: assignment,
-      };
-      return candidates.values.where((assignment) {
-        if (assignment.evaluationFilePath?.trim().isNotEmpty == true) return false;
-        if (assignment.courseId == widget.course.id) return true;
-        return assignment.courseId == null &&
-            widget.course.classId != null &&
-            assignment.classId == widget.course.classId &&
-            assignment.subjectId == widget.course.subjectId;
-      }).toList(growable: false);
-    } catch (_) {
-      // QCM loading must never prevent the course or its lessons from opening.
-      return const <Assignment>[];
-    }
-  }
-
-  Future<List<Assignment>> _loadEvaluations() async {
-    final subjectId = widget.course.subjectId;
-    final classId = widget.course.classId;
-    if (classId == null) return const <Assignment>[];
-    try {
-      final assignments = await _assignmentService.listStudentAssignments(
-        studentId: widget.profile.id,
-        subjectId: subjectId,
-      );
-      return assignments.where((assignment) =>
-        assignment.courseId == null &&
-        assignment.classId == classId &&
-        assignment.subjectId == subjectId &&
-        assignment.evaluationFilePath?.trim().isNotEmpty == true
-      ).toList(growable: false);
-    } catch (_) {
-      return const <Assignment>[];
-    }
-  }
-
   Future<void> _refresh() async {
-    setState(() {
-      _loadLessons();
-      _qcmsFuture = _loadQcms();
-      _evaluationsFuture = _loadEvaluations();
-    });
+    setState(_loadLessons);
     await _lessonsFuture;
-    await _qcmsFuture;
-    await _evaluationsFuture;
   }
 
   Future<void> _openLesson(Lesson lesson) async {
+    // Le catalogue et la fiche du cours restent gratuits ; la restriction vise la leçon.
+    final allowed = await PremiumGate.ensure(
+      context,
+      profile: widget.profile,
+      feature: QuotaFeature.lesson,
+      resourceId: lesson.id,
+    );
+    if (!allowed || !mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => LessonPage(
@@ -175,10 +110,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   @override
   Widget build(BuildContext context) {
     final isEnglish = widget.locale.languageCode == 'en';
-    final courseContent = (isEnglish
-            ? widget.course.contentEn
-            : widget.course.contentFr)
-        ?.trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F8F6),
@@ -248,48 +179,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
                 _buildCourseHeader(isEnglish),
-                if (courseContent != null && courseContent.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Card(
-                    elevation: 0,
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: BorderSide(
-                        color: Colors.grey.withValues(alpha: 0.14),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.article_outlined,
-                                color: Color(0xFF166534),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                isEnglish ? 'Course content' : 'Contenu du cours',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SelectableText(
-                            courseContent,
-                            style: const TextStyle(fontSize: 15, height: 1.55),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
                   Container(
@@ -304,238 +193,18 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 ],
                 const SizedBox(height: 18),
                 FutureBuilder<List<CourseResource>>(
-                  future: _loadResources(),
+                  future: _offline.resourcesForCourse(widget.profile.id, widget.course.id),
                   builder: (context, resourceSnapshot) {
                     final resources = resourceSnapshot.data ?? const <CourseResource>[];
                     if (resources.isEmpty) {
-                      if (resourceSnapshot.connectionState == ConnectionState.waiting) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
                       return const SizedBox.shrink();
                     }
-
-                    // Keep chapter resources grouped by file kind, like a phone
-                    // file manager, instead of mixing every attachment in one feed.
-                    const categories = <String, List<String>>{
-                      'image': ['image'],
-                      'audio': ['audio'],
-                      'video': ['video'],
-                      'pdf': ['pdf'],
-                      'document': ['document', 'other'],
-                    };
-                    final categoryLabels = <String, String>{
-                      'image': isEnglish ? 'Photos' : 'Photos',
-                      'audio': isEnglish ? 'Audio' : 'Audios',
-                      'video': isEnglish ? 'Videos' : 'Vidéos',
-                      'pdf': 'PDF',
-                      'document': isEnglish ? 'Other files' : 'Autres fichiers',
-                    };
-                    final categoryIcons = <String, IconData>{
-                      'image': Icons.photo_library_outlined,
-                      'audio': Icons.audiotrack_rounded,
-                      'video': Icons.video_library_outlined,
-                      'pdf': Icons.picture_as_pdf_outlined,
-                      'document': Icons.folder_open_rounded,
-                    };
-
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          isEnglish ? 'Chapter files' : 'Fichiers du chapitre',
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
+                        Text(isEnglish ? 'Course files' : 'Fichiers du cours', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        for (final entry in categories.entries)
-                          if (resources.any((resource) => entry.value.contains(resource.resourceType)))
-                            Card(
-                              clipBehavior: Clip.antiAlias,
-                              child: ExpansionTile(
-                                leading: Icon(categoryIcons[entry.key], color: const Color(0xFF166534)),
-                                title: Text(categoryLabels[entry.key]!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                subtitle: Text(
-                                  '${resources.where((resource) => entry.value.contains(resource.resourceType)).length} '
-                                  '${isEnglish ? 'file(s)' : 'fichier(s)'}',
-                                ),
-                                children: [
-                                  ...resources
-                                      .where((resource) => entry.value.contains(resource.resourceType))
-                                      .map((resource) => OfflineResourceTile(
-                                            locale: widget.locale,
-                                            profile: widget.profile,
-                                            resource: resource,
-                                          )),
-                                ],
-                              ),
-                            ),
-                      ],
-                    );
-                  },
-                ),
-                FutureBuilder<List<Assignment>>(
-                  future: _evaluationsFuture,
-                  builder: (context, evaluationSnapshot) {
-                    final evaluations = evaluationSnapshot.data ?? const <Assignment>[];
-                    if (evaluations.isEmpty) return const SizedBox.shrink();
-                    String formatDate(DateTime? value) {
-                      if (value == null) return isEnglish ? 'Not scheduled' : 'Non programmée';
-                      final date = value.toLocal();
-                      final day = date.day.toString().padLeft(2, '0');
-                      final month = date.month.toString().padLeft(2, '0');
-                      final hour = date.hour.toString().padLeft(2, '0');
-                      final minute = date.minute.toString().padLeft(2, '0');
-                      return '$day/$month/${date.year} • $hour:$minute';
-                    }
-                    String windowLabel(Assignment evaluation) {
-                      final now = DateTime.now();
-                      if (evaluation.startsAt != null && now.isBefore(evaluation.startsAt!.toLocal())) {
-                        return isEnglish ? 'Upcoming' : 'À venir';
-                      }
-                      if (evaluation.dueAt != null && !now.isBefore(evaluation.dueAt!.toLocal())) {
-                        return isEnglish ? 'Closed' : 'Terminée';
-                      }
-                      return isEnglish ? 'Scheduled / in progress' : 'Programmée / en cours';
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 22),
-                        Row(children: [
-                          const Icon(Icons.assignment_turned_in_outlined, color: Color(0xFF166534)),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(
-                            isEnglish ? 'Subject assessments' : 'Évaluations de la matière',
-                            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                          )),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                            decoration: BoxDecoration(color: const Color(0xFFE4F2E9), borderRadius: BorderRadius.circular(20)),
-                            child: Text('${evaluations.length}', style: const TextStyle(color: Color(0xFF166534), fontWeight: FontWeight.bold)),
-                          ),
-                        ]),
-                        const SizedBox(height: 10),
-                        ...evaluations.map((evaluation) => Card(
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
-                          ),
-                          child: ListTile(
-                            leading: const CircleAvatar(
-                              backgroundColor: Color(0xFFE4F2E9),
-                              child: Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF166534)),
-                            ),
-                            title: Text(evaluation.titleFor(widget.locale), style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 5),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(windowLabel(evaluation)),
-                                  const SizedBox(height: 3),
-                                  Text('${isEnglish ? 'Start' : 'Début'} : ${formatDate(evaluation.startsAt)}'),
-                                  Text('${isEnglish ? 'End' : 'Fin'} : ${formatDate(evaluation.dueAt)}'),
-                                  if (evaluation.resultsPublishAt != null)
-                                    Text('${isEnglish ? 'Results release' : 'Publication des résultats'} : ${formatDate(evaluation.resultsPublishAt)}'),
-                                  if (evaluation.evaluationFileName?.trim().isNotEmpty == true)
-                                    Text(evaluation.evaluationFileName!, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                            isThreeLine: true,
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: () async {
-                              await Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => AssignmentDetailPage(
-                                    locale: widget.locale,
-                                    profile: widget.profile,
-                                    assignment: evaluation,
-                                  ),
-                                ),
-                              );
-                              if (mounted) setState(() => _evaluationsFuture = _loadEvaluations());
-                            },
-                          ),
-                        )),
-                      ],
-                    );
-                  },
-                ),
-                FutureBuilder<List<Assignment>>(
-                  future: _qcmsFuture,
-                  builder: (context, qcmSnapshot) {
-                    final qcms = qcmSnapshot.data ?? const <Assignment>[];
-                    if (qcms.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            const Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                isEnglish ? 'Course QCMs' : 'QCM du cours',
-                                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE4F2E9),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '${qcms.length}',
-                                style: const TextStyle(color: Color(0xFF166534), fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ...qcms.map((assignment) => Card(
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
-                          ),
-                          child: ListTile(
-                            leading: const CircleAvatar(
-                              backgroundColor: Color(0xFFE4F2E9),
-                              child: Icon(Icons.quiz_rounded, color: Color(0xFF166534)),
-                            ),
-                            title: Text(
-                              assignment.titleFor(widget.locale),
-                              style: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            subtitle: Text(
-                              assignment.instructionsFor(widget.locale) ??
-                                  (isEnglish ? 'Open and answer this QCM' : 'Ouvrez et répondez à ce QCM'),
-                            ),
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: () async {
-                              await Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => AssignmentDetailPage(
-                                    locale: widget.locale,
-                                    profile: widget.profile,
-                                    assignment: assignment,
-                                  ),
-                                ),
-                              );
-                              if (mounted) setState(() => _qcmsFuture = _loadQcms());
-                            },
-                          ),
-                        )),
+                        ...resources.map((resource) => OfflineResourceTile(locale: widget.locale, profile: widget.profile, resource: resource)),
                       ],
                     );
                   },

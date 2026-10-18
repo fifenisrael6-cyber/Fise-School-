@@ -1,11 +1,6 @@
-import 'dart:io';
-
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/offline/course_offline_service.dart';
-import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';
@@ -163,31 +158,15 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
     }
   }
 
-  Future<PlatformFile> _fileWithBytes(PlatformFile file) async {
-    if (file.bytes != null && file.bytes!.isNotEmpty) return file;
-    final path = file.path;
-    if (path == null || path.isEmpty) return file;
-    final bytes = await File(path).readAsBytes();
-    return PlatformFile(name: file.name, size: bytes.length, path: path, bytes: bytes);
-  }
-
   Future<void> _pickAndUpload() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const [
-          'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm', 'pdf',
-          'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac',
-        ],
-        withData: true,
-      );
+      final result = await FilePicker.platform.pickFiles(withData: true);
 
       if (result == null || result.files.isEmpty) {
         return;
       }
 
-      final file = await _fileWithBytes(result.files.first);
+      final file = result.files.first;
 
       if (file.bytes == null || file.bytes!.isEmpty) {
         if (!mounted) {
@@ -208,16 +187,6 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
       }
 
       final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_isFrench
-                ? 'Formats autorisés : photos, vidéos, PDF et audio.'
-                : 'Allowed formats: photos, videos, PDFs and audio.')),
-          );
-        }
-        return;
-      }
       final position = await _nextPosition();
 
       if (!mounted) {
@@ -232,19 +201,13 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         position: position,
       );
 
-      if (type == 'image' || type == 'pdf') {
+      if (type == 'pdf') {
         try {
-          if (type == 'pdf') {
-            await _smart.reindexPdf(resource.id);
-          } else {
-            await _smart.reindexResource(resource.id);
-          }
+          await _smart.reindexPdf(resource.id);
         } catch (indexError) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(_isFrench
-                  ? 'Image ajoutée, mais l’indexation du texte a échoué : $indexError'
-                  : 'Image added, but text indexing failed: $indexError')),
+              SnackBar(content: Text(_isFrench ? 'PDF ajouté, mais l’indexation a échoué : $indexError' : 'PDF added, but indexing failed: $indexError')),
             );
           }
         }
@@ -264,22 +227,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
         ),
       );
 
-      // The upload and database insert have succeeded. A failed refresh must
-      // not be shown as an upload failure, or the teacher may resend a file
-      // that is already stored on the server.
-      try {
-        await _refresh();
-      } catch (refreshError) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isFrench
-                ? 'Le média est bien envoyé, mais la liste n’a pas pu s’actualiser. Actualisez la page pour le voir.'
-                : 'The media was uploaded, but the list could not refresh. Refresh the page to see it.'),
-          ),
-        );
-        debugPrint('[Teacher media] Upload succeeded; refresh failed: $refreshError');
-      }
+      await _refresh();
     } catch (e) {
       if (!mounted) {
         return;
@@ -314,126 +262,36 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
 
   Future<void> _openResource(CourseResource resource) async {
     try {
-      final localPath = await CourseOfflineService().openResource(
-        userId: widget.profile.id,
-        resource: resource,
-      );
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => OfflineResourceViewer(
-            locale: widget.locale,
-            userId: widget.profile.id,
-            resource: resource,
-            localPath: localPath,
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isFrench
-                ? 'Connectez-vous pour ouvrir ce fichier une première fois. Il restera ensuite disponible hors ligne.'
-                : 'Connect once to open this file. It will then remain available offline.',
-          ),
-        ),
-      );
-    }
-  }
+      final url = await _service.createSignedUrl(resource.storagePath);
 
+      if (!mounted) {
+        return;
+      }
 
-  Future<void> _editResourceTitle(CourseResource resource) async {
-    final controller = TextEditingController(text: _resourceTitle(resource));
-    final title = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_isFrench ? 'Modifier le titre' : 'Edit title'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(
-            labelText: _isFrench ? 'Titre du fichier' : 'File title',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: Text(_isFrench ? 'Enregistrer' : 'Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (title == null || title.trim().isEmpty || title.trim() == _resourceTitle(resource)) {
-      return;
-    }
-    try {
-      await _service.updateResourceTitle(resourceId: resource.id, title: title);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFrench ? 'Titre modifié.' : 'Title updated.')),
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(_resourceTitle(resource)),
+            content: SelectableText(url),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: Text(_isFrench ? 'Fermer' : 'Close'),
+              ),
+            ],
+          );
+        },
       );
-      await _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
-    }
-  }
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
 
-  Future<void> _replaceResourceFile(CourseResource resource) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const [
-          'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
-          'mp4', 'mov', 'avi', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac',
-        ],
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file = await _fileWithBytes(result.files.single);
-      if (file.bytes == null || file.bytes!.isEmpty) {
-        throw Exception(_isFrench ? 'Fichier illisible.' : 'Unable to read file.');
-      }
-      final type = _detectResourceType(file);
-      if (type != 'image' && type != 'video' && type != 'pdf' && type != 'audio') {
-        throw Exception(_isFrench
-            ? 'Choisissez une photo, une vidéo, un PDF ou un fichier audio.'
-            : 'Choose a photo, video, PDF or audio file.');
-      }
-      await _service.replaceResourceFile(
-        resource: resource,
-        file: file,
-        resourceType: type,
-      );
-      if (type == 'pdf' || type == 'image') {
-        try {
-          if (type == 'pdf') {
-            await _smart.reindexPdf(resource.id);
-          } else {
-            await _smart.reindexResource(resource.id);
-          }
-        } catch (_) {
-          // Keep the uploaded replacement even if optional AI indexing fails.
-        }
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFrench ? 'Fichier remplacé.' : 'File replaced.')),
-      );
-      await _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -545,7 +403,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                 const SizedBox(height: 10),
                 _DetailRow(
                   label: _isFrench ? 'Indexation' : 'Indexing',
-                  value: (resource.resourceType == 'pdf' || resource.resourceType == 'image')
+                  value: resource.resourceType == 'pdf'
                       ? (resource.indexStatus == 'indexed'
                           ? (resource.indexApproved ? (_isFrench ? 'Validée' : 'Approved') : (_isFrench ? 'À valider' : 'Awaiting approval'))
                           : resource.indexStatus)
@@ -555,7 +413,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                   const SizedBox(height: 8),
                   Text(resource.indexError, style: const TextStyle(color: Colors.redAccent)),
                 ],
-                if ((resource.resourceType == 'pdf' || resource.resourceType == 'image') && resource.indexPreview.trim().isNotEmpty) ...[
+                if (resource.resourceType == 'pdf' && resource.indexPreview.trim().isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(_isFrench ? 'Aperçu IA' : 'AI preview', style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
@@ -567,7 +425,7 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                if (resource.resourceType == 'pdf' || resource.resourceType == 'image')
+                if (resource.resourceType == 'pdf')
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -700,8 +558,6 @@ class _TeacherResourcePageState extends State<TeacherResourcePage> {
                     isFrench: _isFrench,
                     onOpen: () => _openResource(resource),
                     onDetails: () => _showResourceDetails(resource),
-                    onEdit: () => _editResourceTitle(resource),
-                    onReplace: () => _replaceResourceFile(resource),
                     onDelete: () => _deleteResource(resource),
                   );
                 },
@@ -789,8 +645,6 @@ class _ResourceCard extends StatelessWidget {
   final bool isFrench;
   final VoidCallback onOpen;
   final VoidCallback onDetails;
-  final VoidCallback onEdit;
-  final VoidCallback onReplace;
   final VoidCallback onDelete;
 
   const _ResourceCard({
@@ -801,8 +655,6 @@ class _ResourceCard extends StatelessWidget {
     required this.isFrench,
     required this.onOpen,
     required this.onDetails,
-    required this.onEdit,
-    required this.onReplace,
     required this.onDelete,
   });
 
@@ -876,14 +728,6 @@ class _ResourceCard extends StatelessWidget {
                       onDetails();
                       break;
 
-                    case 'edit':
-                      onEdit();
-                      break;
-
-                    case 'replace':
-                      onReplace();
-                      break;
-
                     case 'delete':
                       onDelete();
                       break;
@@ -907,26 +751,6 @@ class _ResourceCard extends StatelessWidget {
                         const Icon(Icons.info_outline_rounded),
                         const SizedBox(width: 10),
                         Text(isFrench ? 'Détails' : 'Details'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.edit_outlined),
-                        const SizedBox(width: 10),
-                        Text(isFrench ? 'Modifier le titre' : 'Edit title'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'replace',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.swap_horiz_rounded),
-                        const SizedBox(width: 10),
-                        Text(isFrench ? 'Remplacer le fichier' : 'Replace file'),
                       ],
                     ),
                   ),
@@ -1033,8 +857,8 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               isFrench
-                  ? 'Ajoutez une photo, une vidéo ou un PDF.'
-                  : 'Add a photo, video or PDF.',
+                  ? 'Ajoutez un PDF, document, image, vidéo ou fichier audio.'
+                  : 'Add a PDF, document, image, video, or audio file.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.black54),
             ),

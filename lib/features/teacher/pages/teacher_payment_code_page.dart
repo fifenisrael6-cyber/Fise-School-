@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/services/teacher_payment_code_service.dart';
 import '../../../models/user_profile.dart';
@@ -16,11 +16,11 @@ class TeacherPaymentCodePage extends StatefulWidget {
 
 class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
   final _service = TeacherPaymentCodeService();
+  final _codeController = TextEditingController();
   bool _loading = true;
+  bool _editing = false;
   String? _code;
   int _balance = 0;
-  String? _vocation;
-  bool _savingVocation = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -30,95 +30,78 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     try {
-      // Always load the canonical shared FISE code. This RPC also synchronizes
-      // the legacy payment-code row, so group access and payments use one code.
-      final sharedCode = await _service.createOrGetCode();
-      final balance = await _service.getWalletBalance();
-      final vocationRow = await Supabase.instance.client
-          .from('profiles').select('teacher_vocation')
-          .eq('id', widget.profile.id).maybeSingle();
-      if (mounted) {
-        setState(() {
-          _code = sharedCode.trim().toUpperCase();
-          _balance = balance;
-          _vocation = vocationRow?['teacher_vocation']?.toString();
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _fr
-                  ? 'Impossible de charger votre code unique FISE. Vérifiez votre connexion puis réessayez.'
-                  : 'Unable to load your unique FISE code. Check your connection and try again.',
-            ),
-          ),
-        );
-      }
-    }
-    if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _create() async {
-    setState(() => _loading = true);
-    try {
-      final code = await _service.createOrGetCode();
-      if (mounted) {
-        setState(() => _code = code);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _fr
-                  ? 'Impossible de récupérer le code unique FISE. Réessayez.'
-                  : 'Unable to retrieve the unique FISE code. Please try again.',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-    }
-  }
-
-  Future<void> _saveVocation(String? value) async {
-    if (value == null || _savingVocation) return;
-    setState(() => _savingVocation = true);
-    try {
-      await Supabase.instance.client.rpc(
-        'set_my_teacher_vocation',
-        params: {'p_vocation': value},
-      );
-      if (mounted) {
-        setState(() => _vocation = value);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_fr ? 'Filière enseignée enregistrée.' : 'Teaching stream saved.'),
-        ));
+      final existing = await _service.getOwnCode();
+      _balance = await _service.getWalletBalance();
+      if (existing != null && existing['active'] == true) {
+        _code = existing['code']?.toString();
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_fr ? 'Impossible d’enregistrer la filière.' : 'Unable to save the teaching stream.'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr
+              ? 'Impossible de charger le code FISE. Réessayez plus tard.'
+              : 'Unable to load the FISE code. Please try again later.')),
+        );
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    final value = _codeController.text.trim().toUpperCase();
+    if (!RegExp(r'^(FISE-?)?[A-Z0-9]{4,12}$').hasMatch(value)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr
+            ? 'Choisissez 4 à 12 lettres ou chiffres, avec ou sans le préfixe FISE-.'
+            : 'Choose 4 to 12 letters or numbers, with or without the FISE- prefix.')),
+      );
+      return;
+    }
+
+    final normalized = value.startsWith('FISE-')
+        ? value
+        : value.startsWith('FISE')
+            ? 'FISE-${value.substring(4)}'
+            : 'FISE-$value';
+
+    setState(() => _loading = true);
+    try {
+      final saved = await _service.saveCode(normalized);
+      if (mounted) {
+        setState(() {
+          _code = saved;
+          _editing = false;
+          _codeController.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr ? 'Votre code unique FISE est enregistré.' : 'Your unique FISE code has been saved.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        final raw = error.toString();
+        final message = raw.contains('already used')
+            ? (_fr ? 'Ce code est déjà utilisé par un autre enseignant.' : 'This code is already used by another teacher.')
+            : (_fr ? 'Impossible d’enregistrer ce code. Vérifiez le format.' : 'Unable to save this code. Check the format.');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
-      if (mounted) setState(() => _savingVocation = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Code de paiement enseignant' : 'Teacher payment code')),
+      appBar: AppBar(title: Text(_fr ? 'Mon code unique FISE' : 'My unique FISE code')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -132,61 +115,50 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                   children: [
                     const Icon(Icons.qr_code_2_rounded, size: 64, color: Color(0xFF166534)),
                     const SizedBox(height: 18),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _fr ? 'Filière enseignée (obligatoire pour les commissions Premium)'
-                            : 'Teaching stream (required for Premium commissions)',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: _vocation,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: _fr ? 'Filière' : 'Teaching stream',
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'scientific',
-                          child: Text(_fr ? 'Scientifique' : 'Scientific'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'literary',
-                          child: Text(_fr ? 'Littéraire' : 'Literary'),
-                        ),
-                      ],
-                      onChanged: _savingVocation ? null : _saveVocation,
-                    ),
-                    if (_savingVocation)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: LinearProgressIndicator(),
-                      ),
-                    const SizedBox(height: 18),
                     Text(
-                      _fr ? 'Votre code unique' : 'Your unique code',
+                      _fr ? 'Un seul code pour vos groupes et paiements' : 'One code for your groups and payments',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       _fr
-                          ? 'Partagez ce code aux élèves qui souhaitent payer Premium en vous désignant comme enseignant référent. Après un paiement réussi, 200 FCFA sont crédités dans votre portefeuille.'
-                          : 'Share this code with students who choose to pay Premium with you as their teacher. After a successful payment, 200 XAF are credited to your wallet.',
+                          ? 'Créez vous-même votre code. Les élèves peuvent l’utiliser pour retrouver les groupes auxquels leur classe a droit et pour vous désigner lors d’un paiement Premium. Le code ne confirme jamais un paiement à lui seul.'
+                          : 'Choose your own code. Students can use it to find groups their classroom is allowed to join and to identify you for a Premium payment. The code alone never confirms a payment.',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
-                    else if (_code == null)
+                    else if (_code == null || _editing) ...[
+                      TextField(
+                        controller: _codeController,
+                        autofocus: _editing,
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]'))],
+                        decoration: InputDecoration(
+                          labelText: _fr ? 'Le code que vous choisissez' : 'Your chosen code',
+                          hintText: 'FISE-AB12CD',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       FilledButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.add_link_rounded),
-                        label: Text(_fr ? 'Créer mon code' : 'Create my code'),
-                      )
-                    else
+                        onPressed: _save,
+                        icon: const Icon(Icons.save_rounded),
+                        label: Text(_fr ? 'Enregistrer mon code' : 'Save my code'),
+                      ),
+                      if (_editing)
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _editing = false;
+                              _codeController.clear();
+                            });
+                          },
+                          child: Text(_fr ? 'Annuler' : 'Cancel'),
+                        ),
+                    ] else ...[
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
@@ -199,8 +171,28 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                           style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 2),
                         ),
                       ),
-                    if (_code != null) ...[
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: _code!));
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(_fr ? 'Code copié.' : 'Code copied.')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.copy_rounded),
+                        label: Text(_fr ? 'Copier le code' : 'Copy code'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          _codeController.text = _code!;
+                          setState(() => _editing = true);
+                        },
+                        icon: const Icon(Icons.edit_rounded),
+                        label: Text(_fr ? 'Modifier mon code' : 'Change my code'),
+                      ),
+                      const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -211,22 +203,10 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                           children: [
                             const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF166534)),
                             const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(_fr ? 'Solde enseignant' : 'Teacher balance'),
-                            ),
+                            Expanded(child: Text(_fr ? 'Solde enseignant' : 'Teacher balance')),
                             Text('$_balance XAF', style: const TextStyle(fontWeight: FontWeight.w900)),
                           ],
                         ),
-                      ),
-                    ],
-                    if (_code != null) ...[
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await _create();
-                        },
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: Text(_fr ? 'Récupérer mon code' : 'Refresh my code'),
                       ),
                     ],
                   ],

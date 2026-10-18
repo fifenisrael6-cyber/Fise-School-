@@ -1,23 +1,3 @@
-class GradeClassOption {
-  final String id;
-  final String name;
-  final String displayName;
-
-  const GradeClassOption({
-    required this.id,
-    required this.name,
-    required this.displayName,
-  });
-
-  factory GradeClassOption.fromMap(Map<String, dynamic> map) {
-    return GradeClassOption(
-      id: map['id'].toString(),
-      name: (map['name'] ?? '').toString(),
-      displayName: (map['display_name'] ?? map['name'] ?? '').toString(),
-    );
-  }
-}
-
 double? _num(Object? v) => v == null ? null : (v as num).toDouble();
 
 class GradePeriod {
@@ -152,8 +132,6 @@ class Bulletin {
   final int? rank;
   final int classSize;
   final double? classAverage;
-  final double? averageGap;
-  final double? progress;
   final List<BulletinLine> lines;
 
   const Bulletin({
@@ -162,8 +140,6 @@ class Bulletin {
     required this.classSize,
     required this.classAverage,
     required this.lines,
-    this.averageGap,
-    this.progress,
   });
 
   factory Bulletin.fromMap(Map<String, dynamic> map) {
@@ -178,8 +154,6 @@ class Bulletin {
       rank: (map['rank'] as num?)?.toInt(),
       classSize: (map['class_size'] as num?)?.toInt() ?? 0,
       classAverage: _num(map['class_average']),
-      averageGap: _num(map['average_gap']),
-      progress: _num(map['progress']),
       lines: lines,
     );
   }

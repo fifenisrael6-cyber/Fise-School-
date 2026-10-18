@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'profile_service.dart';
-import '../offline/local_cleanup.dart';
+import '../offline/offline_repository.dart';
 
 class AuthService {
   SupabaseClient get _client => Supabase.instance.client;
@@ -23,10 +23,6 @@ class AuthService {
   /// Retourne true si une session est créée immédiatement.
   /// Avec la confirmation e-mail activée, Supabase peut retourner false
   /// tout en ayant créé correctement le compte.
-  Future<void> sendPasswordReset({required String email}) async {
-    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
-  }
-
   Future<bool> signUp({
     required String email,
     required String password,
@@ -42,10 +38,7 @@ class AuthService {
     String? examLevel,
     String? exam,
     String? track,
-    String? languageOption,
     String? className,
-    String? classId,
-    String? teacherVocation,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
@@ -66,16 +59,27 @@ class AuthService {
         'exam_level': examLevel,
         'exam': exam,
         'track': track,
-        'language_option': languageOption,
         'class_name': className,
-        'class_id': classId,
-        'teacher_vocation': role == 'teacher' ? teacherVocation : null,
       },
     );
 
     final user = response.user;
+
+    // Avec la confirmation e-mail, Supabase ne renvoie pas d'erreur si l'e-mail
+    // existe déjà : il renvoie un utilisateur sans identité. On le signale.
+    if (user != null && (user.identities?.isEmpty ?? false)) {
+      throw const AuthException(
+        'User already registered',
+        code: 'user_already_exists',
+      );
+    }
+
     if (user != null && response.session != null) {
-      await _profileService.saveCurrentProfile(
+      // Le compte existe déjà ici : un échec de sauvegarde du profil ne doit
+      // pas être présenté comme un échec d'inscription (le profil est
+      // recréé à la prochaine connexion par _ensureProfile).
+      try {
+        await _profileService.saveCurrentProfile(
         firstName: firstName,
         lastName: lastName,
         email: cleanEmail,
@@ -91,6 +95,9 @@ class AuthService {
         track: track,
         className: className,
       );
+      } catch (e) {
+        debugPrint('Profil non enregistré à l’inscription: $e');
+      }
     }
 
     return response.session != null;
@@ -128,10 +135,11 @@ class AuthService {
 
   Future<void> signOut() async {
     try {
-      await clearLocalUserData();
+      await OfflineRepository().clearCourses();
+      await OfflineRepository().clearLessons();
     } catch (e) {
       debugPrint('Nettoyage du cache hors ligne impossible: $e');
     }
-    await _client.auth.signOut(scope: SignOutScope.local);
+    await _client.auth.signOut();
   }
 }

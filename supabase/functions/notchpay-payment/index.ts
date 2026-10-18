@@ -1,164 +1,103 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { adminClient, PREMIUM_CURRENCY, PREMIUM_PRICE_XAF } from "../_shared/notchpay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-serve(async (req) => {
+const SCIENCE_SHARE = 200;
+const LITERARY_SHARE = 200;
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Authentication required." }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const publicKey = Deno.env.get("NOTCHPAY_PUBLIC_KEY");
-    if (!supabaseUrl || !serviceKey || !publicKey) {
-      throw new Error("Supabase/Notch Pay secrets are not configured.");
-    }
+    if (!supabaseUrl || !publicKey) throw new Error("Notch Pay secrets are not configured.");
 
-    const token = authHeader.substring("Bearer ".length);
-    const admin = createClient(supabaseUrl, serviceKey);
-    const { data: authData, error: authError } = await admin.auth.getUser(token);
+    const admin = adminClient();
+    const { data: authData, error: authError } = await admin.auth.getUser(authHeader.substring(7));
     if (authError || !authData.user) return json({ error: "Invalid session." }, 401);
 
-    const body = await req.json();
-    const amount = Number(body?.amount ?? 2000);
-    const currency = String(body?.currency ?? "XAF").toUpperCase();
-    if (amount !== 2000 || currency !== "XAF") {
-      return json({ error: "Fise School Premium must be 2000 XAF." }, 400);
+    const body = await req.json().catch(() => ({}));
+    // Le prix est fixé par le serveur : toute autre valeur envoyée par le client est refusée.
+    const amount = Number(body?.amount ?? PREMIUM_PRICE_XAF);
+    const currency = String(body?.currency ?? PREMIUM_CURRENCY).toUpperCase();
+    if (amount !== PREMIUM_PRICE_XAF || currency !== PREMIUM_CURRENCY) {
+      return json({ error: `Fise School Premium costs ${PREMIUM_PRICE_XAF} ${PREMIUM_CURRENCY}.` }, 400);
     }
 
     const { data: profile, error: profileError } = await admin
-      .from("profiles")
-      .select("first_name,last_name,email,role")
-      .eq("id", authData.user.id)
-      .single();
+      .from("profiles").select("first_name,last_name,email,role").eq("id", authData.user.id).single();
     if (profileError) throw profileError;
-    if (profile.role !== "student") {
-      return json({ error: "Only student accounts can purchase Premium." }, 403);
-    }
+    if (profile.role !== "student") return json({ error: "Premium is reserved for students." }, 403);
 
-    let relatedClassId: string | null = null;
-    let scientificTeacherId: string | null = null;
-    let literaryTeacherId: string | null = null;
-    const { data: membership, error: membershipError } = await admin
-      .from("class_students")
-      .select("class_id")
-      .eq("student_id", authData.user.id)
-      .eq("is_active", true)
-      .order("joined_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (membershipError) throw membershipError;
-    relatedClassId = membership?.class_id?.toString() ?? null;
+    // Enseignants concernés selon l'affectation de classe de l'élève
+    const { data: teachers } = await admin.rpc("resolve_premium_teachers", { p_student_id: authData.user.id });
+    const scienceTeacher: string | null = teachers?.science_teacher_id ?? null;
+    const literaryTeacher: string | null = teachers?.literary_teacher_id ?? null;
+    const scienceCommission = scienceTeacher ? SCIENCE_SHARE : 0;
+    const literaryCommission = literaryTeacher ? LITERARY_SHARE : 0;
 
-    if (relatedClassId) {
-      const { data: assignments, error: assignmentError } = await admin
-        .from("class_teachers")
-        .select("teacher_id")
-        .eq("class_id", relatedClassId)
-        .eq("is_active", true);
-      if (assignmentError) throw assignmentError;
-      const teacherIds = [...new Set((assignments ?? [])
-        .map((row: { teacher_id?: string }) => row.teacher_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0))];
-      if (teacherIds.length > 0) {
-        const { data: teachers, error: teachersError } = await admin
-          .from("profiles")
-          .select("id,teacher_vocation")
-          .eq("role", "teacher")
-          .in("id", teacherIds);
-        if (teachersError) throw teachersError;
-        scientificTeacherId = (teachers ?? [])
-          .find((teacher: { teacher_vocation?: string }) => teacher.teacher_vocation === "scientific")?.id ?? null;
-        literaryTeacherId = (teachers ?? [])
-          .find((teacher: { teacher_vocation?: string }) => teacher.teacher_vocation === "literary")?.id ?? null;
-      }
+    // Code enseignant historique (traçabilité uniquement ; il ne crée plus de commission à lui seul)
+    const teacherCode = String(body?.teacher_code ?? "").trim();
+    let legacyTeacherId: string | null = null;
+    if (teacherCode) {
+      const { data: resolved, error: resolveError } = await admin.rpc("resolve_teacher_payment_code", { p_code: teacherCode });
+      if (resolveError || !resolved) return json({ error: "Invalid teacher code." }, 400);
+      legacyTeacherId = String(resolved);
     }
-
-    if (!relatedClassId) {
-      return json({ error: "Choose an active classroom before purchasing Premium." }, 409);
-    }
-    if (!scientificTeacherId || !literaryTeacherId) {
-      return json({
-        error: "This classroom must have one assigned scientific teacher and one assigned literary teacher before Premium can be purchased.",
-      }, 409);
-    }
-
-    const scientificCommission = 200;
-    const literaryCommission = 200;
-    const platformRevenue = 1600;
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
-    const email = String(body?.email ?? profile.email ?? authData.user.email ?? "").trim();
-    const name = String(body?.name ?? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`).trim();
+    const email = String(profile.email ?? authData.user.email ?? "").trim();
+    const name = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim();
+    const description = "Abonnement Fise School Premium — 30 jours";
 
-    const paymentResponse = await fetch("https://api.notchpay.co/payments", {
-      method: "POST",
-      headers: {
-        "Authorization": publicKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount,
-        currency,
-        customer: {
-          name: name || "Fise School Student",
-          ...(email ? { email } : {}),
-        },
-        description: String(body?.description ?? "Abonnement Fise School"),
-        reference,
-        callback,
-      }),
-    });
-
-    const paymentData = await paymentResponse.json();
-    if (!paymentResponse.ok) {
-      throw new Error(paymentData?.message ?? paymentData?.error?.message ?? "Notch Pay payment initialization failed.");
-    }
-
-    const authorizationUrl = paymentData?.authorization_url ?? paymentData?.transaction?.authorization_url;
-    const returnedReference = String(paymentData?.reference ?? paymentData?.transaction?.reference ?? reference);
-    const providerTransactionId = paymentData?.transaction?.id ?? null;
-    if (!authorizationUrl) throw new Error("Notch Pay returned no authorization URL.");
-
+    // 1) On enregistre la commande AVANT d'appeler Notch Pay (pas de paiement orphelin).
     const { error: insertError } = await admin.from("payment_orders").insert({
-      user_id: authData.user.id,
-      reference: returnedReference,
-      amount,
-      currency,
-      status: "PENDING",
-      description: String(body?.description ?? "Abonnement Fise School"),
-      provider: "notchpay",
-      provider_transaction_id: providerTransactionId,
-      teacher_id: null,
-      teacher_commission_xaf: scientificCommission + literaryCommission,
-      platform_revenue_xaf: platformRevenue,
-      scientific_teacher_id: scientificTeacherId,
-      literary_teacher_id: literaryTeacherId,
-      scientific_commission_xaf: scientificCommission,
-      literary_commission_xaf: literaryCommission,
-      related_class_id: relatedClassId,
+      user_id: authData.user.id, reference, amount, currency, status: "NOTPAY", description, provider: "notchpay",
+      teacher_id: legacyTeacherId,
+      science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
+      science_commission_xaf: scienceCommission, literary_commission_xaf: literaryCommission,
+      teacher_commission_xaf: scienceCommission + literaryCommission,
+      platform_revenue_xaf: amount - scienceCommission - literaryCommission,
     });
     if (insertError) throw insertError;
 
-    return json({
-      authorization_url: authorizationUrl,
-      reference: returnedReference,
-      teacher_id: null,
+    const paymentResponse = await fetch("https://api.notchpay.co/payments", {
+      method: "POST",
+      headers: { Authorization: publicKey, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        amount, currency,
+        customer: { name: name || "Fise School Student", ...(email ? { email } : {}) },
+        description, reference, callback,
+      }),
     });
+    const paymentData = await paymentResponse.json().catch(() => ({}));
+    if (!paymentResponse.ok) {
+      await admin.rpc("mark_notchpay_payment_failed", { p_reference: reference, p_status: "FAILED", p_reason: "init_failed" });
+      throw new Error(paymentData?.message ?? "Notch Pay payment initialization failed.");
+    }
+
+    const authorizationUrl = paymentData?.authorization_url ?? paymentData?.transaction?.authorization_url;
+    const returnedReference = String(paymentData?.transaction?.merchant_reference ?? reference);
+    if (!authorizationUrl) throw new Error("Notch Pay returned no authorization URL.");
+
+    await admin.from("payment_orders").update({
+      status: "PENDING",
+      provider_transaction_id: paymentData?.transaction?.id ?? null,
+      updated_at: new Date().toISOString(),
+    }).eq("reference", reference);
+
+    return json({ authorization_url: authorizationUrl, reference: returnedReference });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+    console.error("[notchpay-payment]", error instanceof Error ? error.message : error);
+    return json({ error: "Impossible de démarrer le paiement. Réessaie dans un instant." }, 500);
   }
 });

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/notchpay_service.dart';
 import '../../../../models/user_profile.dart';
+import '../../../../core/services/teacher_payment_code_service.dart';
 
 class PaymentPage extends StatefulWidget {
   final Locale locale;
@@ -15,45 +15,19 @@ class PaymentPage extends StatefulWidget {
   State<PaymentPage> createState() => _PaymentPageState();
 }
 
-class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
+class _PaymentPageState extends State<PaymentPage> {
   final NotchPayService _notchPayService = NotchPayService();
+  final TeacherPaymentCodeService _teacherCodeService = TeacherPaymentCodeService();
+  final TextEditingController _teacherCodeController = TextEditingController();
+
   bool _loading = false;
-  bool _checkingPremium = true;
-  bool? _isPremium;
+  String? _teacherId;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _refreshPremiumStatus();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _refreshPremiumStatus();
-    }
-  }
-
-  Future<void> _refreshPremiumStatus() async {
-    try {
-      final result = await Supabase.instance.client.rpc(
-        'is_student_premium',
-        params: {'p_user_id': widget.profile.id},
-      );
-      if (mounted) setState(() => _isPremium = result == true);
-    } catch (_) {
-      if (mounted) setState(() => _isPremium = null);
-    } finally {
-      if (mounted) setState(() => _checkingPremium = false);
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _teacherCodeController.dispose();
     super.dispose();
   }
 
@@ -82,6 +56,16 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
         );
       }
 
+      final teacherCode = _teacherCodeController.text.trim();
+      if (teacherCode.isNotEmpty) {
+        _teacherId = await _teacherCodeService.resolveTeacherId(teacherCode);
+        if (_teacherId == null) {
+          throw Exception(
+            _isFrench ? 'Code enseignant invalide.' : 'Invalid teacher code.',
+          );
+        }
+      }
+
       final name = '${widget.profile.firstName} ${widget.profile.lastName}'
           .trim();
 
@@ -91,8 +75,9 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
         amount: _subscriptionAmount,
         currency: 'XAF',
         description: _isFrench
-            ? 'Abonnement Fise School Premium - 30 jours'
-            : 'Fise School Premium subscription - 30 days',
+            ? 'Abonnement Fise School'
+            : 'Fise School subscription',
+        teacherCode: teacherCode.isEmpty ? null : teacherCode,
       );
 
       final paymentUrl = payment.authorizationUrl.trim();
@@ -129,19 +114,12 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
               : 'Unable to open the payment page.',
         );
       }
-      // The subscription is activated by the verified Notch Pay callback only.
-      // Re-check on return to the app; never activate Premium from the client.
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      var message = error.toString().replaceFirst('Exception: ', '');
-      if (_isFrench && message.contains('Choose an active classroom')) {
-        message = 'Choisis d’abord une salle dans les paramètres avant de payer.';
-      } else if (_isFrench && message.contains('one assigned scientific teacher and one assigned literary teacher')) {
-        message = 'Ta salle doit avoir un enseignant scientifique et un enseignant littéraire affectés avant l’achat de Premium.';
-      }
+      final message = error.toString().replaceFirst('Exception: ', '');
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -179,25 +157,6 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (_checkingPremium || _isPremium == true)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 16),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: _isPremium == true ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(_isPremium == true ? Icons.verified_rounded : Icons.sync_rounded,
-                                  color: const Color(0xFF166534)),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(_isPremium == true
-                                  ? (_isFrench ? 'Premium est actif sur ton compte.' : 'Premium is active on your account.')
-                                  : (_isFrench ? 'Vérification de ton abonnement…' : 'Checking your subscription…'))),
-                            ],
-                          ),
-                        ),
                       Container(
                         width: 70,
                         height: 70,
@@ -268,21 +227,25 @@ class _PaymentPageState extends State<PaymentPage> with WidgetsBindingObserver {
 
                       const SizedBox(height: 20),
 
+                      TextField(
+                        controller: _teacherCodeController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                          labelText: _isFrench ? 'Code de l’enseignant (facultatif)' : 'Teacher code (optional)',
+                          hintText: 'FISE-XXXXXXXX',
+                          prefixIcon: const Icon(Icons.badge_outlined),
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Text(
                         _isFrench
-                            ? 'Les enseignants scientifique et littéraire affectés à ta salle reçoivent chacun 200 FCFA après confirmation du paiement. Le solde revient à Fise School.'
-                            : 'The scientific and literary teachers assigned to your classroom each receive 200 XAF after payment confirmation. The remainder goes to Fise School.',
-                        style: const TextStyle(color: Colors.black54, fontSize: 12, height: 1.4),
+                            ? 'Si vous utilisez le code d’un enseignant et que le paiement réussit, 200 FCFA sont crédités à son portefeuille.'
+                            : 'If you use a teacher code and the payment succeeds, 200 XAF are credited to the teacher wallet.',
+                        style: const TextStyle(color: Colors.black54, fontSize: 12),
                       ),
 
                       const SizedBox(height: 24),
-
-                      OutlinedButton.icon(
-                        onPressed: _checkingPremium ? null : _refreshPremiumStatus,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: Text(_isFrench ? 'J’ai payé — vérifier l’activation' : 'I paid — check activation'),
-                      ),
-                      const SizedBox(height: 8),
 
                       FilledButton.icon(
                         onPressed: _loading ? null : _startPayment,
