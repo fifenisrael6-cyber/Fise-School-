@@ -1,5 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/school_class.dart';
+import '../../models/user_profile.dart';
+
 class SchoolClassService {
   final SupabaseClient _client;
 
@@ -32,6 +35,36 @@ class SchoolClassService {
     final response = await query.order('display_name', ascending: true);
 
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<List<ClassroomInfo>> listAssignedClasses(UserProfile profile) async {
+    if (profile.role == 'student') {
+      final rows = await _client
+          .from('class_students')
+          .select('school_classes(id, name, display_name)')
+          .eq('student_id', profile.id)
+          .eq('is_active', true);
+      return rows
+          .map((row) => ClassroomInfo.fromMap(
+                Map<String, dynamic>.from(row['school_classes'] as Map),
+              ))
+          .toList(growable: false);
+    }
+
+    if (profile.role == 'teacher') {
+      final rows = await _client
+          .from('class_teachers')
+          .select('school_classes(id, name, display_name)')
+          .eq('teacher_id', profile.id)
+          .eq('is_active', true);
+      return rows
+          .map((row) => ClassroomInfo.fromMap(
+                Map<String, dynamic>.from(row['school_classes'] as Map),
+              ))
+          .toList(growable: false);
+    }
+
+    return const [];
   }
 
   Future<Map<String, dynamic>> getClass(String classId) async {

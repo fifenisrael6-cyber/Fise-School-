@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/services/forum_service.dart';
+import '../../../core/services/school_class_service.dart';
 import '../../../core/services/grade_service.dart';
-import '../../../models/forum.dart';
+import '../../../models/school_class.dart';
 import '../../../models/grades.dart';
 import '../../../models/user_profile.dart';
 
@@ -30,7 +30,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
   bool _saving = false;
   String? _error;
 
-  List<ForumClass> _classes = const [];
+  List<ClassroomInfo> _classes = const [];
   List<GradeSubject> _subjects = const [];
   List<GradePeriod> _periods = const [];
   List<RosterStudent> _roster = const [];
@@ -74,7 +74,7 @@ class _GradesEntryPageState extends State<GradesEntryPage> {
     try {
       final classes = widget.asAdmin
           ? await _service.listAllClasses()
-          : await ForumService().listClasses(widget.profile!);
+          : await SchoolClassService().listAssignedClasses(widget.profile!);
       final periods = await _service.listPeriods();
       if (!mounted) {
         return;

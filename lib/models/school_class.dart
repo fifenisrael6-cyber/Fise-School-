@@ -70,3 +70,23 @@ class SchoolClass {
     );
   }
 }
+
+class ClassroomInfo {
+  final String id;
+  final String name;
+  final String displayName;
+
+  const ClassroomInfo({
+    required this.id,
+    required this.name,
+    required this.displayName,
+  });
+
+  factory ClassroomInfo.fromMap(Map<String, dynamic> map) {
+    return ClassroomInfo(
+      id: map['id']?.toString() ?? '',
+      name: (map['name'] ?? '').toString(),
+      displayName: (map['display_name'] ?? map['name'] ?? '').toString(),
+    );
+  }
+}
