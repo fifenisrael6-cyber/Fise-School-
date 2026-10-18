@@ -350,6 +350,32 @@ class CourseOfflineService {
     }
   }
 
+  /// Ouvre une pièce jointe externe en la mettant en cache local pour un usage hors ligne.
+  Future<String> openExternalFile({
+    required String userId,
+    required String resourceId,
+    required String courseId,
+    required String fileName,
+    required String mimeType,
+    required Future<String> Function() signedUrlProvider,
+  }) async {
+    final base = await getApplicationDocumentsDirectory();
+    final directory = Directory(p.join(base.path, 'offline', userId, courseId));
+    await directory.create(recursive: true);
+    final safeName = _safeFileName(fileName, resourceId);
+    final destination = File(p.join(directory.path, safeName));
+    if (await destination.exists() && await destination.length() > 0) {
+      return destination.path;
+    }
+    final url = await signedUrlProvider();
+    final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 45));
+    if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) {
+      throw HttpException('Téléchargement de la pièce jointe impossible (HTTP ${response.statusCode}).');
+    }
+    await destination.writeAsBytes(response.bodyBytes, flush: true);
+    return destination.path;
+  }
+
   Future<void> markOpened(String userId, String resourceId) => _db.markDownloadedFileOpened(resourceId, userId);
 
   Future<void> deleteUserFiles(String userId) async {
