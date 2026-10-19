@@ -310,7 +310,6 @@ class _ChapterLearningDetailPageState
                 subtitle: Text(
                   '${items.length} ${_en ? 'item(s)' : 'élément(s)'}',
                 ),
-                trailing: const Icon(Icons.chevron_right_rounded),
                 trailing: folder == _ChapterResourceFolder.quizzes && _generatingQuiz
                     ? const SizedBox(
                         width: 22,
