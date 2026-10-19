@@ -9,7 +9,6 @@ import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
-import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
@@ -28,8 +27,7 @@ class _ChapterMediaEntry {
   const _ChapterMediaEntry({required this.course, required this.resource});
 }
 
-/// Fil d'une matière : cours publiés, documents, photos et QCM de l'enseignant,
-/// affichés comme un canal (le plus récent en bas).
+/// Fil d'une matière : chapitres, cours publiés et ressources classées par dossier.
 class SubjectChannelPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
@@ -450,34 +448,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             ));
           }
 
-          void openQuizFolder() {
-            openFolder(
-              _fr ? 'QCM intelligent' : 'Smart quiz',
-              [
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF166534)),
-                    title: Text(_fr ? 'Ouvrir le QCM intelligent' : 'Open smart quiz'),
-                    subtitle: Text(_fr
-                        ? 'Le QCM est généré à partir du cours publié de ce chapitre.'
-                        : 'The quiz is generated from this chapter’s published lessons.'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => ChapterQuizPage(
-                        locale: widget.locale,
-                        chapterId: widget.chapterId!,
-                        chapterTitle: widget.chapterTitle ??
-                            widget.subject.labelFor(widget.locale.languageCode),
-                      ),
-                    )),
-                  ),
-                ),
-              ],
-              _fr
-                  ? 'Le QCM sera disponible lorsque le chapitre contiendra assez de cours publiés.'
-                  : 'The quiz will be available when this chapter has enough published lesson content.',
-            );
-          }
 
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -546,13 +516,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   _fr ? 'Aucun PDF dans ce chapitre.' : 'No PDFs in this chapter.',
                 ),
               ),
-              ChapterFolderCard(
-                title: _fr ? 'QCM intelligent' : 'Smart quiz',
-                count: 1,
-                icon: Icons.auto_awesome_rounded,
-                countLabel: _fr ? 'accès' : 'entry',
-                onTap: openQuizFolder,
-              ),
+
             ],
           );
         },
