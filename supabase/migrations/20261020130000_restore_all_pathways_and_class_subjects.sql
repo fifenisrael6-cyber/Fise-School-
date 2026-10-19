@@ -4,7 +4,7 @@ begin;
 
 insert into public.exam_level_series
   (exam_level_id, series_id, verification_status, active)
-select distinct el.id, s.id, 'verified', true
+select distinct el.id, s.id, 'verified'::public.catalog_verification_status, true
 from public.exam_levels el
 join public.series s
   on (el.subsystem = 'francophone' and lower(s.code) in
@@ -19,7 +19,7 @@ set active = true, verification_status = 'verified';
 -- same technical level and specialty. Do not invent combinations.
 insert into public.exam_level_specialties
   (exam_level_id, specialty_id, verification_status, active)
-select distinct cu.exam_level_id, cu.specialty_id, 'verified', true
+select distinct cu.exam_level_id, cu.specialty_id, 'verified'::public.catalog_verification_status, true
 from public.curricula cu
 join public.exam_levels el on el.id = cu.exam_level_id
 join public.specialties sp on sp.id = cu.specialty_id
