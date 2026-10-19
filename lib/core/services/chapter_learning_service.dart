@@ -588,13 +588,13 @@ class ChapterLearningService {
           .order('position');
       return result.map((row) => Map<String, dynamic>.from(row)).toList();
     });
-    // Do not present generic placeholder headings as if they were official
-    // MINESEC chapters. Keep sourced titles and legacy titled chapters.
+    // Hide only the generic template headings. Some existing chapter titles
+    // were imported from curriculum records but their exact class mapping is
+    // still pending; keep those titles visible and mark them for verification
+    // in the catalogue instead of silently showing an empty programme.
     final titledRows = rows.where((row) {
       final source = (row['source_title']?.toString() ?? '').toLowerCase();
-      return !source.contains('structure provisoire') &&
-          !source.contains('titre provisoire') &&
-          !source.contains('à confirmer');
+      return !source.contains('structure provisoire');
     });
     return titledRows.map(CourseChapter.fromMap).toList(growable: false);
   }
