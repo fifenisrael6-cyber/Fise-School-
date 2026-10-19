@@ -59,14 +59,17 @@ class _ChapterLearningDetailPageState
     _future = _load();
   }
 
-  Future<_ChapterData> _load({bool forceRefreshQuizzes = false}) async {
+  Future<_ChapterData> _load({
+    bool forceRefresh = false,
+    bool forceRefreshQuizzes = false,
+  }) async {
     final results = await Future.wait<dynamic>([
-      _service.listContent(widget.chapter.id),
+      _service.listContent(widget.chapter.id, forceRefresh: forceRefresh),
       _service.listQuizzes(
         widget.chapter.id,
-        forceRefresh: forceRefreshQuizzes,
+        forceRefresh: forceRefresh || forceRefreshQuizzes,
       ),
-      _service.getCounts(widget.chapter.id),
+      _service.getCounts(widget.chapter.id, forceRefresh: forceRefresh),
       _service.getProgress(
         studentId: widget.profile.id,
         chapterId: widget.chapter.id,
@@ -81,8 +84,9 @@ class _ChapterLearningDetailPageState
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load());
-    await _future;
+    final refreshed = _load(forceRefresh: true);
+    setState(() => _future = refreshed);
+    await refreshed;
   }
 
   Future<void> _markRead() async {
