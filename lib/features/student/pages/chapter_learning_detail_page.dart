@@ -346,6 +346,24 @@ class _ChapterLearningDetailPageState
       return;
     }
 
+    // Use the locally cached Smart QCM when one already exists. Only call
+    // the AI function for an empty folder, so existing quizzes remain usable
+    // offline and students do not spend network/AI quota on every folder open.
+    if (currentData.quizzes.isNotEmpty) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChapterFolderPage(
+            title: _folderTitle(folder),
+            items: currentData.quizzes.map(_quizFolderItem).toList(growable: false),
+            emptyMessage: _en
+                ? 'No Smart QCM is available for this chapter yet.'
+                : 'Aucun QCM intelligent n’est encore disponible pour ce chapitre.',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _generatingQuiz = true);
     try {
       await _service.generateSmartQuiz(widget.chapter.id);
