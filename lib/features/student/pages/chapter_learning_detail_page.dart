@@ -401,48 +401,6 @@ class _ChapterLearningDetailPageState
     );
   }
 
-  void _showQuizzes(List<ChapterLearningQuiz> quizzes) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(_en ? 'Smart QCM' : 'QCM intelligent',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            for (final quiz in quizzes)
-              ListTile(
-                leading: const Icon(Icons.quiz_outlined),
-                title: Text(quiz.titleFor(widget.locale.languageCode)),
-                subtitle: Text('${quiz.questionCount} ${_en ? 'questions' : 'questions'}'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final nav = Navigator.of(context);
-                  nav.pop();
-                  // Quota QCM : 2 / 24 h pour un élève gratuit (vérifié côté serveur).
-                  final allowed = await PremiumGate.ensure(
-                    this.context,
-                    profile: widget.profile,
-                    feature: QuotaFeature.qcm,
-                    resourceId: quiz.id,
-                  );
-                  if (!allowed || !mounted) return;
-                  nav.push(MaterialPageRoute(
-                    builder: (_) => ChapterInteractiveQuizPage(
-                      quiz: quiz,
-                      locale: widget.locale,
-                      profile: widget.profile,
-                    ),
-                  ));
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _pill(IconData icon, String text) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
