@@ -124,6 +124,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
               DropdownMenuItem(value: 'course', child: Text(t('Cours écrit','Written course'))),
               const DropdownMenuItem(value: 'video', child: Text('Vidéo')),
               const DropdownMenuItem(value: 'pdf', child: Text('PDF depuis le téléphone')),
+              const DropdownMenuItem(value: 'image', child: Text('Image depuis le téléphone')),
+              const DropdownMenuItem(value: 'audio', child: Text('Audio depuis le téléphone')),
             ],
             onChanged: (next) { if (next != null) type.value = next; },
           )),
@@ -135,9 +137,13 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             TextField(controller: bodyEn, maxLines: 5, decoration: const InputDecoration(labelText: 'English lesson')),
           ],
           if (v == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo direct MP4 ou YouTube/Vimeo')),
-          if (v == 'pdf') Padding(
+          if (v == 'pdf' || v == 'image' || v == 'audio') Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(t('Le PDF sera choisi sur le téléphone après validation.','Choose the PDF from your phone after confirming.')),
+            child: Text(v == 'pdf'
+                ? t('Le PDF sera choisi sur le téléphone après validation.','Choose the PDF from your phone after confirming.')
+                : v == 'image'
+                    ? t('L’image sera choisie sur le téléphone après validation.','Choose the image from your phone after confirming.')
+                    : t('Le fichier audio sera choisi sur le téléphone après validation.','Choose the audio file from your phone after confirming.')),
           ),
         ])),
         ValueListenableBuilder<bool>(valueListenable: published, builder: (_, v, __) =>
@@ -161,9 +167,14 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       if (type.value == 'video' && url.text.trim().isEmpty) {
         toast(t('Le lien vidéo est obligatoire.','A video URL is required.')); return;
       }
-      if (type.value == 'pdf') {
+      if (type.value == 'pdf' || type.value == 'image' || type.value == 'audio') {
+        final extensions = type.value == 'pdf'
+            ? ['pdf']
+            : type.value == 'image'
+                ? ['jpg', 'jpeg', 'png', 'webp']
+                : ['mp3', 'm4a', 'aac', 'wav', 'ogg'];
         final picked = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: ['pdf'], withData: true,
+          type: FileType.custom, allowedExtensions: extensions, withData: true,
         );
         if (picked == null || picked.files.isEmpty) return;
         final file = picked.files.single;
@@ -173,9 +184,15 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         }
         final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
         storagePath = chapter!['id'].toString() + '/' + DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
+        final ext = p.extension(file.name).toLowerCase();
+        final mimeType = type.value == 'pdf'
+            ? 'application/pdf'
+            : type.value == 'image'
+                ? (ext == '.png' ? 'image/png' : ext == '.webp' ? 'image/webp' : 'image/jpeg')
+                : (ext == '.wav' ? 'audio/wav' : ext == '.ogg' ? 'audio/ogg' : ext == '.m4a' ? 'audio/mp4' : 'audio/mpeg');
         await db.storage.from('chapter-content').uploadBinary(
           storagePath, bytes,
-          fileOptions: const FileOptions(contentType: 'application/pdf', upsert: false),
+          fileOptions: FileOptions(contentType: mimeType, upsert: false),
         );
       }
       final existing = await db.from('chapter_content_items').select('id').eq('chapter_id', chapter!['id']);
@@ -258,9 +275,14 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     String? replacementPath;
     final oldPath = item['storage_path'] as String?;
     try {
-      if (type == 'pdf') {
+      if (type == 'pdf' || type == 'image' || type == 'audio') {
+        final extensions = type == 'pdf'
+            ? ['pdf']
+            : type == 'image'
+                ? ['jpg', 'jpeg', 'png', 'webp']
+                : ['mp3', 'm4a', 'aac', 'wav', 'ogg'];
         final picked = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: ['pdf'], withData: true,
+          type: FileType.custom, allowedExtensions: extensions, withData: true,
         );
         if (picked != null && picked.files.isNotEmpty) {
           final file = picked.files.single;
@@ -271,9 +293,15 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
           }
           final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
           replacementPath = '${chapter!['id']}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+          final ext = p.extension(file.name).toLowerCase();
+          final mimeType = type == 'pdf'
+              ? 'application/pdf'
+              : type == 'image'
+                  ? (ext == '.png' ? 'image/png' : ext == '.webp' ? 'image/webp' : 'image/jpeg')
+                  : (ext == '.wav' ? 'audio/wav' : ext == '.ogg' ? 'audio/ogg' : ext == '.m4a' ? 'audio/mp4' : 'audio/mpeg');
           await db.storage.from('chapter-content').uploadBinary(
             replacementPath, bytes,
-            fileOptions: const FileOptions(contentType: 'application/pdf', upsert: false),
+            fileOptions: FileOptions(contentType: mimeType, upsert: false),
           );
         }
       }
