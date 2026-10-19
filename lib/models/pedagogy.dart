@@ -134,9 +134,14 @@ class CourseChapter {
   );
   bool get needsTitleVerification {
     final source = (sourceTitle ?? '').toLowerCase();
-    return source.contains('titre provisoire') ||
+    final status = (verificationStatus ?? '').toLowerCase();
+    return status == 'pending_official_confirmation' ||
+        status == 'pending_confirmation' ||
+        status == 'needs_review' ||
+        source.contains('titre provisoire') ||
         source.contains('à confirmer') ||
-        source.contains('pending confirmation');
+        source.contains('pending confirmation') ||
+        source.contains('provisional');
   }
   String labelFor(String languageCode) =>
       languageCode == 'en' ? titleEn : titleFr;
