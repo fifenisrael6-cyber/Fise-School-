@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
