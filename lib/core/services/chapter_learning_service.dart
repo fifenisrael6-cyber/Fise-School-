@@ -610,6 +610,20 @@ class ChapterLearningService {
       }).toList(growable: false);
     }
 
+    // The chapter-title catalogue is the canonical programme page. Older
+    // source curricula are kept for compatibility, but must not appear beside
+    // the catalogue as duplicate programme cards for the same classroom.
+    final containers = filtered
+        .where((curriculum) => curriculum['is_catalog_container'] == true)
+        .toList(growable: false);
+    if (containers.isNotEmpty) {
+      filtered = containers;
+    } else {
+      filtered = filtered
+          .where((curriculum) => curriculum['is_catalog_container'] != true)
+          .toList(growable: false);
+    }
+
     return filtered;
   }
 
