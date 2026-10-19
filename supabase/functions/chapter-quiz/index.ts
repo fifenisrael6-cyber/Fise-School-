@@ -130,12 +130,19 @@ async function transcribeStoredResource(
   resource: any,
   apiKey: string,
   language: string,
+  bucketName = "course-resources",
 ): Promise<string> {
   const resourceType = String(resource?.resource_type ?? "").toLowerCase();
-  const mime = String(resource?.mime_type ?? (resourceType === "pdf" ? "application/pdf" : "image/jpeg")).toLowerCase();
+  const fileName = String(resource?.file_name ?? "");
+  const extension = fileName.includes(".") ? fileName.split(".").pop()!.toLowerCase() : "";
+  const inferredMime = resourceType === "pdf" ? "application/pdf" : ({
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
+    webp: "image/webp", gif: "image/gif", bmp: "image/bmp",
+  } as Record<string, string>)[extension] ?? "image/jpeg";
+  const mime = String(resource?.mime_type ?? inferredMime).toLowerCase();
   const fileSize = Number(resource?.file_size ?? 0);
   if (!["image", "pdf"].includes(resourceType) || fileSize > 8 * 1024 * 1024) return "";
-  const { data: file, error } = await storageClient.storage.from("course-resources").download(String(resource.storage_path ?? ""));
+  const { data: file, error } = await storageClient.storage.from(bucketName).download(String(resource.storage_path ?? ""));
   if (error || !file) return "";
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!bytes.length || bytes.length > 8 * 1024 * 1024) return "";
@@ -308,9 +315,42 @@ Deno.serve(async (req: Request) => {
       .limit(12);
     if (publishedCoursesError) throw publishedCoursesError;
 
+    // Teachers' chapter-folder uploads are stored in chapter-content, not in
+    // the legacy course-resources bucket. Read published PDF/image items from
+    // the selected chapter so Smart QCM can use their actual educational text.
+    const { data: chapterFiles, error: chapterFilesError } = await dataClient
+      .from("chapter_content_items")
+      .select("title_fr,title_en,storage_path,content_type,position")
+      .eq("chapter_id", chapterId)
+      .eq("is_published", true)
+      .in("content_type", ["image", "pdf"])
+      .order("position")
+      .limit(12);
+    if (chapterFilesError) throw chapterFilesError;
+
     const courseIds = (publishedCourses ?? []).map((course: any) => course.id).filter(Boolean);
     let indexedChunks: any[] = [];
     let resourceTexts: string[] = [];
+    for (const item of (chapterFiles ?? []).slice(0, 8)) {
+      const storagePath = String(item.storage_path ?? "");
+      if (!storagePath) continue;
+      const title = clean(item.title_fr ?? item.title_en ?? storagePath.split("/").pop(), 200);
+      const extracted = await transcribeStoredResource(
+        dataClient,
+        {
+          resource_type: item.content_type,
+          file_name: title,
+          storage_path: storagePath,
+          file_size: 0,
+        },
+        geminiKey,
+        profile.preferred_language === "en" ? "en" : "fr",
+        "chapter-content",
+      );
+      if (extracted.trim()) {
+        resourceTexts.push(`MÉDIA DU CHAPITRE : ${title}\n${clean(extracted, 7000)}`);
+      }
+    }
     if (courseIds.length > 0) {
       const [{ data: chunks, error: chunksError }, { data: resources, error: resourcesError }] = await Promise.all([
         dataClient.from("course_chunks")
