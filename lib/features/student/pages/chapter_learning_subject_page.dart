@@ -249,10 +249,28 @@ class _ChapterLearningSubjectPageState
                           _chapterLabel(group.chapters[i]),
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                        subtitle: Text(
-                          _en
-                              ? 'Chapter folder ${i + 1} • open resources'
-                              : 'Dossier du chapitre ${i + 1} • ouvrir les ressources',
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _en
+                                  ? 'Chapter folder ${i + 1} • open resources'
+                                  : 'Dossier du chapitre ${i + 1} • ouvrir les ressources',
+                            ),
+                            if (group.chapters[i].needsTitleVerification)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3),
+                                child: Text(
+                                  _en
+                                      ? 'Title mapping needs verification'
+                                      : 'Titre à vérifier pour cette classe',
+                                  style: const TextStyle(
+                                    color: Color(0xFF9A6700),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () async {
