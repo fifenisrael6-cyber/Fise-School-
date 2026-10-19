@@ -104,9 +104,37 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     }
   }
 
+  /// Ne propose que le programme qui correspond exactement à la salle choisie.
+  /// Cela évite de publier un cours dans une autre classe, un autre sous-système
+  /// ou une autre filière/série simplement parce que la matière porte le même nom.
+  Future<List<Map<String, dynamic>>> _curriculaForClass(
+    String subjectId,
+    Map<String, dynamic> schoolClass,
+  ) async {
+    final rows = await _client
+        .from('curricula')
+        .select()
+        .eq('subject_id', subjectId)
+        .eq('is_active', true)
+        .eq('subsystem', schoolClass['subsystem'])
+        .eq('sector', schoolClass['sector'])
+        .order('title_fr');
+    bool sameContext(Map<String, dynamic> curriculum) =>
+        curriculum['exam_level_id'] == schoolClass['exam_level_id'] &&
+        curriculum['series_id'] == schoolClass['series_id'] &&
+        curriculum['specialty_id'] == schoolClass['specialty_id'];
+    final matching = List<Map<String, dynamic>>.from(rows)
+        .where(sameContext)
+        .toList(growable: false);
+    final containers = matching
+        .where((row) => row['is_catalog_container'] == true)
+        .toList(growable: false);
+    return containers.isNotEmpty ? containers : matching;
+  }
+
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
-      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,is_active').eq('is_active', true).order('display_name'),
+      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active').eq('is_active', true).order('display_name'),
     );
     if (!mounted) {
       return;
@@ -142,7 +170,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       selectedCurriculum = null;
       selectedChapter = null;
       if (selectedSubject != null) {
-        curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', selectedSubject!['id']).eq('is_active', true).order('title_fr'));
+        curricula = await _curriculaForClass(selectedSubject!['id'].toString(), selectedClass!);
         selectedCurriculum = curricula.isEmpty ? null : curricula.first;
         if (selectedCurriculum != null) {
           chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position'));
@@ -185,21 +213,21 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                       items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
                       onChanged: saving ? null : (value) async {
                         selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
-                        if (value != null) { curricula = List<Map<String, dynamic>>.from(await _client.from('curricula').select().eq('subject_id', value['id']).eq('is_active', true).order('title_fr')); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
+                        if (value != null) { curricula = await _curriculaForClass(value['id'].toString(), selectedClass!); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
                         setDialog(() {});
                       },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedCurriculum,
-                      decoration: InputDecoration(labelText: _fr ? 'Programme (facultatif)' : 'Curriculum (optional)'),
+                      decoration: InputDecoration(labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *'),
                       items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
                       onChanged: saving ? null : (value) async { selectedCurriculum = value; selectedChapter = null; chapters = value == null ? [] : List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', value['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; setDialog(() {}); },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedChapter,
-                      decoration: InputDecoration(labelText: _fr ? 'Chapitre (facultatif)' : 'Chapter (optional)'),
+                      decoration: InputDecoration(labelText: _fr ? 'Chapitre *' : 'Chapter *'),
                       items: chapters.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
                       onChanged: saving ? null : (value) => setDialog(() => selectedChapter = value),
                     ),
@@ -216,7 +244,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     SwitchListTile(value: published, onChanged: saving ? null : (v) => setDialog(() => published = v), title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'), contentPadding: EdgeInsets.zero),
                     const SizedBox(height: 8),
                     FilledButton.icon(
-                      onPressed: saving || selectedSubject == null || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
+                      onPressed: saving || selectedSubject == null || selectedCurriculum == null || selectedChapter == null || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
                         setDialog(() => saving = true);
                         try {
                           await _courses.saveCourse(
