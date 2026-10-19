@@ -65,6 +65,7 @@ class _ChapterLearningDetailPageState
   }) async {
     final results = await Future.wait<dynamic>([
       _service.listContent(widget.chapter.id, forceRefresh: forceRefresh),
+      _service.listExercises(widget.chapter.id, forceRefresh: forceRefresh),
       _service.listQuizzes(
         widget.chapter.id,
         forceRefresh: forceRefresh || forceRefreshQuizzes,
@@ -77,9 +78,10 @@ class _ChapterLearningDetailPageState
     ]);
     return _ChapterData(
       content: results[0] as List<ChapterLearningContentItem>,
-      quizzes: results[1] as List<ChapterLearningQuiz>,
-      counts: results[2] as ChapterLearningCounts,
-      progress: results[3] as ChapterLearningProgress?,
+      exercises: results[1] as List<ChapterLearningExercise>,
+      quizzes: results[2] as List<ChapterLearningQuiz>,
+      counts: results[3] as ChapterLearningCounts,
+      progress: results[4] as ChapterLearningProgress?,
     );
   }
 
@@ -258,7 +260,7 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.images => _en ? 'Images' : 'Images',
       _ChapterResourceFolder.audio => 'Audio',
       _ChapterResourceFolder.video => _en ? 'Video' : 'Vidéo',
-      _ChapterResourceFolder.quizzes => _en ? 'Smart QCM' : 'QCM intelligent',
+      _ChapterResourceFolder.exercises => _en ? 'Exercises & Smart QCM' : 'Exercices et QCM intelligent',
     };
   }
 
@@ -269,7 +271,7 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.images => Icons.image_rounded,
       _ChapterResourceFolder.audio => Icons.audiotrack_rounded,
       _ChapterResourceFolder.video => Icons.video_library_rounded,
-      _ChapterResourceFolder.quizzes => Icons.quiz_rounded,
+      _ChapterResourceFolder.exercises => Icons.quiz_rounded,
     };
   }
 
@@ -295,8 +297,11 @@ class _ChapterLearningDetailPageState
         return data.content
             .where((item) => item.folderKey == 'video')
             .map(_contentCard).toList(growable: false);
-      case _ChapterResourceFolder.quizzes:
-        return data.quizzes.map(_quizFolderItem).toList(growable: false);
+      case _ChapterResourceFolder.exercises:
+        return <Widget>[
+          ...data.exercises.map(_exerciseFolderItem),
+          ...data.quizzes.map(_quizFolderItem),
+        ];
     }
   }
 
@@ -307,7 +312,7 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.images,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
-      _ChapterResourceFolder.quizzes,
+      _ChapterResourceFolder.exercises,
     ];
 
     return Column(
@@ -325,7 +330,7 @@ class _ChapterLearningDetailPageState
                 subtitle: Text(
                   '${items.length} ${_en ? 'item(s)' : 'élément(s)'}',
                 ),
-                trailing: folder == _ChapterResourceFolder.quizzes && _generatingQuiz
+                trailing: folder == _ChapterResourceFolder.exercises && _generatingQuiz
                     ? const SizedBox(
                         width: 22,
                         height: 22,
@@ -344,7 +349,7 @@ class _ChapterLearningDetailPageState
     _ChapterResourceFolder folder,
     _ChapterData currentData,
   ) async {
-    if (folder != _ChapterResourceFolder.quizzes) {
+    if (folder != _ChapterResourceFolder.exercises) {
       final items = _folderItems(currentData, folder);
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -368,10 +373,13 @@ class _ChapterLearningDetailPageState
         MaterialPageRoute<void>(
           builder: (_) => ChapterFolderPage(
             title: _folderTitle(folder),
-            items: currentData.quizzes.map(_quizFolderItem).toList(growable: false),
+            items: <Widget>[
+              ...currentData.exercises.map(_exerciseFolderItem),
+              ...currentData.quizzes.map(_quizFolderItem),
+            ],
             emptyMessage: _en
-                ? 'No Smart QCM is available for this chapter yet.'
-                : 'Aucun QCM intelligent n’est encore disponible pour ce chapitre.',
+                ? 'No exercise or Smart QCM has been published in this chapter yet.'
+                : 'Aucun exercice ni QCM intelligent n’a encore été publié dans ce chapitre.',
           ),
         ),
       );
@@ -385,15 +393,18 @@ class _ChapterLearningDetailPageState
       setState(() => _future = refreshedFuture);
       final refreshed = await refreshedFuture;
       if (!mounted) return;
-      final quizItems = refreshed.quizzes.map(_quizFolderItem).toList(growable: false);
+      final exerciseItems = <Widget>[
+        ...refreshed.exercises.map(_exerciseFolderItem),
+        ...refreshed.quizzes.map(_quizFolderItem),
+      ];
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ChapterFolderPage(
             title: _folderTitle(folder),
-            items: quizItems,
+            items: exerciseItems,
             emptyMessage: _en
-                ? 'The Smart QCM could not be generated for this chapter.'
-                : 'Le QCM intelligent n’a pas pu être généré pour ce chapitre.',
+                ? 'No exercise or Smart QCM could be loaded for this chapter.'
+                : 'Aucun exercice ni QCM intelligent n’a pu être chargé pour ce chapitre.',
           ),
         ),
       );
@@ -410,6 +421,45 @@ class _ChapterLearningDetailPageState
     } finally {
       if (mounted) setState(() => _generatingQuiz = false);
     }
+  }
+
+  Widget _exerciseFolderItem(ChapterLearningExercise exercise) {
+    final statement = exercise.statementFor(widget.locale.languageCode).trim();
+    final difficulty = _en
+        ? exercise.difficultyLabelEn
+        : exercise.difficultyLabelFr;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.edit_note_rounded, color: Color(0xFF166534)),
+        title: Text(
+          statement.isEmpty
+              ? (_en ? 'Exercise' : 'Exercice')
+              : statement,
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(difficulty),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(_en ? 'Exercise' : 'Exercice'),
+            content: SingleChildScrollView(
+              child: Text(statement.isEmpty
+                  ? (_en ? 'No statement available.' : 'Énoncé indisponible.')
+                  : statement),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(_en ? 'Close' : 'Fermer'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _quizFolderItem(ChapterLearningQuiz quiz) {
@@ -511,17 +561,19 @@ class _ChapterLearningDetailPageState
       );
 }
 
-enum _ChapterResourceFolder { course, pdf, images, audio, video, quizzes }
+enum _ChapterResourceFolder { course, pdf, images, audio, video, exercises }
 
 class _ChapterData {
   const _ChapterData({
     required this.content,
+    required this.exercises,
     required this.quizzes,
     required this.counts,
     required this.progress,
   });
 
   final List<ChapterLearningContentItem> content;
+  final List<ChapterLearningExercise> exercises;
   final List<ChapterLearningQuiz> quizzes;
   final ChapterLearningCounts counts;
   final ChapterLearningProgress? progress;
