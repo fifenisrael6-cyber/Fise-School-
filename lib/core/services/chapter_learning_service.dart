@@ -540,8 +540,13 @@ class ChapterLearningService {
   Future<int> countChaptersForSubject(
     String subjectId, {
     UserProfile? profile,
+    String? classId,
   }) async {
-    final curricula = await listCurricula(subjectId, profile: profile);
+    final curricula = await listCurricula(
+      subjectId,
+      profile: profile,
+      classId: classId,
+    );
     if (curricula.isEmpty) return 0;
     final chapterLists = await Future.wait(
       curricula.map((curriculum) => listChapters(curriculum.id)),
@@ -578,12 +583,18 @@ class ChapterLearningService {
   Future<List<Curriculum>> listCurricula(
     String subjectId, {
     UserProfile? profile,
+    String? classId,
     bool forceRefresh = false,
   }) async {
     final profileKey = profile?.id ?? _cacheUserId;
+    final roomKey = classId ?? 'all-classes';
     final rows = await _cachedRows(
-      'curricula:$profileKey:$subjectId',
-      () => _fetchCurriculumRows(subjectId, profile: profile),
+      'curricula:$profileKey:$roomKey:$subjectId',
+      () => _fetchCurriculumRows(
+        subjectId,
+        profile: profile,
+        classId: classId,
+      ),
       forceRefresh: forceRefresh,
     );
     return rows.map(Curriculum.fromMap).toList(growable: false);
@@ -592,6 +603,7 @@ class ChapterLearningService {
   Future<List<Map<String, dynamic>>> _fetchCurriculumRows(
     String subjectId, {
     UserProfile? profile,
+    String? classId,
   }) async {
     final rows = await _client
         .from('curricula')
@@ -610,11 +622,15 @@ class ChapterLearningService {
           .select('class_id')
           .eq('student_id', profile.id)
           .eq('is_active', true);
-      final memberClassIds = memberships
+      final activeMemberClassIds = memberships
           .map((row) => row['class_id'])
           .whereType<String>()
-          .toSet()
-          .toList(growable: false);
+          .toSet();
+      // When a room is passed by the course page, only use that exact active
+      // membership. This keeps both the titles and their resources room-scoped.
+      final memberClassIds = classId == null
+          ? activeMemberClassIds.toList(growable: false)
+          : (activeMemberClassIds.contains(classId) ? <String>[classId] : <String>[]);
       if (memberClassIds.isEmpty) return const <Map<String, dynamic>>[];
 
       final assignedRows = await _client

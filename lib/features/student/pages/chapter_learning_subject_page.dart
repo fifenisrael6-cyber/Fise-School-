@@ -14,11 +14,14 @@ class ChapterLearningSubjectPage extends StatefulWidget {
     required this.locale,
     required this.profile,
     required this.subject,
+    this.schoolClassId,
   });
 
   final Locale locale;
   final UserProfile profile;
   final Subject subject;
+  /// Active classroom whose programme must be displayed, when known.
+  final String? schoolClassId;
 
   @override
   State<ChapterLearningSubjectPage> createState() =>
@@ -46,6 +49,7 @@ class _ChapterLearningSubjectPageState
     final curricula = await _learning.listCurricula(
       widget.subject.id,
       profile: widget.profile,
+      classId: widget.schoolClassId,
       forceRefresh: forceRefresh,
     );
     // Load each curriculum's chapter list in parallel instead of blocking on
