@@ -144,8 +144,15 @@ class ChapterLearningService {
 
   /// Loads this chapter's own content plus media from genuinely equivalent
   /// chapters in another stream. RLS independently verifies each source chapter.
-  Future<List<Map<String, dynamic>>> _contentRowsForChapter(String chapterId) =>
-      _cachedRows('chapter-content:$chapterId', () => _fetchContentRowsForChapter(chapterId));
+  Future<List<Map<String, dynamic>>> _contentRowsForChapter(
+    String chapterId, {
+    bool forceRefresh = false,
+  }) =>
+      _cachedRows(
+        'chapter-content:$chapterId',
+        () => _fetchContentRowsForChapter(chapterId),
+        forceRefresh: forceRefresh,
+      );
 
   Future<List<Map<String, dynamic>>> _fetchContentRowsForChapter(
     String chapterId,
@@ -292,14 +299,23 @@ class ChapterLearningService {
     return content;
   }
 
-  Future<List<ChapterLearningContentItem>> listContent(String chapterId) async {
-    final rows = await _contentRowsForChapter(chapterId);
+  Future<List<ChapterLearningContentItem>> listContent(
+    String chapterId, {
+    bool forceRefresh = false,
+  }) async {
+    final rows = await _contentRowsForChapter(
+      chapterId,
+      forceRefresh: forceRefresh,
+    );
     return rows
         .map(ChapterLearningContentItem.fromMap)
         .toList(growable: false);
   }
 
-  Future<List<ChapterLearningExercise>> listExercises(String chapterId) async {
+  Future<List<ChapterLearningExercise>> listExercises(
+    String chapterId, {
+    bool forceRefresh = false,
+  }) async {
     final rows = await _cachedRows('chapter-exercises:$chapterId', () async {
       final result = await _client
           .from('chapter_exercises')
@@ -308,7 +324,7 @@ class ChapterLearningService {
           .eq('is_published', true)
           .order('position');
       return result.map((row) => Map<String, dynamic>.from(row)).toList();
-    });
+    }, forceRefresh: forceRefresh);
     return rows.map(ChapterLearningExercise.fromMap).toList(growable: false);
   }
 
@@ -410,10 +426,13 @@ class ChapterLearningService {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  Future<ChapterLearningCounts> getCounts(String chapterId) async {
+  Future<ChapterLearningCounts> getCounts(
+    String chapterId, {
+    bool forceRefresh = false,
+  }) async {
     final results = await Future.wait<dynamic>([
-      listContent(chapterId),
-      listExercises(chapterId),
+      listContent(chapterId, forceRefresh: forceRefresh),
+      listExercises(chapterId, forceRefresh: forceRefresh),
       _cachedRows('chapter-count-quizzes:$chapterId', () async {
         final rows = await _client
             .from('chapter_quizzes')
@@ -421,7 +440,7 @@ class ChapterLearningService {
             .eq('chapter_id', chapterId)
             .eq('is_published', true);
         return rows.map((row) => Map<String, dynamic>.from(row)).toList();
-      }),
+      }, forceRefresh: forceRefresh),
     ]);
     final content = results[0] as List<ChapterLearningContentItem>;
     final exercises = results[1] as List<ChapterLearningExercise>;
