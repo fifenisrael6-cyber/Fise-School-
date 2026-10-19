@@ -58,7 +58,6 @@ flutter:
   assets:
     - assets/icon/fise_school.png
     - assets/icon/fise_school_foreground.png
-    - assets/data/chapter_catalog.json
 
 flutter_launcher_icons:
   android: true
