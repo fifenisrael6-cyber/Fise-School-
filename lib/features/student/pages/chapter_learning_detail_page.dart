@@ -277,23 +277,23 @@ class _ChapterLearningDetailPageState
     switch (folder) {
       case _ChapterResourceFolder.course:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.course)
+            .where((item) => item.folderKey == 'course')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.pdf:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.pdf)
+            .where((item) => item.folderKey == 'pdf')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.images:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.image)
+            .where((item) => item.folderKey == 'images')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.audio:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.audio)
+            .where((item) => item.folderKey == 'audio')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.video:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.video)
+            .where((item) => item.folderKey == 'video')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.quizzes:
         return data.quizzes.map(_quizFolderItem).toList(growable: false);
@@ -609,14 +609,14 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
 
   Future<void> _open() async {
     try {
-      final cacheable = widget.item.type == ChapterLearningContentType.pdf ||
-          widget.item.type == ChapterLearningContentType.image;
+      final cacheable = widget.item.folderKey == 'pdf' ||
+          widget.item.folderKey == 'images';
       if (cacheable) {
         final local = await _localMediaFile();
         if (await local.exists() && await local.length() > 0) {
           _mediaFile = local;
           _bytes = await local.readAsBytes();
-          if (widget.item.type == ChapterLearningContentType.pdf) {
+          if (widget.item.folderKey == 'pdf') {
             _pdf = PdfControllerPinch(document: PdfDocument.openData(_bytes!));
           }
           _mediaUrl = local.uri.toString();
@@ -629,8 +629,8 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
           throw Exception(_en ? 'No file URL.' : 'Aucun lien de fichier.');
         }
         _mediaUrl = url;
-        if (widget.item.type == ChapterLearningContentType.pdf ||
-            widget.item.type == ChapterLearningContentType.image) {
+        if (widget.item.folderKey == 'pdf' ||
+            widget.item.folderKey == 'images') {
           final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
           if (response.statusCode < 200 || response.statusCode >= 300) {
             throw Exception('HTTP ${response.statusCode}');
@@ -642,16 +642,16 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
             await local.writeAsBytes(_bytes!, flush: true);
             _mediaFile = local;
           }
-          if (widget.item.type == ChapterLearningContentType.pdf) {
+          if (widget.item.folderKey == 'pdf') {
             _pdf = PdfControllerPinch(document: PdfDocument.openData(_bytes!));
           }
-        } else if (widget.item.type == ChapterLearningContentType.audio) {
+        } else if (widget.item.folderKey == 'audio') {
           final safeUrl = url.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
           _webView = WebViewController()
             ..setJavaScriptMode(JavaScriptMode.unrestricted)
             ..setBackgroundColor(const Color(0xFFF5F8F6))
             ..loadHtmlString('<html><body style="font-family:sans-serif;padding:24px"><audio controls autoplay style="width:100%" src="$safeUrl"></audio></body></html>');
-        } else if (widget.item.type == ChapterLearningContentType.video) {
+        } else if (widget.item.folderKey == 'video') {
           final uri = Uri.parse(url);
           final host = uri.host.toLowerCase();
           if (host.contains('youtube.com') || host == 'youtu.be' || host.contains('vimeo.com')) {
@@ -690,9 +690,9 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
       body = const Center(child: CircularProgressIndicator());
     } else if (_error != null) {
       body = Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center)));
-    } else if (widget.item.type == ChapterLearningContentType.pdf) {
+    } else if (widget.item.folderKey == 'pdf') {
       body = _pdf == null ? Center(child: Text(_en ? 'PDF unavailable.' : 'PDF indisponible.')) : PdfViewPinch(controller: _pdf!);
-    } else if (widget.item.type == ChapterLearningContentType.image && (_mediaFile != null || _mediaUrl != null)) {
+    } else if (widget.item.folderKey == 'images' && (_mediaFile != null || _mediaUrl != null)) {
       body = Center(
         child: InteractiveViewer(
           child: _mediaFile != null
@@ -708,9 +708,9 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
                 ),
         ),
       );
-    } else if ((widget.item.type == ChapterLearningContentType.video || widget.item.type == ChapterLearningContentType.audio) && _webView != null) {
+    } else if ((widget.item.folderKey == 'video' || widget.item.folderKey == 'audio') && _webView != null) {
       body = WebViewWidget(controller: _webView!);
-    } else if (widget.item.type == ChapterLearningContentType.video && _video != null) {
+    } else if (widget.item.folderKey == 'video' && _video != null) {
       body = Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         AspectRatio(aspectRatio: _video!.value.aspectRatio > 0 ? _video!.value.aspectRatio : 16 / 9, child: VideoPlayer(_video!)),
         VideoProgressIndicator(_video!, allowScrubbing: true),
