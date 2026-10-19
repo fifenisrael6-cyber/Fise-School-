@@ -610,14 +610,47 @@ class ChapterLearningService {
       }).toList(growable: false);
     }
 
-    // The chapter-title catalogue is the canonical programme page. Older
-    // source curricula are kept for compatibility, but must not appear beside
-    // the catalogue as duplicate programme cards for the same classroom.
+    // Prefer the canonical chapter-title catalogue, but only when it actually
+    // contains active chapter rows. A title-only container can be created before
+    // its chapter seed is applied; selecting it unconditionally hides older
+    // curricula that already contain chapters and makes the student page look
+    // empty. Fall back to the compatible curricula until the catalogue is seeded.
     final containers = filtered
         .where((curriculum) => curriculum['is_catalog_container'] == true)
         .toList(growable: false);
     if (containers.isNotEmpty) {
-      filtered = containers;
+      final containerIds = containers
+          .map((curriculum) => curriculum['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      var populatedContainerIds = <String>{};
+      if (containerIds.isNotEmpty) {
+        try {
+          final chapterRows = await _client
+              .from('course_chapters')
+              .select('curriculum_id')
+              .inFilter('curriculum_id', containerIds)
+              .eq('is_active', true);
+          populatedContainerIds = chapterRows
+              .map((row) => row['curriculum_id'])
+              .whereType<String>()
+              .toSet();
+        } catch (_) {
+          // If this lookup is temporarily unavailable, keep the canonical
+          // containers rather than exposing duplicate programme cards.
+          return containers;
+        }
+      }
+      if (populatedContainerIds.isNotEmpty) {
+        filtered = containers
+            .where((curriculum) =>
+                populatedContainerIds.contains(curriculum['id']))
+            .toList(growable: false);
+      } else {
+        filtered = filtered
+            .where((curriculum) => curriculum['is_catalog_container'] != true)
+            .toList(growable: false);
+      }
     } else {
       filtered = filtered
           .where((curriculum) => curriculum['is_catalog_container'] != true)
