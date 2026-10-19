@@ -1,23 +1,44 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/pedagogy_service.dart';
+import '../../../core/services/photo_service.dart';
+import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/school_class.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/class_subject_picker.dart';
 
-/// Les enseignants peuvent joindre des médias à un chapitre existant.
-/// La rédaction des cours et la création des QCM restent réservées à l'admin.
+class _CourseAttachment {
+  final String name;
+  final Uint8List bytes;
+  final String resourceType;
+
+  const _CourseAttachment({
+    required this.name,
+    required this.bytes,
+    required this.resourceType,
+  });
+}
+
+/// Création d'un cours : l'enseignant choisit la ou les classes, la matière,
+/// écrit son cours et joint un PDF, une photo ou des images.
 class CreateCoursePage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final List<PickedAttachment> initialSharedAttachments;
 
   const CreateCoursePage({
     super.key,
     required this.locale,
     required this.profile,
+    this.initialSharedAttachments = const [],
   });
 
   @override
@@ -25,332 +46,451 @@ class CreateCoursePage extends StatefulWidget {
 }
 
 class _CreateCoursePageState extends State<CreateCoursePage> {
-  final SupabaseClient _db = Supabase.instance.client;
-  final ImagePicker _images = ImagePicker();
+  final CourseService _service = CourseService();
+  final ResourceService _resources = ResourceService();
+  final PhotoService _photos = PhotoService();
+  final SmartCourseService _smart = SmartCourseService();
+  final ImagePicker _imagePicker = ImagePicker();
 
-  List<Map<String, dynamic>> _curricula = [];
-  Map<String, dynamic>? _curriculum;
-  List<Map<String, dynamic>> _chapters = [];
-  Map<String, dynamic>? _chapter;
-  bool _loadingProgrammes = false;
-  bool _uploading = false;
+  final _title = TextEditingController();
+
+  List<SchoolClass> _classes = const [];
+  Subject? _subject;
+  final Map<String, Curriculum?> _curriculumByClass = <String, Curriculum?>{};
+  final Map<String, List<CourseChapter>> _chaptersByClass = <String, List<CourseChapter>>{};
+  final Map<String, String> _selectedChapterByClass = <String, String>{};
+  bool _loadingChapters = false;
+  final List<_CourseAttachment> _attachments = [];
+  bool _saving = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
-  String _label(Map<String, dynamic> row, String fr, String en) {
-    final a = row[fr]?.toString() ?? '';
-    final b = row[en]?.toString() ?? '';
-    return _fr ? (a.isNotEmpty ? a : b) : (b.isNotEmpty ? b : a);
+  @override
+  void initState() {
+    super.initState();
+    for (final attachment in widget.initialSharedAttachments) {
+      final mime = attachment.mimeType.toLowerCase();
+      final type = mime.startsWith('image/')
+          ? 'image'
+          : mime.startsWith('video/')
+              ? 'video'
+              : mime.startsWith('audio/')
+                  ? 'audio'
+                  : mime == 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf')
+                      ? 'pdf'
+                      : null;
+      if (type != null) {
+        _attachments.add(_CourseAttachment(
+          name: attachment.name,
+          bytes: attachment.bytes,
+          resourceType: type,
+        ));
+      }
+    }
   }
 
-  void _message(String value) {
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _takePhoto() async {
+    final file = await _photos.takePhoto();
+    if (file == null) {
+      return;
+    }
+    final bytes = await file.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _attachments.add(
+        _CourseAttachment(
+          name: 'photo-${DateTime.now().millisecondsSinceEpoch}.jpg',
+          bytes: bytes,
+          resourceType: 'image',
+        ),
+      );
+    });
+  }
+
+  Future<void> _pickImages() async {
+    final files = await _imagePicker.pickMultiImage(imageQuality: 85);
+    if (files.isEmpty) {
+      return;
+    }
+    final added = <_CourseAttachment>[];
+    for (final file in files) {
+      final bytes = await file.readAsBytes();
+      final name = file.name.isEmpty
+          ? 'image-${DateTime.now().millisecondsSinceEpoch}.jpg'
+          : file.name;
+      added.add(
+        _CourseAttachment(name: name, bytes: bytes, resourceType: 'image'),
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _attachments.addAll(added));
+  }
+
+  Future<void> _pickPdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = await _readPickedBytes(file);
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le PDF sélectionné.' : 'Unable to read the selected PDF.');
+      return;
+    }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+    setState(() {
+      _attachments.add(_CourseAttachment(
+        name: file.name,
+        bytes: bytes,
+        resourceType: 'pdf',
+      ));
+    });
   }
 
-  String _chapterLabel(Map<String, dynamic> row) {
-    final title = _label(row, 'title_fr', 'title_en');
-    final status = (row['verification_status'] ?? '').toString().toLowerCase();
-    final source = (row['source_title'] ?? '').toString().toLowerCase();
-    final needsVerification = status == 'pending_official_confirmation' ||
-        status == 'pending_confirmation' ||
-        status == 'needs_review' ||
-        source.contains('à confirmer') ||
-        source.contains('pending confirmation') ||
-        source.contains('provisional');
-    if (!needsVerification) return title;
-    return '$title • ${_fr ? 'titre à confirmer' : 'title to verify'}';
+  Future<Uint8List?> _readPickedBytes(PlatformFile file) async {
+    final bytes = file.bytes;
+    if (bytes != null && bytes.isNotEmpty) return bytes;
+    final path = file.path;
+    if (path == null || path.isEmpty) return null;
+    try { return await File(path).readAsBytes(); } catch (_) { return null; }
   }
 
-  Future<void> _selectionChanged(
+  Future<void> _pickAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = await _readPickedBytes(file);
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le fichier audio.' : 'Unable to read the audio file.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _attachments.add(_CourseAttachment(name: file.name, bytes: bytes, resourceType: 'audio')));
+  }
+
+  Future<void> _pickVideo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp4', 'mov', 'm4v', 'webm', 'mkv'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+    final file = result.files.single;
+    final bytes = await _readPickedBytes(file);
+    if (bytes == null || bytes.isEmpty) {
+      _snack(_fr ? 'Impossible de lire la vidéo sélectionnée.' : 'Unable to read the selected video.');
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _attachments.add(
+        _CourseAttachment(
+          name: file.name,
+          bytes: bytes,
+          resourceType: 'video',
+        ),
+      );
+    });
+  }
+
+  /// Charge les chapitres correspondant à chaque classe sélectionnée.
+  /// Les filières peuvent avoir des programmes différents : le choix du chapitre
+  /// est donc conservé séparément pour chaque classe, sans mélanger les catalogues.
+  Future<void> _loadChapterOptions(
     List<SchoolClass> classes,
     Subject? subject,
   ) async {
-    setState(() {
-      _curricula = [];
-      _curriculum = null;
-      _chapters = [];
-      _chapter = null;
-      _loadingProgrammes = classes.isNotEmpty && subject != null;
-    });
+    _curriculumByClass.clear();
+    _chaptersByClass.clear();
+    _selectedChapterByClass.clear();
     if (classes.isEmpty || subject == null) {
-      if (mounted) setState(() => _loadingProgrammes = false);
+      if (mounted) setState(() => _loadingChapters = false);
       return;
     }
+
+    setState(() => _loadingChapters = true);
     try {
-      final classIds = classes.map((e) => e.id).toList();
-      final classRows = await _db
-          .from('school_classes')
-          .select('id,subsystem,sector,exam_level_id,series_id,specialty_id,is_active')
-          .inFilter('id', classIds)
-          .eq('is_active', true);
-      final programmes = await _db
-          .from('curricula')
-          .select('id,title_fr,title_en,subsystem,sector,exam_level_id,series_id,specialty_id,is_catalog_container,is_active')
-          .eq('subject_id', subject.id)
-          .eq('is_active', true)
-          .order('title_fr');
+      final curricula = await _service.listCurricula(subject.id);
+      for (final schoolClass in classes) {
+        final matches = curricula.where((curriculum) =>
+          curriculum.subsystem == schoolClass.subsystem &&
+          curriculum.sector == schoolClass.sector &&
+          (curriculum.examLevelId == null || curriculum.examLevelId == schoolClass.examLevelId) &&
+          (curriculum.seriesId == null || curriculum.seriesId == schoolClass.seriesId) &&
+          (curriculum.specialtyId == null || curriculum.specialtyId == schoolClass.specialtyId)
+        ).toList()
+          ..sort((a, b) {
+            int specificity(Curriculum value) =>
+                (value.examLevelId == null ? 0 : 1) +
+                (value.seriesId == null ? 0 : 1) +
+                (value.specialtyId == null ? 0 : 1);
+            return specificity(b).compareTo(specificity(a));
+          });
 
-      bool matchesEverySelectedClass(Map<String, dynamic> programme) {
-        return classRows.length == classes.length && classRows.every((rawClass) {
-          final c = Map<String, dynamic>.from(rawClass);
-          return programme['subsystem'] == c['subsystem'] &&
-              programme['sector'] == c['sector'] &&
-              (programme['exam_level_id'] == null ||
-                  programme['exam_level_id'] == c['exam_level_id']) &&
-              (programme['series_id'] == null ||
-                  programme['series_id'] == c['series_id']) &&
-              (programme['specialty_id'] == null ||
-                  programme['specialty_id'] == c['specialty_id']);
-        });
-      }
-
-      final matching = List<Map<String, dynamic>>.from(programmes)
-          .where(matchesEverySelectedClass)
-          .toList(growable: false);
-      final containers = matching
-          .where((row) => row['is_catalog_container'] == true)
-          .toList(growable: false);
-
-      // Never select an empty catalogue container: doing so hides the older
-      // active programme and leaves teachers with no chapters to publish into.
-      var populatedContainerIds = <String>{};
-      if (containers.isNotEmpty) {
-        final containerIds = containers
-            .map((row) => row['id'])
-            .whereType<String>()
-            .toList(growable: false);
-        if (containerIds.isNotEmpty) {
-          final populatedRows = await _db
-              .from('course_chapters')
-              .select('curriculum_id')
-              .inFilter('curriculum_id', containerIds)
-              .eq('is_active', true);
-          populatedContainerIds = populatedRows
-              .map((row) => row['curriculum_id'])
-              .whereType<String>()
-              .toSet();
+        final curriculum = matches.isEmpty ? null : matches.first;
+        _curriculumByClass[schoolClass.id] = curriculum;
+        if (curriculum != null) {
+          _chaptersByClass[schoolClass.id] =
+              await _service.listChapters(curriculum.id);
+        } else {
+          _chaptersByClass[schoolClass.id] = const <CourseChapter>[];
         }
       }
-      final populatedContainers = containers
-          .where((row) => populatedContainerIds.contains(row['id']))
-          .toList(growable: false);
-      final filtered = populatedContainers.isNotEmpty
-          ? populatedContainers
-          : matching
-              .where((row) => row['is_catalog_container'] != true)
-              .toList(growable: false);
-      if (!mounted) return;
-      setState(() {
-        _curricula = filtered;
-        _curriculum = filtered.isEmpty ? null : filtered.first;
-        _loadingProgrammes = false;
-      });
-      if (_curriculum != null) await _loadChapters(_curriculum!['id'].toString());
-    } catch (e) {
-      if (mounted) setState(() => _loadingProgrammes = false);
-      _message((_fr ? 'Programmes indisponibles : ' : 'Unable to load programmes: ') + e.toString());
+    } catch (error) {
+      if (mounted) {
+        _snack('${_fr ? 'Impossible de charger les chapitres' : 'Unable to load chapters'}: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingChapters = false);
     }
   }
 
-  Future<void> _loadChapters(String curriculumId) async {
-    final rows = await _db
-        .from('course_chapters')
-        .select('id,title_fr,title_en,position,is_active,source_title,verification_status')
-        .eq('curriculum_id', curriculumId)
-        .eq('is_active', true)
-        .order('position');
+  Future<void> _save() async {
+    final title = _title.text.trim();
+
+    if (_classes.isEmpty) {
+      _snack(_fr ? 'Choisissez au moins une classe.' : 'Choose at least one class.');
+      return;
+    }
+    if (_subject == null) {
+      _snack(_fr ? 'Choisissez la matière.' : 'Choose the subject.');
+      return;
+    }
+    if (title.isEmpty) {
+      _snack(_fr ? 'Donnez un titre au cours.' : 'Give the course a title.');
+      return;
+    }
+    if (_attachments.isEmpty) {
+      _snack(_fr
+          ? 'Ajoutez au moins une photo, vidéo, PDF ou fichier audio.'
+          : 'Add at least one photo, video, PDF or audio file.');
+      return;
+    }
+
+    final authUser = Supabase.instance.client.auth.currentUser;
+    if (authUser == null || authUser.id != widget.profile.id) {
+      _snack(_fr
+          ? 'Session enseignant incohérente. Déconnectez-vous puis reconnectez-vous avant de partager.'
+          : 'Teacher session mismatch. Sign out and sign in again before sharing.');
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    // Send only to the classrooms explicitly selected by the teacher.
+    // Expanding a selected level into every compatible room duplicated every
+    // large media file and made publishing appear to run forever.
+    final List<SchoolClass> targets = List<SchoolClass>.unmodifiable(_classes);
+    try {
+      await _service.authorizeTeacherClasses(
+        targets.map((room) => room.id).toList(growable: false),
+      ).timeout(const Duration(seconds: 45));
+    } catch (error) {
+      if (mounted) {
+        setState(() => _saving = false);
+        _snack('${_fr ? 'Accès ou diffusion des salles refusé' : 'Classroom access or distribution denied'}: $error');
+      }
+      return;
+    }
+
+    CourseChapter? referenceChapter;
+    for (final chosen in _classes) {
+      final chosenId = _selectedChapterByClass[chosen.id];
+      if (chosenId == null) continue;
+      for (final chapter in _chaptersByClass[chosen.id] ?? const <CourseChapter>[]) {
+        if (chapter.id == chosenId) {
+          referenceChapter = chapter;
+          break;
+        }
+      }
+      if (referenceChapter != null) break;
+    }
+
+    var saved = 0;
+    final errors = <String>[];
+
+    for (final schoolClass in targets) {
+      try {
+        Curriculum? curriculum = _curriculumByClass[schoolClass.id];
+        List<CourseChapter> chapters =
+            _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
+        String? selectedChapterId = _selectedChapterByClass[schoolClass.id];
+
+        if (!_curriculumByClass.containsKey(schoolClass.id)) {
+          final curricula = await _service.listCurricula(_subject!.id);
+          final matches = curricula.where((item) =>
+              item.subsystem == schoolClass.subsystem &&
+              item.sector == schoolClass.sector &&
+              (item.examLevelId == null || item.examLevelId == schoolClass.examLevelId) &&
+              (item.seriesId == null || item.seriesId == schoolClass.seriesId) &&
+              (item.specialtyId == null || item.specialtyId == schoolClass.specialtyId)).toList()
+            ..sort((a, b) {
+              int specificity(Curriculum value) =>
+                  (value.examLevelId == null ? 0 : 1) +
+                  (value.seriesId == null ? 0 : 1) +
+                  (value.specialtyId == null ? 0 : 1);
+              return specificity(b).compareTo(specificity(a));
+            });
+          curriculum = matches.isEmpty ? null : matches.first;
+          chapters = curriculum == null
+              ? const <CourseChapter>[]
+              : await _service.listChapters(curriculum.id);
+          if (referenceChapter != null) {
+            final wantedFr = referenceChapter.titleFr.trim().toLowerCase();
+            final wantedEn = referenceChapter.titleEn.trim().toLowerCase();
+            final matching = chapters.where((chapter) =>
+                chapter.titleFr.trim().toLowerCase() == wantedFr ||
+                chapter.titleEn.trim().toLowerCase() == wantedEn).toList();
+            if (matching.isEmpty) {
+              throw StateError(_fr
+                  ? 'Le chapitre commun « ${referenceChapter.titleFr} » n’existe pas dans cette salle.'
+                  : 'The shared chapter “${referenceChapter.titleEn}” is unavailable in this classroom.');
+            }
+            selectedChapterId = matching.first.id;
+          }
+        }
+
+        if (curriculum == null) {
+          throw StateError(_fr
+              ? 'Aucun programme officiel n’est associé à ${schoolClass.displayName} pour cette matière. Demandez à l’administrateur de compléter les chapitres avant de publier.'
+              : 'No official curriculum is linked to ${schoolClass.displayName} for this subject. Ask the administrator to complete the chapter catalogue before publishing.');
+        }
+        if (chapters.isEmpty) {
+          throw StateError(_fr
+              ? 'Aucun chapitre disponible pour ${schoolClass.displayName}. Demandez à l’administrateur de compléter le catalogue.'
+              : 'No chapter is available for ${schoolClass.displayName}. Ask the administrator to complete the catalogue.');
+        }
+        if (selectedChapterId == null) {
+          throw StateError(_fr
+              ? 'Choisissez un chapitre pour ${schoolClass.displayName}.'
+              : 'Choose a chapter for ${schoolClass.displayName}.');
+        }
+
+        final course = await _service.saveCourse(
+          curriculumId: curriculum.id,
+          chapterId: selectedChapterId,
+          subjectId: _subject!.id,
+          teacherId: widget.profile.id,
+          classId: schoolClass.id,
+          titleFr: title,
+          titleEn: title,
+          contentFr: null,
+          contentEn: null,
+          smartLessonEnabled: false,
+          status: 'draft',
+        );
+
+        for (var i = 0; i < _attachments.length; i++) {
+          final attachment = _attachments[i];
+          await _resources.uploadResource(
+            courseId: course.id,
+            file: PlatformFile(
+              name: attachment.name,
+              size: attachment.bytes.length,
+              bytes: attachment.bytes,
+            ),
+            resourceType: attachment.resourceType,
+            position: i,
+            titleFr: attachment.name,
+            titleEn: attachment.name,
+          ).timeout(
+            const Duration(seconds: 90),
+            onTimeout: () => throw TimeoutException(
+              _fr
+                  ? 'Délai dépassé pendant l’envoi de « ${attachment.name} ». Vérifiez la connexion et la taille du fichier.'
+                  : 'Timed out uploading “${attachment.name}”. Check the connection and file size.',
+            ),
+          );
+        }
+
+        final persistedResources = await _resources.listForCourse(course.id).timeout(const Duration(seconds: 30));
+        if (persistedResources.length < _attachments.length) {
+          throw StateError(_fr
+              ? 'Publication incomplète : ${persistedResources.length}/${_attachments.length} média(s) enregistrés côté serveur.'
+              : 'Incomplete publication: ${persistedResources.length}/${_attachments.length} media record(s) persisted on the server.');
+        }
+
+        for (final resource in persistedResources) {
+          if (resource.resourceType != 'pdf' && resource.resourceType != 'image') continue;
+          try {
+            if (resource.resourceType == 'pdf') {
+              await _smart.reindexPdf(resource.id);
+            } else {
+              await _smart.reindexResource(resource.id);
+            }
+          } catch (indexError) {
+            debugPrint('Optional AI source indexing failed for ${resource.id}: $indexError');
+          }
+        }
+
+        await _service.publishCourse(course.id).timeout(const Duration(seconds: 30));
+        saved++;
+      } catch (error) {
+        errors.add('${schoolClass.displayName}: $error');
+      }
+    }
+
     if (!mounted) return;
-    final chapters = List<Map<String, dynamic>>.from(rows);
-    setState(() {
-      _chapters = chapters;
-      _chapter = chapters.isEmpty ? null : chapters.first;
-    });
-  }
+    setState(() => _saving = false);
 
-  String? _typeFor(String extension) {
-    switch (extension.toLowerCase()) {
-      case 'pdf':
-        return 'pdf';
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-      case 'webp':
-      case 'bmp':
-        return 'image';
-      case 'mp4':
-      case 'mov':
-      case 'avi':
-      case 'mkv':
-      case 'webm':
-        return 'video';
-      case 'mp3':
-      case 'wav':
-      case 'm4a':
-      case 'aac':
-      case 'ogg':
-        return 'audio';
-      default:
-        return null;
+    if (errors.isNotEmpty) {
+      if (saved == 0) {
+        _snack(
+          '${_fr ? 'Échec de la publication' : 'Publication failed'} (${errors.length}/${targets.length})\n${errors.first}',
+        );
+        return;
+      }
+      // Some classrooms may have been published successfully before another
+      // classroom failed. Report both facts so the teacher does not retry and
+      // accidentally create duplicates in rooms already served.
+      _snack(_fr
+          ? 'Médias envoyés dans $saved salle(s). Échec dans ${errors.length} autre(s) salle(s) : ${errors.first}'
+          : 'Media sent to $saved classroom(s). Failed in ${errors.length} other classroom(s): ${errors.first}');
+    } else {
+      _snack(_fr
+          ? 'Médias publiés dans $saved salle(s) sélectionnée(s).'
+          : 'Media published to $saved selected classroom(s).');
     }
+
+    Navigator.pop(context, true);
   }
 
-  String _mimeFor(String type, String extension) {
-    // Use canonical IANA media types so Android, Supabase Storage and viewers
-    // agree on the content type even when the phone file extension is unusual.
+  IconData _iconFor(String type) {
     switch (type) {
       case 'pdf':
-        return 'application/pdf';
+        return Icons.picture_as_pdf_rounded;
       case 'image':
-        switch (extension.toLowerCase()) {
-          case 'jpg':
-          case 'jpeg':
-            return 'image/jpeg';
-          case 'png':
-            return 'image/png';
-          case 'gif':
-            return 'image/gif';
-          case 'webp':
-            return 'image/webp';
-          case 'bmp':
-            return 'image/bmp';
-          default:
-            return 'application/octet-stream';
-        }
+        return Icons.image_rounded;
       case 'video':
-        switch (extension.toLowerCase()) {
-          case 'mp4':
-            return 'video/mp4';
-          case 'mov':
-            return 'video/quicktime';
-          case 'avi':
-            return 'video/x-msvideo';
-          case 'mkv':
-            return 'video/x-matroska';
-          case 'webm':
-            return 'video/webm';
-          default:
-            return 'application/octet-stream';
-        }
+        return Icons.videocam_rounded;
       case 'audio':
-        switch (extension.toLowerCase()) {
-          case 'mp3':
-            return 'audio/mpeg';
-          case 'wav':
-            return 'audio/wav';
-          case 'm4a':
-            return 'audio/mp4';
-          case 'aac':
-            return 'audio/aac';
-          case 'ogg':
-            return 'audio/ogg';
-          default:
-            return 'application/octet-stream';
-        }
+        return Icons.audiotrack_rounded;
       default:
-        return 'application/octet-stream';
-    }
-  }
-
-  Future<void> _pickAndUpload({ImageSource? imageSource}) async {
-    // Never start a Storage/database write without the live Supabase session.
-    final authUser = _db.auth.currentUser;
-    if (authUser == null) {
-      _message(_fr
-          ? 'Votre session a expiré. Reconnectez-vous puis réessayez.'
-          : 'Your session has expired. Sign in again and retry.');
-      return;
-    }
-    if (authUser.id != widget.profile.id) {
-      _message(_fr
-          ? 'Le compte connecté ne correspond pas au profil enseignant. Reconnectez-vous.'
-          : 'The signed-in account does not match the teacher profile. Sign in again.');
-      return;
-    }
-    if (_chapter == null) {
-      _message(_fr ? 'Choisissez d’abord une salle, une matière et un chapitre.' : 'Choose a classroom, subject and chapter first.');
-      return;
-    }
-    PlatformFile file;
-    try {
-      if (imageSource != null) {
-        final picked = await _images.pickImage(source: imageSource, imageQuality: 88);
-        if (picked == null) return;
-        final bytes = await picked.readAsBytes();
-        file = PlatformFile(name: picked.name, size: bytes.length, bytes: bytes);
-      } else {
-        final result = await FilePicker.platform.pickFiles(
-          withData: true,
-          type: FileType.custom,
-          allowedExtensions: const [
-            'pdf','jpg','jpeg','png','gif','webp','bmp',
-            'mp4','mov','avi','mkv','webm','mp3','wav','m4a','aac','ogg',
-          ],
-        );
-        if (result == null || result.files.isEmpty) return;
-        file = result.files.single;
-      }
-      if (file.bytes == null || file.bytes!.isEmpty) {
-        _message(_fr ? 'Impossible de lire ce fichier.' : 'Could not read this file.');
-        return;
-      }
-      final extension = (file.extension ?? '').toLowerCase();
-      final type = _typeFor(extension);
-      if (type == null) {
-        _message(_fr ? 'Format non pris en charge.' : 'Unsupported file type.');
-        return;
-      }
-
-      setState(() => _uploading = true);
-      final chapterId = _chapter!['id'].toString();
-      String? storagePath;
-      try {
-        final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-        storagePath = '$chapterId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-        await _db.storage.from('chapter-content').uploadBinary(
-          storagePath,
-          file.bytes!,
-          fileOptions: FileOptions(contentType: _mimeFor(type, extension), upsert: false),
-        );
-        final existing = await _db
-            .from('chapter_content_items')
-            .select('position')
-            .eq('chapter_id', chapterId)
-            .order('position');
-        var position = 0;
-        for (final row in existing) {
-          final current = row['position'];
-          if (current is int && current >= position) position = current + 1;
-        }
-        await _db.from('chapter_content_items').insert({
-          'chapter_id': chapterId,
-          'content_type': type,
-          'folder_key': switch (type) {
-            'image' => 'images',
-            'pdf' => 'pdf',
-            'audio' => 'audio',
-            'video' => 'video',
-            _ => 'course',
-          },
-          'title_fr': file.name,
-          'title_en': file.name,
-          'storage_path': storagePath,
-          'position': position,
-          'is_published': true,
-          'created_by': authUser.id,
-        });
-        _message(_fr ? 'Média publié dans le chapitre.' : 'Media published in the chapter.');
-      } catch (e) {
-        if (storagePath != null) {
-          try { await _db.storage.from('chapter-content').remove([storagePath]); } catch (_) {}
-        }
-        rethrow;
-      }
-    } catch (e) {
-      _message((_fr ? 'Échec de la publication : ' : 'Publishing failed: ') + e.toString());
-    } finally {
-      if (mounted) setState(() => _uploading = false);
+        return Icons.insert_drive_file_rounded;
     }
   }
 
@@ -359,84 +499,176 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     return Scaffold(
       appBar: AppBar(title: Text(_fr ? 'Partager des médias' : 'Share media')),
       body: ListView(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.info_outline, color: Color(0xFF166534)),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_fr
-                    ? 'Les cours écrits et les QCM sont préparés par l’administration. Ici, vous pouvez uniquement joindre des photos, PDF, vidéos et fichiers audio à un chapitre du programme.'
-                    : 'Written lessons and quizzes are prepared by administrators. Here you can only attach photos, PDFs, videos and audio files to a curriculum chapter.')),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 14),
           ClassSubjectPicker(
             locale: widget.locale,
             teacherId: widget.profile.id,
-            onChanged: _selectionChanged,
-          ),
-          const SizedBox(height: 18),
-          if (_loadingProgrammes) const LinearProgressIndicator(),
-          DropdownButtonFormField<Map<String, dynamic>>(
-            initialValue: _curriculum,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: _fr ? 'Programme de la matière' : 'Subject curriculum'),
-            items: _curricula.map((row) => DropdownMenuItem(
-              value: row,
-              child: Text(_label(row, 'title_fr', 'title_en'), overflow: TextOverflow.ellipsis),
-            )).toList(),
-            onChanged: _uploading ? null : (value) async {
-              setState(() { _curriculum = value; _chapter = null; _chapters = []; });
-              if (value != null) await _loadChapters(value['id'].toString());
+            includeCompatibleClasses: true,
+            onChanged: (classes, subject) {
+              setState(() {
+                _classes = classes;
+                _subject = subject;
+                _curriculumByClass.clear();
+                _chaptersByClass.clear();
+                _selectedChapterByClass.clear();
+              });
+              _loadChapterOptions(classes, subject);
             },
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<Map<String, dynamic>>(
-            initialValue: _chapter,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: _fr ? 'Chapitre' : 'Chapter'),
-            items: _chapters.map((row) => DropdownMenuItem(
-              value: row,
-              child: Text(_chapterLabel(row), overflow: TextOverflow.ellipsis),
-            )).toList(),
-            onChanged: _uploading ? null : (value) => setState(() => _chapter = value),
+          const SizedBox(height: 14),
+          Text(
+            _fr ? 'Chapitre de destination (pour chaque classe)' : 'Destination chapter (for each classroom)',
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 22),
-          Text(_fr ? 'Ajouter un média à ce chapitre' : 'Add media to this chapter',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            ActionChip(
-              avatar: const Icon(Icons.camera_alt_outlined),
-              label: Text(_fr ? 'Prendre une photo' : 'Take photo'),
-              onPressed: _uploading ? null : () => _pickAndUpload(imageSource: ImageSource.camera),
+          const SizedBox(height: 8),
+          if (_loadingChapters)
+            const LinearProgressIndicator()
+          else if (_classes.isEmpty || _subject == null)
+            Text(_fr ? 'Choisissez d’abord les classes et la matière.' : 'Choose classrooms and a subject first.')
+          else
+            ..._classes.map((schoolClass) {
+              final curriculum = _curriculumByClass[schoolClass.id];
+              final chapters = _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(schoolClass.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    if (curriculum == null)
+                      Text(_fr ? 'Aucun programme correspondant trouvé pour cette classe.' : 'No matching curriculum found for this classroom.')
+                    else if (chapters.isEmpty)
+                      Text(_fr ? 'Aucun chapitre actif dans ce programme.' : 'No active chapters in this curriculum.')
+                    else
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('chapter-${schoolClass.id}-${curriculum.id}-${chapters.length}'),
+                        initialValue: _selectedChapterByClass[schoolClass.id],
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
+                          labelText: _fr ? 'Choisir un chapitre' : 'Choose a chapter',
+                        ),
+                        items: chapters.map((chapter) => DropdownMenuItem<String>(
+                          value: chapter.id,
+                          child: Text(chapter.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
+                        )).toList(growable: false),
+                        onChanged: (chapterId) {
+                          setState(() {
+                            if (chapterId == null) {
+                              _selectedChapterByClass.remove(schoolClass.id);
+                            } else {
+                              _selectedChapterByClass[schoolClass.id] = chapterId;
+                            }
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              );
+            }),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _title,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              labelText: _fr ? 'Titre ou légende du média' : 'Media title or caption',
+              border: const OutlineInputBorder(),
             ),
-            ActionChip(
-              avatar: const Icon(Icons.photo_library_outlined),
-              label: Text(_fr ? 'Choisir une photo' : 'Choose photo'),
-              onPressed: _uploading ? null : () => _pickAndUpload(imageSource: ImageSource.gallery),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFFE8F5EC), borderRadius: BorderRadius.circular(14)),
+            child: Text(_fr
+                ? 'Partagez des photos, vidéos, PDF et fichiers audio dans la salle choisie.'
+                : 'Share photos, videos, PDFs and audio files with the selected classroom.'),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _fr ? 'Photos, vidéos, PDF et audio' : 'Photos, videos, PDFs and audio',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.camera_alt_rounded, size: 18),
+                label: Text(_fr ? 'Prendre une photo' : 'Take a photo'),
+                onPressed: _saving ? null : _takePhoto,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.image_rounded, size: 18),
+                label: Text(_fr ? 'Images' : 'Images'),
+                onPressed: _saving ? null : _pickImages,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.videocam_rounded, size: 18),
+                label: Text(_fr ? 'Choisir une vidéo' : 'Choose a video'),
+                onPressed: _saving ? null : _pickVideo,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                label: Text(_fr ? 'Choisir un PDF' : 'Choose a PDF'),
+                onPressed: _saving ? null : _pickPdf,
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.audiotrack_rounded, size: 18),
+                label: Text(_fr ? 'Choisir un audio' : 'Choose audio'),
+                onPressed: _saving ? null : _pickAudio,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < _attachments.length; i++)
+            Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                dense: true,
+                leading: _attachments[i].resourceType == 'image'
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.memory(
+                          _attachments[i].bytes,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Icon(_iconFor(_attachments[i].resourceType)),
+                title: Text(_attachments[i].name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: _saving ? null : () => setState(() => _attachments.removeAt(i)),
+                ),
+              ),
             ),
-            ActionChip(
-              avatar: const Icon(Icons.attach_file),
-              label: Text(_fr ? 'PDF, vidéo ou audio' : 'PDF, video or audio'),
-              onPressed: _uploading ? null : () => _pickAndUpload(),
-            ),
-          ]),
-          if (_uploading) ...[
-            const SizedBox(height: 18),
-            const LinearProgressIndicator(),
-            const SizedBox(height: 8),
-            Text(_fr ? 'Publication en cours…' : 'Publishing…', textAlign: TextAlign.center),
-          ],
-          const SizedBox(height: 18),
-          Text(_fr
-              ? 'Le média apparaît dans le chapitre dès sa publication. Les élèves autorisés par leur programme peuvent le consulter et le télécharger pour le mode hors ligne si la fonction le prend en charge.'
-              : 'The media appears in the chapter after publishing. Students whose curriculum grants access can view it and download it for offline use when supported.',
-              style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _saving ? null : _save,
+                  child: Text(_fr ? 'Enregistrer' : 'Save'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(_fr ? 'Envoyer les médias' : 'Send media'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
