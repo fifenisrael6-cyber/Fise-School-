@@ -192,8 +192,10 @@ class _ChapterLearningDetailPageState
                             '${data.counts.lessons} ${_en ? 'lessons' : 'leçons'}'),
                         _pill(Icons.play_circle_outline,
                             '${data.counts.videos} ${_en ? 'videos' : 'vidéos'}'),
-                        _pill(Icons.quiz_outlined,
-                            '${data.counts.quizzes} quiz'),
+                        _pill(
+                          Icons.quiz_outlined,
+                          '${data.counts.quizzes} ${_en ? 'Smart QCM' : 'QCM intelligent'}',
+                        ),
                       ]),
                     ],
                   ),
