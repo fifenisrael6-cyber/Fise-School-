@@ -29,6 +29,7 @@ class _ChapterLearningSubjectPageState
     extends State<ChapterLearningSubjectPage> {
   final ChapterLearningService _learning = ChapterLearningService();
   late Future<_SubjectData> _future;
+  late Future<ChapterLearningCounts> _countsFuture;
 
   bool get _en => widget.locale.languageCode == 'en';
   String _label(Curriculum value) => value.labelFor(widget.locale.languageCode);
@@ -59,10 +60,24 @@ class _ChapterLearningSubjectPageState
       allChapters.addAll(chapters);
     }
 
-    // Counts use the same local cache as the folders and are fetched in
-    // parallel so opening a subject does not wait chapter-by-chapter.
+    // Do not block the chapter list on a request per resource type for
+    // every chapter. Large programmes can contain dozens of chapters; waiting
+    // for all their counts here caused the whole page to appear stuck/empty.
+    // Load statistics separately after the programme folders are visible.
+    _countsFuture = _loadCounts(allChapters);
+
+    return _SubjectData(
+      groups: groups,
+      chapters: allChapters,
+      counts: const ChapterLearningCounts(),
+    );
+  }
+
+  Future<ChapterLearningCounts> _loadCounts(
+    List<CourseChapter> chapters,
+  ) async {
     final chapterCounts = await Future.wait(
-      allChapters.map((chapter) => _learning.getCounts(chapter.id)),
+      chapters.map((chapter) => _learning.getCounts(chapter.id)),
     );
     var lessons = 0;
     var videos = 0;
@@ -80,19 +95,14 @@ class _ChapterLearningSubjectPageState
       quizzes += counts.quizzes;
       exercises += counts.exercises;
     }
-
-    return _SubjectData(
-      groups: groups,
-      chapters: allChapters,
-      counts: ChapterLearningCounts(
-        lessons: lessons,
-        videos: videos,
-        pdfs: pdfs,
-        images: images,
-        audios: audios,
-        quizzes: quizzes,
-        exercises: exercises,
-      ),
+    return ChapterLearningCounts(
+      lessons: lessons,
+      videos: videos,
+      pdfs: pdfs,
+      images: images,
+      audios: audios,
+      quizzes: quizzes,
+      exercises: exercises,
     );
   }
 
@@ -159,24 +169,31 @@ class _ChapterLearningSubjectPageState
                         style: const TextStyle(color: Colors.white70),
                       ),
                       const SizedBox(height: 16),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _stat(Icons.menu_book_outlined,
-                              _en ? 'Lessons' : 'Leçons', data.counts.lessons),
-                          _stat(Icons.play_circle_outline,
-                              _en ? 'Videos' : 'Vidéos', data.counts.videos),
-                          _stat(Icons.picture_as_pdf_outlined,
-                              _en ? 'PDF' : 'PDF', data.counts.pdfs),
-                          _stat(Icons.image_outlined,
-                              _en ? 'Photos' : 'Photos', data.counts.images),
-                          _stat(Icons.audiotrack_outlined,
-                              _en ? 'Audio' : 'Audio', data.counts.audios),
-                          _stat(Icons.quiz_outlined,
-                              _en ? 'Smart QCM' : 'QCM intelligent',
-                              data.counts.quizzes),
-                        ],
+                      FutureBuilder<ChapterLearningCounts>(
+                        future: _countsFuture,
+                        builder: (context, countSnapshot) {
+                          final counts = countSnapshot.data ??
+                              const ChapterLearningCounts();
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _stat(Icons.menu_book_outlined,
+                                  _en ? 'Lessons' : 'Leçons', counts.lessons),
+                              _stat(Icons.play_circle_outline,
+                                  _en ? 'Videos' : 'Vidéos', counts.videos),
+                              _stat(Icons.picture_as_pdf_outlined,
+                                  'PDF', counts.pdfs),
+                              _stat(Icons.image_outlined,
+                                  _en ? 'Photos' : 'Photos', counts.images),
+                              _stat(Icons.audiotrack_outlined,
+                                  _en ? 'Audio' : 'Audio', counts.audios),
+                              _stat(Icons.quiz_outlined,
+                                  _en ? 'Smart QCM' : 'QCM intelligent',
+                                  counts.quizzes),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 14),
                       Text(
