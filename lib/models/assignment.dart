@@ -12,6 +12,10 @@ class Assignment {
   final String? instructionsFr;
   final String? instructionsEn;
   final DateTime? dueAt;
+  final DateTime? startsAt;
+  final DateTime? resultsPublishAt;
+  final String? evaluationFilePath;
+  final String? evaluationFileName;
   final String status;
   final double maxScore;
   final DateTime? createdAt;
@@ -30,6 +34,10 @@ class Assignment {
     this.instructionsFr,
     this.instructionsEn,
     this.dueAt,
+    this.startsAt,
+    this.resultsPublishAt,
+    this.evaluationFilePath,
+    this.evaluationFileName,
     required this.status,
     required this.maxScore,
     this.createdAt,
@@ -50,6 +58,10 @@ class Assignment {
       instructionsFr: map['instructions_fr'] as String?,
       instructionsEn: map['instructions_en'] as String?,
       dueAt: _parseDate(map['due_at']),
+      startsAt: _parseDate(map['starts_at']),
+      resultsPublishAt: _parseDate(map['results_publish_at']),
+      evaluationFilePath: map['evaluation_file_path'] as String?,
+      evaluationFileName: map['evaluation_file_name'] as String?,
       status: map['status'] as String? ?? 'draft',
       maxScore: _parseDouble(map['max_score'], fallback: 20),
       createdAt: _parseDate(map['created_at']),
@@ -71,6 +83,10 @@ class Assignment {
       'instructions_fr': instructionsFr,
       'instructions_en': instructionsEn,
       'due_at': dueAt?.toIso8601String(),
+      'starts_at': startsAt?.toIso8601String(),
+      'results_publish_at': resultsPublishAt?.toIso8601String(),
+      'evaluation_file_path': evaluationFilePath,
+      'evaluation_file_name': evaluationFileName,
       'status': status,
       'max_score': maxScore,
       'created_at': createdAt?.toIso8601String(),
@@ -99,6 +115,10 @@ class Assignment {
     String? instructionsFr,
     String? instructionsEn,
     DateTime? dueAt,
+    DateTime? startsAt,
+    DateTime? resultsPublishAt,
+    String? evaluationFilePath,
+    String? evaluationFileName,
     String? status,
     double? maxScore,
     DateTime? createdAt,
@@ -117,6 +137,10 @@ class Assignment {
       instructionsFr: instructionsFr ?? this.instructionsFr,
       instructionsEn: instructionsEn ?? this.instructionsEn,
       dueAt: dueAt ?? this.dueAt,
+      startsAt: startsAt ?? this.startsAt,
+      resultsPublishAt: resultsPublishAt ?? this.resultsPublishAt,
+      evaluationFilePath: evaluationFilePath ?? this.evaluationFilePath,
+      evaluationFileName: evaluationFileName ?? this.evaluationFileName,
       status: status ?? this.status,
       maxScore: maxScore ?? this.maxScore,
       createdAt: createdAt ?? this.createdAt,
