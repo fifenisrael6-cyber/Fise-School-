@@ -4,7 +4,6 @@ import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'chapter_learning_detail_page.dart';
-import 'subject_channel_page.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
 
@@ -216,21 +215,6 @@ class _ChapterLearningSubjectPageState
                   ),
                 ),
                 const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SubjectChannelPage(
-                        locale: widget.locale,
-                        profile: widget.profile,
-                        subject: widget.subject,
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.dynamic_feed_outlined),
-                  label: Text(_en
-                      ? 'Recent teacher posts'
-                      : 'Cours et publications de l’enseignant'),
-                ),
                 const SizedBox(height: 22),
                 Text(
                   _en ? 'ON THE PROGRAMME' : 'AU PROGRAMME',
