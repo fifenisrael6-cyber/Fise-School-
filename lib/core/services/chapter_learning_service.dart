@@ -637,14 +637,32 @@ class ChapterLearningService {
           .order('position');
       return result.map((row) => Map<String, dynamic>.from(row)).toList();
     });
-    // Hide only the generic template headings. Some existing chapter titles
-    // were imported from curriculum records but their exact class mapping is
-    // still pending; keep those titles visible and mark them for verification
-    // in the catalogue instead of silently showing an empty programme.
-    final titledRows = rows.where((row) {
-      final source = (row['source_title']?.toString() ?? '').toLowerCase();
-      return !source.contains('structure provisoire');
-    });
+    // source_title records provenance/verification notes, not the chapter
+    // heading. Many valid named chapters have a provisional-source note while
+    // official MINESEC/GCE confirmation is pending. Filtering that note hid
+    // most of the catalogue from students. Hide only genuinely blank or
+    // generic placeholder headings; CourseChapter.needsTitleVerification
+    // still flags provisional titles in the student UI.
+    const placeholders = <String>{
+      'structure provisoire',
+      'chapitre à définir',
+      'chapitre a definir',
+      'chapitre à compléter',
+      'chapitre a completer',
+      'titre à confirmer',
+      'titre a confirmer',
+      'provisional structure',
+      'chapter to be defined',
+      'chapter title pending',
+      'to be completed',
+    };
+    bool hasRealTitle(Object? value) {
+      final title = (value?.toString() ?? '').trim().toLowerCase();
+      return title.isNotEmpty && !placeholders.contains(title);
+    }
+
+    final titledRows = rows.where((row) =>
+        hasRealTitle(row['title_fr']) || hasRealTitle(row['title_en']));
     return titledRows.map(CourseChapter.fromMap).toList(growable: false);
   }
 }
