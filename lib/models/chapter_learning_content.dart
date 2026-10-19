@@ -24,6 +24,7 @@ class ChapterLearningContentItem {
     this.bodyTextEn,
     this.externalUrl,
     this.storagePath,
+    this.storedFolderKey,
   });
 
   final String id;
@@ -37,6 +38,23 @@ class ChapterLearningContentItem {
   final String? bodyTextEn;
   final String? externalUrl;
   final String? storagePath;
+  final String? storedFolderKey;
+
+  /// Flutter's canonical folder routing, with backward compatibility for
+  /// rows created before folder_key was added to the chapter catalogue.
+  String get folderKey {
+    final stored = (storedFolderKey ?? '').trim().toLowerCase();
+    if (const {'course', 'pdf', 'images', 'audio', 'video'}.contains(stored)) {
+      return stored;
+    }
+    return switch (type) {
+      ChapterLearningContentType.course => 'course',
+      ChapterLearningContentType.pdf => 'pdf',
+      ChapterLearningContentType.image => 'images',
+      ChapterLearningContentType.audio => 'audio',
+      ChapterLearningContentType.video => 'video',
+    };
+  }
 
   String titleFor(String languageCode) =>
       languageCode == 'en' ? titleEn : titleFr;
@@ -68,6 +86,7 @@ class ChapterLearningContentItem {
       bodyTextEn: map['body_text_en'] as String?,
       externalUrl: map['external_url'] as String?,
       storagePath: map['storage_path'] as String?,
+      storedFolderKey: map['folder_key'] as String?,
     );
   }
 }
