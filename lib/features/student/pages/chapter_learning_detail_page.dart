@@ -61,7 +61,6 @@ class _ChapterLearningDetailPageState
   Future<_ChapterData> _load() async {
     final results = await Future.wait<dynamic>([
       _service.listContent(widget.chapter.id),
-      _service.listExercises(widget.chapter.id),
       _service.listQuizzes(widget.chapter.id),
       _service.getCounts(widget.chapter.id),
       _service.getProgress(
@@ -69,18 +68,11 @@ class _ChapterLearningDetailPageState
         chapterId: widget.chapter.id,
       ),
     ]);
-    final exercises = results[1] as List<ChapterLearningExercise>;
-    final completed = await _service.completedExerciseIds(
-      studentId: widget.profile.id,
-      exerciseIds: exercises.map((exercise) => exercise.id).toList(),
-    );
     return _ChapterData(
       content: results[0] as List<ChapterLearningContentItem>,
-      exercises: exercises,
       quizzes: results[2] as List<ChapterLearningQuiz>,
       counts: results[3] as ChapterLearningCounts,
       progress: results[4] as ChapterLearningProgress?,
-      completedExerciseIds: completed,
     );
   }
 
@@ -144,8 +136,6 @@ class _ChapterLearningDetailPageState
             );
           }
           final data = snapshot.data!;
-          final total = data.exercises.length;
-          final completed = data.completedExerciseIds.length;
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView(
@@ -204,8 +194,6 @@ class _ChapterLearningDetailPageState
                             '${data.counts.videos} ${_en ? 'videos' : 'vidéos'}'),
                         _pill(Icons.quiz_outlined,
                             '${data.counts.quizzes} quiz'),
-                        _pill(Icons.edit_note,
-                            '${completed}/${total} ${_en ? 'exercises' : 'exercices'}'),
                       ]),
                     ],
                   ),
@@ -270,8 +258,7 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.documents => _en ? 'Documents (PDF and images)' : 'Documents (PDF et images)',
       _ChapterResourceFolder.audio => _en ? 'Audio files' : 'Fichiers audio',
       _ChapterResourceFolder.video => _en ? 'Videos' : 'Vidéos',
-      _ChapterResourceFolder.exercises => _en ? 'Exercises' : 'Exercices',
-      _ChapterResourceFolder.quizzes => _en ? 'AI quizzes' : 'QCM IA',
+      _ChapterResourceFolder.quizzes => _en ? 'Smart QCM' : 'QCM intelligent',
     };
   }
 
@@ -294,11 +281,6 @@ class _ChapterLearningDetailPageState
         return data.content
             .where((item) => item.type == ChapterLearningContentType.video)
             .map(_contentCard).toList(growable: false);
-      case _ChapterResourceFolder.exercises:
-        return data.exercises
-            .map((exercise) => _exerciseCard(
-                exercise, data.completedExerciseIds.contains(exercise.id)))
-            .toList(growable: false);
       case _ChapterResourceFolder.quizzes:
         return data.quizzes.map(_quizFolderItem).toList(growable: false);
     }
@@ -310,7 +292,6 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.documents,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
-      _ChapterResourceFolder.exercises,
       _ChapterResourceFolder.quizzes,
     ];
 
@@ -424,100 +405,6 @@ class _ChapterLearningDetailPageState
     );
   }
 
-  Widget _exerciseCard(ChapterLearningExercise exercise, bool isCompleted) {
-    final title = _en ? 'Exercise' : 'Exercice';
-    final level = _en
-        ? exercise.difficultyLabelEn
-        : exercise.difficultyLabelFr;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-            ),
-            Chip(label: Text(level)),
-            Checkbox(
-              value: isCompleted,
-              onChanged: (value) => _toggleExercise(exercise, value ?? false),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Text(exercise.statementFor(widget.locale.languageCode)),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => _revealCorrection(exercise),
-            icon: const Icon(Icons.lightbulb_outline),
-            label: Text(_en ? 'Show correction' : 'Voir le corrigé'),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Future<void> _toggleExercise(
-    ChapterLearningExercise exercise,
-    bool completed,
-  ) async {
-    try {
-      await _service.markExerciseCompleted(
-        studentId: widget.profile.id,
-        exerciseId: exercise.id,
-        completed: completed,
-      );
-      await _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_en
-            ? 'Progress could not be saved: $error'
-            : 'Progression non enregistrée : $error'),
-      ));
-    }
-  }
-
-  Future<void> _revealCorrection(ChapterLearningExercise exercise) async {
-    try {
-      final correction = await _service.getExerciseCorrection(exercise.id);
-      if (!mounted) return;
-      if (correction == null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_en
-              ? 'The correction is not available yet.'
-              : 'Le corrigé n’est pas encore disponible.'),
-        ));
-        return;
-      }
-      final text = [
-        correction.correctionFor(widget.locale.languageCode),
-        correction.explanationFor(widget.locale.languageCode) ?? '',
-      ].where((value) => value.trim().isNotEmpty).join('\n\n');
-      showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: Text(_en ? 'Correction' : 'Corrigé'),
-          content: SingleChildScrollView(child: Text(text)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(_en ? 'Close' : 'Fermer'),
-            ),
-          ],
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_en
-            ? 'Could not load the correction. Check your connection.'
-            : 'Impossible de charger le corrigé. Vérifie la connexion.'),
-      ));
-    }
-  }
-
   void _showQuizzes(List<ChapterLearningQuiz> quizzes) {
     showModalBottomSheet<void>(
       context: context,
@@ -583,24 +470,20 @@ class _ChapterLearningDetailPageState
       );
 }
 
-enum _ChapterResourceFolder { course, documents, audio, video, exercises, quizzes }
+enum _ChapterResourceFolder { course, documents, audio, video, quizzes }
 
 class _ChapterData {
   const _ChapterData({
     required this.content,
-    required this.exercises,
     required this.quizzes,
     required this.counts,
     required this.progress,
-    required this.completedExerciseIds,
   });
 
   final List<ChapterLearningContentItem> content;
-  final List<ChapterLearningExercise> exercises;
   final List<ChapterLearningQuiz> quizzes;
   final ChapterLearningCounts counts;
   final ChapterLearningProgress? progress;
-  final Set<String> completedExerciseIds;
 }
 
 
