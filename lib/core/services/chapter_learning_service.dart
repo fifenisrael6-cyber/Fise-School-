@@ -292,8 +292,31 @@ class ChapterLearningService {
     return rows.map(ChapterLearningExercise.fromMap).toList(growable: false);
   }
 
-  Future<List<ChapterLearningQuiz>> listQuizzes(String chapterId) async {
-    final rows = await _cachedRows('chapter-quizzes:$chapterId', () async {
+  Future<Map<String, dynamic>> generateSmartQuiz(String chapterId) async {
+    final response = await _client.functions.invoke(
+      'chapter-quiz',
+      body: {'chapter_id': chapterId},
+    );
+    if (response.status < 200 || response.status >= 300) {
+      final payload = response.data;
+      final message = payload is Map
+          ? (payload['error']?.toString() ?? payload['message']?.toString())
+          : null;
+      throw StateError(message?.isNotEmpty == true
+          ? message!
+          : 'Impossible de générer le QCM intelligent.');
+    }
+    if (response.data is! Map) {
+      throw StateError('Réponse invalide du service QCM intelligent.');
+    }
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<List<ChapterLearningQuiz>> listQuizzes(
+    String chapterId, {
+    bool forceRefresh = false,
+  }) async {
+    Future<List<Map<String, dynamic>>> fetchRows() async {
       final result = await _client
           .from('chapter_quizzes')
           .select()
@@ -319,7 +342,19 @@ class ChapterLearningService {
         );
         return <String, dynamic>{...map, 'question_count': questions.length};
       }));
-    });
+    }
+
+    final cacheKey = 'chapter-quizzes:$chapterId';
+    final rows = forceRefresh
+        ? await fetchRows()
+        : await _cachedRows(cacheKey, fetchRows);
+    if (forceRefresh) {
+      await _database.saveOfflineCatalogCache(
+        _cacheUserId,
+        cacheKey,
+        jsonEncode(rows),
+      );
+    }
     return rows
         .map((map) => ChapterLearningQuiz.fromMap(
               map,
