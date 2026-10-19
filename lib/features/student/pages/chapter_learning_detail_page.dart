@@ -246,7 +246,8 @@ class _ChapterLearningDetailPageState
   String _folderTitle(_ChapterResourceFolder folder) {
     return switch (folder) {
       _ChapterResourceFolder.course => _en ? 'Courses and lessons' : 'Cours et leçons',
-      _ChapterResourceFolder.documents => _en ? 'Documents (PDF and images)' : 'Documents (PDF et images)',
+      _ChapterResourceFolder.pdf => 'PDF',
+      _ChapterResourceFolder.images => _en ? 'Images' : 'Images',
       _ChapterResourceFolder.audio => _en ? 'Audio files' : 'Fichiers audio',
       _ChapterResourceFolder.video => _en ? 'Videos' : 'Vidéos',
       _ChapterResourceFolder.quizzes => _en ? 'Smart QCM' : 'QCM intelligent',
@@ -259,10 +260,13 @@ class _ChapterLearningDetailPageState
         return data.content
             .where((item) => item.type == ChapterLearningContentType.course)
             .map(_contentCard).toList(growable: false);
-      case _ChapterResourceFolder.documents:
+      case _ChapterResourceFolder.pdf:
         return data.content
-            .where((item) => item.type == ChapterLearningContentType.pdf ||
-                item.type == ChapterLearningContentType.image)
+            .where((item) => item.type == ChapterLearningContentType.pdf)
+            .map(_contentCard).toList(growable: false);
+      case _ChapterResourceFolder.images:
+        return data.content
+            .where((item) => item.type == ChapterLearningContentType.image)
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.audio:
         return data.content
@@ -280,7 +284,8 @@ class _ChapterLearningDetailPageState
   Widget _buildResourceFolders(_ChapterData data) {
     const folders = <_ChapterResourceFolder>[
       _ChapterResourceFolder.course,
-      _ChapterResourceFolder.documents,
+      _ChapterResourceFolder.pdf,
+      _ChapterResourceFolder.images,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
       _ChapterResourceFolder.quizzes,
@@ -461,7 +466,7 @@ class _ChapterLearningDetailPageState
       );
 }
 
-enum _ChapterResourceFolder { course, documents, audio, video, quizzes }
+enum _ChapterResourceFolder { course, pdf, images, audio, video, quizzes }
 
 class _ChapterData {
   const _ChapterData({
