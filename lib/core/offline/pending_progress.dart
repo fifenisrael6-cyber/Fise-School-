@@ -29,6 +29,21 @@ class PendingProgress {
 
   Future<int> count() async => (await _load()).length;
 
+  /// Retrouve la progression en attente d'un élève pour une leçon.
+  Future<Map<String, dynamic>?> find(
+    String studentId,
+    String lessonId,
+  ) async {
+    final items = await _load();
+    for (final item in items) {
+      if (item['student_id'] == studentId &&
+          item['lesson_id'] == lessonId) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   /// Ajoute (ou remplace) l'état en attente d'une leçon.
   /// Une leçon terminée n'est jamais « rétrogradée » par une simple ouverture.
   Future<void> enqueue(Map<String, dynamic> values) async {
