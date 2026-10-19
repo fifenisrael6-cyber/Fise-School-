@@ -108,14 +108,25 @@ class ChapterLearningService {
         final cached = decoded
             .map((row) => Map<String, dynamic>.from(row as Map))
             .toList(growable: false);
-        final refreshKey = '$userId:$cacheKey';
-        final lastRefresh = _lastCacheRefresh[refreshKey];
-        if (lastRefresh == null ||
-            DateTime.now().difference(lastRefresh) > const Duration(minutes: 2)) {
-          _lastCacheRefresh[refreshKey] = DateTime.now();
-          unawaited(_refreshRows(userId, cacheKey, fetch));
+
+        // An empty cached catalogue is not authoritative: earlier app builds
+        // could cache an empty result when the class/subject mapping was being
+        // repaired. Returning that empty list immediately keeps the page empty
+        // even after the server now has chapters. Re-fetch empty caches in this
+        // same request so the student sees the current programme without
+        // needing to clear app data or wait for a hidden background refresh.
+        if (cached.isNotEmpty) {
+          final refreshKey = '$userId:$cacheKey';
+          final lastRefresh = _lastCacheRefresh[refreshKey];
+          if (lastRefresh == null ||
+              DateTime.now().difference(lastRefresh) > const Duration(minutes: 2)) {
+            _lastCacheRefresh[refreshKey] = DateTime.now();
+            unawaited(_refreshRows(userId, cacheKey, fetch));
+          }
+          return cached;
         }
-        return cached;
+        // Fall through to a synchronous network fetch below for empty cache.
+
       } catch (_) {
         // Ignore a malformed cache and rebuild it from the server.
       }
@@ -589,7 +600,7 @@ class ChapterLearningService {
     final profileKey = profile?.id ?? _cacheUserId;
     final roomKey = classId ?? 'all-classes';
     final rows = await _cachedRows(
-      'curricula:$profileKey:$roomKey:$subjectId',
+      'chapter-catalog-v2:curricula:$profileKey:$roomKey:$subjectId',
       () => _fetchCurriculumRows(
         subjectId,
         profile: profile,
@@ -722,7 +733,7 @@ class ChapterLearningService {
     bool forceRefresh = false,
   }) async {
     final rows = await _cachedRows(
-      'chapters:$curriculumId',
+      'chapter-catalog-v2:chapters:$curriculumId',
       () async {
         final result = await _client
             .from('course_chapters')
