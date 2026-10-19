@@ -12,8 +12,14 @@ import '../../../models/user_profile.dart';
 class AiPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final String? initialPrompt;
 
-  const AiPage({super.key, required this.locale, required this.profile});
+  const AiPage({
+    super.key,
+    required this.locale,
+    required this.profile,
+    this.initialPrompt,
+  });
 
   @override
   State<AiPage> createState() => _AiPageState();
@@ -38,6 +44,7 @@ class _AiPageState extends State<AiPage> {
   @override
   void initState() {
     super.initState();
+    _messageController.text = widget.initialPrompt ?? '';
     _messages.add(_AiMessage(
       text: _isFrench
           ? 'Bonjour ${widget.profile.firstName} 👋\n\nJe suis l’assistant IA de Fise School. Pose-moi une question sur tes cours, envoie un document, une photo ou prends une photo directement avec ton téléphone.'
