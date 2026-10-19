@@ -70,9 +70,9 @@ class _ChapterLearningDetailPageState
     ]);
     return _ChapterData(
       content: results[0] as List<ChapterLearningContentItem>,
-      quizzes: results[2] as List<ChapterLearningQuiz>,
-      counts: results[3] as ChapterLearningCounts,
-      progress: results[4] as ChapterLearningProgress?,
+      quizzes: results[1] as List<ChapterLearningQuiz>,
+      counts: results[2] as ChapterLearningCounts,
+      progress: results[3] as ChapterLearningProgress?,
     );
   }
 
