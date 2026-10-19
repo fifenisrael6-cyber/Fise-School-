@@ -41,7 +41,7 @@ with expected as (
       -- Common subjects retained for every general series.
       s.code in ('francais','anglais','education_civique','eps')
       -- Series-specific subjects come from the explicit catalogue.
-      or ssc.subject_code is not null
+      or (ssc.subject_code is not null and s.code not in ('allemand','espagnol','arabe','italien','chinois'))
       -- Language options are retained only when chosen for this classroom.
       or (
         c.language_option is not null
@@ -94,7 +94,7 @@ with expected as (
     and c.series_id is not null
     and (
       s.code in ('francais','anglais','education_civique','eps')
-      or ssc.subject_code is not null
+      or (ssc.subject_code is not null and s.code not in ('allemand','espagnol','arabe','italien','chinois'))
       or (
         c.language_option is not null
         and s.code = any(regexp_split_to_array(c.language_option, '_'))
