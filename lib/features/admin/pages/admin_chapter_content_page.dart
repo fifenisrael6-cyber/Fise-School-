@@ -36,7 +36,23 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> chooseSubject(Map<String,dynamic>? v) async {
     setState(() { subject=v; curriculum=null; chapter=null; curricula=[]; chapters=[]; loading=true; });
     if(v==null||schoolClass==null){if(mounted)setState(()=>loading=false);return;}
-    try {final r=await db.from('curricula').select().eq('subject_id',v['id']).eq('is_active',true).order('title_fr');curricula=r.map((e)=>Map<String,dynamic>.from(e)).where((c)=>c['subsystem']==schoolClass!['subsystem']&&c['sector']==schoolClass!['sector']&&(c['exam_level_id']==null||c['exam_level_id']==schoolClass!['exam_level_id'])&&(c['series_id']==null||c['series_id']==schoolClass!['series_id'])&&(c['specialty_id']==null||c['specialty_id']==schoolClass!['specialty_id'])).toList();}
+    try {
+      final r = await db.from('curricula').select().eq('subject_id', v['id']).eq('is_active', true).order('title_fr');
+      final matching = r.map((e) => Map<String, dynamic>.from(e)).where((c) =>
+        c['subsystem'] == schoolClass!['subsystem'] &&
+        c['sector'] == schoolClass!['sector'] &&
+        (c['exam_level_id'] == null || c['exam_level_id'] == schoolClass!['exam_level_id']) &&
+        (c['series_id'] == null || c['series_id'] == schoolClass!['series_id']) &&
+        (c['specialty_id'] == null || c['specialty_id'] == schoolClass!['specialty_id'])
+      ).toList();
+      final exactContainers = matching.where((c) =>
+        c['is_catalog_container'] == true &&
+        c['exam_level_id'] == schoolClass!['exam_level_id'] &&
+        c['series_id'] == schoolClass!['series_id'] &&
+        c['specialty_id'] == schoolClass!['specialty_id']
+      ).toList();
+      curricula = exactContainers.isNotEmpty ? exactContainers : matching.where((c) => c['is_catalog_container'] != true).toList();
+    }
     catch(e){error=e.toString();}
     if(mounted)setState(()=>loading=false);
   }
