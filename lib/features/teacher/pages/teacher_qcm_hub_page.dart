@@ -5,6 +5,7 @@ import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
 import '../../../models/user_profile.dart';
 import 'create_assignment_page.dart';
+import 'qcm_builder_page.dart';
 
 /// Teacher QCM workspace. Existing course-linked assignments remain available.
 class TeacherQcmHubPage extends StatefulWidget {
@@ -51,13 +52,18 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     );
   }
 
-  Future<void> _openCreator() async {
+  Future<void> _openCreator({required bool linkedToCourse}) async {
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => CreateAssignmentPage(
-          locale: widget.locale,
-          profile: widget.profile,
-        ),
+        builder: (_) => linkedToCourse
+            ? CreateAssignmentPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              )
+            : QcmBuilderPage(
+                locale: widget.locale,
+                profile: widget.profile,
+              ),
       ),
     );
     if (!mounted) return;
@@ -356,7 +362,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: () => _openCreator(),
+                    onPressed: () => _openCreator(linkedToCourse: false),
                     icon: const Icon(Icons.send_rounded),
                     label: Text(_fr ? 'Nouveau QCM' : 'New quiz'),
                   ),
@@ -393,7 +399,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                 ),
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
-                  onPressed: () => _openCreator(),
+                  onPressed: () => _openCreator(linkedToCourse: true),
                   icon: const Icon(Icons.arrow_forward_rounded),
                   label: Text(_fr ? 'Créer un devoir lié' : 'Create linked assignment'),
                 ),
