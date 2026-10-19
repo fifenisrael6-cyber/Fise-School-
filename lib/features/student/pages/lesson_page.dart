@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
-import '../../../core/services/gemini_service.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../ai/pages/ai_page.dart';
@@ -209,12 +208,12 @@ class _LessonPageState extends State<LessonPage> {
         '${isEnglish ? 'Course / chapter' : 'Cours / chapitre'}: $courseTitle',
       '${isEnglish ? 'Lesson' : 'Leçon'}: $title',
       _lessonTextForAi(),
-    ].where((part) => part.trim().isNotEmpty).join('\\n\\n');
+    ].where((part) => part.trim().isNotEmpty).join('\n\n');
     final initialPrompt = [
       if (prompt != null && prompt.trim().isNotEmpty) prompt.trim(),
       isEnglish ? 'Use this lesson context:' : 'Utilise le contexte de cette leçon :',
       lessonContext,
-    ].join('\\n\\n');
+    ].join('\n\n');
 
     await Navigator.of(context).push(
       MaterialPageRoute(
