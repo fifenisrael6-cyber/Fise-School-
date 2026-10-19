@@ -286,6 +286,13 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         await _db.from('chapter_content_items').insert({
           'chapter_id': chapterId,
           'content_type': type,
+          'folder_key': switch (type) {
+            'image' => 'images',
+            'pdf' => 'pdf',
+            'audio' => 'audio',
+            'video' => 'video',
+            _ => 'course',
+          },
           'title_fr': file.name,
           'title_en': file.name,
           'storage_path': storagePath,
