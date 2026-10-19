@@ -387,7 +387,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             decoration: InputDecoration(labelText: _fr ? 'Programme de la matière' : 'Subject curriculum'),
             items: _curricula.map((row) => DropdownMenuItem(
               value: row,
-              child: Text(_chapterLabel(row), overflow: TextOverflow.ellipsis),
+              child: Text(_label(row, 'title_fr', 'title_en'), overflow: TextOverflow.ellipsis),
             )).toList(),
             onChanged: _uploading ? null : (value) async {
               setState(() { _curriculum = value; _chapter = null; _chapters = []; });
@@ -401,7 +401,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             decoration: InputDecoration(labelText: _fr ? 'Chapitre' : 'Chapter'),
             items: _chapters.map((row) => DropdownMenuItem(
               value: row,
-              child: Text(_label(row, 'title_fr', 'title_en'), overflow: TextOverflow.ellipsis),
+              child: Text(_chapterLabel(row), overflow: TextOverflow.ellipsis),
             )).toList(),
             onChanged: _uploading ? null : (value) => setState(() => _chapter = value),
           ),
