@@ -48,6 +48,20 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
 
+  String _chapterLabel(Map<String, dynamic> row) {
+    final title = _label(row, 'title_fr', 'title_en');
+    final status = (row['verification_status'] ?? '').toString().toLowerCase();
+    final source = (row['source_title'] ?? '').toString().toLowerCase();
+    final needsVerification = status == 'pending_official_confirmation' ||
+        status == 'pending_confirmation' ||
+        status == 'needs_review' ||
+        source.contains('à confirmer') ||
+        source.contains('pending confirmation') ||
+        source.contains('provisional');
+    if (!needsVerification) return title;
+    return '$title • ${_fr ? 'titre à confirmer' : 'title to verify'}';
+  }
+
   Future<void> _selectionChanged(
     List<SchoolClass> classes,
     Subject? subject,
@@ -97,9 +111,35 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       final containers = matching
           .where((row) => row['is_catalog_container'] == true)
           .toList(growable: false);
-      final filtered = containers.isNotEmpty
-          ? containers
-          : matching.where((row) => row['is_catalog_container'] != true).toList(growable: false);
+
+      // Never select an empty catalogue container: doing so hides the older
+      // active programme and leaves teachers with no chapters to publish into.
+      var populatedContainerIds = <String>{};
+      if (containers.isNotEmpty) {
+        final containerIds = containers
+            .map((row) => row['id'])
+            .whereType<String>()
+            .toList(growable: false);
+        if (containerIds.isNotEmpty) {
+          final populatedRows = await _db
+              .from('course_chapters')
+              .select('curriculum_id')
+              .inFilter('curriculum_id', containerIds)
+              .eq('is_active', true);
+          populatedContainerIds = populatedRows
+              .map((row) => row['curriculum_id'])
+              .whereType<String>()
+              .toSet();
+        }
+      }
+      final populatedContainers = containers
+          .where((row) => populatedContainerIds.contains(row['id']))
+          .toList(growable: false);
+      final filtered = populatedContainers.isNotEmpty
+          ? populatedContainers
+          : matching
+              .where((row) => row['is_catalog_container'] != true)
+              .toList(growable: false);
       if (!mounted) return;
       setState(() {
         _curricula = filtered;
@@ -116,7 +156,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   Future<void> _loadChapters(String curriculumId) async {
     final rows = await _db
         .from('course_chapters')
-        .select('id,title_fr,title_en,position,is_active')
+        .select('id,title_fr,title_en,position,is_active,source_title,verification_status')
         .eq('curriculum_id', curriculumId)
         .eq('is_active', true)
         .order('position');
@@ -347,7 +387,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             decoration: InputDecoration(labelText: _fr ? 'Programme de la matière' : 'Subject curriculum'),
             items: _curricula.map((row) => DropdownMenuItem(
               value: row,
-              child: Text(_label(row, 'title_fr', 'title_en'), overflow: TextOverflow.ellipsis),
+              child: Text(_chapterLabel(row), overflow: TextOverflow.ellipsis),
             )).toList(),
             onChanged: _uploading ? null : (value) async {
               setState(() { _curriculum = value; _chapter = null; _chapters = []; });
