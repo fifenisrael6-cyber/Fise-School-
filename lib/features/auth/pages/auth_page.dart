@@ -49,6 +49,7 @@ class _AuthPageState extends State<AuthPage> {
   ExamLevel? _level;
   ExamCatalogEntry? _track;
   String? _languageOption;
+  String? _languageOption2;
   static const _languageOptions = <String, String>{
     'allemand': 'Allemand',
     'espagnol': 'Espagnol',
@@ -83,6 +84,7 @@ class _AuthPageState extends State<AuthPage> {
       _level = null;
       _track = null;
       _languageOption = null;
+      _languageOption2 = null;
       _levels = const [];
       _tracks = const [];
       _catalogError = false;
@@ -117,6 +119,7 @@ class _AuthPageState extends State<AuthPage> {
     setState(() {
       _track = null;
       _languageOption = null;
+      _languageOption2 = null;
       _tracks = const [];
     });
     try {
@@ -158,7 +161,11 @@ class _AuthPageState extends State<AuthPage> {
           exam: level?.exam?.labelFor(_lang),
           track: _track?.labelFor(_lang),
           className: level?.labelFor(_lang),
-          languageOption: _languageOption,
+          languageOption: _languageOption == null
+              ? null
+              : _track?.code.toLowerCase() == 'a5' && _languageOption2 != null
+                  ? '${_languageOption}_${_languageOption2}'
+                  : _languageOption,
         );
       } else {
         await _authService.signIn(
@@ -519,6 +526,7 @@ class _AuthPageState extends State<AuthPage> {
           onChanged: (value) => setState(() {
             _track = value;
             _languageOption = null;
+          _languageOption2 = null;
           }),
         ),
       ],
@@ -550,8 +558,42 @@ class _AuthPageState extends State<AuthPage> {
           ],
           validator: (value) =>
               _isStudent && value == null ? texts.selectionRequired : null,
-          onChanged: (value) => setState(() => _languageOption = value),
+          onChanged: (value) => setState(() {
+            _languageOption = value;
+            if (_languageOption2 == value) _languageOption2 = null;
+          }),
         ),
+        if (_track?.code.toLowerCase() == 'a5') ...[
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            key: ValueKey('language-option-2-${level?.id}-${_track?.code}'),
+            initialValue: _languageOption2,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: _lang == 'en' ? 'Second language option' : 'Deuxième langue vivante',
+            ),
+            items: [
+              for (final entry in _languageOptions.entries.where((e) => e.key != _languageOption))
+                DropdownMenuItem(
+                  value: entry.key,
+                  child: Text(
+                    _lang == 'en'
+                        ? const {
+                            'allemand': 'German',
+                            'espagnol': 'Spanish',
+                            'arabe': 'Arabic',
+                            'italien': 'Italian',
+                            'chinois': 'Chinese',
+                          }[entry.key]!
+                        : entry.value,
+                  ),
+                ),
+            ],
+            validator: (value) =>
+                _isStudent && value == null ? texts.selectionRequired : null,
+            onChanged: (value) => setState(() => _languageOption2 = value),
+          ),
+        ],
       ],
     ];
   }
