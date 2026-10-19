@@ -4,6 +4,7 @@ import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'chapter_learning_detail_page.dart';
+import 'subject_channel_page.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
 
