@@ -135,10 +135,13 @@ async function transcribeStoredResource(
   const resourceType = String(resource?.resource_type ?? "").toLowerCase();
   const fileName = String(resource?.file_name ?? "");
   const extension = fileName.includes(".") ? fileName.split(".").pop()!.toLowerCase() : "";
-  const inferredMime = resourceType === "pdf" ? "application/pdf" : ({
+  const imageMimes: Record<string, string | undefined> = {
     jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
     webp: "image/webp", gif: "image/gif", bmp: "image/bmp",
-  } as Record<string, string>)[extension] ?? "image/jpeg";
+  };
+  const inferredMime = resourceType === "pdf"
+    ? "application/pdf"
+    : (imageMimes[extension] ?? "image/jpeg");
   const mime = String(resource?.mime_type ?? inferredMime).toLowerCase();
   const fileSize = Number(resource?.file_size ?? 0);
   if (!["image", "pdf"].includes(resourceType) || fileSize > 8 * 1024 * 1024) return "";
