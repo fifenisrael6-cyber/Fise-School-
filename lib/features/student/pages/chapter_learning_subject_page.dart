@@ -68,7 +68,7 @@ class _ChapterLearningSubjectPageState
     // every chapter. Large programmes can contain dozens of chapters; waiting
     // for all their counts here caused the whole page to appear stuck/empty.
     // Load statistics separately after the programme folders are visible.
-    _countsFuture = _loadCounts(allChapters);
+    _countsFuture = _loadCounts(allChapters, forceRefresh: forceRefresh);
 
     return _SubjectData(
       groups: groups,
@@ -78,10 +78,14 @@ class _ChapterLearningSubjectPageState
   }
 
   Future<ChapterLearningCounts> _loadCounts(
-    List<CourseChapter> chapters,
-  ) async {
+    List<CourseChapter> chapters, {
+    bool forceRefresh = false,
+  }) async {
     final chapterCounts = await Future.wait(
-      chapters.map((chapter) => _learning.getCounts(chapter.id)),
+      chapters.map((chapter) => _learning.getCounts(
+        chapter.id,
+        forceRefresh: forceRefresh,
+      )),
     );
     var lessons = 0;
     var videos = 0;
