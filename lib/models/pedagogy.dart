@@ -105,7 +105,7 @@ class Curriculum {
 
 class CourseChapter {
   final String id, curriculumId, titleFr, titleEn;
-  final String? descriptionFr, descriptionEn;
+  final String? descriptionFr, descriptionEn, sourceTitle, verificationStatus;
   final int position;
   final bool isActive;
   const CourseChapter({
@@ -115,6 +115,8 @@ class CourseChapter {
     required this.titleEn,
     this.descriptionFr,
     this.descriptionEn,
+    this.sourceTitle,
+    this.verificationStatus,
     this.position = 0,
     this.isActive = true,
   });
@@ -125,9 +127,17 @@ class CourseChapter {
     titleEn: map['title_en'] as String,
     descriptionFr: map['description_fr'] as String?,
     descriptionEn: map['description_en'] as String?,
+    sourceTitle: map['source_title'] as String?,
+    verificationStatus: map['verification_status']?.toString(),
     position: map['position'] as int? ?? 0,
     isActive: map['is_active'] as bool? ?? true,
   );
+  bool get needsTitleVerification {
+    final source = (sourceTitle ?? '').toLowerCase();
+    return source.contains('titre provisoire') ||
+        source.contains('à confirmer') ||
+        source.contains('pending confirmation');
+  }
   String labelFor(String languageCode) =>
       languageCode == 'en' ? titleEn : titleFr;
 }
