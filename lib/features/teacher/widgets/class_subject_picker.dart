@@ -53,11 +53,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   Future<void> _toggleClass(SchoolClass schoolClass, bool selected) async {
     setState(() {
-      if (selected) {
-        _selectedIds.add(schoolClass.id);
-      } else {
-        _selectedIds.remove(schoolClass.id);
-      }
+      // Publish to one classroom at a time so its programme/chapter mapping is
+      // unambiguous. Teachers can repeat the operation for another classroom.
+      _selectedIds.clear();
+      if (selected) _selectedIds.add(schoolClass.id);
     });
     await _reloadSubjects();
   }
@@ -232,7 +231,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _fr ? 'Choisir la ou les classes où publier' : 'Choose the class(es) to publish in',
+          _fr ? 'Choisir la salle où publier' : 'Choose the classroom to publish in',
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
@@ -288,8 +287,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
           Text(_fr ? 'Sélectionnez d’abord au moins une salle.' : 'Select at least one classroom first.')
         else if (_subjects.isEmpty)
           Text(_fr
-              ? 'Aucune matière commune à ces salles. Choisissez des salles du même sous-système ou ajoutez une matière.'
-              : 'No common subject for these classrooms. Pick classrooms of the same subsystem or add a subject.')
+              ? 'Aucune matière n’est affectée à cette salle. Ajoutez une matière ou contactez l’administration.'
+              : 'No subject is assigned to this classroom. Add a subject or contact the administration.')
         else
           DropdownButtonFormField<String>(
             key: ValueKey('${_subject?.id}-${_subjects.length}'),
