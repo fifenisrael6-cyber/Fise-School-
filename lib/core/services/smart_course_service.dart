@@ -171,7 +171,9 @@ class SmartCourseService {
     );
   }
 
-  Future<void> reindexPdf(String resourceId) async {
+  /// Indexes supported educational files (PDF or image) through the same
+  /// server-side pipeline, independent of the subject being taught.
+  Future<void> reindexResource(String resourceId) async {
     final response = await _client.functions.invoke(
       'index-course-file',
       body: {'resource_id': resourceId},
@@ -183,4 +185,7 @@ class SmartCourseService {
       throw Exception(data['error']);
     }
   }
+
+  /// Backward-compatible alias for older PDF-only callers.
+  Future<void> reindexPdf(String resourceId) => reindexResource(resourceId);
 }
