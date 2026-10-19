@@ -202,22 +202,26 @@ class _LessonPageState extends State<LessonPage> {
     setState(() => _openingAi = false);
 
     final courseTitle = widget.course.labelFor(isEnglish ? 'en' : 'fr').trim();
-    final lessonContext = AiLessonContext(
-      className: widget.profile.className,
-      series: widget.profile.track,
-      subject: subject,
-      chapter: courseTitle.isEmpty ? null : courseTitle,
-      lessonTitle: title,
-      lessonContent: _lessonTextForAi(),
-    );
+    final lessonContext = <String>[
+      if (subject != null && subject.trim().isNotEmpty)
+        '${isEnglish ? 'Subject' : 'Matière'}: ${subject.trim()}',
+      if (courseTitle.isNotEmpty)
+        '${isEnglish ? 'Course / chapter' : 'Cours / chapitre'}: $courseTitle',
+      '${isEnglish ? 'Lesson' : 'Leçon'}: $title',
+      _lessonTextForAi(),
+    ].where((part) => part.trim().isNotEmpty).join('\\n\\n');
+    final initialPrompt = [
+      if (prompt != null && prompt.trim().isNotEmpty) prompt.trim(),
+      isEnglish ? 'Use this lesson context:' : 'Utilise le contexte de cette leçon :',
+      lessonContext,
+    ].join('\\n\\n');
 
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AiPage(
           locale: widget.locale,
           profile: widget.profile,
-          lessonContext: lessonContext,
-          initialPrompt: prompt,
+          initialPrompt: initialPrompt,
         ),
       ),
     );
