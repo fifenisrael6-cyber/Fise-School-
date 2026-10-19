@@ -72,7 +72,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           .eq('is_active', true);
       final programmes = await _db
           .from('curricula')
-          .select('id,title_fr,title_en,subsystem,sector,exam_level_id,series_id,specialty_id,is_active')
+          .select('id,title_fr,title_en,subsystem,sector,exam_level_id,series_id,specialty_id,is_catalog_container,is_active')
           .eq('subject_id', subject.id)
           .eq('is_active', true)
           .order('title_fr');
@@ -91,9 +91,15 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         });
       }
 
-      final filtered = List<Map<String, dynamic>>.from(programmes)
+      final matching = List<Map<String, dynamic>>.from(programmes)
           .where(matchesEverySelectedClass)
           .toList(growable: false);
+      final containers = matching
+          .where((row) => row['is_catalog_container'] == true)
+          .toList(growable: false);
+      final filtered = containers.isNotEmpty
+          ? containers
+          : matching.where((row) => row['is_catalog_container'] != true).toList(growable: false);
       if (!mounted) return;
       setState(() {
         _curricula = filtered;
