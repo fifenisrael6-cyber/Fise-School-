@@ -39,6 +39,47 @@ class CourseService {
   CourseService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
+  /// Active classrooms for a student, returned separately so the course catalogue
+  /// never silently mixes programmes from several rooms.
+  Future<List<SchoolClass>> listStudentClasses(String studentId) async {
+    final rows = await _client
+        .from('class_students')
+        .select('school_classes!inner(*)')
+        .eq('student_id', studentId)
+        .eq('is_active', true);
+
+    final seen = <String>{};
+    final classes = <SchoolClass>[];
+    for (final row in rows) {
+      final nested = row['school_classes'];
+      if (nested is! Map) continue;
+      final schoolClass = SchoolClass.fromMap(
+        Map<String, dynamic>.from(nested),
+      );
+      if (schoolClass.isActive && seen.add(schoolClass.id)) {
+        classes.add(schoolClass);
+      }
+    }
+    classes.sort((a, b) => a.displayName.compareTo(b.displayName));
+    return classes;
+  }
+
+  /// Only the subjects assigned to this exact classroom.
+  Future<List<ClassSubjectEntry>> listClassSubjectEntries(
+    String classId,
+  ) async {
+    final rows = await _client
+        .from('class_subjects')
+        .select('subject_id, is_compulsory, option_group, position, subjects(*)')
+        .eq('class_id', classId)
+        .eq('is_active', true)
+        .order('position');
+
+    return rows
+        .map((row) => ClassSubjectEntry.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
   Future<List<ClassSubjectEntry>> listClassSubjects(UserProfile profile) async {
     // La classe active de l'élève est la source de vérité.
     // Les champs subsystem/sector du profil peuvent être absents sur les
