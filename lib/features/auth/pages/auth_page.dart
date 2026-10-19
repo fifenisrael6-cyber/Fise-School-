@@ -605,7 +605,7 @@ class _AuthPageState extends State<AuthPage> {
       return false;
     }
     if (level.code == 'fr_general_troisieme') return true;
-    return const {'a2', 'a4', 'a5'}.contains(_track?.code.toLowerCase());
+    return const {'a2', 'a4', 'a5', 'abi'}.contains(_track?.code.toLowerCase());
   }
 
   Widget _levelInfo(AppTexts texts, ExamLevel level, String? curriculum) {
