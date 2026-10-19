@@ -76,11 +76,31 @@ class ChapterLearningService {
 
   Future<List<Map<String, dynamic>>> _cachedRows(
     String cacheKey,
-    Future<List<Map<String, dynamic>>> Function() fetch,
-  ) async {
+    Future<List<Map<String, dynamic>>> Function() fetch, {
+    bool forceRefresh = false,
+  }) async {
     // Keep the cache owner fixed for the whole operation so a background
     // refresh cannot write one account's data into another account's cache.
     final userId = _cacheUserId;
+    if (forceRefresh) {
+      try {
+        final rows = await fetch().timeout(const Duration(seconds: 12));
+        await _database.saveOfflineCatalogCache(userId, cacheKey, jsonEncode(rows));
+        _lastCacheRefresh['$userId:$cacheKey'] = DateTime.now();
+        return rows;
+      } catch (_) {
+        // If offline, keep the last known-good cache available to the student.
+        final staleJson = await _database.getOfflineCatalogCache(userId, cacheKey);
+        if (staleJson != null) {
+          try {
+            return (jsonDecode(staleJson) as List<dynamic>)
+                .map((row) => Map<String, dynamic>.from(row as Map))
+                .toList(growable: false);
+          } catch (_) {}
+        }
+        return const <Map<String, dynamic>>[];
+      }
+    }
     final cachedJson = await _database.getOfflineCatalogCache(userId, cacheKey);
     if (cachedJson != null) {
       try {
@@ -539,11 +559,13 @@ class ChapterLearningService {
   Future<List<Curriculum>> listCurricula(
     String subjectId, {
     UserProfile? profile,
+    bool forceRefresh = false,
   }) async {
     final profileKey = profile?.id ?? _cacheUserId;
     final rows = await _cachedRows(
       'curricula:$profileKey:$subjectId',
       () => _fetchCurriculumRows(subjectId, profile: profile),
+      forceRefresh: forceRefresh,
     );
     return rows.map(Curriculum.fromMap).toList(growable: false);
   }
@@ -660,16 +682,23 @@ class ChapterLearningService {
     return filtered;
   }
 
-  Future<List<CourseChapter>> listChapters(String curriculumId) async {
-    final rows = await _cachedRows('chapters:$curriculumId', () async {
-      final result = await _client
-          .from('course_chapters')
-          .select()
-          .eq('curriculum_id', curriculumId)
-          .eq('is_active', true)
-          .order('position');
-      return result.map((row) => Map<String, dynamic>.from(row)).toList();
-    });
+  Future<List<CourseChapter>> listChapters(
+    String curriculumId, {
+    bool forceRefresh = false,
+  }) async {
+    final rows = await _cachedRows(
+      'chapters:$curriculumId',
+      () async {
+        final result = await _client
+            .from('course_chapters')
+            .select()
+            .eq('curriculum_id', curriculumId)
+            .eq('is_active', true)
+            .order('position');
+        return result.map((row) => Map<String, dynamic>.from(row)).toList();
+      },
+      forceRefresh: forceRefresh,
+    );
     // source_title records provenance/verification notes, not the chapter
     // heading. Many valid named chapters have a provisional-source note while
     // official MINESEC/GCE confirmation is pending. Filtering that note hid
