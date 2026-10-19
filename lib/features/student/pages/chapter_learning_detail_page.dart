@@ -47,6 +47,7 @@ class _ChapterLearningDetailPageState
   final ChapterLearningService _service = ChapterLearningService();
   late Future<_ChapterData> _future;
   bool _savingRead = false;
+  bool _generatingQuiz = false;
 
   bool get _en => widget.locale.languageCode == 'en';
   String get _chapterTitle =>
@@ -58,10 +59,13 @@ class _ChapterLearningDetailPageState
     _future = _load();
   }
 
-  Future<_ChapterData> _load() async {
+  Future<_ChapterData> _load({bool forceRefreshQuizzes = false}) async {
     final results = await Future.wait<dynamic>([
       _service.listContent(widget.chapter.id),
-      _service.listQuizzes(widget.chapter.id),
+      _service.listQuizzes(
+        widget.chapter.id,
+        forceRefresh: forceRefreshQuizzes,
+      ),
       _service.getCounts(widget.chapter.id),
       _service.getProgress(
         studentId: widget.profile.id,
@@ -307,22 +311,73 @@ class _ChapterLearningDetailPageState
                   '${items.length} ${_en ? 'item(s)' : 'élément(s)'}',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ChapterFolderPage(
-                      title: _folderTitle(folder),
-                      items: items,
-                      emptyMessage: _en
-                          ? 'No content has been published in this folder yet.'
-                          : 'Aucun contenu n’a encore été publié dans ce dossier.',
-                    ),
-                  ),
-                ),
+                trailing: folder == _ChapterResourceFolder.quizzes && _generatingQuiz
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+                onTap: _generatingQuiz ? null : () => _openFolder(folder, data),
               ),
             );
           }),
       ],
     );
+  }
+
+  Future<void> _openFolder(
+    _ChapterResourceFolder folder,
+    _ChapterData currentData,
+  ) async {
+    if (folder != _ChapterResourceFolder.quizzes) {
+      final items = _folderItems(currentData, folder);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChapterFolderPage(
+            title: _folderTitle(folder),
+            items: items,
+            emptyMessage: _en
+                ? 'No content has been published in this folder yet.'
+                : 'Aucun contenu n’a encore été publié dans ce dossier.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _generatingQuiz = true);
+    try {
+      await _service.generateSmartQuiz(widget.chapter.id);
+      final refreshedFuture = _load(forceRefreshQuizzes: true);
+      setState(() => _future = refreshedFuture);
+      final refreshed = await refreshedFuture;
+      if (!mounted) return;
+      final quizItems = refreshed.quizzes.map(_quizFolderItem).toList(growable: false);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChapterFolderPage(
+            title: _folderTitle(folder),
+            items: quizItems,
+            emptyMessage: _en
+                ? 'The Smart QCM could not be generated for this chapter.'
+                : 'Le QCM intelligent n’a pas pu être généré pour ce chapitre.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_en
+                ? 'Smart QCM generation failed: $error'
+                : 'Échec de génération du QCM intelligent : $error'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generatingQuiz = false);
+    }
   }
 
   Widget _quizFolderItem(ChapterLearningQuiz quiz) {
