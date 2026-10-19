@@ -42,15 +42,19 @@ class _ChapterLearningSubjectPageState
     _future = _load();
   }
 
-  Future<_SubjectData> _load() async {
+  Future<_SubjectData> _load({bool forceRefresh = false}) async {
     final curricula = await _learning.listCurricula(
       widget.subject.id,
       profile: widget.profile,
+      forceRefresh: forceRefresh,
     );
     // Load each curriculum's chapter list in parallel instead of blocking on
     // one network round-trip per folder.
     final chapterLists = await Future.wait(
-      curricula.map((curriculum) => _learning.listChapters(curriculum.id)),
+      curricula.map((curriculum) => _learning.listChapters(
+        curriculum.id,
+        forceRefresh: forceRefresh,
+      )),
     );
     final groups = <_CurriculumWithChapters>[];
     final allChapters = <CourseChapter>[];
@@ -107,8 +111,9 @@ class _ChapterLearningSubjectPageState
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = _load());
-    await _future;
+    final refreshed = _load(forceRefresh: true);
+    setState(() => _future = refreshed);
+    await refreshed;
   }
 
   @override
