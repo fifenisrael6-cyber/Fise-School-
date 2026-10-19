@@ -199,31 +199,20 @@ class _ChapterLearningDetailPageState
                   ),
                 ),
                 const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: data.content.isEmpty ? null : _markRead,
-                      icon: _savingRead
-                          ? const SizedBox(
-                              width: 16, height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.menu_book_rounded),
-                      label: Text(_en ? 'Course' : 'Cours'),
-                      style: FilledButton.styleFrom(backgroundColor: green),
-                    ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: data.content.isEmpty ? null : _markRead,
+                    icon: _savingRead
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.menu_book_rounded),
+                    label: Text(_en ? 'Course' : 'Cours'),
+                    style: FilledButton.styleFrom(backgroundColor: green),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: data.quizzes.isEmpty
-                          ? null
-                          : () => _showQuizzes(data.quizzes),
-                      icon: const Icon(Icons.quiz_outlined),
-                      label: const Text('Quiz'),
-                    ),
-                  ),
-                ]),
+                ),
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -413,7 +402,7 @@ class _ChapterLearningDetailPageState
           shrinkWrap: true,
           padding: const EdgeInsets.all(16),
           children: [
-            Text(_en ? 'Quizzes' : 'Quiz',
+            Text(_en ? 'Smart QCM' : 'QCM intelligent',
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             for (final quiz in quizzes)
               ListTile(
