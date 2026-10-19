@@ -253,12 +253,23 @@ class _ChapterLearningDetailPageState
 
   String _folderTitle(_ChapterResourceFolder folder) {
     return switch (folder) {
-      _ChapterResourceFolder.course => _en ? 'Courses and lessons' : 'Cours et leçons',
+      _ChapterResourceFolder.course => _en ? 'Course' : 'Cours',
       _ChapterResourceFolder.pdf => 'PDF',
       _ChapterResourceFolder.images => _en ? 'Images' : 'Images',
-      _ChapterResourceFolder.audio => _en ? 'Audio files' : 'Fichiers audio',
-      _ChapterResourceFolder.video => _en ? 'Videos' : 'Vidéos',
+      _ChapterResourceFolder.audio => 'Audio',
+      _ChapterResourceFolder.video => _en ? 'Video' : 'Vidéo',
       _ChapterResourceFolder.quizzes => _en ? 'Smart QCM' : 'QCM intelligent',
+    };
+  }
+
+  IconData _folderIcon(_ChapterResourceFolder folder) {
+    return switch (folder) {
+      _ChapterResourceFolder.course => Icons.menu_book_rounded,
+      _ChapterResourceFolder.pdf => Icons.picture_as_pdf_rounded,
+      _ChapterResourceFolder.images => Icons.image_rounded,
+      _ChapterResourceFolder.audio => Icons.audiotrack_rounded,
+      _ChapterResourceFolder.video => Icons.video_library_rounded,
+      _ChapterResourceFolder.quizzes => Icons.quiz_rounded,
     };
   }
 
@@ -307,8 +318,8 @@ class _ChapterLearningDetailPageState
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                leading: const Icon(Icons.folder_rounded,
-                    color: Color(0xFF166534), size: 34),
+                leading: Icon(_folderIcon(folder),
+                    color: const Color(0xFF166534), size: 32),
                 title: Text(_folderTitle(folder),
                     style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(
