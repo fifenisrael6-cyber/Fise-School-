@@ -25,7 +25,7 @@ join public.exam_levels el on el.id = cu.exam_level_id
 join public.specialties sp on sp.id = cu.specialty_id
 where cu.is_active and cu.specialty_id is not null
   and el.active and el.sector = 'technical'
-  and sp.active and el.level_order >= 5
+  and sp.active
 on conflict (exam_level_id, specialty_id) do update
 set active = true, verification_status = 'verified';
 
@@ -61,7 +61,7 @@ join public.academic_years ay on ay.is_current
 join public.exam_level_specialties els
   on els.exam_level_id = el.id and els.active
 join public.specialties sp on sp.id = els.specialty_id and sp.active
-where el.active and el.sector = 'technical' and el.level_order >= 5
+where el.active and el.sector = 'technical'
 on conflict (name, academic_year_id) do nothing;
 
 -- Reconcile only when a canonical catalogue exists for the exact room context.
@@ -77,6 +77,11 @@ with expected as (
    and (cu.specialty_id is null or cu.specialty_id = c.specialty_id)
   join public.subjects s on s.id = cu.subject_id and s.is_active
    and s.subsystem = c.subsystem and s.sector = c.sector
+   and (
+     s.code not in ('allemand','espagnol','arabe','italien','chinois')
+     or (c.language_option is not null
+         and s.code = any(regexp_split_to_array(c.language_option, '_')))
+   )
   where c.is_active
 ), classes_with_catalog as (
   select class_id from expected group by class_id
@@ -101,6 +106,11 @@ with expected as (
    and (cu.specialty_id is null or cu.specialty_id = c.specialty_id)
   join public.subjects s on s.id = cu.subject_id and s.is_active
    and s.subsystem = c.subsystem and s.sector = c.sector
+   and (
+     s.code not in ('allemand','espagnol','arabe','italien','chinois')
+     or (c.language_option is not null
+         and s.code = any(regexp_split_to_array(c.language_option, '_')))
+   )
   where c.is_active
 ), ranked as (
   select e.class_id, e.subject_id,
