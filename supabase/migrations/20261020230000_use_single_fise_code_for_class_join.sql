@@ -78,6 +78,19 @@ begin
      set subsystem = v_class.subsystem,
          sector = v_class.sector,
          exam_level_id = v_class.exam_level_id,
+         exam_id = (select el.exam_id from public.exam_levels el where el.id = v_class.exam_level_id),
+         exam_level_label = case when p.preferred_language = 'en'
+           then (select el.level_name_en from public.exam_levels el where el.id = v_class.exam_level_id)
+           else (select el.level_name_fr from public.exam_levels el where el.id = v_class.exam_level_id) end,
+         exam_label = case when p.preferred_language = 'en'
+           then (select e.name_en from public.exams e join public.exam_levels el on el.exam_id = e.id where el.id = v_class.exam_level_id)
+           else (select e.name_fr from public.exams e join public.exam_levels el on el.exam_id = e.id where el.id = v_class.exam_level_id) end,
+         track_label = case
+           when v_class.series_id is not null then
+             (select case when p.preferred_language = 'en' then s.name_en else s.name_fr end from public.series s where s.id = v_class.series_id)
+           when v_class.specialty_id is not null then
+             (select case when p.preferred_language = 'en' then sp.name_en else sp.name_fr end from public.specialties sp where sp.id = v_class.specialty_id)
+           else null end,
          series_id = v_class.series_id,
          specialty_id = v_class.specialty_id,
          class_name = v_class.display_name,
