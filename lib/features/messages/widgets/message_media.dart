@@ -239,10 +239,12 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
                 onChanged: _duration.inMilliseconds <= 0 ? null : (v) => _player.seek(Duration(milliseconds: v.toInt())),
               ),
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(_fmt(playing || _position > Duration.zero ? _position : _duration),
-                  style: const TextStyle(fontSize: 11, color: Colors.black54)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_fmt(_position), style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                Text(_fmt(_duration), style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600)),
+              ],
             ),
           ]),
         ),
