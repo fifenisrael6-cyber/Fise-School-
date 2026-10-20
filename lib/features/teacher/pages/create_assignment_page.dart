@@ -384,6 +384,17 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     );
   }
 
+  bool _isCombinedLanguageRoom(String label) {
+    const languages = <String>[
+      'anglais', 'english', 'allemand', 'german',
+      'espagnol', 'espaniol', 'espanol', 'spanish',
+      'italien', 'italian', 'arabe', 'arabic',
+      'chinois', 'chinese', 'portugais', 'portuguese',
+      'russe', 'russian', 'latin',
+    ];
+    return languages.where(label.toLowerCase().contains).length >= 2;
+  }
+
   Widget _dropdown<T>({
     required String label,
     required T? value,
@@ -391,16 +402,17 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     required String Function(T) labelOf,
     required ValueChanged<T?> onChanged,
   }) {
-    final selected = items.contains(value) ? value : null;
+    final selectableItems = items.where((item) => item is! SchoolClass || !_isCombinedLanguageRoom(item.displayName)).toList(growable: false);
+    final selected = selectableItems.contains(value) ? value : null;
     return InkWell(
-      onTap: items.isEmpty ? null : () async {
+      onTap: selectableItems.isEmpty ? null : () async {
         final search = TextEditingController();
         final picked = await showDialog<T>(
           context: context,
           builder: (dialogContext) => StatefulBuilder(
             builder: (dialogContext, setDialogState) {
               final query = search.text.trim().toLowerCase();
-              final matches = items.where((item) => labelOf(item).toLowerCase().contains(query)).toList(growable: false);
+              final matches = selectableItems.where((item) => labelOf(item).toLowerCase().contains(query)).toList(growable: false);
               return AlertDialog(
                 title: Text(label),
                 content: SizedBox(
