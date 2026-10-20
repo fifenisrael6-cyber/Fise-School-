@@ -18,8 +18,9 @@ import 'private_messages_page.dart';
 class MessagesHubPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final PickedAttachment? initialSharedAttachment;
 
-  const MessagesHubPage({super.key, required this.locale, required this.profile});
+  const MessagesHubPage({super.key, required this.locale, required this.profile, this.initialSharedAttachment});
 
   @override
   State<MessagesHubPage> createState() => _MessagesHubPageState();
@@ -29,6 +30,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   final GroupMessageService _service = GroupMessageService();
   late Future<List<MessageGroup>> _groupsFuture;
   RealtimeChannel? _groupsChannel;
+  PickedAttachment? _pendingSharedAttachment;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isTeacher => widget.profile.role == 'teacher' || widget.profile.role == 'admin';
@@ -36,6 +38,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   @override
   void initState() {
     super.initState();
+    _pendingSharedAttachment = widget.initialSharedAttachment;
     _groupsFuture = _service.listGroups();
     // Keep the Messages navigation widget while restoring live updates in its
     // conversation list, so new group messages refresh the preview and time.
@@ -115,6 +118,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   }
 
   Future<void> _openGroup(MessageGroup group) async {
+    final attachment = _pendingSharedAttachment;
+    if (attachment != null) setState(() => _pendingSharedAttachment = null);
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -122,12 +127,26 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           locale: widget.locale,
           profile: widget.profile,
           group: group,
+          initialAttachment: attachment,
         ),
       ),
     );
-    if (mounted) {
-      _reload();
-    }
+    if (mounted) _reload();
+  }
+
+  Future<void> _openPrivateMessages() async {
+    final attachment = _pendingSharedAttachment;
+    if (attachment != null) setState(() => _pendingSharedAttachment = null);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateMessagesPage(
+          locale: widget.locale,
+          profile: widget.profile,
+          initialAttachment: attachment,
+        ),
+      ),
+    );
   }
 
   /// Raccourci caméra façon WhatsApp : photo, puis choix du groupe destinataire.
@@ -391,15 +410,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                   ),
                   subtitle: Text(_fr ? 'Discussions individuelles' : 'One-to-one chats'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PrivateMessagesPage(
-                        locale: widget.locale,
-                        profile: widget.profile,
-                      ),
-                    ),
-                  ),
+                  onTap: _openPrivateMessages,
                 ),
                 const Divider(height: 1),
                 if (snapshot.connectionState == ConnectionState.waiting)
