@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
@@ -50,12 +51,26 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   @override
   void initState() {
     super.initState();
-    final classesFuture = _service.listTeacherCompatibleClasses();
-    _classesFuture = classesFuture.then((list) {
+    _classesFuture = _loadCompatibleClasses().then((list) {
       final available = list.where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName)).toList(growable: false);
       _allClasses = available;
       return available;
     });
+  }
+
+  Future<List<SchoolClass>> _loadCompatibleClasses() async {
+    final profile = await Supabase.instance.client
+        .from('profiles')
+        .select('subsystem, sector')
+        .eq('id', widget.teacherId)
+        .maybeSingle();
+    final subsystem = profile?['subsystem']?.toString();
+    final sector = profile?['sector']?.toString();
+    final all = await _service.listTeacherCompatibleClasses();
+    return all.where((room) =>
+      (subsystem == null || subsystem.isEmpty || room.subsystem.name == subsystem) &&
+      (sector == null || sector.isEmpty || room.sector.name == sector)
+    ).toList(growable: false);
   }
 
   bool _isCombinedLanguageRoom(String label) {
