@@ -122,21 +122,22 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       await _ensureSubmission();
       final submission = _submission;
       if (submission == null || !mounted) return;
-      final result = await Supabase.instance.client.rpc(
-        'check_assignment_qcm_answer',
-        params: {'p_question_id': question.id, 'p_selected_option': value},
-      );
-      if (result is! Map) throw StateError('Correction QCM indisponible.');
       await _service.saveAnswer(
         submissionId: submission.id,
         questionId: question.id,
         selectedOption: value,
       );
       if (!mounted) return;
-      setState(() {
-        _selectedAnswers[question.id] = value;
-        _qcmFeedback[question.id] = Map<String, dynamic>.from(result);
-      });
+      // Lock the chosen option immediately after it is saved. The server then
+      // returns the correct/incorrect feedback for that exact stored choice.
+      setState(() => _selectedAnswers[question.id] = value);
+      final result = await Supabase.instance.client.rpc(
+        'check_assignment_qcm_answer',
+        params: {'p_question_id': question.id, 'p_selected_option': value},
+      );
+      if (result is! Map) throw StateError('Correction QCM indisponible.');
+      if (!mounted) return;
+      setState(() => _qcmFeedback[question.id] = Map<String, dynamic>.from(result));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
