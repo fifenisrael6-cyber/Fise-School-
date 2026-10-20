@@ -160,7 +160,7 @@ async function transcribeStoredResource(
     : "Transcris fidèlement le document pédagogique. Conserve les titres, formules, exemples et l’orthographe. Retourne uniquement le texte lisible, sans résumé ni invention.";
   const configuredModel = (Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash")
     .trim().replace(/^models\//, "");
-  const models = [...new Set([configuredModel, "gemini-3.8-flash", "gemini-3.6-flash"])]
+  const models = [...new Set([configuredModel, "gemini-3.5-flash-lite", "gemini-3.8-flash"]) ]
     .filter(Boolean).slice(0, 2);
   for (const model of models) {
     const remaining = deadlineAt - Date.now();
@@ -432,16 +432,15 @@ Deno.serve(async (req: Request) => {
       .trim().replace(/^models\//, "");
     const models = [...new Set([
       configuredModel,
-      "gemini-3.8-flash",
-      "gemini-3.6-flash",
       "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
     ].filter(Boolean))].slice(0, 2);
 
     let questions: ReturnType<typeof parseQuestions> | null = null;
     let lastFailure = "AI_UPSTREAM_ERROR";
     // Hard limit: two models on the first pass, one repair pass on the fallback.
     // Previous unbounded nested retries could exceed Supabase's wall-clock limit.
-    const generationDeadline = Date.now() + 30000;
+    const generationDeadline = Date.now() + 24000;
     for (let attempt = 0; attempt < 2 && !questions; attempt++) {
       const candidates = attempt === 0
         ? models
@@ -453,7 +452,7 @@ Deno.serve(async (req: Request) => {
         const remaining = generationDeadline - Date.now();
         if (remaining < 1000) break;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), Math.min(10000, remaining));
+        const timeout = setTimeout(() => controller.abort(), Math.min(8000, remaining));
         try {
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
             method: "POST",
