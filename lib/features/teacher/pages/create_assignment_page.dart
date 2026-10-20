@@ -384,12 +384,94 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     );
   }
 
-  Widget _dropdown<T>({required String label, required T? value, required List<T> items, required String Function(T) labelOf, required ValueChanged<T?> onChanged}) {
-    return DropdownButtonFormField<T>(
-      initialValue: items.contains(value) ? value : null,
-      decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.arrow_drop_down_circle_outlined), filled: true, fillColor: const Color(0xFFF7F9F8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none)),
-      items: items.map((item) => DropdownMenuItem<T>(value: item, child: Text(labelOf(item), overflow: TextOverflow.ellipsis))).toList(),
-      onChanged: items.isEmpty ? null : onChanged,
+  Widget _dropdown<T>({
+    required String label,
+    required T? value,
+    required List<T> items,
+    required String Function(T) labelOf,
+    required ValueChanged<T?> onChanged,
+  }) {
+    final selected = items.contains(value) ? value : null;
+    return InkWell(
+      onTap: items.isEmpty ? null : () async {
+        final search = TextEditingController();
+        final picked = await showDialog<T>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              final query = search.text.trim().toLowerCase();
+              final matches = items.where((item) => labelOf(item).toLowerCase().contains(query)).toList(growable: false);
+              return AlertDialog(
+                title: Text(label),
+                content: SizedBox(
+                  width: 480,
+                  height: MediaQuery.of(dialogContext).size.height * 0.55,
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: search,
+                        autofocus: true,
+                        onChanged: (_) => setDialogState(() {}),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: _isEnglish ? 'Search…' : 'Rechercher…',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: matches.isEmpty
+                            ? Center(child: Text(_isEnglish ? 'No result found.' : 'Aucun résultat.'))
+                            : ListView.builder(
+                                itemCount: matches.length,
+                                itemBuilder: (_, index) {
+                                  final item = matches[index];
+                                  return ListTile(
+                                    title: Text(labelOf(item)),
+                                    trailing: item == selected ? const Icon(Icons.check_circle, color: Color(0xFF166534)) : null,
+                                    onTap: () => Navigator.pop(dialogContext, item),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(_isEnglish ? 'Cancel' : 'Annuler'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+        search.dispose();
+        if (picked != null && mounted) onChanged(picked);
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.search),
+          filled: true,
+          fillColor: const Color(0xFFF7F9F8),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selected == null
+                    ? (_isEnglish ? 'Select…' : 'Sélectionner…')
+                    : labelOf(selected),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down_rounded),
+          ],
+        ),
+      ),
     );
   }
 
