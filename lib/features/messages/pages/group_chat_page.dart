@@ -47,6 +47,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   GroupMessage? _replyTo;
   RealtimeChannel? _channel;
   String? _inviteCode;
+  bool _announcementsOnly = false;
+  bool _groupActionInProgress = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
@@ -58,6 +60,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _inviteCode = widget.group.inviteCode;
     _attachment = widget.initialAttachment;
     _load();
+    _loadGroupSettings();
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')
       ..onPostgresChanges(
@@ -123,6 +126,69 @@ class _GroupChatPageState extends State<GroupChatPage> {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _loadGroupSettings() async {
+    try {
+      final value = await _service.getAnnouncementsOnly(widget.group.id);
+      if (mounted) setState(() => _announcementsOnly = value);
+    } catch (_) {}
+  }
+
+  Future<void> _deleteGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer le groupe ?' : 'Delete this group?'),
+        content: Text(_fr
+            ? 'Le groupe et son historique seront supprimés pour tous les membres. Cette action est définitive.'
+            : 'The group and its history will be deleted for all members. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      setState(() => _groupActionInProgress = true);
+      await _service.deleteGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      _snack((_fr ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _groupActionInProgress = false);
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Quitter le groupe ?' : 'Leave this group?'),
+        content: Text(_fr
+            ? 'Vous ne recevrez plus les nouveaux messages de ce groupe. Vous pourrez le rejoindre de nouveau avec le code de l’enseignant.'
+            : 'You will no longer receive new messages from this group. You can join again using the teacher’s code.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Quitter' : 'Leave')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      setState(() => _groupActionInProgress = true);
+      await _service.leaveGroup(widget.group.id);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      _snack((_fr ? 'Impossible de quitter le groupe : ' : 'Unable to leave group: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _groupActionInProgress = false);
     }
   }
 
@@ -259,6 +325,34 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 ),
                 if (widget.group.className != null) Text(widget.group.className!),
                 const SizedBox(height: 14),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_fr ? 'Seul l’enseignant peut envoyer des messages' : 'Only the teacher can send messages'),
+                  subtitle: Text(_fr
+                      ? 'Bloque ou autorise les messages des élèves. Les élèves restent membres du groupe.'
+                      : 'Block or allow student messages. Students remain group members.'),
+                  value: _announcementsOnly,
+                  onChanged: !_isOwner || _groupActionInProgress ? null : (value) async {
+                    final previous = _announcementsOnly;
+                    setSheetState(() => _announcementsOnly = value);
+                    setState(() => _announcementsOnly = value);
+                    try {
+                      await _service.setAnnouncementsOnly(widget.group.id, value);
+                    } catch (error) {
+                      setSheetState(() => _announcementsOnly = previous);
+                      if (mounted) setState(() => _announcementsOnly = previous);
+                      if (mounted) _snack((_fr ? 'Modification impossible : ' : 'Could not update setting: ') + error.toString());
+                    }
+                  },
+                ),
+                if (!_isOwner && _announcementsOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _fr ? 'Les messages des élèves sont désactivés par l’enseignant.' : 'Student messages are disabled by the teacher.',
+                      style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 if (_isOwner && _inviteCode != null) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -341,6 +435,20 @@ class _GroupChatPageState extends State<GroupChatPage> {
                         : null,
                   ),
                 ),
+                const SizedBox(height: 12),
+                if (_isOwner)
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                    onPressed: _groupActionInProgress ? null : _deleteGroup,
+                    icon: const Icon(Icons.delete_forever_rounded),
+                    label: Text(_fr ? 'Supprimer le groupe pour tous' : 'Delete group for everyone'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _groupActionInProgress ? null : _leaveGroup,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: Text(_fr ? 'Quitter le groupe' : 'Leave group'),
+                  ),
               ],
             ),
           ),
@@ -421,17 +529,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 children: [
                   IconButton(
                     tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
-                    onPressed: _sending ? null : _takePhoto,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _takePhoto,
                     icon: const Icon(Icons.camera_alt_rounded),
                   ),
                   IconButton(
                     tooltip: _fr ? 'Joindre un fichier' : 'Attach a file',
-                    onPressed: _sending ? null : _pickAttachment,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
                   VoiceRecorderButton(
                     french: _fr,
-                    enabled: !_sending,
+                    enabled: !_sending && (_isOwner || !_announcementsOnly),
                     onRecorded: (voice) {
                       setState(() => _attachment = voice);
                       _send();
@@ -440,6 +548,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   Expanded(
                     child: TextField(
                       controller: _composer,
+                      enabled: _isOwner || !_announcementsOnly,
                       minLines: 1,
                       maxLines: 6,
                       keyboardType: TextInputType.multiline,
@@ -460,7 +569,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   const SizedBox(width: 6),
                   IconButton.filled(
                     tooltip: _fr ? 'Envoyer' : 'Send',
-                    onPressed: _sending ? null : _send,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _send,
                     icon: _sending
                         ? const SizedBox(
                             width: 18,
