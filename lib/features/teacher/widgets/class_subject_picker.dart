@@ -54,9 +54,21 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         ? _service.listTeacherCompatibleClasses()
         : _service.listTeacherClasses(widget.teacherId);
     _classesFuture = classesFuture.then((list) {
-      _allClasses = list;
-      return list;
+      final available = list.where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName)).toList(growable: false);
+      _allClasses = available;
+      return available;
     });
+  }
+
+  bool _isCombinedLanguageRoom(String label) {
+    const languageNames = <String>[
+      'anglais', 'english', 'allemand', 'german',
+      'espagnol', 'espaniol', 'espanol', 'spanish',
+      'italien', 'italian', 'arabe', 'arabic',
+      'chinois', 'chinese', 'portugais', 'portuguese',
+      'russe', 'russian', 'latin',
+    ];
+    return languageNames.where(label.toLowerCase().contains).length >= 2;
   }
 
   List<SchoolClass> get _selectedClasses => _allClasses
