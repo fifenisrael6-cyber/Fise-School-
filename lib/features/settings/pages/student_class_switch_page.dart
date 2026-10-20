@@ -188,10 +188,17 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         final label = (row['class_name'] ?? '').toString().trim();
                         final trackLabel = (row['track_label'] ?? '').toString();
                         final languageOption = (row['language_option'] ?? '').toString();
-                        final combinedLanguages = RegExp(
-                          r'(espagnol|spanish).*(allemand|german)|(allemand|german).*(espagnol|spanish)',
-                          caseSensitive: false,
-                        ).hasMatch('$label $trackLabel $languageOption');
+                        final searchableClass = '$label $trackLabel $languageOption'.toLowerCase();
+                        const languageNames = <String>[
+                          'anglais', 'english', 'allemand', 'german',
+                          'espagnol', 'espaniol', 'espanol', 'spanish',
+                          'italien', 'italian', 'arabe', 'arabic',
+                          'chinois', 'chinese', 'portugais', 'portuguese',
+                          'russe', 'russian', 'latin',
+                        ];
+                        final combinedLanguages = languageNames
+                            .where(searchableClass.contains)
+                            .length >= 2;
                         if (combinedLanguages) return false;
                         final query = _search.text.trim().toLowerCase();
                         if (query.isNotEmpty &&
