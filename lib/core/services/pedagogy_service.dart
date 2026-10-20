@@ -172,12 +172,8 @@ class CourseService {
         .eq('is_catalog_container', true)
         .eq('is_active', true);
 
-    // A null curriculum dimension means the curriculum is shared across
-    // that dimension (for example, a common subject before series diverge).
-    // Treat it as a wildcard, but keep subsystem and sector exact below.
-    bool matchesContextValue(Object? curriculumValue, Object? classValue) =>
-        curriculumValue == null ||
-        curriculumValue.toString() == classValue?.toString();
+    bool sameContextValue(Object? left, Object? right) =>
+        left?.toString() == right?.toString();
 
     final matchingCurriculumIds = <String>{};
     for (final rawCurriculum in curriculumRows) {
@@ -186,9 +182,9 @@ class CourseService {
         final schoolClass = Map<String, dynamic>.from(rawClass);
         return curriculum['subsystem'] == schoolClass['subsystem'] &&
             curriculum['sector'] == schoolClass['sector'] &&
-            matchesContextValue(curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
-            matchesContextValue(curriculum['series_id'], schoolClass['series_id']) &&
-            matchesContextValue(curriculum['specialty_id'], schoolClass['specialty_id']);
+            sameContextValue(curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
+            sameContextValue(curriculum['series_id'], schoolClass['series_id']) &&
+            sameContextValue(curriculum['specialty_id'], schoolClass['specialty_id']);
       });
       final id = curriculum['id']?.toString();
       if (matchesClass && id != null && id.isNotEmpty) {

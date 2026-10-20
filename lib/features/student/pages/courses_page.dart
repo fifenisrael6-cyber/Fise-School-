@@ -4,7 +4,7 @@ import '../../../core/localization/app_texts.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
-import 'chapter_learning_subject_page.dart';
+import 'subject_channel_page.dart';
 
 /// Espace Cours de l'élève : les matières de sa salle, selon le programme du
 /// Cameroun. Chaque matière ouvre son fil de cours, documents et QCM.
@@ -192,7 +192,7 @@ class _CoursesPageState extends State<CoursesPage> {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ChapterLearningSubjectPage(
+                  builder: (_) => SubjectChannelPage(
                     locale: widget.locale,
                     profile: widget.profile,
                     subject: entry.subject,

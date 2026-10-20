@@ -46,11 +46,37 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
   String _label(Map<String, dynamic> row) =>
       (row['class_name'] ?? '').toString().trim();
 
+  String _subsystemLabel(Object? raw) {
+    switch (raw?.toString().toLowerCase()) {
+      case 'francophone':
+        return _fr ? 'Sous-système francophone' : 'Francophone subsystem';
+      case 'anglophone':
+        return _fr ? 'Sous-système anglophone' : 'Anglophone subsystem';
+      default:
+        return raw?.toString() ?? '';
+    }
+  }
+
+  String _sectorLabel(Object? raw) {
+    switch (raw?.toString().toLowerCase()) {
+      case 'general':
+        return _fr ? 'Enseignement général' : 'General education';
+      case 'technical':
+        return _fr ? 'Enseignement technique' : 'Technical education';
+      default:
+        return raw?.toString() ?? '';
+    }
+  }
+
   String _subtitle(Map<String, dynamic> room) {
+    final subsystem = _subsystemLabel(room['subsystem']);
+    final sector = _sectorLabel(room['sector']);
     final level = room['exam_level_label']?.toString() ?? '';
     final track = room['track_label']?.toString() ?? '';
     final language = room['language_option']?.toString() ?? '';
     return [
+      if (subsystem.isNotEmpty) subsystem,
+      if (sector.isNotEmpty) sector,
       if (level.isNotEmpty) level,
       if (track.trim().isNotEmpty) track,
       if (language.isNotEmpty) language.replaceAll('_', ' + '),
@@ -186,6 +212,14 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
 
   Widget _currentCard() {
     final current = widget.profile.className?.trim() ?? '';
+    final details = [
+      _subsystemLabel(widget.profile.subsystem),
+      _sectorLabel(widget.profile.sector),
+      widget.profile.examLevel ?? '',
+      widget.profile.track ?? '',
+      if ((widget.profile.languageOption ?? '').trim().isNotEmpty)
+        widget.profile.languageOption!.replaceAll('_', ' + '),
+    ].where((value) => value.trim().isNotEmpty).toList(growable: false);
     return Card(
       child: ListTile(
         leading: const Icon(Icons.school_rounded, color: _green),
@@ -193,11 +227,21 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
           _fr ? 'Ma salle actuelle' : 'My current classroom',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        subtitle: Text(
-          current.isNotEmpty
-              ? current
-              : (_fr ? 'Salle non renseignée' : 'Classroom not set'),
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              current.isNotEmpty
+                  ? current
+                  : (_fr ? 'Salle non renseignée' : 'Classroom not set'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            if (details.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Text(details.join(' • ')),
+            ],
+          ],
         ),
       ),
     );

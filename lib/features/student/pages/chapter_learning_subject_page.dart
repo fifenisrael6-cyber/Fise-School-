@@ -133,21 +133,6 @@ class _ChapterLearningSubjectPageState
         backgroundColor: green,
         foregroundColor: Colors.white,
         title: Text(widget.subject.labelFor(widget.locale.languageCode)),
-        actions: [
-          IconButton(
-            tooltip: _en ? 'Teacher posts' : 'Cours de l’enseignant',
-            icon: const Icon(Icons.dynamic_feed_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SubjectChannelPage(
-                  locale: widget.locale,
-                  profile: widget.profile,
-                  subject: widget.subject,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: FutureBuilder<_SubjectData>(
         future: _future,
