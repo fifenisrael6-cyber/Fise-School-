@@ -364,8 +364,12 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     if (message) currentParts.push({ text: message });
     contents.push({ role: "user", parts: currentParts });
 
-    // Discover models enabled for this API key instead of relying on retired model names.
-    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\//, "");
+    // Discover models supported by this API key on each request. A stale
+    // GEMINI_MODEL secret is ignored unless the API confirms it is still usable.
+    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\\//, "");
+    const isUsableModel = (name: string) =>
+      name.startsWith("gemini-") &&
+      !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen|preview|experimental|deprecated)/i.test(name);
     let models: string[] = [];
     try {
       const listController = new AbortController();
@@ -380,17 +384,38 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
           const safeBody = JSON.stringify(listData ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 1500);
           console.error("[gemini-chat] Gemini model discovery failed", JSON.stringify({ status: listResponse.status, body: safeBody }));
         } else {
-          const available = (Array.isArray(listData?.models) ? listData.models : [])
-            .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
-              && item.supportedGenerationMethods.includes("generateContent"))
-            .map((item: any) => String(item.name ?? "").replace(/^models\//, ""))
-            .filter((name: string) => name.length > 0);
-          const preferred = [
-            ...(configuredModel ? [configuredModel] : []),
-            ...available.filter((name: string) => /flash/i.test(name) && !/tts|image|embedding|robotics/i.test(name)),
-            ...available.filter((name: string) => !/tts|image|embedding|robotics/i.test(name)),
-          ];
-          models = [...new Set(preferred)].slice(0, 3);
+          const available = [...new Set(
+            (Array.isArray(listData?.models) ? listData.models : [])
+              .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
+                && item.supportedGenerationMethods.includes("generateContent"))
+              .map((item: any) => String(item.name ?? "").replace(/^models\\//, ""))
+              .filter((name: string) => isUsableModel(name)),
+          )];
+          const flashModels = available
+            .filter((name: string) => /flash/i.test(name))
+            .sort((left: string, right: string) => {
+              // Use the current stable model first when it is present.
+              if (left === "gemini-3.8-flash") return -1;
+              if (right === "gemini-3.8-flash") return 1;
+              const version = (name: string) => {
+                const match = name.match(/^gemini-(\\d+)\\.(\\d+)-flash(?:-lite)?$/i);
+                return match ? Number(match[1]) * 100 + Number(match[2]) : -1;
+              };
+              const versionDiff = version(right) - version(left);
+              if (versionDiff !== 0) return versionDiff;
+              const liteDiff = Number(/-lite$/i.test(left)) - Number(/-lite$/i.test(right));
+              return liteDiff || left.localeCompare(right);
+            });
+          const validConfigured = configuredModel &&
+              available.includes(configuredModel) &&
+              isUsableModel(configuredModel)
+            ? [configuredModel]
+            : [];
+          models = [...new Set([
+            ...validConfigured,
+            ...flashModels,
+            ...available,
+          ])].slice(0, 5);
         }
       } finally {
         clearTimeout(listTimeout);
@@ -399,7 +424,9 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
       console.error("[gemini-chat] Gemini model discovery exception", error instanceof Error ? error.message : String(error));
     }
     if (!models.length) {
-      models = [...new Set([...(configuredModel ? [configuredModel] : []), "gemini-2.5-flash", "gemini-2.0-flash"])];
+      // The live provider identified gemini-3.8-flash as its current supported
+      // replacement. Never fall back to retired Gemini 2.0/2.5 model IDs.
+      models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
     }
 
     let data: any = null;
