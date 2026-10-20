@@ -68,8 +68,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     final sector = profile?['sector']?.toString();
     final all = await _service.listTeacherCompatibleClasses();
     return all.where((room) =>
-      (subsystem == null || subsystem.isEmpty || room.subsystem.name == subsystem) &&
-      (sector == null || sector.isEmpty || room.sector.name == sector)
+      (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
+      (sector != null && sector.isNotEmpty && room.sector.name == sector)
     ).toList(growable: false);
   }
 
