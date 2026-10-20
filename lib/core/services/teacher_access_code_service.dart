@@ -119,7 +119,7 @@ class TeacherAccessCodeService {
             .eq('teacher_id', teacherId)
             .eq('is_active', true)
             .limit(1);
-        if (teacherClasses is List && teacherClasses.isNotEmpty) {
+        if (teacherClasses.isNotEmpty) {
           classId = (teacherClasses.first as Map)['class_id']?.toString();
         }
         if (classId == null) {
@@ -129,7 +129,7 @@ class TeacherAccessCodeService {
               .eq('owner_id', teacherId)
               .not('class_id', 'is', null)
               .limit(1);
-          if (groups is List && groups.isNotEmpty) {
+          if (groups.isNotEmpty) {
             classId = (groups.first as Map)['class_id']?.toString();
           }
         }
