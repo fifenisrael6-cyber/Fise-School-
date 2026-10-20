@@ -34,13 +34,13 @@ class TeacherPaymentCodeService {
   }
 
   Future<Map<String, dynamic>?> getOwnCode() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return null;
-    final row = await _client
-        .from('teacher_payment_codes')
-        .select('code, active, created_at')
-        .eq('teacher_id', user.id)
-        .maybeSingle();
-    return row == null ? null : Map<String, dynamic>.from(row);
+    if (_client.auth.currentUser == null) return null;
+
+    // The FISE code is shared by groups, payments and evaluations. Ask the
+    // server for the canonical value so older accounts are synchronized too.
+    final value = await _client.rpc('get_or_create_teacher_group_access_code');
+    final code = value?.toString().trim() ?? '';
+    if (code.isEmpty) return null;
+    return <String, dynamic>{'code': code, 'active': true};
   }
 }
