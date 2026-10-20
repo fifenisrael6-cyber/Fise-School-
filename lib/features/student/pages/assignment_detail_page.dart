@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
@@ -33,6 +35,8 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   final Map<String, TextEditingController> _answerControllers = {};
   final Map<String, String?> _selectedAnswers = {};
+  final Map<String, Map<String, dynamic>> _qcmFeedback = {};
+  final Set<String> _qcmChecking = <String>{};
 
   bool _loadingSubmission = true;
   bool _saving = false;
@@ -85,6 +89,79 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       }
     }
     setState(() {});
+    unawaited(_restoreQcmFeedback(answers));
+  }
+
+  Future<void> _restoreQcmFeedback(List<AssignmentAnswer> answers) async {
+    try {
+      final questions = await _questionsFuture;
+      final byId = {for (final question in questions) question.id: question};
+      for (final answer in answers) {
+        final question = byId[answer.questionId];
+        final selected = answer.selectedOption;
+        if (question == null || selected == null || (!question.isQcm && !question.isTrueFalse)) continue;
+        try {
+          final result = await Supabase.instance.client.rpc(
+            'check_assignment_qcm_answer',
+            params: {'p_question_id': question.id, 'p_selected_option': selected},
+          );
+          if (result is Map && mounted) {
+            setState(() => _qcmFeedback[question.id] = Map<String, dynamic>.from(result));
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _selectQcmAnswer(AssignmentQuestion question, String? value) async {
+    if (value == null || !_isDraftSubmission || _isClosed ||
+        _selectedAnswers[question.id] != null || _qcmChecking.contains(question.id)) return;
+
+    setState(() => _qcmChecking.add(question.id));
+    try {
+      await _ensureSubmission();
+      final submission = _submission;
+      if (submission == null || !mounted) return;
+      final result = await Supabase.instance.client.rpc(
+        'check_assignment_qcm_answer',
+        params: {'p_question_id': question.id, 'p_selected_option': value},
+      );
+      if (result is! Map) throw StateError('Correction QCM indisponible.');
+      await _service.saveAnswer(
+        submissionId: submission.id,
+        questionId: question.id,
+        selectedOption: value,
+      );
+      if (!mounted) return;
+      setState(() {
+        _selectedAnswers[question.id] = value;
+        _qcmFeedback[question.id] = Map<String, dynamic>.from(result);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isEnglish
+              ? 'Unable to validate this answer. Please try again.'
+              : 'Impossible de valider cette réponse. Réessayez.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _qcmChecking.remove(question.id));
+    }
+  }
+
+  String _normalizedOption(String? value) =>
+      (value ?? '').trim().toLowerCase().replaceAll(RegExp(r'\\s+'), ' ');
+
+  bool _isCorrectOption(AssignmentQuestion question, String option, Map<String, dynamic> feedback) {
+    var correct = feedback['correct_option']?.toString() ?? '';
+    if (question.isTrueFalse) {
+      final normalized = _normalizedOption(correct);
+      correct = (normalized == 'vrai' || normalized == 'true' || normalized == 'oui' || normalized == 'yes' || normalized == '1')
+          ? 'true'
+          : 'false';
+    }
+    return _normalizedOption(option) == _normalizedOption(correct);
   }
 
   @override
@@ -632,71 +709,82 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
 
   Widget _buildAnswerWidget(AssignmentQuestion question) {
     final enabled = _isDraftSubmission && !_isClosed;
+    final selected = _selectedAnswers[question.id];
+    final feedback = _qcmFeedback[question.id];
+    final checking = _qcmChecking.contains(question.id);
 
-    if (question.isQcm) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: _arrangedOptions(question).map((option) {
-            return RadioListTile<String>(
-              value: option,
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(option, style: const TextStyle(height: 1.35)),
+    if (question.isQcm || question.isTrueFalse) {
+      final options = question.isQcm ? _arrangedOptions(question) : <String>['true', 'false'];
+      return Column(
+        children: [
+          if (checking) const LinearProgressIndicator(minHeight: 2),
+          ...options.map((option) {
+            final displayOption = question.isTrueFalse
+                ? (option == 'true' ? (_isEnglish ? 'True' : 'Vrai') : (_isEnglish ? 'False' : 'Faux'))
+                : option;
+            final correct = feedback != null && _isCorrectOption(question, option, feedback);
+            final selectedWrong = feedback != null && selected == option && feedback['is_correct'] != true;
+            final background = correct
+                ? const Color(0xFFE4F7E8)
+                : selectedWrong ? const Color(0xFFFFE8E8) : const Color(0xFFF7F9F8);
+            final foreground = correct
+                ? const Color(0xFF166534)
+                : selectedWrong ? const Color(0xFFB91C1C) : Colors.black87;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: correct ? const Color(0xFF16A34A)
+                      : selectedWrong ? const Color(0xFFDC2626) : Colors.black12,
+                  width: correct || selectedWrong ? 1.5 : 1,
+                ),
+              ),
+              child: RadioListTile<String>(
+                value: option,
+                groupValue: selected,
+                onChanged: enabled && selected == null && !checking
+                    ? (value) => _selectQcmAnswer(question, value)
+                    : null,
+                activeColor: foreground,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                title: Row(
+                  children: [
+                    Expanded(child: Text(displayOption, style: TextStyle(
+                      color: foreground,
+                      fontWeight: correct || selectedWrong ? FontWeight.w700 : FontWeight.normal,
+                    ))),
+                    if (correct) const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A)),
+                    if (selectedWrong) const Icon(Icons.cancel_rounded, color: Color(0xFFDC2626)),
+                  ],
+                ),
+              ),
             );
-          }).toList(),
-        ),
+          }),
+          if (feedback != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: feedback['is_correct'] == true ? const Color(0xFFE4F7E8) : const Color(0xFFFFE8E8),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                feedback['is_correct'] == true
+                    ? (_isEnglish ? 'Correct answer!' : 'Bonne réponse !')
+                    : (_isEnglish ? 'Incorrect answer. The correct answer is shown in green.' : 'Mauvaise réponse. La bonne réponse est en vert.'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: feedback['is_correct'] == true ? const Color(0xFF166534) : const Color(0xFFB91C1C),
+                ),
+              ),
+            ),
+        ],
       );
     }
 
-    if (question.isTrueFalse) {
-      return RadioGroup<String>(
-        groupValue: _selectedAnswers[question.id],
-        onChanged: (value) {
-          if (!enabled) {
-            return;
-          }
-
-          setState(() {
-            _selectedAnswers[question.id] = value;
-          });
-        },
-        child: Column(
-          children: [
-            RadioListTile<String>(
-              value: 'true',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'True' : 'Vrai'),
-            ),
-            RadioListTile<String>(
-              value: 'false',
-              enabled: enabled,
-              activeColor: const Color(0xFF166534),
-              contentPadding: EdgeInsets.zero,
-              title: Text(_isEnglish ? 'False' : 'Faux'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final controller = _answerControllers.putIfAbsent(
-      question.id,
-      () => TextEditingController(),
-    );
-
+    final controller = _answerControllers.putIfAbsent(question.id, () => TextEditingController());
     return TextField(
       controller: controller,
       enabled: enabled,
@@ -706,19 +794,11 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       decoration: InputDecoration(
         hintText: question.isShortAnswer
             ? (_isEnglish ? 'Write your answer...' : 'Écrivez votre réponse...')
-            : (_isEnglish
-                  ? 'Write your answer in detail...'
-                  : 'Écrivez votre réponse en détail...'),
+            : (_isEnglish ? 'Write your answer in detail...' : 'Écrivez votre réponse en détail...'),
         filled: true,
         fillColor: const Color(0xFFF7F9F8),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF166534)),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF166534))),
       ),
     );
   }
