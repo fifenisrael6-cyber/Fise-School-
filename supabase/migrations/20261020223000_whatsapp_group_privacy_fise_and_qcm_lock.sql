@@ -239,7 +239,7 @@ end;
 $$;
 
 create or replace function public.remove_message_group_member(p_group_id uuid, p_user_id uuid)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = ''
@@ -252,11 +252,13 @@ begin
   if p_user_id = auth.uid() then raise exception 'The owner cannot remove themselves; delete the group instead'; end if;
   delete from public.message_group_members
    where group_id = p_group_id and user_id = p_user_id and role = 'student';
+  if not found then raise exception 'Student is not a member of this group'; end if;
+  return true;
 end;
-$$;
+$;
 
 create or replace function public.leave_message_group(p_group_id uuid)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = ''
@@ -268,11 +270,12 @@ begin
   delete from public.message_group_members
    where group_id = p_group_id and user_id = auth.uid() and role = 'student';
   if not found then raise exception 'You are not a member of this group'; end if;
+  return true;
 end;
-$$;
+$;
 
 create or replace function public.delete_message_group(p_group_id uuid)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = ''
@@ -283,8 +286,9 @@ begin
      where g.id = p_group_id and g.owner_id = auth.uid()
   ) then raise exception 'Only the group owner can delete this group'; end if;
   delete from public.message_groups where id = p_group_id;
+  return true;
 end;
-$$;
+$;
 
 revoke all on function public.get_message_group_settings(uuid) from public, anon;
 revoke all on function public.set_message_group_announcements_only(uuid, boolean) from public, anon;
