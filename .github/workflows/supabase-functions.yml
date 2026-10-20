@@ -26,11 +26,10 @@ jobs:
         id: config
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
-            echo "::warning::Edge Functions were not deployed because SUPABASE_ACCESS_TOKEN and/or SUPABASE_PROJECT_REF is missing from GitHub Secrets. The changed functions in this release were deployed directly to Supabase; configure these secrets for automatic future deployments."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Edge Function deployment blocked: configure SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF in GitHub Actions secrets."
+            exit 1
           fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy gemini-chat
         if: steps.config.outputs.ready == 'true'
