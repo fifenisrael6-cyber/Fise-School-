@@ -118,8 +118,8 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search),
               hintText: _fr
-                  ? 'Chercher une salle (ex. Terminale, 3ème…)'
-                  : 'Search a classroom (e.g. Form 5, Upper Sixth…)',
+                  ? 'Chercher une salle ou une filière (ex. 3ème, C, D, TI, F2…)'
+                  : 'Search a classroom or pathway (e.g. Form 5, Arts, Science, F2…)',
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
