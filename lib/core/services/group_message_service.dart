@@ -161,7 +161,9 @@ class GroupMessageService {
 
   Future<String> joinWithCode(String code) async {
     final id = await _client.rpc('join_message_group', params: {'p_code': code});
-    return id as String;
+    // A valid shared FISE code can grant evaluation access even when the
+    // teacher has not created a group for this classroom yet.
+    return id?.toString() ?? '';
   }
 
   Future<List<GroupMessage>> listMessages(String groupId) async {
