@@ -120,3 +120,28 @@ revoke all on function public.get_or_create_teacher_group_access_code() from pub
 grant execute on function public.get_or_create_teacher_group_access_code() to authenticated;
 
 notify pgrst, 'reload schema';
+
+-- Group list and membership changes must trigger the Flutter live refresh.
+do $publication$
+declare
+  v_table text;
+begin
+  foreach v_table in array array[
+    'message_groups',
+    'message_group_members',
+    'message_group_classrooms'
+  ] loop
+    if to_regclass('public.' || v_table) is not null
+       and not exists (
+         select 1 from pg_publication_tables
+         where pubname = 'supabase_realtime'
+           and schemaname = 'public'
+           and tablename = v_table
+       ) then
+      execute format('alter publication supabase_realtime add table public.%I', v_table);
+    end if;
+  end loop;
+end
+$publication$;
+
+notify pgrst, 'reload schema';
