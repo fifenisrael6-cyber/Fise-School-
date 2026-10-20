@@ -38,25 +38,82 @@ class GroupMessageService {
   }
 
   Future<List<MessageGroup>> listGroups() async {
+    final byId = <String, MessageGroup>{};
+
+    // Primary list includes groups the current account belongs to.
     try {
-      final result = await _client.rpc('list_my_message_groups').timeout(const Duration(seconds: 8));
-      final groups = (result as List)
-          .map((row) => MessageGroup.fromMap(Map<String, dynamic>.from(row as Map)))
-          .toList(growable: false);
+      final result = await _client
+          .rpc('list_my_message_groups')
+          .timeout(const Duration(seconds: 8));
+      if (result is List) {
+        for (final row in result) {
+          final group = MessageGroup.fromMap(
+            Map<String, dynamic>.from(row as Map),
+          );
+          byId[group.id] = group;
+        }
+      }
+    } catch (_) {
+      // Continue to the owner-only recovery RPC below.
+    }
+
+    // Recovery list includes every group owned by this teacher, even if the
+    // normal membership-based list is stale or returns no rows.
+    try {
+      final result = await _client
+          .rpc('list_teacher_owned_message_groups')
+          .timeout(const Duration(seconds: 8));
+      if (result is List) {
+        for (final row in result) {
+          final group = MessageGroup.fromMap(
+            Map<String, dynamic>.from(row as Map),
+          );
+          // Keep the primary RPC's richer preview/unread data when available.
+          byId.putIfAbsent(group.id, () => group);
+        }
+      }
+    } catch (_) {
+      // Students and older deployments may not expose this teacher-only RPC.
+    }
+
+    final groups = byId.values.toList(growable: false);
+    if (groups.isNotEmpty) {
       for (final group in groups) {
-        await _db.cacheMessageGroup(_userId, group.id, jsonEncode({
-          'id': group.id, 'name': group.name, 'class_id': group.classId,
-          'class_name': group.className, 'owner_id': group.ownerId, 'invite_code': group.inviteCode,
-          'member_count': group.memberCount, 'last_body': group.lastBody,
-          'last_at': group.lastAt?.toUtc().toIso8601String(),
-        }));
+        try {
+          await _db.cacheMessageGroup(
+            _userId,
+            group.id,
+            jsonEncode({
+              'id': group.id,
+              'name': group.name,
+              'class_id': group.classId,
+              'class_name': group.className,
+              'owner_id': group.ownerId,
+              'invite_code': group.inviteCode,
+              'member_count': group.memberCount,
+              'last_body': group.lastBody,
+              'last_at': group.lastAt?.toUtc().toIso8601String(),
+            }),
+          );
+        } catch (_) {
+          // A local cache write must never hide groups fetched successfully.
+        }
       }
       return groups;
-    } catch (_) {
+    }
+
+    // Only use offline cache when neither remote RPC produced any groups.
+    try {
       final rows = await _db.getCachedMessageGroups(_userId);
-      return rows.map((row) => MessageGroup.fromMap(
-        Map<String, dynamic>.from(jsonDecode(row.read<String>('data_json')) as Map),
-      )).toList(growable: false);
+      return rows
+          .map((row) => MessageGroup.fromMap(
+                Map<String, dynamic>.from(
+                  jsonDecode(row.read<String>('data_json')) as Map,
+                ),
+              ))
+          .toList(growable: false);
+    } catch (_) {
+      return const <MessageGroup>[];
     }
   }
 
