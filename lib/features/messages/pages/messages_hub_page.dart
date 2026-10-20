@@ -32,6 +32,17 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   RealtimeChannel? _groupsChannel;
   PickedAttachment? _pendingSharedAttachment;
 
+  bool _isCombinedLanguageRoom(String label) {
+    const languages = <String>[
+      'anglais', 'english', 'allemand', 'german',
+      'espagnol', 'espaniol', 'espanol', 'spanish',
+      'italien', 'italian', 'arabe', 'arabic',
+      'chinois', 'chinese', 'portugais', 'portuguese',
+      'russe', 'russian', 'latin',
+    ];
+    return languages.where(label.toLowerCase().contains).length >= 2;
+  }
+
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isTeacher => widget.profile.role == 'teacher' || widget.profile.role == 'admin';
 
@@ -225,7 +236,9 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
-      classes = await CourseService().listTeacherClasses(widget.profile.id);
+      classes = (await CourseService().listTeacherClasses(widget.profile.id))
+          .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
+          .toList(growable: false);
     } catch (_) {
       classes = const [];
     }
