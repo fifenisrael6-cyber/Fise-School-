@@ -47,6 +47,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
   GroupMessage? _replyTo;
   RealtimeChannel? _channel;
   String? _inviteCode;
+  bool _announcementsOnly = false;
+  bool _groupActionInProgress = false;
+  int? _memberCount;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
@@ -58,6 +61,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _inviteCode = widget.group.inviteCode;
     _attachment = widget.initialAttachment;
     _load();
+    _loadGroupSettings();
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')
       ..onPostgresChanges(
@@ -69,7 +73,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           column: 'group_id',
           value: widget.group.id,
         ),
-        callback: (_) => _load(showLoader: false),
+        callback: (_) { _load(showLoader: false); _loadGroupSettings(); },
       )
       ..subscribe();
   }
@@ -125,6 +129,97 @@ class _GroupChatPageState extends State<GroupChatPage> {
       }
     }
   }
+
+  Future<void> _loadGroupSettings() async {
+    try {
+      final value = await _service.getAnnouncementsOnly(widget.group.id);
+      final members = await _service.listMembers(widget.group.id);
+      if (mounted) setState(() { _announcementsOnly = value; _memberCount = members.length; });
+    } catch (_) {}
+  }
+
+  Future<void> _deleteGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer le groupe ?' : 'Delete this group?'),
+        content: Text(_fr
+            ? 'Le groupe et son historique seront supprimés pour tous les membres. Cette action est définitive.'
+            : 'The group and its history will be deleted for all members. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      setState(() => _groupActionInProgress = true);
+      await _service.deleteGroup(widget.group.id);
+      if (mounted) { Navigator.of(context).pop(); Navigator.of(context).pop(); }
+    } catch (error) {
+      _snack((_fr ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _groupActionInProgress = false);
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Quitter le groupe ?' : 'Leave this group?'),
+        content: Text(_fr
+            ? 'Vous ne recevrez plus les nouveaux messages de ce groupe. Vous pourrez le rejoindre de nouveau avec le code de l’enseignant.'
+            : 'You will no longer receive new messages from this group. You can join again using the teacher’s code.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Quitter' : 'Leave')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      setState(() => _groupActionInProgress = true);
+      await _service.leaveGroup(widget.group.id);
+      if (mounted) { Navigator.of(context).pop(); Navigator.of(context).pop(); }
+    } catch (error) {
+      _snack((_fr ? 'Impossible de quitter le groupe : ' : 'Unable to leave group: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _groupActionInProgress = false);
+    }
+  }
+
+  Future<void> _clearGroupForMe() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Effacer la conversation ?' : 'Clear this conversation?'),
+        content: Text(_fr
+            ? 'Les anciens messages seront masqués uniquement pour vous. Vous restez membre et verrez les nouveaux messages.'
+            : 'Old messages will be hidden only for you. You remain a member and will see new messages.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Effacer' : 'Clear')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.clearGroupForMe(widget.group.id);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      await _load(showLoader: false);
+      if (mounted) _snack(_fr ? 'Conversation effacée pour vous.' : 'Conversation cleared for you.');
+    } catch (error) {
+      _snack((_fr ? 'Impossible d’effacer la conversation : ' : 'Unable to clear conversation: ') + error.toString());
+    }
+  }
+
 
   GroupMessage? _findMessage(String? id) {
     if (id == null) return null;
@@ -229,6 +324,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _showInfo() async {
+    final messageCount = _messages.length;
+    final voiceCount = _messages.where((message) {
+      final type = (message.attachmentType ?? '').toLowerCase();
+      return type.startsWith('audio/') || type.contains('voice');
+    }).length;
     List<GroupMember> members = const [];
     try {
       members = await _service.listMembers(widget.group.id);
@@ -258,7 +358,54 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 if (widget.group.className != null) Text(widget.group.className!),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.chat_bubble_outline_rounded),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_fr
+                            ? '$messageCount messages · $voiceCount messages vocaux'
+                            : '$messageCount messages · $voiceCount voice messages'),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 14),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_fr ? 'Seul l’enseignant peut envoyer des messages' : 'Only the teacher can send messages'),
+                  subtitle: Text(_fr
+                      ? 'Bloque ou autorise les messages des élèves. Les élèves restent membres du groupe.'
+                      : 'Block or allow student messages. Students remain group members.'),
+                  value: _announcementsOnly,
+                  onChanged: !_isOwner || _groupActionInProgress ? null : (value) async {
+                    final previous = _announcementsOnly;
+                    setSheetState(() => _announcementsOnly = value);
+                    setState(() => _announcementsOnly = value);
+                    try {
+                      await _service.setAnnouncementsOnly(widget.group.id, value);
+                    } catch (error) {
+                      setSheetState(() => _announcementsOnly = previous);
+                      if (mounted) setState(() => _announcementsOnly = previous);
+                      if (mounted) _snack((_fr ? 'Modification impossible : ' : 'Could not update setting: ') + error.toString());
+                    }
+                  },
+                ),
+                if (!_isOwner && _announcementsOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _fr ? 'Les messages des élèves sont désactivés par l’enseignant.' : 'Student messages are disabled by the teacher.',
+                      style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 if (_isOwner && _inviteCode != null) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -326,21 +473,60 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             tooltip: _fr ? 'Retirer du groupe' : 'Remove from group',
                             icon: const Icon(Icons.person_remove_alt_1_rounded),
                             onPressed: () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: Text(_fr ? 'Retirer cet élève ?' : 'Remove this student?'),
+                                  content: Text(_fr
+                                      ? 'Cet élève sera retiré du groupe et les autres membres en seront informés.'
+                                      : 'This student will be removed from the group and other members will be notified.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext, false),
+                                      child: Text(_fr ? 'Annuler' : 'Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(dialogContext, true),
+                                      child: Text(_fr ? 'Retirer' : 'Remove'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true) return;
                               try {
                                 await _service.removeMember(widget.group.id, member.userId);
                                 setSheetState(() => members = members
                                     .where((m) => m.userId != member.userId)
                                     .toList());
                               } catch (error) {
-                                if (mounted) {
-                                  _snack('$error');
-                                }
+                                if (mounted) _snack('$error');
                               }
                             },
                           )
                         : null,
                   ),
                 ),
+                const SizedBox(height: 12),
+                if (_isOwner)
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                    onPressed: _groupActionInProgress ? null : _deleteGroup,
+                    icon: const Icon(Icons.delete_forever_rounded),
+                    label: Text(_fr ? 'Supprimer le groupe pour tous' : 'Delete group for everyone'),
+                  )
+                else ...[
+                  OutlinedButton.icon(
+                    onPressed: _groupActionInProgress ? null : _clearGroupForMe,
+                    icon: const Icon(Icons.cleaning_services_rounded),
+                    label: Text(_fr ? 'Effacer la conversation pour moi' : 'Clear conversation for me'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _groupActionInProgress ? null : _leaveGroup,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: Text(_fr ? 'Quitter le groupe' : 'Leave group'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -371,7 +557,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
               ),
               Text(
-                _fr ? 'Touchez pour les infos du groupe' : 'Tap for group info',
+                _fr ? '${_memberCount ?? widget.group.memberCount} membres · Touchez pour les infos' : '${_memberCount ?? widget.group.memberCount} members · Tap for info',
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
               ),
             ],
@@ -421,17 +607,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 children: [
                   IconButton(
                     tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
-                    onPressed: _sending ? null : _takePhoto,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _takePhoto,
                     icon: const Icon(Icons.camera_alt_rounded),
                   ),
                   IconButton(
                     tooltip: _fr ? 'Joindre un fichier' : 'Attach a file',
-                    onPressed: _sending ? null : _pickAttachment,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _pickAttachment,
                     icon: const Icon(Icons.attach_file_rounded),
                   ),
                   VoiceRecorderButton(
                     french: _fr,
-                    enabled: !_sending,
+                    enabled: !_sending && (_isOwner || !_announcementsOnly),
                     onRecorded: (voice) {
                       setState(() => _attachment = voice);
                       _send();
@@ -440,6 +626,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   Expanded(
                     child: TextField(
                       controller: _composer,
+                      enabled: _isOwner || !_announcementsOnly,
                       minLines: 1,
                       maxLines: 6,
                       keyboardType: TextInputType.multiline,
@@ -460,7 +647,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   const SizedBox(width: 6),
                   IconButton.filled(
                     tooltip: _fr ? 'Envoyer' : 'Send',
-                    onPressed: _sending ? null : _send,
+                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _send,
                     icon: _sending
                         ? const SizedBox(
                             width: 18,

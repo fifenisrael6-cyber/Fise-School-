@@ -37,7 +37,10 @@ class TeacherAccessCode {
     'is_active': isActive,
   };
 
-  String get displayCode => 'FISE-${code.toUpperCase()}';
+  String get displayCode {
+    final value = code.trim().toUpperCase();
+    return value.startsWith('FISE-') ? value : 'FISE-$value';
+  }
 
   TeacherAccessCode copyWith({
     String? code,
