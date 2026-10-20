@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/student_class_change_service.dart';
 
 class StudentClassSwitchPage extends StatefulWidget {
@@ -38,8 +39,16 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
     });
     try {
       final loaded = await _service.listNextClasses();
-      final subsystem = widget.profile.subsystem?.toLowerCase().trim();
-      final sector = widget.profile.sector?.toLowerCase().trim();
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      final profile = userId == null
+          ? null
+          : await Supabase.instance.client
+              .from('profiles')
+              .select('subsystem, sector')
+              .eq('id', userId)
+              .maybeSingle();
+      final subsystem = profile?['subsystem']?.toString().toLowerCase().trim();
+      final sector = profile?['sector']?.toString().toLowerCase().trim();
       final classes = loaded.where((row) {
         final roomSubsystem = row['subsystem']?.toString().toLowerCase().trim();
         final roomSector = row['sector']?.toString().toLowerCase().trim();

@@ -38,6 +38,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   List<Subject> _subjects = const [];
   Subject? _subject;
   bool _loadingSubjects = false;
+  String? _teacherStream;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -61,11 +62,12 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   Future<List<SchoolClass>> _loadCompatibleClasses() async {
     final profile = await Supabase.instance.client
         .from('profiles')
-        .select('subsystem, sector')
+        .select('subsystem, sector, teaching_stream')
         .eq('id', widget.teacherId)
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
+    _teacherStream = profile?['teaching_stream']?.toString().trim().toLowerCase();
     final all = await _service.listTeacherCompatibleClasses();
     return all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
@@ -135,7 +137,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
       final selectedClass = classes.first;
       final subjects = (common ?? <String, Subject>{}).values
-          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector)
+          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector && (_teacherStream == null || _teacherStream!.isEmpty || _teacherStream == 'general' || subject.teachingStream == _teacherStream || subject.teachingStream == 'general'))
           .toList();
       setState(() {
         _subjects = subjects;

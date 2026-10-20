@@ -5,6 +5,7 @@ class Subject {
   final ExamSubsystem subsystem;
   final ExamSector sector;
   final String? descriptionFr, descriptionEn;
+  final String teachingStream;
   final bool isActive;
 
   const Subject({
@@ -16,6 +17,7 @@ class Subject {
     required this.sector,
     this.descriptionFr,
     this.descriptionEn,
+    this.teachingStream = 'general',
     this.isActive = true,
   });
   factory Subject.fromMap(Map<String, dynamic> map) => Subject(
@@ -27,6 +29,7 @@ class Subject {
     sector: examSectorFromValue(map['sector'])!,
     descriptionFr: map['description_fr'] as String?,
     descriptionEn: map['description_en'] as String?,
+    teachingStream: (map['teaching_stream'] as String?) ?? 'general',
     isActive: map['is_active'] as bool? ?? true,
   );
   String labelFor(String languageCode) =>
