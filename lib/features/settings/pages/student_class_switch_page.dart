@@ -165,10 +165,10 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         final label = (row['class_name'] ?? '').toString().trim();
                         final hasSeries = _classes.any((candidate) {
                           final candidateLabel = '${candidate['class_name'] ?? ''} ${candidate['track_label'] ?? ''}';
-                          return RegExp(r'terminale.*(?:\\bC\\b|\\bD\\b|\\bTI\\b)', caseSensitive: false)
+                          return RegExp(r'terminale.*(?:\bC\b|\bD\b|\bTI\b)', caseSensitive: false)
                               .hasMatch(candidateLabel);
                         });
-                        return !(hasSeries && RegExp(r'^terminale(?:\\s+simple)?
+                        return !(hasSeries && RegExp(r'^terminale(?:\s+simple)?
                         final id = row['class_id']?.toString();
                         final rawName = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
