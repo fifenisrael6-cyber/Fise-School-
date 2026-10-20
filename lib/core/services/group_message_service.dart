@@ -76,8 +76,43 @@ class GroupMessageService {
       // Students and older deployments may not expose this teacher-only RPC.
     }
 
-    final groups = byId.values.toList(growable: false);
-    if (groups.isNotEmpty) {
+    final fetchedGroups = byId.values.toList(growable: false);
+    if (fetchedGroups.isNotEmpty) {
+      // Every group owned by a teacher displays the same canonical FISE code
+      // used by payments. Keep each group's legacy invite code in the database
+      // so older invitations remain valid, but don't present them as separate
+      // teacher codes in the UI.
+      String? sharedTeacherCode;
+      if (fetchedGroups.any((group) => group.ownerId == _userId)) {
+        try {
+          final codeRow = await _client
+              .from('teacher_group_access_codes')
+              .select('code')
+              .eq('teacher_id', _userId)
+              .eq('is_active', true)
+              .maybeSingle();
+          sharedTeacherCode = codeRow?['code']?.toString();
+        } catch (_) {
+          // Keep the server-provided invitation as a compatibility fallback.
+        }
+      }
+      final groups = fetchedGroups.map((group) {
+        if (group.ownerId != _userId || sharedTeacherCode == null) {
+          return group;
+        }
+        return MessageGroup(
+          id: group.id,
+          name: group.name,
+          classId: group.classId,
+          className: group.className,
+          ownerId: group.ownerId,
+          inviteCode: sharedTeacherCode,
+          memberCount: group.memberCount,
+          lastBody: group.lastBody,
+          lastAt: group.lastAt,
+        );
+      }).toList(growable: false);
+
       for (final group in groups) {
         try {
           await _db.cacheMessageGroup(
