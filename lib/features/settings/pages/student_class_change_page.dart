@@ -120,11 +120,11 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
           // ambiguous generic room when C, D or TI alternatives exist.
           final hasTerminaleSeries = loaded.any((row) {
             final label = '${row['class_name'] ?? ''} ${row['track_label'] ?? ''}';
-            return RegExp(r'terminale.*(?:\\bC\\b|\\bD\\b|\\bTI\\b)', caseSensitive: false)
+            return RegExp(r'terminale.*(?:\bC\b|\bD\b|\bTI\b)', caseSensitive: false)
                 .hasMatch(label);
           });
           final all = hasTerminaleSeries
-              ? loaded.where((row) => !RegExp(r'^terminale(?:\\s+simple)?
+              ? loaded.where((row) => !RegExp(r'^terminale(?:\s+simple)?
         },
       ),
     );
