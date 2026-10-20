@@ -367,7 +367,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     // Avoid a slow model-list API request on every chat turn. Try the configured
     // model first, then known Flash fallbacks only if the provider rejects it.
     // This removes one network round-trip (and its 10-second timeout) from normal chats.
-    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\\//, "");
+    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace("models/", "");
     const models = [...new Set([
       ...(configuredModel ? [configuredModel] : []),
       "gemini-3.8-flash",
