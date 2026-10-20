@@ -215,6 +215,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     }
 
     final nameController = TextEditingController();
+    final classSearchController = TextEditingController();
     String? classId;
 
     final created = await showDialog<bool>(
@@ -235,17 +236,31 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 ),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: classSearchController,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 initialValue: classId,
+                isExpanded: true,
                 decoration: InputDecoration(
                   labelText: _fr ? 'Salle (facultatif)' : 'Classroom (optional)',
                   border: const OutlineInputBorder(),
                 ),
-                items: classes
-                    .map(
-                      (c) => DropdownMenuItem<String>(value: c.id, child: Text(c.displayName)),
-                    )
-                    .toList(),
+                items: [
+                  DropdownMenuItem<String>(
+                    value: null,
+                    child: Text(_fr ? 'Toutes les salles compatibles' : 'All compatible classrooms'),
+                  ),
+                  ...classes.where((c) => c.displayName.toLowerCase().contains(classSearchController.text.trim().toLowerCase()))
+                    .map((c) => DropdownMenuItem<String>(value: c.id, child: Text(c.displayName))),
+                ],
                 onChanged: (value) => setDialogState(() => classId = value),
               ),
             ],
@@ -266,6 +281,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
 
     final name = nameController.text.trim();
     nameController.dispose();
+    classSearchController.dispose();
 
     if (created != true || name.isEmpty) {
       return;
