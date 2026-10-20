@@ -88,10 +88,12 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
     } catch (error) {
       if (mounted) {
         final raw = error.toString();
-        final message = raw.contains('already used')
+        final message = raw.contains('already used') || raw.contains('already assigned')
             ? (_fr ? 'Ce code est déjà utilisé par un autre enseignant.' : 'This code is already used by another teacher.')
-            : (_fr ? 'Impossible d’enregistrer ce code. Vérifiez le format.' : 'Unable to save this code. Check the format.');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+            : raw.replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text((_fr ? 'Enregistrement impossible : ' : 'Unable to save code: ') + message)),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
