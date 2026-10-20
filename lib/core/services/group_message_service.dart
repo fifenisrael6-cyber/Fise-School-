@@ -235,6 +235,10 @@ class GroupMessageService {
     await _client.rpc('leave_message_group', params: {'p_group_id': groupId});
   }
 
+  Future<void> clearGroupForMe(String groupId) async {
+    await _client.rpc('clear_message_group_for_me', params: {'p_group_id': groupId});
+  }
+
   Future<void> deleteGroup(String groupId) async {
     await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
   }
