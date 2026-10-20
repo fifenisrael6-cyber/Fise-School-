@@ -194,6 +194,33 @@ class _GroupChatPageState extends State<GroupChatPage> {
     }
   }
 
+  Future<void> _clearGroupForMe() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Effacer la conversation ?' : 'Clear this conversation?'),
+        content: Text(_fr
+            ? 'Les anciens messages seront masqués uniquement pour vous. Vous restez membre et verrez les nouveaux messages.'
+            : 'Old messages will be hidden only for you. You remain a member and will see new messages.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Effacer' : 'Clear')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.clearGroupForMe(widget.group.id);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      await _load(showLoader: false);
+      if (mounted) _snack(_fr ? 'Conversation effacée pour vous.' : 'Conversation cleared for you.');
+    } catch (error) {
+      _snack((_fr ? 'Impossible d’effacer la conversation : ' : 'Unable to clear conversation: ') + error.toString());
+    }
+  }
+
+
   GroupMessage? _findMessage(String? id) {
     if (id == null) return null;
     for (final m in _messages) {
@@ -445,12 +472,19 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     icon: const Icon(Icons.delete_forever_rounded),
                     label: Text(_fr ? 'Supprimer le groupe pour tous' : 'Delete group for everyone'),
                   )
-                else
+                else ...[
+                  OutlinedButton.icon(
+                    onPressed: _groupActionInProgress ? null : _clearGroupForMe,
+                    icon: const Icon(Icons.cleaning_services_rounded),
+                    label: Text(_fr ? 'Effacer la conversation pour moi' : 'Clear conversation for me'),
+                  ),
+                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: _groupActionInProgress ? null : _leaveGroup,
                     icon: const Icon(Icons.logout_rounded),
                     label: Text(_fr ? 'Quitter le groupe' : 'Leave group'),
                   ),
+                ],
               ],
             ),
           ),
