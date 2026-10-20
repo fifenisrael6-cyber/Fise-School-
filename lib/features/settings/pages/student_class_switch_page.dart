@@ -163,7 +163,6 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       const SizedBox(height: 8),
                       ..._classes.map((row) {
                         final id = row['class_id']?.toString();
-                        final isCurrent = false;
                         final name = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
                         final details = [
@@ -182,7 +181,6 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                             title: Text(name),
                             subtitle: Text([
                               if (details.isNotEmpty) details,
-                              if (isCurrent) (_fr ? 'Salle actuelle' : 'Current classroom'),
                             ].join(' • ')),
                           ),
                         );
@@ -191,11 +189,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
-                          onPressed: _loading ||
-                                  _selectedClassId == null ||
-                                  _classes.any((row) =>
-                                      row['class_id']?.toString() == _selectedClassId &&
-                                      row['is_current'] == true)
+                          onPressed: _loading || _selectedClassId == null
                               ? null
                               : _switchClass,
                           child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
