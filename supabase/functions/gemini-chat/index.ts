@@ -371,19 +371,19 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     const models = [...new Set([
       ...(configuredModel ? [configuredModel] : []),
       "gemini-3.8-flash",
-      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
     ].filter((name) => name.startsWith("gemini-")
       && !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen)/i.test(name)
     ))].slice(0, 2);
 
     let data: any = null;
     let lastError = "Gemini request failed.";
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + 17000;
     for (const model of models) {
       const remaining = deadline - Date.now();
       if (remaining < 1000) break;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), Math.min(12000, remaining));
+      const timeout = setTimeout(() => controller.abort(), Math.min(8500, remaining));
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
