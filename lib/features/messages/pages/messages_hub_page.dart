@@ -239,8 +239,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
       classes = (await CourseService().listTeacherCompatibleClasses())
           .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
           .where((schoolClass) =>
-              (widget.profile.subsystem == null || schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
-              (widget.profile.sector == null || schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
+              (widget.profile.subsystem != null && schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
+              (widget.profile.sector != null && schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
           .toList(growable: false);
     } catch (_) {
       classes = const [];
