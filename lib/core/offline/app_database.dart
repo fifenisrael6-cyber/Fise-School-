@@ -136,7 +136,7 @@ class AppDatabase extends _$AppDatabase {
   Future<String?> getOfflineCatalogCache(String userId, String cacheKey) async {
     final rows = await customSelect(
       'SELECT data_json FROM offline_catalog_cache WHERE user_id = ? AND cache_key = ? LIMIT 1',
-      variables: [userId, cacheKey],
+      variables: [Variable(userId), Variable(cacheKey)],
     ).get();
     return rows.isEmpty ? null : rows.first.read<String>('data_json');
   }
@@ -151,7 +151,7 @@ class AppDatabase extends _$AppDatabase {
       VALUES(?,?,?,?)
       ON CONFLICT(user_id, cache_key) DO UPDATE SET
         data_json=excluded.data_json, updated_at=excluded.updated_at''',
-      [userId, cacheKey, dataJson, Variable(DateTime.now().toUtc().toIso8601String())],
+      [userId, cacheKey, dataJson, DateTime.now().toUtc().toIso8601String()],
     );
   }
 
@@ -183,8 +183,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<DownloadedFileRecord>> getDownloadedFiles({String? userId, String? courseId}) async {
     final where = <String>[];
     final variables = <Variable<Object>>[];
-    if (userId != null) { where.add('user_id = ?'); variables.add(userId); }
-    if (courseId != null) { where.add('course_id = ?'); variables.add(courseId); }
+    if (userId != null) { where.add('user_id = ?'); variables.add(Variable(userId)); }
+    if (courseId != null) { where.add('course_id = ?'); variables.add(Variable(courseId)); }
     final rows = await customSelect(
       'SELECT * FROM downloaded_files${where.isEmpty ? '' : ' WHERE ${where.join(' AND ')}'} ORDER BY COALESCE(last_opened_at, downloaded_at) ASC',
       variables: variables,
@@ -195,7 +195,7 @@ class AppDatabase extends _$AppDatabase {
   Future<DownloadedFileRecord?> getDownloadedFile(String resourceId, String userId) async {
     final rows = await customSelect(
       'SELECT * FROM downloaded_files WHERE resource_id = ? AND user_id = ? LIMIT 1',
-      variables: [resourceId, userId],
+      variables: [Variable(resourceId), Variable(userId)],
     ).get();
     return rows.isEmpty ? null : DownloadedFileRecord.fromRow(rows.first);
   }
@@ -205,7 +205,7 @@ class AppDatabase extends _$AppDatabase {
       '''INSERT INTO downloaded_files(resource_id,course_id,user_id,file_name,mime_type,local_path,size_bytes,remote_updated_at,downloaded_at,last_opened_at,status)
       VALUES(?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(resource_id) DO UPDATE SET course_id=excluded.course_id,user_id=excluded.user_id,file_name=excluded.file_name,mime_type=excluded.mime_type,local_path=excluded.local_path,size_bytes=excluded.size_bytes,remote_updated_at=excluded.remote_updated_at,downloaded_at=excluded.downloaded_at,last_opened_at=excluded.last_opened_at,status=excluded.status''',
-      [file.resourceId, file.courseId, file.userId, file.fileName, file.mimeType ?? '', file.localPath, file.sizeBytes, Variable(file.remoteUpdatedAt?.toIso8601String() ?? ''), Variable(file.downloadedAt?.toIso8601String() ?? ''), Variable(file.lastOpenedAt?.toIso8601String() ?? ''), file.status],
+      [file.resourceId, file.courseId, file.userId, file.fileName, file.mimeType ?? '', file.localPath, file.sizeBytes, file.remoteUpdatedAt?.toIso8601String() ?? '', file.downloadedAt?.toIso8601String() ?? '', file.lastOpenedAt?.toIso8601String() ?? '', file.status],
     );
   }
 
@@ -214,7 +214,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> markDownloadedFileOpened(String resourceId, String userId) async {
-    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [Variable(DateTime.now().toIso8601String()), resourceId, userId]);
+    await customStatement("UPDATE downloaded_files SET last_opened_at = ?, status = 'done' WHERE resource_id = ? AND user_id = ?",  [DateTime.now().toIso8601String(), resourceId, userId]);
   }
 
   Future<void> deleteDownloadedFile(String resourceId, String userId) async {
@@ -226,7 +226,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> downloadedFilesSize(String userId) async {
-    final rows = await customSelect("SELECT COALESCE(SUM(size_bytes),0) AS total FROM downloaded_files WHERE user_id = ? AND status = 'done'", variables: [userId]).get();
+    final rows = await customSelect("SELECT COALESCE(SUM(size_bytes),0) AS total FROM downloaded_files WHERE user_id = ? AND status = 'done'", variables: [Variable(userId)]).get();
     return rows.first.read<int>('total');
   }
 
@@ -287,15 +287,15 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcm({required String id, required String userId, required String kind, String? assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT INTO offline_qcm(id,user_id,kind,assignment_id,data_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id,user_id,kind) DO UPDATE SET assignment_id=excluded.assignment_id,data_json=excluded.data_json,updated_at=excluded.updated_at",
-       [id, userId, kind, assignmentId, dataJson, Variable(DateTime.now().toIso8601String())],
+       [id, userId, kind, assignmentId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
   Future<List<QueryRow>> getOfflineQcm(String userId, String kind, {String? assignmentId}) async {
     final filter = assignmentId == null ? '' : ' AND assignment_id = ?';
-    final variables = <Variable<Object>>[userId, kind];
+    final variables = <Variable<Object>>[Variable(userId), Variable(kind)];
     if (assignmentId != null) {
-      variables.add(assignmentId);
+      variables.add(Variable(assignmentId));
     }
     return customSelect('SELECT * FROM offline_qcm WHERE user_id = ? AND kind = ?$filter ORDER BY updated_at', variables: variables).get();
   }
@@ -303,25 +303,25 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveOfflineQcmQueue({required String id, required String userId, required String submissionId, required String assignmentId, required String dataJson}) async {
     await customStatement(
       "INSERT OR REPLACE INTO offline_qcm_queue(id,user_id,submission_id,assignment_id,data_json,queued_at) VALUES(?,?,?,?,?,?)",
-       [id, userId, submissionId, assignmentId, dataJson, Variable(DateTime.now().toIso8601String())],
+       [id, userId, submissionId, assignmentId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
-  Future<List<QueryRow>> getOfflineQcmQueue(String userId) => customSelect('SELECT * FROM offline_qcm_queue WHERE user_id = ? ORDER BY queued_at', variables: [userId]).get();
+  Future<List<QueryRow>> getOfflineQcmQueue(String userId) => customSelect('SELECT * FROM offline_qcm_queue WHERE user_id = ? ORDER BY queued_at', variables: [Variable(userId)]).get();
 
   Future<void> deleteOfflineQcmQueue(String id, String userId) => customStatement('DELETE FROM offline_qcm_queue WHERE id = ? AND user_id = ?',  [id, userId]);
 
   Future<void> saveSmartLesson({required String userId, required String id, required String dataJson}) async {
     await customStatement(
       'INSERT INTO smart_lessons_cache(id,user_id,data_json,cached_at) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id,data_json=excluded.data_json,cached_at=excluded.cached_at',
-       [id, userId, dataJson, Variable(DateTime.now().toIso8601String())],
+       [id, userId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
   Future<QueryRow?> getSmartLesson(String userId, String id) async {
     final rows = await customSelect(
       'SELECT * FROM smart_lessons_cache WHERE user_id = ? AND id = ? LIMIT 1',
-      variables: [userId, id],
+      variables: [Variable(userId), Variable(id)],
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
@@ -329,26 +329,26 @@ class AppDatabase extends _$AppDatabase {
   Future<QueryRow?> latestSmartLesson(String userId) async {
     final rows = await customSelect(
       'SELECT * FROM smart_lessons_cache WHERE user_id = ? ORDER BY cached_at DESC LIMIT 1',
-      variables: [userId],
+      variables: [Variable(userId)],
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
 
   Future<List<QueryRow>> getSmartLessons(String userId) => customSelect(
     'SELECT * FROM smart_lessons_cache WHERE user_id = ? ORDER BY cached_at DESC',
-    variables: [userId],
+    variables: [Variable(userId)],
   ).get();
 
   Future<void> queueSmartExercise({required String id, required String userId, required String lessonId, required String answersJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_queue(id,user_id,lesson_id,answers_json,queued_at) VALUES(?,?,?,?,?)',
-       [id, userId, lessonId, answersJson, Variable(DateTime.now().toIso8601String())],
+       [id, userId, lessonId, answersJson, DateTime.now().toIso8601String()],
     );
   }
 
   Future<List<QueryRow>> getSmartExerciseQueue(String userId) => customSelect(
     'SELECT * FROM smart_exercise_queue WHERE user_id = ? ORDER BY queued_at',
-    variables: [userId],
+    variables: [Variable(userId)],
   ).get();
 
   Future<void> deleteSmartExerciseQueue(String id, String userId) => customStatement(
@@ -359,14 +359,14 @@ class AppDatabase extends _$AppDatabase {
   Future<void> saveSmartExerciseResult({required String id, required String userId, required String lessonId, required String dataJson}) async {
     await customStatement(
       'INSERT OR REPLACE INTO smart_exercise_results(id,user_id,lesson_id,data_json,saved_at) VALUES(?,?,?,?,?)',
-       [id, userId, lessonId, dataJson, Variable(DateTime.now().toIso8601String())],
+       [id, userId, lessonId, dataJson, DateTime.now().toIso8601String()],
     );
   }
 
   Future<QueryRow?> getSmartExerciseResult(String userId, String lessonId) async {
     final rows = await customSelect(
       'SELECT * FROM smart_exercise_results WHERE user_id = ? AND lesson_id = ? ORDER BY saved_at DESC LIMIT 1',
-      variables: [userId, lessonId],
+      variables: [Variable(userId), Variable(lessonId)],
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
@@ -474,7 +474,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<QueryRow>> getCachedMessages(String userId, String kind, String threadId) =>
       customSelect(
         'SELECT * FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? ORDER BY created_at ASC',
-        variables: [userId, kind, threadId],
+        variables: [Variable(userId), Variable(kind), Variable(threadId)],
       ).get();
 
   Future<void> queueMessage(Map<String, Object?> message) async {
@@ -490,7 +490,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<QueryRow>> getQueuedMessages(String userId, String kind) => customSelect(
     'SELECT * FROM message_outbox WHERE user_id=? AND kind=? ORDER BY created_at ASC',
-    variables: [userId, kind],
+    variables: [Variable(userId), Variable(kind)],
   ).get();
 
   Future<void> markMessageSent(String id, {String? attachmentPath}) async {
@@ -519,7 +519,7 @@ class AppDatabase extends _$AppDatabase {
   /// leçons intelligentes, QCM). Les envois non terminés (files d'attente) sont conservés
   /// pour être envoyés à la prochaine connexion du même compte.
   Future<void> clearUserReadCaches(String userId) async {
-    final v = [userId];
+    final v = [Variable(userId)];
     await customStatement("DELETE FROM message_cache WHERE user_id=? AND sync_status<>'pending'", v);
     await customStatement('DELETE FROM message_contacts_cache WHERE user_id=?', v);
     await customStatement('DELETE FROM message_groups_cache WHERE user_id=?', v);
@@ -534,7 +534,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<QueryRow>> getCachedMessageContacts(String userId) => customSelect(
     'SELECT data_json FROM message_contacts_cache WHERE user_id=? ORDER BY contact_id',
-    variables: [userId],
+    variables: [Variable(userId)],
   ).get();
 
   Future<void> cacheMessageGroup(String userId, String groupId, String dataJson) =>
@@ -542,7 +542,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<QueryRow>> getCachedMessageGroups(String userId) => customSelect(
     'SELECT data_json FROM message_groups_cache WHERE user_id=? ORDER BY group_id',
-    variables: [userId],
+    variables: [Variable(userId)],
   ).get();
 
   Future<List<CachedCourse>> getAllCourses() {
