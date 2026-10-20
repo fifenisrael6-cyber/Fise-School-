@@ -171,8 +171,17 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                             .hasMatch(label));
                       }).map((row) {
                         final id = row['class_id']?.toString();
-                        final name = row['class_name']?.toString() ??
+                        final rawName = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
+                        final rawTrack = (row['track_label'] ?? '').toString().trim();
+                        final trackCode = rawTrack
+                            .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '')
+                            .split(RegExp(r'\s*[-–]')).first.trim().toUpperCase();
+                        final name = RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false)
+                                    .hasMatch(rawName.trim()) &&
+                                const {'C', 'D', 'TI'}.contains(trackCode)
+                            ? 'Terminale $trackCode'
+                            : rawName;
                         final details = [
                           row['exam_level_label']?.toString(),
                           row['track_label']?.toString(),
