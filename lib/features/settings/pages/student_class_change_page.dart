@@ -44,13 +44,17 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
   void _reload() => setState(() => _classesFuture = _service.listNextClasses());
 
   bool _isCombinedLanguageRoom(Map<String, dynamic> row) {
-    final label = (row['class_name'] ?? '').toString();
-    final track = (row['track_label'] ?? '').toString();
-    final option = (row['language_option'] ?? '').toString();
-    return RegExp(
-      r'(espagnol|spanish).*(allemand|german)|(allemand|german).*(espagnol|spanish)',
-      caseSensitive: false,
-    ).hasMatch('$label $track $option');
+    final searchable = [
+      row['class_name'], row['track_label'], row['language_option'],
+    ].whereType<Object>().join(' ').toLowerCase();
+    const languageNames = <String>[
+      'anglais', 'english', 'allemand', 'german',
+      'espagnol', 'espaniol', 'espanol', 'spanish',
+      'italien', 'italian', 'arabe', 'arabic',
+      'chinois', 'chinese', 'portugais', 'portuguese',
+      'russe', 'russian', 'latin',
+    ];
+    return languageNames.where(searchable.contains).length >= 2;
   }
 
   String _label(Map<String, dynamic> row) {
