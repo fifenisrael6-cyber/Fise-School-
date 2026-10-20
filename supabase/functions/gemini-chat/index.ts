@@ -367,22 +367,23 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     // Avoid a slow model-list API request on every chat turn. Try the configured
     // model first, then known Flash fallbacks only if the provider rejects it.
     // This removes one network round-trip (and its 10-second timeout) from normal chats.
-    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace("models/", "");
+    const configuredModel = (Deno.env.get("GEMINI_MODEL") ?? "").trim().replace(/^models\//, "");
     const models = [...new Set([
       ...(configuredModel ? [configuredModel] : []),
       "gemini-3.8-flash",
       "gemini-3.6-flash",
-      "gemini-3.5-flash-lite",
-    ].filter((name) =>
-      name.startsWith("gemini-") &&
-      !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen)/i.test(name)
-    ))];
+    ].filter((name) => name.startsWith("gemini-")
+      && !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen)/i.test(name)
+    ))].slice(0, 2);
 
     let data: any = null;
     let lastError = "Gemini request failed.";
+    const deadline = Date.now() + 25000;
     for (const model of models) {
+      const remaining = deadline - Date.now();
+      if (remaining < 1000) break;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 18000);
+      const timeout = setTimeout(() => controller.abort(), Math.min(12000, remaining));
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -397,17 +398,33 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
             signal: controller.signal,
           },
         );
-        data = await response.json().catch(() => ({}));
-        if (response.ok) break;
-        const safeProviderBody = JSON.stringify(data ?? {}).replaceAll(apiKey, "[REDACTED]").slice(0, 4000);
-        console.error("[gemini-chat] AI provider HTTP error", JSON.stringify({ model, status: response.status, body: safeProviderBody }));
-        lastError = `Gemini HTTP ${response.status}: ${data?.error?.message ?? safeProviderBody}`;
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && Array.isArray(payload?.candidates) && payload.candidates.length > 0) {
+          data = payload;
+          break;
+        }
+        if (response.ok) {
+          lastError = "Gemini returned an empty response.";
+          console.warn("[gemini-chat] empty AI response", JSON.stringify({ model }));
+          continue;
+        }
+        const safeProviderBody = JSON.stringify(payload ?? {})
+          .replaceAll(apiKey, "[REDACTED]").slice(0, 1200);
+        lastError = `Gemini HTTP ${response.status}: ${payload?.error?.message ?? safeProviderBody}`;
+        console.warn("[gemini-chat] AI provider HTTP error", JSON.stringify({
+          model,
+          status: response.status,
+          body: safeProviderBody,
+        }));
         if (![404, 429, 500, 502, 503, 504].includes(response.status)) break;
       } catch (error) {
         lastError = error instanceof DOMException && error.name === "AbortError"
           ? `Gemini request timed out on ${model}.`
           : (error instanceof Error ? error.message : "Gemini request failed.");
-        console.error("[gemini-chat] Gemini request exception", JSON.stringify({ model, message: lastError.slice(0, 1500) }));
+        console.warn("[gemini-chat] Gemini request exception", JSON.stringify({
+          model,
+          message: lastError.slice(0, 300),
+        }));
       } finally {
         clearTimeout(timeout);
       }
