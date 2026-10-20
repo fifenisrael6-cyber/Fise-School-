@@ -31,12 +31,21 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   late Future<List<SchoolClass>> _classesFuture;
   final Set<String> _selectedIds = <String>{};
+  final TextEditingController _classSearch = TextEditingController();
+  final TextEditingController _subjectSearch = TextEditingController();
   List<SchoolClass> _allClasses = const [];
   List<Subject> _subjects = const [];
   Subject? _subject;
   bool _loadingSubjects = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+
+  @override
+  void dispose() {
+    _classSearch.dispose();
+    _subjectSearch.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -232,6 +241,8 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final subjectQuery = _subjectSearch.text.trim().toLowerCase();
+    final visibleSubjects = _subjects.where((subject) => subject.labelFor(widget.locale.languageCode).toLowerCase().contains(subjectQuery)).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -255,18 +266,40 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
                   ? 'Aucune salle ne vous est affectée. Contactez l’administration.'
                   : 'No classroom is assigned to you. Contact the administration.');
             }
-            return Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: classes
-                  .map(
-                    (schoolClass) => FilterChip(
+            final query = _classSearch.text.trim().toLowerCase();
+            final visibleClasses = classes
+                .where((schoolClass) => schoolClass.displayName.toLowerCase().contains(query))
+                .toList(growable: false);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _classSearch,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
+                    suffixIcon: _classSearch.text.isEmpty ? null : IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(_classSearch.clear),
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (visibleClasses.isEmpty)
+                  Text(_fr ? 'Aucune salle trouvée.' : 'No classroom found.')
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: visibleClasses.map((schoolClass) => FilterChip(
                       label: Text(schoolClass.displayName),
                       selected: _selectedIds.contains(schoolClass.id),
                       onSelected: (value) => _toggleClass(schoolClass, value),
-                    ),
-                  )
-                  .toList(),
+                    )).toList(),
+                  ),
+              ],
             );
           },
         ),
@@ -294,26 +327,40 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
           Text(_fr
               ? 'Aucune matière n’est affectée à cette salle. Ajoutez une matière ou contactez l’administration.'
               : 'No subject is assigned to this classroom. Add a subject or contact the administration.')
-        else
-          DropdownButtonFormField<String>(
-            key: ValueKey('${_subject?.id}-${_subjects.length}'),
-            initialValue: _subject?.id,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: _subjects
-                .map(
-                  (subject) => DropdownMenuItem<String>(
-                    value: subject.id,
-                    child: Text(subject.labelFor(widget.locale.languageCode)),
-                  ),
-                )
-                .toList(),
-            onChanged: (id) {
-              setState(() {
-                _subject = _subjects.firstWhere((s) => s.id == id);
-              });
-              _notify();
-            },
+        else ...[
+          TextField(
+            controller: _subjectSearch,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: _fr ? 'Rechercher une matière…' : 'Search subjects…',
+              suffixIcon: _subjectSearch.text.isEmpty ? null : IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(_subjectSearch.clear),
+              ),
+              border: const OutlineInputBorder(),
+            ),
           ),
+          const SizedBox(height: 8),
+          if (visibleSubjects.isEmpty)
+            Text(_fr ? 'Aucune matière trouvée.' : 'No subject found.')
+          else
+            DropdownButtonFormField<String>(
+              key: ValueKey('${_subject?.id}-${_subjects.length}-${visibleSubjects.length}'),
+              initialValue: visibleSubjects.any((s) => s.id == _subject?.id) ? _subject?.id : null,
+              isExpanded: true,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+              items: visibleSubjects.map((subject) => DropdownMenuItem<String>(
+                value: subject.id,
+                child: Text(subject.labelFor(widget.locale.languageCode)),
+              )).toList(growable: false),
+              onChanged: (id) {
+                if (id == null) return;
+                setState(() => _subject = _subjects.firstWhere((s) => s.id == id));
+                _notify();
+              },
+            ),
+        ],
       ],
     );
   }
