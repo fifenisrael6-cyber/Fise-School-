@@ -35,6 +35,7 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
   String? _error;
   List<ExamDefinition> _exams = [];
   List<PastPaper> _items = [];
+  bool _initialSharedPrompted = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -42,11 +43,14 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
   void initState() {
     super.initState();
     _load();
-    if (widget.initialSharedAttachments.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _add(initialAttachment: widget.initialSharedAttachments.first);
-      });
-    }
+  }
+
+  void _promptForInitialSharedPaper() {
+    if (_initialSharedPrompted || widget.initialSharedAttachments.isEmpty) return;
+    _initialSharedPrompted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _add(initialAttachment: widget.initialSharedAttachments.first);
+    });
   }
 
   String get _papersCacheKey => 'teacher_past_papers_${widget.profile.id}';
@@ -102,12 +106,14 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
         _loading = false;
         _error = null;
       });
+      _promptForInitialSharedPaper();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = hasCached ? null : (_fr ? 'Chargement impossible : $e' : 'Unable to load: $e');
         _loading = false;
       });
+      _promptForInitialSharedPaper();
     }
   }
 
