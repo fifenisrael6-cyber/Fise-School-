@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/group_message_service.dart';
 import '../../../core/services/photo_service.dart';
@@ -27,6 +28,7 @@ class MessagesHubPage extends StatefulWidget {
 class _MessagesHubPageState extends State<MessagesHubPage> {
   final GroupMessageService _service = GroupMessageService();
   late Future<List<MessageGroup>> _groupsFuture;
+  RealtimeChannel? _groupsChannel;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isTeacher => widget.profile.role == 'teacher' || widget.profile.role == 'admin';
@@ -35,6 +37,27 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   void initState() {
     super.initState();
     _groupsFuture = _service.listGroups();
+    // Keep the Messages navigation widget while restoring live updates in its
+    // conversation list, so new group messages refresh the preview and time.
+    _groupsChannel = Supabase.instance.client
+        .channel('messages-hub-${widget.profile.id}')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_messages',
+        callback: (_) {
+          if (mounted) {
+            setState(() => _groupsFuture = _service.listGroups());
+          }
+        },
+      )
+      ..subscribe();
+  }
+
+  @override
+  void dispose() {
+    _groupsChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _reload() async {
