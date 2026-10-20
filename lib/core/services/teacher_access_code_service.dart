@@ -131,21 +131,4 @@ class TeacherAccessCodeService {
 
   String _cleanCode(String value) => value.trim().toUpperCase().replaceFirst(RegExp(r'^FISE-?'), '');
 
-  /// Génère un code aléatoire
-  String _generateCode() {
-    final random = DateTime.now().microsecond;
-    final part1 = random.toString().padLeft(6, '0').substring(0, 6);
-    return part1;
-  }
-
-  /// Valide le format
-  void _validateCode(String code) {
-    final cleanCode = _cleanCode(code);
-    if (cleanCode.isEmpty || cleanCode.length < 3) {
-      throw ArgumentError('Code must be at least 3 characters long');
-    }
-    if (!RegExp(r'^[a-zA-Z0-9_-]*$').hasMatch(cleanCode)) {
-      throw ArgumentError('Code can only contain letters, numbers, underscore and hyphen');
-    }
-  }
 }
