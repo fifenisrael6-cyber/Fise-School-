@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../models/teacher_access_code.dart';
 
 class TeacherAccessCodeService {
@@ -7,7 +8,6 @@ class TeacherAccessCodeService {
   TeacherAccessCodeService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  /// Récupère le code d'accès de l'enseignant pour une classe
   Future<TeacherAccessCode?> getAccessCodeForClass(
     String teacherId,
     String classId,
@@ -19,25 +19,20 @@ class TeacherAccessCodeService {
           .eq('teacher_id', teacherId)
           .eq('class_id', classId)
           .maybeSingle();
-
-      if (response == null) {
-        return null;
-      }
-
-      return TeacherAccessCode.fromMap(response);
+      if (response == null) return null;
+      return TeacherAccessCode.fromMap(Map<String, dynamic>.from(response));
     } catch (_) {
       return null;
     }
   }
 
-  /// Crée ou récupère le code d'accès pour une classe
   Future<TeacherAccessCode> getOrCreateAccessCode(
     String teacherId,
     String classId,
     String? suggestedCode,
   ) async {
-    // Always use the single canonical teacher code; never generate a per-room
-    // GRP/IGPGRP code.
+    // A suggested per-class code is deliberately ignored: all rooms use the
+    // same canonical FISE code owned by this teacher.
     final canonical = (await _client.rpc('get_or_create_teacher_group_access_code'))
         .toString()
         .trim()
@@ -61,7 +56,7 @@ class TeacherAccessCodeService {
     return TeacherAccessCode.fromMap(Map<String, dynamic>.from(row));
   }
 
-  /// Updates the one canonical code, not an individual classroom code.
+  /// Updates the one shared code for groups, payments, evaluations and rooms.
   Future<TeacherAccessCode> updateAccessCode(
     String accessCodeId,
     String newCode,
@@ -70,7 +65,10 @@ class TeacherAccessCodeService {
     if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(suffix)) {
       throw ArgumentError('Use exactly six letters or numbers after FISE-.');
     }
-    await _client.rpc('set_teacher_fise_code', params: {'p_code': 'FISE-$suffix'});
+    await _client.rpc(
+      'set_teacher_fise_code',
+      params: {'p_code': 'FISE-$suffix'},
+    );
     final response = await _client
         .from('teacher_access_codes')
         .select()
@@ -79,36 +77,43 @@ class TeacherAccessCodeService {
     return TeacherAccessCode.fromMap(Map<String, dynamic>.from(response));
   }
 
-  /// Valide le code ET active immédiatement l'accès de l'élève au groupe.
-  /// Le RPC serveur ajoute aussi l'élève à class_students et
-  /// teacher_access_memberships, utilisés pour autoriser les évaluations.
+  /// Activates the same shared FISE code for the selected classroom.
   Future<bool> validateAccessCode(
     String code,
     String studentClassId,
   ) async {
     try {
       final suffix = _cleanCode(code);
-      if (!RegExp(r'^[A-Z0-9]{6}
-
+      if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(suffix)) return false;
+      final canonicalCode = 'FISE-$suffix';
+      final response = await _client.rpc(
+        'join_teacher_access_code_for_class',
+        params: {
+          'p_code': canonicalCode,
+          'p_expected_class_id': studentClassId,
+        },
+      );
       return response is List && response.isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
-  /// Récupère tous les codes d'accès de l'enseignant
+  /// Returns a single visible code even though the database keeps a row for
+  /// each classroom to preserve existing access relationships.
   Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
     try {
-      // This call synchronizes all legacy per-class rows to the shared FISE code.
+      // Synchronizes older room-specific codes to the canonical FISE code.
       await _client.rpc('get_or_create_teacher_group_access_code');
       var response = await _client
           .from('teacher_access_codes')
           .select()
           .eq('teacher_id', teacherId)
           .order('created_at', ascending: false);
-
       var rows = (response as List)
-          .map((item) => TeacherAccessCode.fromMap(Map<String, dynamic>.from(item as Map)))
+          .map((item) => TeacherAccessCode.fromMap(
+                Map<String, dynamic>.from(item as Map),
+              ))
           .toList();
 
       if (rows.isEmpty) {
@@ -120,9 +125,9 @@ class TeacherAccessCodeService {
             .eq('is_active', true)
             .limit(1);
         if (teacherClasses.isNotEmpty) {
-          classId = (teacherClasses.first as Map)['class_id']?.toString();
+          classId = teacherClasses.first['class_id']?.toString();
         }
-        if (classId == null) {
+        if (classId == null || classId.isEmpty) {
           final groups = await _client
               .from('message_groups')
               .select('class_id')
@@ -130,7 +135,7 @@ class TeacherAccessCodeService {
               .not('class_id', 'is', null)
               .limit(1);
           if (groups.isNotEmpty) {
-            classId = (groups.first as Map)['class_id']?.toString();
+            classId = groups.first['class_id']?.toString();
           }
         }
         if (classId != null && classId.isNotEmpty) {
@@ -141,7 +146,9 @@ class TeacherAccessCodeService {
               .eq('teacher_id', teacherId)
               .order('created_at', ascending: false);
           rows = (response as List)
-              .map((item) => TeacherAccessCode.fromMap(Map<String, dynamic>.from(item as Map)))
+              .map((item) => TeacherAccessCode.fromMap(
+                    Map<String, dynamic>.from(item as Map),
+                  ))
               .toList();
         }
       }
@@ -153,7 +160,6 @@ class TeacherAccessCodeService {
     }
   }
 
-  /// Désactive un code d'accès
   Future<void> deactivateAccessCode(String accessCodeId) async {
     await _client
         .from('teacher_access_codes')
@@ -161,51 +167,6 @@ class TeacherAccessCodeService {
         .eq('id', accessCodeId);
   }
 
-  String _cleanCode(String value) => value.trim().toUpperCase().replaceFirst(RegExp(r'^FISE-?'), '');
-
-}
-).hasMatch(suffix)) return false;
-      final canonicalCode = 'FISE-$suffix';
-
-      final response = await _client.rpc(
-        'join_teacher_access_code_for_class',
-        params: {
-          'p_code': canonicalCode,
-          'p_expected_class_id': studentClassId,
-        },
-      );
-
-      return response is List && response.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Récupère tous les codes d'accès de l'enseignant
-  Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
-    try {
-      final response = await _client
-          .from('teacher_access_codes')
-          .select()
-          .eq('teacher_id', teacherId)
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  /// Désactive un code d'accès
-  Future<void> deactivateAccessCode(String accessCodeId) async {
-    await _client
-        .from('teacher_access_codes')
-        .update({'is_active': false})
-        .eq('id', accessCodeId);
-  }
-
-  String _cleanCode(String value) => value.trim().toUpperCase().replaceFirst(RegExp(r'^FISE-?'), '');
-
+  String _cleanCode(String value) =>
+      value.trim().toUpperCase().replaceFirst(RegExp(r'^FISE-?'), '');
 }
