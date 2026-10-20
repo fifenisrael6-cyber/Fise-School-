@@ -1,7 +1,7 @@
 -- Canonical teacher code: FISE-XXXXXX, shared across all of that teacher's classrooms,
 -- groups, payment references and evaluation access.
 -- The canonical uniqueness constraint lives in teacher_group_access_codes / teacher_payment_codes.
-drop index if exists public.teacher_access_codes_code_key;
+alter table public.teacher_access_codes drop constraint if exists teacher_access_codes_code_key;
 
 create or replace function public.set_teacher_fise_code(p_code text)
 returns text
