@@ -36,57 +36,47 @@ class TeacherAccessCodeService {
     String classId,
     String? suggestedCode,
   ) async {
-    var existing = await getAccessCodeForClass(teacherId, classId);
-
-    if (existing != null) {
-      return existing;
+    // Always use the single canonical teacher code; never generate a per-room
+    // GRP/IGPGRP code.
+    final canonical = (await _client.rpc('get_or_create_teacher_group_access_code'))
+        .toString()
+        .trim()
+        .toUpperCase();
+    if (!RegExp(r'^FISE-[A-Z0-9]{6}$').hasMatch(canonical)) {
+      throw StateError('The teacher FISE code is invalid.');
     }
 
-    // Générer un code si non fourni
-    final code = _cleanCode(suggestedCode ?? _generateCode());
-
-    if (code.isEmpty) {
-      throw ArgumentError('Code cannot be empty');
-    }
-
-    // Valider le format
-    _validateCode(code);
-
-    final now = DateTime.now();
-    final newCode = TeacherAccessCode(
-      id: '${teacherId}_${classId}_${now.millisecondsSinceEpoch}',
-      teacherId: teacherId,
-      code: code,
-      classId: classId,
-      createdAt: now,
-      isActive: true,
-    );
-
-    await _client.from('teacher_access_codes').insert(newCode.toMap());
-
-    return newCode;
+    final row = await _client
+        .from('teacher_access_codes')
+        .upsert({
+          'id': '${teacherId}:${classId}',
+          'teacher_id': teacherId,
+          'code': canonical,
+          'class_id': classId,
+          'is_active': true,
+          'updated_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'teacher_id,class_id')
+        .select()
+        .single();
+    return TeacherAccessCode.fromMap(Map<String, dynamic>.from(row));
   }
 
-  /// Met à jour le code d'accès
+  /// Updates the one canonical code, not an individual classroom code.
   Future<TeacherAccessCode> updateAccessCode(
     String accessCodeId,
     String newCode,
   ) async {
-    _validateCode(newCode);
-
-    final cleanCode = _cleanCode(newCode);
-
+    final suffix = _cleanCode(newCode);
+    if (!RegExp(r'^[A-Z0-9]{6}$').hasMatch(suffix)) {
+      throw ArgumentError('Use exactly six letters or numbers after FISE-.');
+    }
+    await _client.rpc('set_teacher_fise_code', params: {'p_code': 'FISE-$suffix'});
     final response = await _client
         .from('teacher_access_codes')
-        .update({
-          'code': cleanCode,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', accessCodeId)
         .select()
+        .eq('id', accessCodeId)
         .single();
-
-    return TeacherAccessCode.fromMap(response);
+    return TeacherAccessCode.fromMap(Map<String, dynamic>.from(response));
   }
 
   /// Valide le code ET active immédiatement l'accès de l'élève au groupe.
