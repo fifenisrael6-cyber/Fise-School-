@@ -161,7 +161,67 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       const SizedBox(height: 8),
-                      ..._classes.map((row) {
+                      ..._classes.where((row) {
+                        final label = (row['class_name'] ?? '').toString().trim();
+                        final hasSeries = _classes.any((candidate) {
+                          final candidateLabel = '${candidate['class_name'] ?? ''} ${candidate['track_label'] ?? ''}';
+                          return RegExp(r'terminale.*(?:\\bC\\b|\\bD\\b|\\bTI\\b)', caseSensitive: false)
+                              .hasMatch(candidateLabel);
+                        });
+                        return !(hasSeries && RegExp(r'^terminale(?:\\s+simple)?
+                        final id = row['class_id']?.toString();
+                        final rawName = row['class_name']?.toString() ??
+                            (_fr ? 'Salle sans nom' : 'Unnamed classroom');
+                        final rawTrack = row['track_label']?.toString().trim() ?? '';
+                        final track = rawTrack.replaceFirst(
+                          RegExp(r'^(série|serie)\s+', caseSensitive: false), '',
+                        );
+                        final isGenericTerminale = RegExp(
+                          r'^terminale(?:\s+simple)?$', caseSensitive: false,
+                        ).hasMatch(rawName.trim());
+                        final name = isGenericTerminale &&
+                                const {'D', 'C', 'TI'}.contains(track.toUpperCase())
+                            ? 'Terminale ${track.toUpperCase()}'
+                            : rawName;
+                        final details = [
+                          row['exam_level_label']?.toString(),
+                          row['track_label']?.toString(),
+                          row['subsystem']?.toString(),
+                          row['sector']?.toString(),
+                        ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
+                        return Card(
+                          child: RadioListTile<String>(
+                            value: id ?? '',
+                            groupValue: _selectedClassId,
+                            onChanged: id == null || id.isEmpty
+                                ? null
+                                : (value) => setState(() => _selectedClassId = value),
+                            title: Text(name),
+                            subtitle: Text([
+                              if (details.isNotEmpty) details,
+                            ].join(' • ')),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _loading || _selectedClassId == null
+                              ? null
+                              : _switchClass,
+                          child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+      );
+}
+, caseSensitive: false)
+                            .hasMatch(label));
+                      }).map((row) {
                         final id = row['class_id']?.toString();
                         final rawName = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
