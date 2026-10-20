@@ -320,11 +320,15 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     }
 
     try {
-      await _service.joinWithCode(code);
+      final joinedGroupId = await _service.joinWithCode(code);
       await _reload();
-      _snack(_fr ? 'Groupes autorisés ajoutés.' : 'Eligible groups added.');
-    } catch (_) {
-      _snack(_fr ? 'Code invalide.' : 'Invalid code.');
+      _snack(joinedGroupId.isEmpty
+          ? (_fr
+              ? 'Code FISE validé. Les évaluations de cet enseignant sont maintenant accessibles ; aucun groupe n’est encore créé pour votre salle.'
+              : 'FISE code validated. This teacher’s evaluations are now accessible; no group has been created for your classroom yet.')
+          : (_fr ? 'Groupes autorisés ajoutés.' : 'Eligible groups added.'));
+    } catch (error) {
+      _snack(_fr ? 'Code invalide ou accès refusé.' : 'Invalid code or access denied.');
     }
   }
 
