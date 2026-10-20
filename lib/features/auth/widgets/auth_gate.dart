@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
@@ -11,8 +13,14 @@ import '../../admin/pages/admin_dashboard_page.dart';
 import '../../public/pages/public_home_page.dart';
 import '../../student/pages/student_main_page.dart';
 import '../../../core/services/push_service.dart';
+import '../../../core/services/photo_service.dart';
 import '../../../models/user_profile.dart';
 import '../../teacher/pages/teacher_main_page.dart';
+import '../../teacher/pages/teacher_courses_page.dart';
+import '../../teacher/pages/teacher_past_papers_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
+import '../../messages/pages/private_messages_page.dart';
+import '../../share/pages/shared_media_destination_page.dart';
 
 class AuthGate extends StatefulWidget {
   final Locale locale;
@@ -36,6 +44,9 @@ class _AuthGateState extends State<AuthGate> {
   int _eventCount = 0;
   StreamSubscription<bool>? _connectivitySubscription;
   String? _syncedStudentId;
+  StreamSubscription<List<SharedMediaFile>>? _shareSubscription;
+  List<SharedMediaFile> _pendingSharedFiles = const [];
+  bool _shareRouteOpen = false;
 
   @override
   void initState() {
@@ -45,12 +56,163 @@ class _AuthGateState extends State<AuthGate> {
       _eventCount++;
       _updateState(state);
     });
+    _shareSubscription = ReceiveSharingIntent.instance.getMediaStream().listen(
+      _handleSharedFiles,
+      onError: (Object error) => debugPrint('Shared media stream failed: $error'),
+    );
+    unawaited(_loadInitialSharedFiles());
     _load();
     _connectivitySubscription = ConnectivityService().connectionStream.listen((online) {
       if (online && _state.status == SessionStatus.authenticated) {
         _syncStudentOfflineCache(_state.profile!);
       }
     });
+  }
+
+
+  Future<void> _loadInitialSharedFiles() async {
+    try {
+      final files = await ReceiveSharingIntent.instance.getInitialMedia();
+      if (files.isNotEmpty) _handleSharedFiles(files);
+    } catch (error) {
+      debugPrint('Could not read initial shared media: $error');
+    }
+  }
+
+  void _handleSharedFiles(List<SharedMediaFile> files) {
+    if (files.isEmpty || !mounted) return;
+    setState(() => _pendingSharedFiles = List<SharedMediaFile>.unmodifiable(files));
+    if (_state.status == SessionStatus.authenticated && !_shareRouteOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedMediaDestination());
+    }
+  }
+
+  String _mimeForSharedName(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf': return 'application/pdf';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'png': return 'image/png';
+      case 'webp': return 'image/webp';
+      case 'mp4':
+      case 'm4v': return 'video/mp4';
+      case 'mov': return 'video/quicktime';
+      case 'mp3': return 'audio/mpeg';
+      case 'wav': return 'audio/wav';
+      case 'm4a': return 'audio/mp4';
+      case 'aac': return 'audio/aac';
+      case 'ogg':
+      case 'opus': return 'audio/ogg';
+      default: return 'application/octet-stream';
+    }
+  }
+
+  Future<List<PickedAttachment>> _readSharedAttachments(List<SharedMediaFile> files) async {
+    final attachments = <PickedAttachment>[];
+    for (final file in files) {
+      final path = file.path?.trim() ?? '';
+      if (path.isEmpty) continue;
+      try {
+        final bytes = await File(path).readAsBytes();
+        if (bytes.isEmpty) continue;
+        final name = path.split('/').last;
+        final mime = file.mimeType?.trim();
+        attachments.add(PickedAttachment(
+          bytes: bytes,
+          name: name.isEmpty ? 'shared-file' : name,
+          mimeType: mime == null || mime.isEmpty ? _mimeForSharedName(name) : mime,
+        ));
+      } catch (error) {
+        debugPrint('Could not read shared file $path: $error');
+      }
+    }
+    return attachments;
+  }
+
+  Future<void> _openSharedMediaDestination() async {
+    if (!mounted || _shareRouteOpen || _pendingSharedFiles.isEmpty ||
+        _state.status != SessionStatus.authenticated || _state.profile == null) {
+      return;
+    }
+    final files = _pendingSharedFiles;
+    _pendingSharedFiles = const [];
+    final profile = _state.profile!;
+    _shareRouteOpen = true;
+    String? destination;
+    try {
+      destination = await Navigator.of(context).push<String>(
+        MaterialPageRoute<String>(
+          builder: (routeContext) => SharedMediaDestinationPage(
+            locale: widget.locale,
+            profile: profile,
+            files: files,
+            onChoose: (value) => Navigator.of(routeContext).pop(value),
+            onCancel: () => Navigator.of(routeContext).pop(),
+          ),
+        ),
+      );
+    } catch (error) {
+      debugPrint('Could not open shared media destination: $error');
+    } finally {
+      _shareRouteOpen = false;
+    }
+
+    try {
+      await ReceiveSharingIntent.instance.reset();
+    } catch (_) {}
+
+    if (!mounted || destination == null) {
+      if (mounted && _pendingSharedFiles.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedMediaDestination());
+      }
+      return;
+    }
+
+    final attachments = await _readSharedAttachments(files);
+    if (!mounted) return;
+    if (attachments.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(widget.locale.languageCode == 'fr'
+            ? 'Impossible de lire le fichier partagé. Réessayez depuis le fichier original.'
+            : 'Could not read the shared file. Please share it again from the original app.'),
+      ));
+      return;
+    }
+
+    final first = attachments.first;
+    final role = profile.role.toLowerCase();
+    final Route<void>? route = switch (destination) {
+      'courses' when role == 'teacher' || role == 'admin' =>
+        MaterialPageRoute<void>(builder: (_) => TeacherCoursesPage(
+          locale: widget.locale, profile: profile, initialSharedAttachments: attachments,
+        )),
+      'annals' when role == 'teacher' || role == 'admin' =>
+        MaterialPageRoute<void>(builder: (_) => TeacherPastPapersPage(
+          locale: widget.locale, profile: profile, initialSharedAttachments: attachments,
+        )),
+      'private' => MaterialPageRoute<void>(builder: (_) => PrivateMessagesPage(
+        locale: widget.locale, profile: profile, initialAttachment: first,
+      )),
+      'groups' => MaterialPageRoute<void>(builder: (_) => MessagesHubPage(
+        locale: widget.locale, profile: profile, initialSharedAttachment: first,
+      )),
+      _ => null,
+    };
+    if (route != null) {
+      if ((destination == 'private' || destination == 'groups') && attachments.length > 1) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+          content: Text(widget.locale.languageCode == 'fr'
+              ? 'La messagerie accepte une pièce jointe par message. Le premier fichier est prêt à être envoyé.'
+              : 'Messaging accepts one attachment per message. The first file is ready to send.'),
+        ));
+      }
+      await Navigator.of(context).push(route);
+    }
+
+    if (mounted && _pendingSharedFiles.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedMediaDestination());
+    }
   }
 
   Future<void> _load() async {
@@ -75,6 +237,11 @@ class _AuthGateState extends State<AuthGate> {
 
     if (state.status == SessionStatus.authenticated && state.profile != null) {
       PushService.registerForUser(state.profile!.id);
+    }
+
+    if (state.status == SessionStatus.authenticated &&
+        _pendingSharedFiles.isNotEmpty && !_shareRouteOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openSharedMediaDestination());
     }
 
     if (state.status == SessionStatus.authenticated &&
@@ -106,6 +273,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _shareSubscription?.cancel();
     _connectivitySubscription?.cancel();
     super.dispose();
   }
