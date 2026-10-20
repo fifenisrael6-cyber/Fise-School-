@@ -45,11 +45,37 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'message_group_messages',
-        callback: (_) {
-          if (mounted) {
-            setState(() => _groupsFuture = _service.listGroups());
-          }
-        },
+        callback: (_) => _refreshGroups(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_groups',
+        callback: (_) => _refreshGroups(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_groups',
+        callback: (_) => _refreshGroups(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.delete,
+        schema: 'public',
+        table: 'message_groups',
+        callback: (_) => _refreshGroups(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_members',
+        callback: (_) => _refreshGroups(),
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.delete,
+        schema: 'public',
+        table: 'message_group_members',
+        callback: (_) => _refreshGroups(),
       )
       ..subscribe();
   }
@@ -60,7 +86,14 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     super.dispose();
   }
 
+  void _refreshGroups() {
+    if (mounted) {
+      setState(() => _groupsFuture = _service.listGroups());
+    }
+  }
+
   Future<void> _reload() async {
+    if (!mounted) return;
     setState(() => _groupsFuture = _service.listGroups());
     await _groupsFuture;
   }
