@@ -385,4 +385,30 @@ create trigger lock_qcm_answer_after_choice
 before update on public.assignment_answers
 for each row execute function public.prevent_qcm_answer_change();
 
+
+-- Backfill evaluation access for students who already used the shared FISE code.
+with access_rows as (
+  insert into public.teacher_access_codes(id, teacher_id, code, class_id, is_active, updated_at)
+  select
+    fm.teacher_id::text || ':' || fm.class_id::text,
+    fm.teacher_id,
+    coalesce(c.code, fm.code),
+    fm.class_id::text,
+    true,
+    now()
+  from public.teacher_fise_code_memberships fm
+  left join public.teacher_group_access_codes c
+    on c.teacher_id = fm.teacher_id and c.is_active = true
+  group by fm.teacher_id, fm.class_id, c.code, fm.code
+  on conflict (teacher_id, class_id)
+  do update set code = excluded.code, is_active = true, updated_at = now()
+  returning id, teacher_id, class_id
+)
+insert into public.teacher_access_memberships(student_id, teacher_id, class_id, access_code_id, joined_at)
+select fm.student_id, fm.teacher_id, fm.class_id, ar.id, fm.joined_at
+from public.teacher_fise_code_memberships fm
+join access_rows ar on ar.teacher_id = fm.teacher_id and ar.class_id = fm.class_id::text
+on conflict (student_id, teacher_id, class_id)
+do update set access_code_id = excluded.access_code_id, joined_at = excluded.joined_at;
+
 notify pgrst, 'reload schema';
