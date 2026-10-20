@@ -236,8 +236,11 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
-      classes = (await CourseService().listTeacherClasses(widget.profile.id))
+      classes = (await CourseService().listTeacherCompatibleClasses())
           .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
+          .where((schoolClass) =>
+              (widget.profile.subsystem == null || schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
+              (widget.profile.sector == null || schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
           .toList(growable: false);
     } catch (_) {
       classes = const [];
