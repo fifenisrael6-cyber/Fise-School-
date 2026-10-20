@@ -163,8 +163,55 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       const SizedBox(height: 8),
                       ..._classes.map((row) {
                         final id = row['class_id']?.toString();
-                        final name = row['class_name']?.toString() ??
+                        final rawName = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
+                        final rawTrack = row['track_label']?.toString().trim() ?? '';
+                        final track = rawTrack.replaceFirst(
+                          RegExp(r'^(série|serie)\\s+', caseSensitive: false), '',
+                        );
+                        final isGenericTerminale = RegExp(
+                          r'^terminale(?:\\s+simple)?
+                          row['exam_level_label']?.toString(),
+                          row['track_label']?.toString(),
+                          row['subsystem']?.toString(),
+                          row['sector']?.toString(),
+                        ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
+                        return Card(
+                          child: RadioListTile<String>(
+                            value: id ?? '',
+                            groupValue: _selectedClassId,
+                            onChanged: id == null || id.isEmpty
+                                ? null
+                                : (value) => setState(() => _selectedClassId = value),
+                            title: Text(name),
+                            subtitle: Text([
+                              if (details.isNotEmpty) details,
+                            ].join(' • ')),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _loading || _selectedClassId == null
+                              ? null
+                              : _switchClass,
+                          child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+      );
+}
+, caseSensitive: false,
+                        ).hasMatch(rawName.trim());
+                        final name = isGenericTerminale &&
+                                const {'D', 'C', 'TI'}.contains(track.toUpperCase())
+                            ? 'Terminale ${track.toUpperCase()}'
+                            : rawName;
                         final details = [
                           row['exam_level_label']?.toString(),
                           row['track_label']?.toString(),
