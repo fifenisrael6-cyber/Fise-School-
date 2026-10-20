@@ -366,7 +366,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
 
     // Discover models supported by this API key on each request. A stale
     // GEMINI_MODEL secret is ignored unless the API confirms it is still usable.
-    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\\//, "");
+    const configuredModel = Deno.env.get("GEMINI_MODEL")?.trim().replace(/^models\//, "");
     const isUsableModel = (name: string) =>
       name.startsWith("gemini-") &&
       !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen|preview|experimental|deprecated)/i.test(name);
@@ -388,7 +388,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
             (Array.isArray(listData?.models) ? listData.models : [])
               .filter((item: any) => Array.isArray(item.supportedGenerationMethods)
                 && item.supportedGenerationMethods.includes("generateContent"))
-              .map((item: any) => String(item.name ?? "").replace(/^models\\//, ""))
+              .map((item: any) => String(item.name ?? "").replace(/^models\//, ""))
               .filter((name: string) => isUsableModel(name)),
           )];
           const flashModels = available
@@ -398,7 +398,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
               if (left === "gemini-3.8-flash") return -1;
               if (right === "gemini-3.8-flash") return 1;
               const version = (name: string) => {
-                const match = name.match(/^gemini-(\\d+)\\.(\\d+)-flash(?:-lite)?$/i);
+                const match = name.match(/^gemini-(\d+)\.(\d+)-flash(?:-lite)?$/i);
                 return match ? Number(match[1]) * 100 + Number(match[2]) : -1;
               };
               const versionDiff = version(right) - version(left);
