@@ -87,7 +87,7 @@ begin
 
     if v_code is null then
       loop
-        v_code := 'FISE-' || upper(substr(encode(gen_random_bytes(8), 'hex'), 1, 6));
+        v_code := 'FISE-' || upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 6));
         exit when not exists (
           select 1 from public.teacher_group_access_codes c where upper(c.code) = v_code
         ) and not exists (
