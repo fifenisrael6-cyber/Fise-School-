@@ -11,6 +11,7 @@ class StudentClassSwitchPage extends StatefulWidget {
 
 class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
   final StudentClassChangeService _service = StudentClassChangeService();
+  final TextEditingController _search = TextEditingController();
   List<Map<String, dynamic>> _classes = [];
   String? _selectedClassId;
   bool _loading = true;
@@ -22,6 +23,12 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
   void initState() {
     super.initState();
     _loadClasses();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Future<void> _loadClasses() async {
@@ -161,8 +168,37 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       const SizedBox(height: 8),
+                      TextField(
+                        controller: _search,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
+                          suffixIcon: _search.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => setState(_search.clear),
+                                ),
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       ..._classes.where((row) {
                         final label = (row['class_name'] ?? '').toString().trim();
+                        final trackLabel = (row['track_label'] ?? '').toString();
+                        final languageOption = (row['language_option'] ?? '').toString();
+                        final combinedLanguages = RegExp(
+                          r'(espagnol|spanish).*(allemand|german)|(allemand|german).*(espagnol|spanish)',
+                          caseSensitive: false,
+                        ).hasMatch('$label $trackLabel $languageOption');
+                        if (combinedLanguages) return false;
+                        final query = _search.text.trim().toLowerCase();
+                        if (query.isNotEmpty &&
+                            !'$label $trackLabel ${row['exam_level_label'] ?? ''} ${row['subsystem'] ?? ''} ${row['sector'] ?? ''}'
+                                .toLowerCase().contains(query)) {
+                          return false;
+                        }
                         final isGenericFinal = RegExp(
                           r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
                           caseSensitive: false,
