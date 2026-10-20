@@ -1,3 +1,5 @@
+import 'dart:core' as core;
+
 import 'package:flutter/material.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
@@ -20,7 +22,7 @@ class TeacherAccessCodePage extends StatefulWidget {
 class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   final TeacherAccessCodeService _service = TeacherAccessCodeService();
   final TextEditingController _codeController = TextEditingController();
-  List<TeacherAccessCode> _codes = [];
+  core.List<TeacherAccessCode> _codes = [];
   bool _loading = true;
   String? _error;
   TeacherAccessCode? _selectedCode;
@@ -244,7 +246,7 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     );
   }
 
-  List<Widget> _buildEditForm() {
+  core.List<Widget> _buildEditForm() {
     return [
       Card(
         child: Padding(
