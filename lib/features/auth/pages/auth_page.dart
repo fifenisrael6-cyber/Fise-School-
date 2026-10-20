@@ -48,6 +48,15 @@ class _AuthPageState extends State<AuthPage> {
   ExamSector? _sector;
   ExamLevel? _level;
   ExamCatalogEntry? _track;
+  String? _languageOption;
+  String? _languageOption2;
+  static const _languageOptions = <String, String>{
+    'allemand': 'Allemand',
+    'espagnol': 'Espagnol',
+    'arabe': 'Arabe',
+    'italien': 'Italien',
+    'chinois': 'Chinois',
+  };
   List<ExamLevel> _levels = const [];
   List<ExamCatalogEntry> _tracks = const [];
   bool _loadingLevels = false;
@@ -74,6 +83,8 @@ class _AuthPageState extends State<AuthPage> {
     setState(() {
       _level = null;
       _track = null;
+      _languageOption = null;
+      _languageOption2 = null;
       _levels = const [];
       _tracks = const [];
       _catalogError = false;
@@ -107,6 +118,8 @@ class _AuthPageState extends State<AuthPage> {
   Future<void> _loadTracks(ExamLevel level) async {
     setState(() {
       _track = null;
+      _languageOption = null;
+      _languageOption2 = null;
       _tracks = const [];
     });
     try {
@@ -148,6 +161,11 @@ class _AuthPageState extends State<AuthPage> {
           exam: level?.exam?.labelFor(_lang),
           track: _track?.labelFor(_lang),
           className: level?.labelFor(_lang),
+          languageOption: _languageOption == null
+              ? null
+              : _track?.code.toLowerCase() == 'a5' && _languageOption2 != null
+                  ? '${_languageOption}_${_languageOption2}'
+                  : _languageOption,
         );
       } else {
         await _authService.signIn(
@@ -503,10 +521,91 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
-          onChanged: (value) => setState(() => _track = value),
+          validator: (value) =>
+              _isStudent && value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() {
+            _track = value;
+            _languageOption = null;
+          _languageOption2 = null;
+          }),
         ),
       ],
+      if (_needsLanguageOption(level)) ...[
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          key: ValueKey('language-option-${level?.id}-${_track?.code}'),
+          initialValue: _languageOption,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: _lang == 'en' ? 'Language option' : 'Langue vivante',
+          ),
+          items: [
+            for (final entry in _languageOptions.entries)
+              DropdownMenuItem(
+                value: entry.key,
+                child: Text(
+                  _lang == 'en'
+                      ? const {
+                          'allemand': 'German',
+                          'espagnol': 'Spanish',
+                          'arabe': 'Arabic',
+                          'italien': 'Italian',
+                          'chinois': 'Chinese',
+                        }[entry.key]!
+                      : entry.value,
+                ),
+              ),
+          ],
+          validator: (value) =>
+              _isStudent && value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() {
+            _languageOption = value;
+            if (_languageOption2 == value) _languageOption2 = null;
+          }),
+        ),
+        if (_track?.code.toLowerCase() == 'a5') ...[
+          const SizedBox(height: 14),
+          DropdownButtonFormField<String>(
+            key: ValueKey('language-option-2-${level?.id}-${_track?.code}'),
+            initialValue: _languageOption2,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: _lang == 'en' ? 'Second language option' : 'Deuxième langue vivante',
+            ),
+            items: [
+              for (final entry in _languageOptions.entries.where((e) => e.key != _languageOption))
+                DropdownMenuItem(
+                  value: entry.key,
+                  child: Text(
+                    _lang == 'en'
+                        ? const {
+                            'allemand': 'German',
+                            'espagnol': 'Spanish',
+                            'arabe': 'Arabic',
+                            'italien': 'Italian',
+                            'chinois': 'Chinese',
+                          }[entry.key]!
+                        : entry.value,
+                  ),
+                ),
+            ],
+            validator: (value) =>
+                _isStudent && value == null ? texts.selectionRequired : null,
+            onChanged: (value) => setState(() => _languageOption2 = value),
+          ),
+        ],
+      ],
     ];
+  }
+
+  bool _needsLanguageOption(ExamLevel? level) {
+    if (level == null ||
+        _subsystem != ExamSubsystem.francophone ||
+        _sector != ExamSector.general) {
+      return false;
+    }
+    if (level.code == 'fr_general_troisieme') return true;
+    return const {'a2', 'a4', 'a5', 'abi'}.contains(_track?.code.toLowerCase());
   }
 
   Widget _levelInfo(AppTexts texts, ExamLevel level, String? curriculum) {

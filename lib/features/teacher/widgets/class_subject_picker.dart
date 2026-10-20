@@ -11,12 +11,14 @@ import '../../../models/school_class.dart';
 class ClassSubjectPicker extends StatefulWidget {
   final Locale locale;
   final String teacherId;
+  final bool showAllCompatibleClasses;
   final void Function(List<SchoolClass> classes, Subject? subject) onChanged;
 
   const ClassSubjectPicker({
     super.key,
     required this.locale,
     required this.teacherId,
+    this.showAllCompatibleClasses = false,
     required this.onChanged,
   });
 
@@ -39,7 +41,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   @override
   void initState() {
     super.initState();
-    _classesFuture = _service.listTeacherClasses(widget.teacherId).then((list) {
+    final classesFuture = widget.showAllCompatibleClasses
+        ? _service.listTeacherCompatibleClasses()
+        : _service.listTeacherClasses(widget.teacherId);
+    _classesFuture = classesFuture.then((list) {
       _allClasses = list;
       return list;
     });
