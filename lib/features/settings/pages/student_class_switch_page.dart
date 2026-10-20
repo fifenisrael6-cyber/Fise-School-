@@ -174,7 +174,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         ).hasMatch(rawName.trim());
                         final name = isGenericTerminale &&
                                 const {'D', 'C', 'TI'}.contains(track.toUpperCase())
-                            ? 'Terminale \${track.toUpperCase()}'
+                            ? 'Terminale ${track.toUpperCase()}'
                             : rawName;
                         final details = [
                           row['exam_level_label']?.toString(),
