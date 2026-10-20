@@ -105,9 +105,13 @@ class TeacherAccessCodeService {
           .eq('teacher_id', teacherId)
           .order('created_at', ascending: false);
 
-      return (response as List)
+      final rows = (response as List)
           .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
           .toList();
+      // The database keeps classroom rows for access checks, but the teacher
+      // sees only one shared code in the interface.
+      final seen = <String>{};
+      return rows.where((item) => seen.add(item.code.toUpperCase())).toList();
     } catch (_) {
       return [];
     }
