@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/student_class_change_service.dart';
 
 class StudentClassSwitchPage extends StatefulWidget {
   final Locale locale;
@@ -10,6 +10,7 @@ class StudentClassSwitchPage extends StatefulWidget {
 }
 
 class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
+  final StudentClassChangeService _service = StudentClassChangeService();
   List<Map<String, dynamic>> _classes = [];
   String? _selectedClassId;
   bool _loading = true;
@@ -29,21 +30,13 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
       _error = null;
     });
     try {
-      final response = await Supabase.instance.client.rpc(
-        'list_available_student_classrooms',
-      );
-      final rows = response is List ? response : const [];
+      final classes = await _service.listNextClasses();
       if (!mounted) return;
-      final classes = rows
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row))
-          .toList(growable: false);
       setState(() {
         _classes = classes;
-        final current = classes.where((row) => row['is_current'] == true);
-        _selectedClassId = current.isNotEmpty
-            ? current.first['class_id']?.toString()
-            : (classes.isEmpty ? null : classes.first['class_id']?.toString());
+        _selectedClassId = classes.isEmpty
+            ? null
+            : classes.first['class_id']?.toString();
       });
     } catch (_) {
       if (mounted) {
@@ -60,11 +53,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
 
   Future<void> _switchClass() async {
     final classId = _selectedClassId;
-    if (classId == null || _classes.any(
-      (row) => row['class_id']?.toString() == classId && row['is_current'] == true,
-    )) {
-      return;
-    }
+    if (classId == null) return;
 
     final selected = _classes.firstWhere(
       (row) => row['class_id']?.toString() == classId,
@@ -98,10 +87,7 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
       _error = null;
     });
     try {
-      await Supabase.instance.client.rpc(
-        'switch_student_class_without_code',
-        params: {'p_class_id': classId},
-      );
+      await _service.changeClass(classId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -146,8 +132,8 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                   children: [
                     Text(
                       _fr
-                          ? 'Choisissez librement une salle parmi les parcours scolaires disponibles. Aucun code enseignant ni mot de passe supplémentaire n’est nécessaire. Vous pourrez revenir à une salle précédente ou en choisir une autre plus tard.'
-                          : 'Choose a classroom from the available school pathways. No teacher code or additional password is required. You can return to a previous classroom or choose another one later.',
+                          ? 'Choisissez une salle selon le sous-système, l’enseignement, la série ou la spécialité. Les filières et les niveaux précédents sont proposés lorsqu’ils sont configurés dans le catalogue scolaire.'
+                          : 'Choose a classroom or pathway from the available school system. Series, technical specialties and previous levels are listed when they are configured for your subsystem.',
                       style: const TextStyle(height: 1.45),
                     ),
                     if (_error != null) ...[
@@ -177,10 +163,12 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       const SizedBox(height: 8),
                       ..._classes.map((row) {
                         final id = row['class_id']?.toString();
-                        final isCurrent = row['is_current'] == true;
+                        final isCurrent = false;
                         final name = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
                         final details = [
+                          row['exam_level_label']?.toString(),
+                          row['track_label']?.toString(),
                           row['subsystem']?.toString(),
                           row['sector']?.toString(),
                         ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
