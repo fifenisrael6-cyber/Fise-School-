@@ -137,105 +137,199 @@ class CourseService {
   }
 
   /// Chapter-title pages available to a student for the subject in their active classroom.
-  /// Only the canonical catalogue containers for the student's exact class context
-  /// are considered. This reads titles only; it does not create courses or media.
+  /// Uses the active classroom's subject mapping and falls back to the closest
+  /// compatible catalogue only when an exact catalogue is not yet available.
+  /// Titles only are loaded here; lessons, files and media are not created.
   Future<List<CourseChapter>> listStudentCatalogChapters(
     String studentId, {
     required String subjectId,
   }) async {
-    final cacheKey = 'student_catalog_chapters_${studentId}_$subjectId';
+    final cacheKey = 'student_catalog_chapters_v2_' + studentId + '_' + subjectId;
+    final previousCacheKey = 'student_catalog_chapters_' + studentId + '_' + subjectId;
+
     try {
-    final memberships = await _client
-        .from('class_students')
-        .select('class_id')
-        .eq('student_id', studentId)
-        .eq('is_active', true);
-    final classIds = memberships
-        .map((row) => row['class_id']?.toString())
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    if (classIds.isEmpty) return const <CourseChapter>[];
+      // Class switching can leave older memberships in history. The latest
+      // active membership is the student's current classroom.
+      final memberships = await _client
+          .from('class_students')
+          .select('class_id, joined_at')
+          .eq('student_id', studentId)
+          .eq('is_active', true)
+          .order('joined_at', ascending: false)
+          .limit(1);
+      final membershipClassIds = memberships
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (membershipClassIds.isEmpty) return const <CourseChapter>[];
 
-    final classRows = await _client
-        .from('school_classes')
-        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
-        .inFilter('id', classIds)
-        .eq('is_active', true);
-    if (classRows.isEmpty) return const <CourseChapter>[];
+      // A subject must actually be assigned to the student's current room.
+      final assignedRows = await _client
+          .from('class_subjects')
+          .select('class_id')
+          .eq('subject_id', subjectId)
+          .eq('is_active', true)
+          .inFilter('class_id', membershipClassIds);
+      final assignedClassIds = assignedRows
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (assignedClassIds.isEmpty) return const <CourseChapter>[];
 
-    final curriculumRows = await _client
-        .from('curricula')
-        .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
-        .eq('subject_id', subjectId)
-        .eq('is_catalog_container', true)
-        .eq('is_active', true);
+      final classRows = await _client
+          .from('school_classes')
+          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+          .inFilter('id', assignedClassIds)
+          .eq('is_active', true);
+      if (classRows.isEmpty) return const <CourseChapter>[];
 
-    bool sameContextValue(Object? left, Object? right) =>
-        left?.toString() == right?.toString();
+      final curriculumRows = await _client
+          .from('curricula')
+          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id, is_catalog_container')
+          .eq('subject_id', subjectId)
+          .eq('is_active', true);
 
-    final matchingCurriculumIds = <String>{};
-    for (final rawCurriculum in curriculumRows) {
-      final curriculum = Map<String, dynamic>.from(rawCurriculum);
-      final matchesClass = classRows.any((rawClass) {
+      // Null curriculum dimensions represent a shared syllabus. They are a
+      // fallback only: an exact level/series/specialty catalogue is preferred.
+      bool matchesDimension(Object? curriculumValue, Object? classValue) =>
+          curriculumValue == null ||
+          curriculumValue.toString() == classValue?.toString();
+
+      int specificity(Map<String, dynamic> curriculum) =>
+          (curriculum['exam_level_id'] == null ? 0 : 8) +
+          (curriculum['specialty_id'] == null ? 0 : 4) +
+          (curriculum['series_id'] == null ? 0 : 2);
+
+      final candidatesByClass = <String, List<Map<String, dynamic>>>{};
+      for (final rawClass in classRows) {
         final schoolClass = Map<String, dynamic>.from(rawClass);
-        return curriculum['subsystem'] == schoolClass['subsystem'] &&
-            curriculum['sector'] == schoolClass['sector'] &&
-            sameContextValue(curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
-            sameContextValue(curriculum['series_id'], schoolClass['series_id']) &&
-            sameContextValue(curriculum['specialty_id'], schoolClass['specialty_id']);
-      });
-      final id = curriculum['id']?.toString();
-      if (matchesClass && id != null && id.isNotEmpty) {
-        matchingCurriculumIds.add(id);
+        final classId = schoolClass['id']?.toString();
+        if (classId == null || classId.isEmpty) continue;
+
+        final matches = curriculumRows
+            .map((row) => Map<String, dynamic>.from(row))
+            .where((curriculum) =>
+                curriculum['subsystem']?.toString() ==
+                    schoolClass['subsystem']?.toString() &&
+                curriculum['sector']?.toString() ==
+                    schoolClass['sector']?.toString() &&
+                matchesDimension(
+                    curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
+                matchesDimension(
+                    curriculum['series_id'], schoolClass['series_id']) &&
+                matchesDimension(
+                    curriculum['specialty_id'], schoolClass['specialty_id']))
+            .toList(growable: false);
+        if (matches.isNotEmpty) candidatesByClass[classId] = matches;
       }
-    }
-    if (matchingCurriculumIds.isEmpty) return const <CourseChapter>[];
 
-    final chapterRows = await _client
-        .from('course_chapters')
-        .select()
-        .inFilter('curriculum_id', matchingCurriculumIds.toList(growable: false))
-        .eq('is_active', true)
-        .order('position');
+      final candidateIds = candidatesByClass.values
+          .expand((items) => items)
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      if (candidateIds.isEmpty) return const <CourseChapter>[];
 
-    final seenTitles = <String>{};
-    final chapters = <CourseChapter>[];
-    for (final raw in chapterRows) {
-      try {
-        final chapter = CourseChapter.fromMap(Map<String, dynamic>.from(raw));
-        final normalizedTitle = chapter.titleFr.trim().toLowerCase();
-        if (normalizedTitle.isNotEmpty && seenTitles.add(normalizedTitle)) {
-          chapters.add(chapter);
+      final chapterRows = await _client
+          .from('course_chapters')
+          .select()
+          .inFilter('curriculum_id', candidateIds)
+          .eq('is_active', true)
+          .order('position');
+
+      final chaptersByCurriculum = <String, List<Map<String, dynamic>>>{};
+      for (final rawChapter in chapterRows) {
+        final row = Map<String, dynamic>.from(rawChapter);
+        final curriculumId = row['curriculum_id']?.toString();
+        if (curriculumId == null || curriculumId.isEmpty) continue;
+        chaptersByCurriculum.putIfAbsent(
+          curriculumId,
+          () => <Map<String, dynamic>>[],
+        ).add(row);
+      }
+
+      // Prefer populated canonical catalogues. If one has not yet been
+      // seeded, use the closest populated legacy syllabus rather than showing
+      // an empty chapter page.
+      final selectedCurriculumIds = <String>{};
+      for (final entry in candidatesByClass.entries) {
+        final populated = entry.value.where((curriculum) {
+          final id = curriculum['id']?.toString();
+          return id != null && (chaptersByCurriculum[id]?.isNotEmpty ?? false);
+        }).toList(growable: false);
+        final catalogues = populated
+            .where((item) => item['is_catalog_container'] == true)
+            .toList(growable: false);
+        final usable = catalogues.isNotEmpty
+            ? catalogues
+            : populated
+                .where((item) => item['is_catalog_container'] != true)
+                .toList(growable: false);
+        if (usable.isEmpty) continue;
+
+        final bestScore = usable.map(specificity).reduce(
+          (left, right) => left > right ? left : right,
+        );
+        for (final curriculum in usable) {
+          if (specificity(curriculum) != bestScore) continue;
+          final id = curriculum['id']?.toString();
+          if (id != null && id.isNotEmpty) selectedCurriculumIds.add(id);
         }
-      } catch (_) {
-        // One invalid title must not hide all the other chapter pages.
       }
-    }
-    chapters.sort((a, b) {
-      final byPosition = a.position.compareTo(b.position);
-      return byPosition != 0
-          ? byPosition
-          : a.titleFr.toLowerCase().compareTo(b.titleFr.toLowerCase());
-    });
-    final result = chapters.toList(growable: false);
-    await JsonCache.instance.write(
-      cacheKey,
-      result.map((chapter) => <String, dynamic>{
-        'id': chapter.id,
-        'curriculum_id': chapter.curriculumId,
-        'title_fr': chapter.titleFr,
-        'title_en': chapter.titleEn,
-        'description_fr': chapter.descriptionFr,
-        'description_en': chapter.descriptionEn,
-        'position': chapter.position,
-        'is_active': chapter.isActive,
-      }).toList(growable: false),
-    );
-    return result;
+      if (selectedCurriculumIds.isEmpty) {
+        return const <CourseChapter>[];
+      }
+
+      final seenTitles = <String>{};
+      final chapters = <CourseChapter>[];
+      for (final curriculumId in selectedCurriculumIds) {
+        for (final raw in chaptersByCurriculum[curriculumId] ??
+            const <Map<String, dynamic>>[]) {
+          try {
+            final chapter = CourseChapter.fromMap(raw);
+            final label = chapter.titleFr.trim().isNotEmpty
+                ? chapter.titleFr
+                : chapter.titleEn;
+            final normalizedTitle = label.trim().toLowerCase();
+            if (normalizedTitle.isNotEmpty && seenTitles.add(normalizedTitle)) {
+              chapters.add(chapter);
+            }
+          } catch (_) {
+            // A malformed title must not hide valid chapter titles.
+          }
+        }
+      }
+      chapters.sort((a, b) {
+        final byPosition = a.position.compareTo(b.position);
+        return byPosition != 0
+            ? byPosition
+            : a.titleFr.toLowerCase().compareTo(b.titleFr.toLowerCase());
+      });
+
+      final result = chapters.toList(growable: false);
+      await JsonCache.instance.write(
+        cacheKey,
+        result.map((chapter) => <String, dynamic>{
+          'id': chapter.id,
+          'curriculum_id': chapter.curriculumId,
+          'title_fr': chapter.titleFr,
+          'title_en': chapter.titleEn,
+          'description_fr': chapter.descriptionFr,
+          'description_en': chapter.descriptionEn,
+          'position': chapter.position,
+          'is_active': chapter.isActive,
+        }).toList(growable: false),
+      );
+      return result;
     } catch (_) {
-      final cached = await JsonCache.instance.read(cacheKey);
+      dynamic cached = await JsonCache.instance.read(cacheKey);
+      cached ??= await JsonCache.instance.read(previousCacheKey);
       if (cached is List) {
         return cached
             .whereType<Map>()
