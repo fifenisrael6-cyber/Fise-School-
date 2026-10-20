@@ -519,14 +519,15 @@ class AppDatabase extends _$AppDatabase {
   /// leçons intelligentes, QCM). Les envois non terminés (files d'attente) sont conservés
   /// pour être envoyés à la prochaine connexion du même compte.
   Future<void> clearUserReadCaches(String userId) async {
-    final v = [Variable(userId)];
-    await customStatement("DELETE FROM message_cache WHERE user_id=? AND sync_status<>'pending'", v);
-    await customStatement('DELETE FROM message_contacts_cache WHERE user_id=?', v);
-    await customStatement('DELETE FROM message_groups_cache WHERE user_id=?', v);
-    await customStatement('DELETE FROM offline_catalog_cache WHERE user_id=?', v);
-    await customStatement('DELETE FROM smart_lessons_cache WHERE user_id=?', v);
-    await customStatement('DELETE FROM smart_exercise_results WHERE user_id=?', v);
-    await customStatement('DELETE FROM offline_qcm WHERE user_id=?', v);
+    // customStatement binds raw Dart values; Variable wrappers are only for customSelect.
+    final values = [userId];
+    await customStatement("DELETE FROM message_cache WHERE user_id=? AND sync_status<>'pending'", values);
+    await customStatement('DELETE FROM message_contacts_cache WHERE user_id=?', values);
+    await customStatement('DELETE FROM message_groups_cache WHERE user_id=?', values);
+    await customStatement('DELETE FROM offline_catalog_cache WHERE user_id=?', values);
+    await customStatement('DELETE FROM smart_lessons_cache WHERE user_id=?', values);
+    await customStatement('DELETE FROM smart_exercise_results WHERE user_id=?', values);
+    await customStatement('DELETE FROM offline_qcm WHERE user_id=?', values);
   }
 
   Future<void> cacheMessageContact(String userId, String contactId, String dataJson) =>
