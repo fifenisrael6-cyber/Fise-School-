@@ -43,6 +43,16 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
 
   void _reload() => setState(() => _classesFuture = _service.listNextClasses());
 
+  bool _isCombinedLanguageRoom(Map<String, dynamic> row) {
+    final label = (row['class_name'] ?? '').toString();
+    final track = (row['track_label'] ?? '').toString();
+    final option = (row['language_option'] ?? '').toString();
+    return RegExp(
+      r'(espagnol|spanish).*(allemand|german)|(allemand|german).*(espagnol|spanish)',
+      caseSensitive: false,
+    ).hasMatch('$label $track $option');
+  }
+
   String _label(Map<String, dynamic> row) {
     final raw = (row['class_name'] ?? '').toString().trim();
     final track = (row['track_label'] ?? '').toString().trim()
@@ -88,13 +98,12 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
     final sector = _sectorLabel(room['sector']);
     final level = room['exam_level_label']?.toString() ?? '';
     final track = room['track_label']?.toString() ?? '';
-    final language = room['language_option']?.toString() ?? '';
+
     return [
       if (subsystem.isNotEmpty) subsystem,
       if (sector.isNotEmpty) sector,
       if (level.isNotEmpty) level,
       if (track.trim().isNotEmpty) track,
-      if (language.isNotEmpty) language.replaceAll('_', ' + '),
     ].join(' • ');
   }
 
@@ -151,6 +160,7 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
           // Hide a generic final-level room only when a matching
           // series/specialty room exists for the same exam level and pathway.
           final all = loaded
+              .where((row) => !_isCombinedLanguageRoom(row))
               .where((row) => !isGenericFinalClass(row) || !hasSpecificSibling(row))
               .toList();
           return _content(all);
