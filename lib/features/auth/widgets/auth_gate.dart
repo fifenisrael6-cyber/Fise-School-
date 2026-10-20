@@ -16,7 +16,7 @@ import '../../../core/services/push_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/user_profile.dart';
 import '../../teacher/pages/teacher_main_page.dart';
-import '../../teacher/pages/teacher_courses_page.dart';
+import '../../teacher/pages/create_course_page.dart';
 import '../../teacher/pages/teacher_past_papers_page.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../messages/pages/private_messages_page.dart';
@@ -184,7 +184,7 @@ class _AuthGateState extends State<AuthGate> {
     final role = profile.role.toLowerCase();
     final Route<void>? route = switch (destination) {
       'courses' when role == 'teacher' || role == 'admin' =>
-        MaterialPageRoute<void>(builder: (_) => TeacherCoursesPage(
+        MaterialPageRoute<void>(builder: (_) => CreateCoursePage(
           locale: widget.locale, profile: profile, initialSharedAttachments: attachments,
         )),
       'annals' when role == 'teacher' || role == 'admin' =>
