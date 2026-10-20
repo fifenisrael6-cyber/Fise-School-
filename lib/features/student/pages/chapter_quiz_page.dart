@@ -42,16 +42,44 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
 
   Future<void> _load() async {
     try {
-      final quizzes = await _service.listQuizzes(widget.chapterId);
+      var quizzes = await _service.listQuizzes(widget.chapterId);
+
+      // A student opening the Smart QCM folder must not depend on a teacher
+      // manually creating a quiz first. Generate one from this chapter's
+      // published course/media (or from its title when the lesson is empty),
+      // then reload the saved quiz and its questions from Supabase.
+      if (quizzes.isEmpty) {
+        await _service.generateSmartQuiz(widget.chapterId);
+        quizzes = await _service.listQuizzes(
+          widget.chapterId,
+          forceRefresh: true,
+        );
+      }
+
       if (quizzes.isEmpty) {
         throw StateError(_fr
-            ? 'Aucun QCM disponible. Vérifiez que le cours publié contient assez de texte, puis réessayez.'
-            : 'No quiz is available. Ensure the published lesson has enough text, then try again.');
+            ? 'L’IA n’a pas encore pu créer le QCM. Vérifiez la connexion puis réessayez.'
+            : 'AI could not create the quiz yet. Check your connection and retry.');
       }
-      final quiz = quizzes.first;
-      final questions = await _service.listQuizQuestions(quiz.id);
+
+      var quiz = quizzes.first;
+      var questions = await _service.listQuizQuestions(quiz.id);
       if (questions.isEmpty) {
-        throw StateError(_fr ? 'Le QCM ne contient aucune question.' : 'The quiz has no questions.');
+        // Repair a previously published but incomplete generated quiz.
+        await _service.generateSmartQuiz(widget.chapterId);
+        quizzes = await _service.listQuizzes(
+          widget.chapterId,
+          forceRefresh: true,
+        );
+        if (quizzes.isNotEmpty) {
+          quiz = quizzes.first;
+          questions = await _service.listQuizQuestions(quiz.id);
+        }
+      }
+      if (questions.isEmpty) {
+        throw StateError(_fr
+            ? 'Le QCM a été créé, mais aucune question n’a pu être chargée. Réessayez.'
+            : 'The quiz was created, but its questions could not be loaded. Retry.');
       }
       if (!mounted) return;
       setState(() {
