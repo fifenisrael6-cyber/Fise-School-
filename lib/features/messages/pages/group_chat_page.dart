@@ -324,6 +324,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _showInfo() async {
+    final messageCount = _messages.length;
+    final voiceCount = _messages.where((message) {
+      final type = (message.attachmentType ?? '').toLowerCase();
+      return type.startsWith('audio/') || type.contains('voice');
+    }).length;
     List<GroupMember> members = const [];
     try {
       members = await _service.listMembers(widget.group.id);
@@ -353,6 +358,25 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 if (widget.group.className != null) Text(widget.group.className!),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.chat_bubble_outline_rounded),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_fr
+                            ? '$messageCount messages · $voiceCount messages vocaux'
+                            : '$messageCount messages · $voiceCount voice messages'),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 14),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -449,15 +473,33 @@ class _GroupChatPageState extends State<GroupChatPage> {
                             tooltip: _fr ? 'Retirer du groupe' : 'Remove from group',
                             icon: const Icon(Icons.person_remove_alt_1_rounded),
                             onPressed: () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: Text(_fr ? 'Retirer cet élève ?' : 'Remove this student?'),
+                                  content: Text(_fr
+                                      ? 'Cet élève sera retiré du groupe et les autres membres en seront informés.'
+                                      : 'This student will be removed from the group and other members will be notified.'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext, false),
+                                      child: Text(_fr ? 'Annuler' : 'Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(dialogContext, true),
+                                      child: Text(_fr ? 'Retirer' : 'Remove'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true) return;
                               try {
                                 await _service.removeMember(widget.group.id, member.userId);
                                 setSheetState(() => members = members
                                     .where((m) => m.userId != member.userId)
                                     .toList());
                               } catch (error) {
-                                if (mounted) {
-                                  _snack('$error');
-                                }
+                                if (mounted) _snack('$error');
                               }
                             },
                           )
