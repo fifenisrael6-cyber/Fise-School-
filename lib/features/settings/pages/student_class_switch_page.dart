@@ -161,10 +161,55 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       const SizedBox(height: 8),
-                      ..._classes.map((row) {
+                      ..._classes.where((row) {
+                        final label = (row['class_name'] ?? '').toString().trim();
+                        final isGenericFinal = RegExp(
+                          r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
+                          caseSensitive: false,
+                        ).hasMatch(label);
+                        if (!isGenericFinal) return true;
+                        final classId = row['class_id']?.toString();
+                        final levelId = row['exam_level_id']?.toString();
+                        final subsystem = row['subsystem']?.toString();
+                        final sector = row['sector']?.toString();
+                        final hasSpecificSibling = _classes.any((candidate) {
+                          if (candidate['class_id']?.toString() == classId ||
+                              candidate['exam_level_id']?.toString() != levelId ||
+                              candidate['subsystem']?.toString() != subsystem ||
+                              candidate['sector']?.toString() != sector) {
+                            return false;
+                          }
+                          final track = (candidate['track_label'] ?? '').toString().trim();
+                          final candidateName = (candidate['class_name'] ?? '').toString().trim();
+                          final candidateIsGeneric = RegExp(
+                            r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
+                            caseSensitive: false,
+                          ).hasMatch(candidateName);
+                          return track.isNotEmpty &&
+                              !candidateIsGeneric &&
+                              RegExp(r'^(terminale|upper\s+sixth)\b', caseSensitive: false)
+                                  .hasMatch(candidateName);
+                        });
+                        return !hasSpecificSibling;
+                      }).map((row) {
                         final id = row['class_id']?.toString();
-                        final name = row['class_name']?.toString() ??
+                        final rawName = row['class_name']?.toString() ??
                             (_fr ? 'Salle sans nom' : 'Unnamed classroom');
+                        final rawTrack = (row['track_label'] ?? '').toString().trim();
+                        final trackCode = rawTrack
+                            .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '')
+                            .split(RegExp(r'\s*[-–]')).first.trim().toUpperCase();
+                        final genericFinal = RegExp(
+                          r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
+                          caseSensitive: false,
+                        ).hasMatch(rawName.trim());
+                        final finalLevel = RegExp(r'^upper\s+sixth', caseSensitive: false)
+                                .hasMatch(rawName.trim())
+                            ? 'Upper Sixth'
+                            : 'Terminale';
+                        final name = genericFinal && trackCode.isNotEmpty
+                            ? '$finalLevel $trackCode'
+                            : rawName;
                         final details = [
                           row['exam_level_label']?.toString(),
                           row['track_label']?.toString(),

@@ -872,6 +872,27 @@ class _ChapterInteractiveQuizPageState extends State<ChapterInteractiveQuizPage>
                           Text('${questionIndex + 1}. ${question.promptFor(widget.locale.languageCode)}',
                             style: const TextStyle(fontWeight: FontWeight.w800)),
                           const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                isCorrect ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                color: isCorrect ? Colors.green.shade700 : Colors.red.shade700,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  isCorrect
+                                      ? (_en ? 'Correct' : 'Bonne réponse')
+                                      : (_en ? 'Incorrect' : 'Mauvaise réponse'),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: isCorrect ? Colors.green.shade800 : Colors.red.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
                           Text('${_en ? 'Your answer' : 'Ta réponse'}: $selectedText'),
                           Text('${_en ? 'Correct answer' : 'Bonne réponse'}: $correctText',
                             style: TextStyle(fontWeight: FontWeight.w700,

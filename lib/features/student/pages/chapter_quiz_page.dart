@@ -22,6 +22,7 @@ class ChapterQuizPage extends StatefulWidget {
 class _ChapterQuizPageState extends State<ChapterQuizPage> {
   final ChapterLearningService _service = ChapterLearningService();
   bool _loading = true;
+  bool _generating = false;
   bool _submitting = false;
   String? _error;
   ChapterLearningQuiz? _quiz;
@@ -42,28 +43,51 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
 
   Future<void> _load() async {
     try {
-      final quizzes = await _service.listQuizzes(widget.chapterId);
-      if (quizzes.isEmpty) {
-        throw StateError(_fr
-            ? 'Aucun QCM disponible. Vérifiez que le cours publié contient assez de texte, puis réessayez.'
-            : 'No quiz is available. Ensure the published lesson has enough text, then try again.');
+      var quizzes = await _service.listQuizzes(widget.chapterId);
+      ChapterLearningQuiz? quiz;
+      List<ChapterLearningQuizQuestion> questions = const [];
+
+      if (quizzes.isNotEmpty) {
+        quiz = quizzes.first;
+        questions = await _service.listQuizQuestions(quiz.id);
       }
-      final quiz = quizzes.first;
-      final questions = await _service.listQuizQuestions(quiz.id);
-      if (questions.isEmpty) {
-        throw StateError(_fr ? 'Le QCM ne contient aucune question.' : 'The quiz has no questions.');
+
+      // Every Smart QCM must contain five AI-generated questions. Generate
+      // on demand when the folder is empty or its saved quiz is incomplete.
+      if (quizzes.isEmpty || questions.length < 5) {
+        if (mounted) setState(() => _generating = true);
+        await _service.generateSmartQuiz(widget.chapterId);
+        quizzes = await _service.listQuizzes(
+          widget.chapterId,
+          forceRefresh: true,
+        );
+        if (quizzes.isNotEmpty) {
+          quiz = quizzes.first;
+          questions = await _service.listQuizQuestions(quiz.id);
+        } else {
+          quiz = null;
+          questions = const [];
+        }
+      }
+
+      if (quiz == null || questions.length < 5) {
+        throw StateError(_fr
+            ? 'L’IA n’a pas pu préparer les cinq questions du QCM. Vérifiez la connexion et réessayez.'
+            : 'AI could not prepare all five quiz questions. Check your connection and retry.');
       }
       if (!mounted) return;
       setState(() {
         _quiz = quiz;
         _questions = questions;
         _loading = false;
+        _generating = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error.toString().replaceFirst('Bad state: ', '');
         _loading = false;
+        _generating = false;
       });
     }
   }
@@ -71,8 +95,10 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
   Future<void> _checkAnswer(ChapterLearningQuizQuestion question, int selectedIndex) async {
     if (!mounted) return;
     setState(() {
-      _checkingAnswers.remove(question.id);
+      // Students may revise their choice until they submit the whole QCM.
       _answers[question.id] = selectedIndex;
+      _instantFeedback.remove(question.id);
+      _checkingAnswers.remove(question.id);
       _lockedAnswers.remove(question.id);
     });
   }
@@ -111,7 +137,23 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
     return Scaffold(
       appBar: AppBar(title: Text(_fr ? 'Quiz intelligent' : 'Smart quiz')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 14),
+                  Text(
+                    _generating
+                        ? (_fr
+                            ? 'Génération du QCM intelligent…'
+                            : 'Generating the smart quiz…')
+                        : (_fr ? 'Chargement du QCM…' : 'Loading quiz…'),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
           : _error != null
               ? Center(
                   child: Padding(
@@ -198,11 +240,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                                               color: isCorrectOption ? const Color(0xFF2E7D32) : (isSelected ? const Color(0xFFC62828) : Colors.black26),
                                             ),
                                   onChanged: (_submitting || locked || _checkingAnswers.contains(question.id)) ? null : (value) {
-                                    if (value != null && !_answers.containsKey(question.id)) {
-                                      setState(() {
-                                        _answers[question.id] = value;
-                                        _checkingAnswers.add(question.id);
-                                      });
+                                    if (value != null) {
                                       _checkAnswer(question, value);
                                     }
                                   },

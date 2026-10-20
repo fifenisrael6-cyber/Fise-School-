@@ -43,8 +43,23 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
 
   void _reload() => setState(() => _classesFuture = _service.listNextClasses());
 
-  String _label(Map<String, dynamic> row) =>
-      (row['class_name'] ?? '').toString().trim();
+  String _label(Map<String, dynamic> row) {
+    final raw = (row['class_name'] ?? '').toString().trim();
+    final track = (row['track_label'] ?? '').toString().trim()
+        .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '');
+    final trackCode = track.split(RegExp(r'\s*[-–]')).first.trim();
+    final genericFinal = RegExp(
+      r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
+      caseSensitive: false,
+    ).hasMatch(raw);
+    if (genericFinal && trackCode.isNotEmpty) {
+      final label = RegExp(r'^upper\s+sixth', caseSensitive: false).hasMatch(raw)
+          ? 'Upper Sixth'
+          : 'Terminale';
+      return '$label ${trackCode.toUpperCase()}';
+    }
+    return raw;
+  }
 
   String _subsystemLabel(Object? raw) {
     switch (raw?.toString().toLowerCase()) {
@@ -106,7 +121,38 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
               retry: true,
             );
           }
-          final all = snapshot.data ?? const <Map<String, dynamic>>[];
+          final loaded = snapshot.data ?? const <Map<String, dynamic>>[];
+          bool isGenericFinalClass(Map<String, dynamic> row) => RegExp(
+                r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
+                caseSensitive: false,
+              ).hasMatch((row['class_name'] ?? '').toString().trim());
+
+          bool hasSpecificSibling(Map<String, dynamic> row) {
+            final classId = row['class_id']?.toString();
+            final levelId = row['exam_level_id']?.toString();
+            final subsystem = row['subsystem']?.toString();
+            final sector = row['sector']?.toString();
+            return loaded.any((candidate) {
+              if (candidate['class_id']?.toString() == classId ||
+                  candidate['exam_level_id']?.toString() != levelId ||
+                  candidate['subsystem']?.toString() != subsystem ||
+                  candidate['sector']?.toString() != sector) {
+                return false;
+              }
+              final track = (candidate['track_label'] ?? '').toString().trim();
+              final name = (candidate['class_name'] ?? '').toString().trim();
+              return track.isNotEmpty &&
+                  !isGenericFinalClass(candidate) &&
+                  RegExp(r'^(terminale|upper\s+sixth)\b', caseSensitive: false)
+                      .hasMatch(name);
+            });
+          }
+
+          // Hide a generic final-level room only when a matching
+          // series/specialty room exists for the same exam level and pathway.
+          final all = loaded
+              .where((row) => !isGenericFinalClass(row) || !hasSpecificSibling(row))
+              .toList();
           return _content(all);
         },
       ),
