@@ -505,6 +505,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
             locale: widget.locale,
             teacherId: widget.profile.id,
             showAllCompatibleClasses: true,
+            showAllCompatibleClasses: true,
             onChanged: (classes, subject) {
               setState(() {
                 _classes = classes;
