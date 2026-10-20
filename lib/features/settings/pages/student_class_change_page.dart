@@ -135,6 +135,21 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
             );
           }
           final loaded = snapshot.data ?? const <Map<String, dynamic>>[];
+          // Never allow a student to switch outside their registered school
+          // system/subsystem. A technical student sees only technical rooms;
+          // general education students see only general rooms, in the same
+          // anglophone/francophone subsystem.
+          final normalizedSubsystem = widget.profile.subsystem?.toLowerCase().trim();
+          final normalizedSector = widget.profile.sector?.toLowerCase().trim();
+          final scoped = loaded.where((row) {
+            final roomSubsystem = row['subsystem']?.toString().toLowerCase().trim();
+            final roomSector = row['sector']?.toString().toLowerCase().trim();
+            if (normalizedSubsystem != null && normalizedSubsystem.isNotEmpty &&
+                roomSubsystem != normalizedSubsystem) return false;
+            if (normalizedSector != null && normalizedSector.isNotEmpty &&
+                roomSector != normalizedSector) return false;
+            return true;
+          }).toList(growable: false);
           bool isGenericFinalClass(Map<String, dynamic> row) => RegExp(
                 r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)$',
                 caseSensitive: false,
@@ -163,7 +178,7 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
 
           // Hide a generic final-level room only when a matching
           // series/specialty room exists for the same exam level and pathway.
-          final all = loaded
+          final all = scoped
               .where((row) => !_isCombinedLanguageRoom(row))
               .where((row) => !isGenericFinalClass(row) || !hasSpecificSibling(row))
               .toList();

@@ -37,7 +37,20 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
       _error = null;
     });
     try {
-      final classes = await _service.listNextClasses();
+      final loaded = await _service.listNextClasses();
+      final subsystem = widget.profile.subsystem?.toLowerCase().trim();
+      final sector = widget.profile.sector?.toLowerCase().trim();
+      final classes = loaded.where((row) {
+        final roomSubsystem = row['subsystem']?.toString().toLowerCase().trim();
+        final roomSector = row['sector']?.toString().toLowerCase().trim();
+        if (subsystem != null && subsystem.isNotEmpty && roomSubsystem != subsystem) return false;
+        if (sector != null && sector.isNotEmpty && roomSector != sector) return false;
+        final searchable = [row['class_name'], row['track_label'], row['language_option']]
+            .whereType<Object>().join(' ').toLowerCase();
+        const languages = ['anglais','english','allemand','german','espagnol','espanol','spanish','italien','italian','arabe','arabic','chinois','chinese','portugais','portuguese','russe','russian','latin'];
+        if (languages.where(searchable.contains).length >= 2) return false;
+        return true;
+      }).toList(growable: false);
       if (!mounted) return;
       setState(() {
         _classes = classes;
