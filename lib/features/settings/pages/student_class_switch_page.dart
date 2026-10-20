@@ -163,12 +163,66 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                       const SizedBox(height: 8),
                       ..._classes.where((row) {
                         final label = (row['class_name'] ?? '').toString().trim();
-                        final hasSeries = _classes.any((candidate) {
+                        final genericFinal = RegExp(
+                          r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)
+                        final details = [
+                          row['exam_level_label']?.toString(),
+                          row['track_label']?.toString(),
+                          row['subsystem']?.toString(),
+                          row['sector']?.toString(),
+                        ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
+                        return Card(
+                          child: RadioListTile<String>(
+                            value: id ?? '',
+                            groupValue: _selectedClassId,
+                            onChanged: id == null || id.isEmpty
+                                ? null
+                                : (value) => setState(() => _selectedClassId = value),
+                            title: Text(name),
+                            subtitle: Text([
+                              if (details.isNotEmpty) details,
+                            ].join(' • ')),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _loading || _selectedClassId == null
+                              ? null
+                              : _switchClass,
+                          child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+      );
+}
+,
+                          caseSensitive: false,
+                        ).hasMatch(label);
+                        if (!genericFinal) return true;
+                        final classId = row['class_id']?.toString();
+                        final levelId = row['exam_level_id']?.toString();
+                        final subsystem = row['subsystem']?.toString();
+                        final sector = row['sector']?.toString();
+                        final hasSpecificSibling = _classes.any((candidate) {
+                          if (candidate['class_id']?.toString() == classId ||
+                              candidate['exam_level_id']?.toString() != levelId ||
+                              candidate['subsystem']?.toString() != subsystem ||
+                              candidate['sector']?.toString() != sector) {
+                            return false;
+                          }
                           final track = (candidate['track_label'] ?? '').toString().trim();
-                          return RegExp(r'^(C|D|TI)\s*[-–]').hasMatch(track);
+                          final name = (candidate['class_name'] ?? '').toString().trim();
+                          return track.isNotEmpty &&
+                              RegExp(r'^(terminale|upper\s+sixth)\b', caseSensitive: false)
+                                  .hasMatch(name);
                         });
-                        return !(hasSeries && RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false)
-                            .hasMatch(label));
+                        return !hasSpecificSibling;
                       }).map((row) {
                         final id = row['class_id']?.toString();
                         final rawName = row['class_name']?.toString() ??
@@ -177,10 +231,53 @@ class _StudentClassSwitchPageState extends State<StudentClassSwitchPage> {
                         final trackCode = rawTrack
                             .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '')
                             .split(RegExp(r'\s*[-–]')).first.trim().toUpperCase();
-                        final name = RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false)
-                                    .hasMatch(rawName.trim()) &&
-                                const {'C', 'D', 'TI'}.contains(trackCode)
-                            ? 'Terminale $trackCode'
+                        final genericFinal = RegExp(
+                          r'^(terminale(?:\s+simple)?|upper\s+sixth(?:\s+simple)?)
+                        final details = [
+                          row['exam_level_label']?.toString(),
+                          row['track_label']?.toString(),
+                          row['subsystem']?.toString(),
+                          row['sector']?.toString(),
+                        ].where((value) => value != null && value.trim().isNotEmpty).join(' • ');
+                        return Card(
+                          child: RadioListTile<String>(
+                            value: id ?? '',
+                            groupValue: _selectedClassId,
+                            onChanged: id == null || id.isEmpty
+                                ? null
+                                : (value) => setState(() => _selectedClassId = value),
+                            title: Text(name),
+                            subtitle: Text([
+                              if (details.isNotEmpty) details,
+                            ].join(' • ')),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _loading || _selectedClassId == null
+                              ? null
+                              : _switchClass,
+                          child: Text(_fr ? 'Confirmer le changement' : 'Confirm change'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+      );
+}
+,
+                          caseSensitive: false,
+                        ).hasMatch(rawName.trim());
+                        final finalLevel = RegExp(r'^upper\s+sixth', caseSensitive: false)
+                                .hasMatch(rawName.trim())
+                            ? 'Upper Sixth'
+                            : 'Terminale';
+                        final name = genericFinal && trackCode.isNotEmpty
+                            ? '$finalLevel $trackCode'
                             : rawName;
                         final details = [
                           row['exam_level_label']?.toString(),
