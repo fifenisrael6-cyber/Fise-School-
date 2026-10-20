@@ -332,7 +332,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_fr ? 'Messages' : 'Messages'),
+        title: Text(_fr ? 'Messagerie' : 'Messages'),
         actions: [
           IconButton(
             tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
