@@ -49,6 +49,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   String? _inviteCode;
   bool _announcementsOnly = false;
   bool _groupActionInProgress = false;
+  int? _memberCount;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
@@ -72,7 +73,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           column: 'group_id',
           value: widget.group.id,
         ),
-        callback: (_) => _load(showLoader: false),
+        callback: (_) { _load(showLoader: false); _loadGroupSettings(); },
       )
       ..subscribe();
   }
@@ -132,7 +133,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _loadGroupSettings() async {
     try {
       final value = await _service.getAnnouncementsOnly(widget.group.id);
-      if (mounted) setState(() => _announcementsOnly = value);
+      final members = await _service.listMembers(widget.group.id);
+      if (mounted) setState(() { _announcementsOnly = value; _memberCount = members.length; });
     } catch (_) {}
   }
 
@@ -184,7 +186,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     try {
       setState(() => _groupActionInProgress = true);
       await _service.leaveGroup(widget.group.id);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) { Navigator.of(context).pop(); Navigator.of(context).pop(); }
     } catch (error) {
       _snack((_fr ? 'Impossible de quitter le groupe : ' : 'Unable to leave group: ') + error.toString());
     } finally {
@@ -479,7 +481,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
               ),
               Text(
-                _fr ? 'Touchez pour les infos du groupe' : 'Tap for group info',
+                _fr ? '${_memberCount ?? widget.group.memberCount} membres · Touchez pour les infos' : '${_memberCount ?? widget.group.memberCount} members · Tap for info',
                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
               ),
             ],
