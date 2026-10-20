@@ -146,8 +146,29 @@ async function transcribeStoredResource(
   const mime = String(resource?.mime_type ?? inferredMime).toLowerCase();
   const fileSize = Number(resource?.file_size ?? 0);
   if (!["image", "pdf"].includes(resourceType) || fileSize > 8 * 1024 * 1024) return "";
-  const { data: file, error } = await storageClient.storage.from(bucketName).download(String(resource.storage_path ?? ""));
-  if (error || !file) return "";
+  // Storage downloads can also stall; keep them inside the shared OCR budget.
+  let file: Blob | null = null;
+  let downloadTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const downloadBudget = Math.min(5000, deadlineAt - Date.now());
+    if (downloadBudget < 1000) return "";
+    const downloadResult = await Promise.race([
+      storageClient.storage.from(bucketName).download(String(resource.storage_path ?? "")),
+      new Promise<never>((_, reject) => {
+        downloadTimer = setTimeout(
+          () => reject(new Error("RESOURCE_DOWNLOAD_TIMEOUT")),
+          downloadBudget,
+        );
+      }),
+    ]);
+    if (downloadResult.error || !downloadResult.data) return "";
+    file = downloadResult.data;
+  } catch {
+    return "";
+  } finally {
+    if (downloadTimer !== undefined) clearTimeout(downloadTimer);
+  }
+  if (!file) return "";
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!bytes.length || bytes.length > 8 * 1024 * 1024) return "";
   let binary = "";
