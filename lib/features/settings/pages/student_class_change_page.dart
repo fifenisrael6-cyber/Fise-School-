@@ -46,9 +46,14 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
   String _label(Map<String, dynamic> row) {
     final raw = (row['class_name'] ?? '').toString().trim();
     final track = (row['track_label'] ?? '').toString().trim()
-        .replaceFirst(RegExp(r'^(série|serie)\\s+', caseSensitive: false), '');
-    // A generic Terminale label hides the actual series in the room picker.
-    if (RegExp(r'^terminale(?:\\s+simple)?
+        .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '');
+    // Show the actual series instead of the ambiguous generic Terminale label.
+    if (RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false).hasMatch(raw) &&
+        const {'D', 'C', 'TI'}.contains(track.toUpperCase())) {
+      return 'Terminale \${track.toUpperCase()}';
+    }
+    return raw;
+  }
 
   String _subsystemLabel(Object? raw) {
     switch (raw?.toString().toLowerCase()) {
