@@ -343,7 +343,7 @@ class ChapterLearningService {
     final response = await _client.functions.invoke(
       'chapter-quiz',
       body: {'chapter_id': chapterId},
-    );
+    ).timeout(const Duration(seconds: 40));
     if (response.status < 200 || response.status >= 300) {
       final payload = response.data;
       final message = payload is Map
