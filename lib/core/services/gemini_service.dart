@@ -131,6 +131,6 @@ class GeminiService {
             'base64': base64Encode(attachmentBytes),
           },
       },
-    );
+    ).timeout(const Duration(seconds: 35));
   }
 }
