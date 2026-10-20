@@ -255,7 +255,7 @@ begin
   if not found then raise exception 'Student is not a member of this group'; end if;
   return true;
 end;
-$;
+$$;
 
 create or replace function public.leave_message_group(p_group_id uuid)
 returns boolean
@@ -272,7 +272,7 @@ begin
   if not found then raise exception 'You are not a member of this group'; end if;
   return true;
 end;
-$;
+$$;
 
 create or replace function public.delete_message_group(p_group_id uuid)
 returns boolean
@@ -288,7 +288,7 @@ begin
   delete from public.message_groups where id = p_group_id;
   return true;
 end;
-$;
+$$;
 
 revoke all on function public.get_message_group_settings(uuid) from public, anon;
 revoke all on function public.set_message_group_announcements_only(uuid, boolean) from public, anon;
