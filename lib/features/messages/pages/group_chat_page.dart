@@ -158,7 +158,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     try {
       setState(() => _groupActionInProgress = true);
       await _service.deleteGroup(widget.group.id);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) { Navigator.of(context).pop(); Navigator.of(context).pop(); }
     } catch (error) {
       _snack((_fr ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString());
     } finally {
