@@ -299,7 +299,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_fr ? 'Messages' : 'Messages'),
+        title: Text(_fr ? 'Messagerie' : 'Messages'),
         actions: [
           IconButton(
             tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
@@ -333,7 +333,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                     child: Icon(Icons.person_rounded, color: Color(0xFF166534)),
                   ),
                   title: Text(
-                    _fr ? 'Messages privés' : 'Private messages',
+                    _fr ? 'Messagerie privée' : 'Private messages',
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(_fr ? 'Discussions individuelles' : 'One-to-one chats'),
