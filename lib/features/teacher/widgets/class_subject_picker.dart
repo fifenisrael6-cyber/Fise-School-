@@ -38,6 +38,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   List<Subject> _subjects = const [];
   Subject? _subject;
   bool _loadingSubjects = false;
+  String? _teacherStream;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -66,7 +67,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
-    final stream = profile?['teaching_stream']?.toString();
+    _teacherStream = profile?['teaching_stream']?.toString().trim().toLowerCase();
     final all = await _service.listTeacherCompatibleClasses();
     return all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
@@ -136,7 +137,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
       final selectedClass = classes.first;
       final subjects = (common ?? <String, Subject>{}).values
-          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector && (stream == null || stream.isEmpty || stream == 'general' || subject.teachingStream == stream || subject.teachingStream == 'general'))
+          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector && (_teacherStream == null || _teacherStream!.isEmpty || _teacherStream == 'general' || subject.teachingStream == _teacherStream || subject.teachingStream == 'general'))
           .toList();
       setState(() {
         _subjects = subjects;
