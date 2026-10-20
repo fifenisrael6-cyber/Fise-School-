@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../models/user_profile.dart';
-import '../../messages/pages/private_messages_page.dart';
+import '../../messages/pages/messages_hub_page.dart';
 import '../../notifications/pages/notifications_page.dart';
 import '../../search/pages/search_page.dart';
 import '../../settings/pages/profile_page.dart';
@@ -65,7 +65,7 @@ class StudentDashboardPage extends StatelessWidget {
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => PrivateMessagesPage(locale: locale, profile: profile),
+                  builder: (_) => MessagesHubPage(locale: locale, profile: profile),
                 ),
               ),
             ),
