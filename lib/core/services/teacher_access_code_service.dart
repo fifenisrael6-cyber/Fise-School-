@@ -99,17 +99,53 @@ class TeacherAccessCodeService {
   /// Récupère tous les codes d'accès de l'enseignant
   Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
     try {
-      final response = await _client
+      // This call synchronizes all legacy per-class rows to the shared FISE code.
+      await _client.rpc('get_or_create_teacher_group_access_code');
+      var response = await _client
           .from('teacher_access_codes')
           .select()
           .eq('teacher_id', teacherId)
           .order('created_at', ascending: false);
 
-      final rows = (response as List)
-          .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
+      var rows = (response as List)
+          .map((item) => TeacherAccessCode.fromMap(Map<String, dynamic>.from(item as Map)))
           .toList();
-      // The database keeps classroom rows for access checks, but the teacher
-      // sees only one shared code in the interface.
+
+      if (rows.isEmpty) {
+        String? classId;
+        final teacherClasses = await _client
+            .from('class_teachers')
+            .select('class_id')
+            .eq('teacher_id', teacherId)
+            .eq('is_active', true)
+            .limit(1);
+        if (teacherClasses is List && teacherClasses.isNotEmpty) {
+          classId = (teacherClasses.first as Map)['class_id']?.toString();
+        }
+        if (classId == null) {
+          final groups = await _client
+              .from('message_groups')
+              .select('class_id')
+              .eq('owner_id', teacherId)
+              .not('class_id', 'is', null)
+              .limit(1);
+          if (groups is List && groups.isNotEmpty) {
+            classId = (groups.first as Map)['class_id']?.toString();
+          }
+        }
+        if (classId != null && classId.isNotEmpty) {
+          await getOrCreateAccessCode(teacherId, classId, null);
+          response = await _client
+              .from('teacher_access_codes')
+              .select()
+              .eq('teacher_id', teacherId)
+              .order('created_at', ascending: false);
+          rows = (response as List)
+              .map((item) => TeacherAccessCode.fromMap(Map<String, dynamic>.from(item as Map)))
+              .toList();
+        }
+      }
+
       final seen = <String>{};
       return rows.where((item) => seen.add(item.code.toUpperCase())).toList();
     } catch (_) {
