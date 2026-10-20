@@ -50,7 +50,7 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
     // Show the actual series instead of the ambiguous generic Terminale label.
     if (RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false).hasMatch(raw) &&
         const {'D', 'C', 'TI'}.contains(track.toUpperCase())) {
-      return 'Terminale \${track.toUpperCase()}';
+      return 'Terminale ${track.toUpperCase()}';
     }
     return raw;
   }
