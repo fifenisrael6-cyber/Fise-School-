@@ -151,7 +151,7 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
   }
 
   String _normalizedOption(String? value) =>
-      (value ?? '').trim().toLowerCase().replaceAll(RegExp(r'\\s+'), ' ');
+      (value ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   bool _isCorrectOption(AssignmentQuestion question, String option, Map<String, dynamic> feedback) {
     var correct = feedback['correct_option']?.toString() ?? '';
