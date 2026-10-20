@@ -87,13 +87,50 @@ class TeacherAccessCodeService {
     String studentClassId,
   ) async {
     try {
-      final cleanCode = _cleanCode(code);
-      if (cleanCode.isEmpty) return false;
+      final suffix = _cleanCode(code);
+      if (!RegExp(r'^[A-Z0-9]{6}
+
+      return response is List && response.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Récupère tous les codes d'accès de l'enseignant
+  Future<List<TeacherAccessCode>> getTeacherAccessCodes(String teacherId) async {
+    try {
+      final response = await _client
+          .from('teacher_access_codes')
+          .select()
+          .eq('teacher_id', teacherId)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((item) => TeacherAccessCode.fromMap(item as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Désactive un code d'accès
+  Future<void> deactivateAccessCode(String accessCodeId) async {
+    await _client
+        .from('teacher_access_codes')
+        .update({'is_active': false})
+        .eq('id', accessCodeId);
+  }
+
+  String _cleanCode(String value) => value.trim().toUpperCase().replaceFirst(RegExp(r'^FISE-?'), '');
+
+}
+).hasMatch(suffix)) return false;
+      final canonicalCode = 'FISE-$suffix';
 
       final response = await _client.rpc(
         'join_teacher_access_code_for_class',
         params: {
-          'p_code': cleanCode,
+          'p_code': canonicalCode,
           'p_expected_class_id': studentClassId,
         },
       );
