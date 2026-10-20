@@ -47,9 +47,10 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
     final raw = (row['class_name'] ?? '').toString().trim();
     final track = (row['track_label'] ?? '').toString().trim()
         .replaceFirst(RegExp(r'^(série|serie)\s+', caseSensitive: false), '');
+    final trackCode = track.split(RegExp(r'\s*[-–]')).first.trim();
     if (RegExp(r'^terminale(?:\s+simple)?$', caseSensitive: false).hasMatch(raw) &&
-        const {'D', 'C', 'TI'}.contains(track.toUpperCase())) {
-      return 'Terminale ${track.toUpperCase()}';
+        const {'D', 'C', 'TI'}.contains(trackCode.toUpperCase())) {
+      return 'Terminale ${trackCode.toUpperCase()}';
     }
     return raw;
   }
