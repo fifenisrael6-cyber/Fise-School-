@@ -37,7 +37,7 @@ class _TeacherMainPageState extends State<TeacherMainPage> {
         destinations: [
           NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messages' : 'Messages'),
+          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messagerie' : 'Messages'),
           NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
         ],
       ),
@@ -54,7 +54,7 @@ class _TeacherHome extends StatelessWidget {
       appBar: AppBar(title: const Text('Fise School', style: TextStyle(fontWeight: FontWeight.w800)), actions: [IconButton(icon: const Icon(Icons.settings_outlined), tooltip: fr ? 'Paramètres' : 'Settings', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsPage(locale: locale, profile: profile))))]),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
         Text('${fr ? 'Bonjour' : 'Hello'}, ${profile.firstName}', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 6), Text(fr ? 'Gérez vos salles, vos cours, vos messages et vos évaluations.' : 'Manage your classrooms, courses, messages and evaluations.'),
+        const SizedBox(height: 6), Text(fr ? 'Gérez vos salles, vos cours, votre messagerie et vos évaluations.' : 'Manage your classrooms, courses, messages and evaluations.'),
         const SizedBox(height: 16),
         Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Mes salles' : 'My classrooms', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]), const SizedBox(height: 8), Text(fr ? 'Choisissez une salle pour publier vos contenus, échanger avec les élèves et organiser les évaluations.' : 'Choose a classroom to publish content, message students and organize evaluations.'), const SizedBox(height: 12),]))),
         const SizedBox(height: 12),
