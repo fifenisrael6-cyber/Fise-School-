@@ -10,6 +10,10 @@ import '../../models/user_profile.dart';
 /// Point d'entrée unique : vérifie les droits côté serveur et ouvre la fenêtre
 /// Premium si besoin. Retourne true si l'action demandée peut continuer.
 class PremiumGate {
+  // Temporary application-test mode: payment/quota gates stay disabled until
+  // end-to-end classroom messaging and course delivery have been validated.
+  static const bool testingMode = true;
+
   static Future<bool> ensure(
     BuildContext context, {
     required UserProfile profile,
@@ -18,6 +22,7 @@ class PremiumGate {
     bool premiumOnly = false,
     bool offlineFallback = false,
   }) async {
+    if (testingMode) return true;
     if (profile.role != 'student') return true;
     final service = QuotaService();
     final fr = profile.preferredLanguage != 'en';
@@ -55,6 +60,7 @@ class PremiumGate {
     required QuotaFeature feature,
     bool hasAttachment = false,
   }) async {
+    if (testingMode) return true;
     if (profile.role != 'student') return true;
     final fr = profile.preferredLanguage != 'en';
     try {
@@ -96,7 +102,7 @@ class PremiumGate {
     required QuotaFeature feature,
     bool premiumOnly = false,
   }) =>
-      _openSheet(context, profile, feature, premiumOnlyReason: premiumOnly);
+      testingMode ? Future<bool>.value(true) : _openSheet(context, profile, feature, premiumOnlyReason: premiumOnly);
 
   static Future<bool> _openSheet(
     BuildContext context,

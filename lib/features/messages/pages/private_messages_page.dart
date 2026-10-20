@@ -65,6 +65,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           }
         }
       })
+      ..onPostgresChanges(event: PostgresChangeEvent.update, schema: 'public', table: 'private_messages', callback: (payload) {
+        final row = payload.newRecord;
+        if (row['sender_id'] == widget.profile.id || row['recipient_id'] == widget.profile.id) {
+          final selected = _selected;
+          if (selected != null && (row['sender_id'] == selected.id || row['recipient_id'] == selected.id)) {
+            _select(selected);
+          }
+        }
+      })
       .subscribe();
   }
 
@@ -390,7 +399,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   ),
                                   if (mine) ...[
                                     const SizedBox(width: 4),
-                                    Icon(message.isPending ? Icons.schedule_rounded : (message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded), size: 14, color: message.isPending ? Colors.black45 : (message.readAt == null ? Colors.black45 : const Color(0xFF166534))),
+                                    Icon(message.isPending ? Icons.schedule_rounded : (message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded), size: 16, color: message.isPending ? Colors.black45 : (message.readAt == null ? Colors.black87 : const Color(0xFF34B7F1))),
                                   ],
                                 ],
                               ),
