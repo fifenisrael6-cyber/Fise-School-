@@ -42,6 +42,11 @@ class _TeacherPastPapersPageState extends State<TeacherPastPapersPage> {
   void initState() {
     super.initState();
     _load();
+    if (widget.initialSharedAttachments.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _add(initialAttachment: widget.initialSharedAttachments.first);
+      });
+    }
   }
 
   String get _papersCacheKey => 'teacher_past_papers_${widget.profile.id}';
