@@ -213,8 +213,30 @@ class GroupMessageService {
     return (result as List).map((row) => GroupMember.fromMap(Map<String, dynamic>.from(row as Map))).toList();
   }
 
+  Future<bool> getAnnouncementsOnly(String groupId) async {
+    final result = await _client.rpc('get_message_group_settings', params: {'p_group_id': groupId});
+    if (result is Map) return result['announcements_only'] == true;
+    return false;
+  }
+
+  Future<void> setAnnouncementsOnly(String groupId, bool enabled) async {
+    await _client.rpc('set_message_group_announcements_only', params: {
+      'p_group_id': groupId, 'p_enabled': enabled,
+    });
+  }
+
   Future<void> removeMember(String groupId, String userId) async {
-    await _client.from('message_group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+    await _client.rpc('remove_message_group_member', params: {
+      'p_group_id': groupId, 'p_user_id': userId,
+    });
+  }
+
+  Future<void> leaveGroup(String groupId) async {
+    await _client.rpc('leave_message_group', params: {'p_group_id': groupId});
+  }
+
+  Future<void> deleteGroup(String groupId) async {
+    await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
   }
 
   Future<void> send({
