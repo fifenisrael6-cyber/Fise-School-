@@ -42,7 +42,10 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "Firebase Android configuration installed."
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON is not configured. The APK can build, but FCM push notifications will NOT work."
           fi
 
       - name: Flutter pub get
