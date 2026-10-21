@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/assignment_service.dart';
 import '../../../models/user_profile.dart';
@@ -38,6 +39,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   List<Course> _courses = const [];
   List<Lesson> _lessons = const [];
   SchoolClass? _selectedClass;
+  final Set<String> _additionalClassIds = <String>{};
   Course? _selectedCourse;
   Lesson? _selectedLesson;
 
@@ -120,6 +122,94 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
         ),
       );
 
+      // Copy the manually authored questions to matching courses in the
+      // additional selected rooms. Each room gets its own assignment and
+      // question rows, so student access remains scoped to that classroom.
+      if (_additionalClassIds.isNotEmpty) {
+        final questions = await _service.listQuestions(assignment.id);
+        final teacherCourses = await _courseService.listTeacherCourses(widget.profile.id);
+        final sourceChapterId = _selectedCourse!.chapterId;
+        String normalize(Object? value) => (value ?? '').toString().trim().toLowerCase();
+        final chapterIds = <String>{
+          if (sourceChapterId != null && sourceChapterId.isNotEmpty) sourceChapterId,
+          ...teacherCourses
+              .where((course) => _additionalClassIds.contains(course.classId) && course.chapterId != null)
+              .map((course) => course.chapterId!),
+        };
+        final chapterTitles = <String, Set<String>>{};
+        if (chapterIds.isNotEmpty) {
+          final rows = await Supabase.instance.client
+              .from('course_chapters')
+              .select('id,title_fr,title_en')
+              .inFilter('id', chapterIds.toList(growable: false));
+          for (final row in rows) {
+            final id = row['id'].toString();
+            chapterTitles[id] = <String>{
+              normalize(row['title_fr']),
+              normalize(row['title_en']),
+            }..remove('');
+          }
+        }
+        var copied = 0;
+        final copyErrors = <String>[];
+        final allClasses = await _classesFuture;
+        for (final targetId in _additionalClassIds) {
+          final room = allClasses.where((item) => item.id == targetId).firstOrNull;
+          try {
+            final sourceTitles = chapterTitles[sourceChapterId] ?? <String>{};
+            final targetCourses = teacherCourses.where((course) =>
+                course.classId == targetId &&
+                course.subjectId == _selectedCourse!.subjectId &&
+                course.status != 'archived' &&
+                course.chapterId != null &&
+                chapterTitles[course.chapterId!] != null &&
+                chapterTitles[course.chapterId!]!.intersection(sourceTitles).isNotEmpty).toList();
+            if (targetCourses.isEmpty) {
+              throw StateError(_isEnglish
+                  ? 'No course with the same subject and chapter exists in this room.'
+                  : 'Aucun cours correspondant à la même matière et au même chapitre dans cette salle.');
+            }
+            final targetCourse = targetCourses.first;
+            final duplicate = await _service.saveAssignment(
+              courseId: targetCourse.id,
+              subjectId: targetCourse.subjectId,
+              lessonId: null,
+              teacherId: widget.profile.id,
+              classId: targetId,
+              titleFr: _titleFrController.text.trim(),
+              titleEn: _titleEnController.text.trim(),
+              instructionsFr: _instructionsFrController.text.trim().isEmpty ? null : _instructionsFrController.text.trim(),
+              instructionsEn: _instructionsEnController.text.trim().isEmpty ? null : _instructionsEnController.text.trim(),
+              dueAt: _dueAt,
+              status: _status,
+              maxScore: maxScore,
+            );
+            for (final question in questions) {
+              await _service.saveQuestion(
+                assignmentId: duplicate.id,
+                position: question.position,
+                questionFr: question.questionFr,
+                questionEn: question.questionEn,
+                questionType: question.questionType,
+                points: question.points,
+                options: question.options,
+                correctAnswer: question.correctAnswer,
+              );
+            }
+            copied++;
+          } catch (error) {
+            copyErrors.add('${room?.displayName ?? targetId}: $error');
+          }
+        }
+        if (mounted && _additionalClassIds.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            _isEnglish
+                ? 'QCM copied to $copied additional room(s).${copyErrors.isEmpty ? '' : ' Some rooms were skipped: ${copyErrors.first}'}'
+                : 'QCM copié dans $copied salle(s) supplémentaire(s).${copyErrors.isEmpty ? '' : ' Certaines salles ont été ignorées : ${copyErrors.first}'}',
+          )));
+        }
+      }
+
       if (!mounted) {
         return;
       }
@@ -161,6 +251,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   Future<void> _selectClass(SchoolClass? value) async {
     setState(() {
       _selectedClass = value;
+      _additionalClassIds.clear();
       _selectedCourse = null;
       _selectedLesson = null;
       _courses = const [];
@@ -366,9 +457,44 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
         FutureBuilder<List<SchoolClass>>(
           future: _classesFuture,
           builder: (_, snapshot) => _dropdown<SchoolClass>(
-            label: _isEnglish ? 'Classroom' : 'Salle de classe', value: _selectedClass,
+            label: _isEnglish ? 'Primary classroom' : 'Salle principale', value: _selectedClass,
             items: snapshot.data ?? const [], labelOf: (item) => item.displayName, onChanged: _selectClass,
           ),
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<List<SchoolClass>>(
+          future: _classesFuture,
+          builder: (_, snapshot) {
+            final rooms = (snapshot.data ?? const <SchoolClass>[])
+                .where((room) => _selectedClass != null && room.id != _selectedClass!.id)
+                .toList(growable: false);
+            if (_selectedClass == null || rooms.isEmpty) return const SizedBox.shrink();
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_isEnglish ? 'Also publish this manual QCM to compatible rooms' : 'Publier aussi ce QCM manuel dans les salles compatibles',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(_isEnglish
+                    ? 'Only rooms with a course sharing the same subject and chapter will receive a copy.'
+                    : 'Seules les salles ayant un cours de la même matière et du même chapitre recevront une copie.'),
+                for (final room in rooms)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: _additionalClassIds.contains(room.id),
+                    title: Text(room.displayName),
+                    onChanged: (checked) => setState(() {
+                      if (checked == true) {
+                        _additionalClassIds.add(room.id);
+                      } else {
+                        _additionalClassIds.remove(room.id);
+                      }
+                    }),
+                  ),
+              ]),
+            );
+          },
         ),
         const SizedBox(height: 12),
         _dropdown<Course>(
