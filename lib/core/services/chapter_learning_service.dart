@@ -422,6 +422,22 @@ class ChapterLearningService {
     return rows.map(ChapterLearningQuizQuestion.fromMap).toList(growable: false);
   }
 
+  /// Enregistre le choix définitif et retourne la correction depuis le serveur.
+  /// Une question déjà cochée ne peut plus être modifiée, même en rappelant le RPC.
+  Future<Map<String, dynamic>> checkQuizAnswer({
+    required String questionId,
+    required int selectedIndex,
+  }) async {
+    final result = await _client.rpc(
+      'check_chapter_quiz_answer',
+      params: {
+        'p_question_id': questionId,
+        'p_selected_option_index': selectedIndex,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   /// Le serveur vérifie les réponses à partir de la table privée des clés.
   Future<Map<String, dynamic>> submitQuiz({
     required String quizId,
