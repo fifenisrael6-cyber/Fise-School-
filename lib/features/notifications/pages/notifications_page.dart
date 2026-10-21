@@ -4,16 +4,20 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../models/notification.dart';
+import '../../../models/user_profile.dart';
+import '../../messages/pages/messages_hub_page.dart';
 
 class NotificationsPage extends StatefulWidget {
   final Locale locale;
   final String userId;
+  final UserProfile? profile;
   final NotificationService? notificationService;
 
   const NotificationsPage({
     super.key,
     required this.locale,
     required this.userId,
+    this.profile,
     this.notificationService,
   });
 
@@ -89,8 +93,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 isThreeLine: true,
                 onTap: () async {
                   await _service.markRead(item.id);
-                  if (mounted) {
-                    setState(() => _future = _service.listForUser(widget.userId));
+                  if (!mounted) return;
+                  setState(() => _future = _service.listForUser(widget.userId));
+                  // Message notifications must open the actual messaging area,
+                  // not merely disappear from the notification list.
+                  if (item.type == 'message' && widget.profile != null) {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => MessagesHubPage(
+                          locale: widget.locale,
+                          profile: widget.profile!,
+                        ),
+                      ),
+                    );
                   }
                 },
               );
