@@ -626,15 +626,36 @@ class CourseService {
   /// Salles suivies par l'enseignant. Lors de la première utilisation, avant
   /// toute sélection enregistrée, affiche toutes les salles compatibles.
   Future<List<SchoolClass>> listTeacherSelectedClasses() async {
-    final all = await listTeacherCompatibleClasses();
+    var all = await listTeacherCompatibleClasses();
+    // Apply the teacher's selected series/specialty as an additional curriculum
+    // boundary, not only subsystem/sector. Generic rooms without a track remain
+    // available for subjects shared by the programme.
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId != null) {
+        final profile = await _client
+            .from('profiles')
+            .select('series_id, specialty_id')
+            .eq('id', userId)
+            .maybeSingle();
+        final seriesId = profile?['series_id']?.toString();
+        final specialtyId = profile?['specialty_id']?.toString();
+        if (seriesId != null && seriesId.isNotEmpty) {
+          all = all.where((room) => room.seriesId == null || room.seriesId == seriesId).toList(growable: false);
+        }
+        if (specialtyId != null && specialtyId.isNotEmpty) {
+          all = all.where((room) => room.specialtyId == null || room.specialtyId == specialtyId).toList(growable: false);
+        }
+      }
+    } catch (_) {
+      // Keep the compatible-room list usable on older schema versions.
+    }
     final selectedIds = await listTeacherFollowedClassIds();
     if (selectedIds.isEmpty) return all;
     final selected = all
         .where((schoolClass) => selectedIds.contains(schoolClass.id))
         .toList(growable: false);
-    // Older saved preferences may contain only empty generic level buckets.
-    // If filtering removes all of them, keep the picker usable and show the
-    // current real classrooms instead of presenting an empty list.
+    // Ignore stale preferences if the selected track changed or a room was archived.
     return selected.isEmpty ? all : selected;
   }
 
