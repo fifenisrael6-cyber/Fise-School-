@@ -22,6 +22,27 @@ where lower(unaccent(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' 
   and teaching_stream = 'both';
 
 -- Enforce the same stream boundary when a teacher creates a course through the API.
+-- Let a teacher choose the stream once during signup; subsequent changes remain admin-only.
+create or replace function public.protect_teaching_stream()
+returns trigger language plpgsql security definer set search_path=public
+as $function$
+begin
+  if new.teaching_stream is distinct from old.teaching_stream
+     and auth.uid() is not null
+     and not coalesce(public.is_catalog_admin(), false) then
+    if old.teaching_stream is null
+       and old.role = 'teacher'
+       and auth.uid() = old.id
+       and lower(trim(coalesce(new.teaching_stream, ''))) in ('literary','scientific') then
+      new.teaching_stream := lower(trim(new.teaching_stream));
+    else
+      new.teaching_stream := old.teaching_stream;
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
 create or replace function public.enforce_course_destination_scope()
 returns trigger language plpgsql security definer set search_path=public
 as $function$
