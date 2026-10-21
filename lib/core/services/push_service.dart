@@ -119,7 +119,11 @@ class PushService {
     fiseMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(body.isEmpty ? title : '$title\n$body'),
-        duration: const Duration(seconds: 5),
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: 'Ouvrir',
+          onPressed: () => _handleNotificationOpen(message),
+        ),
       ),
     );
   }
