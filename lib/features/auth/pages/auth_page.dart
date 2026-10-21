@@ -143,7 +143,7 @@ class _AuthPageState extends State<AuthPage> {
     try {
       var signedIn = true;
       if (_isRegistering) {
-        final level = _isStudent ? _level : null;
+        final level = _level;
         final isGeneral = _sector == ExamSector.general;
         signedIn = await _authService.signUp(
           email: _emailController.text,
@@ -388,7 +388,9 @@ class _AuthPageState extends State<AuthPage> {
   List<Widget> _schoolChoiceFields(AppTexts texts) {
     return [
       Text(
-        texts.chooseYourClass,
+        (_role == 'teacher'
+            ? (_lang == 'en' ? 'Choose your teaching stream' : 'Choisissez votre filière d’enseignement')
+            : texts.chooseYourClass),
         style: const TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -439,7 +441,7 @@ class _AuthPageState extends State<AuthPage> {
           _loadLevels();
         },
       ),
-      if (_isStudent) ...[
+      if (_isStudent || _role == 'teacher') ...[
         const SizedBox(height: 14),
         ..._classFields(texts),
       ],
@@ -510,7 +512,11 @@ class _AuthPageState extends State<AuthPage> {
           key: ValueKey('track-${level?.id}'),
           initialValue: _track,
           isExpanded: true,
-          decoration: InputDecoration(labelText: texts.trackOptional),
+          decoration: InputDecoration(
+            labelText: _role == 'teacher'
+                ? (_lang == 'en' ? 'Required stream / specialty' : 'Filière / spécialité obligatoire')
+                : texts.trackOptional,
+          ),
           items: [
             for (final item in _tracks)
               DropdownMenuItem(
@@ -522,7 +528,7 @@ class _AuthPageState extends State<AuthPage> {
               ),
           ],
           validator: (value) =>
-              _isStudent && value == null ? texts.selectionRequired : null,
+              (_isStudent || _role == 'teacher') && value == null ? texts.selectionRequired : null,
           onChanged: (value) => setState(() {
             _track = value;
             _languageOption = null;
@@ -530,7 +536,7 @@ class _AuthPageState extends State<AuthPage> {
           }),
         ),
       ],
-      if (_needsLanguageOption(level)) ...[
+      if (_isStudent && _needsLanguageOption(level)) ...[
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           key: ValueKey('language-option-${level?.id}-${_track?.code}'),
