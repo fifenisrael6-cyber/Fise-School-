@@ -199,6 +199,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   }
 
   void _toggleCourseSelection(Course course, bool? selected) {
+    if (course.status != 'published') return;
     setState(() {
       if (selected == true) { _selectedCourseIds.add(course.id); }
       else { _selectedCourseIds.remove(course.id); }
@@ -222,7 +223,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       ),
     );
     if (confirmed != true) return;
-    final selectedCourses = (await _coursesFuture).where((course) => selectedIds.contains(course.id)).toList(growable: false);
+    final selectedCourses = (await _coursesFuture).where((course) => selectedIds.contains(course.id) && course.status == 'published').toList(growable: false);
     try {
       for (final course in selectedCourses) {
         final resources = await _resources.listForCourse(course.id);
@@ -406,7 +407,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
                       ? () => _archiveCourse(course)
                       : null,
                   isFrench: _isFrench,
-                  selectionMode: _selectionMode,
+                  selectionMode: _selectionMode && course.status == 'published',
                   selected: _selectedCourseIds.contains(course.id),
                   onToggleSelected: (value) => _toggleCourseSelection(course, value),
                 );
