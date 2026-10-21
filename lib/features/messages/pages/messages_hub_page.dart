@@ -19,8 +19,10 @@ class MessagesHubPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final PickedAttachment? initialSharedAttachment;
+  final String? initialTargetType;
+  final String? initialTargetId;
 
-  const MessagesHubPage({super.key, required this.locale, required this.profile, this.initialSharedAttachment});
+  const MessagesHubPage({super.key, required this.locale, required this.profile, this.initialSharedAttachment, this.initialTargetType, this.initialTargetId});
 
   @override
   State<MessagesHubPage> createState() => _MessagesHubPageState();
@@ -51,6 +53,24 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     super.initState();
     _pendingSharedAttachment = widget.initialSharedAttachment;
     _groupsFuture = _service.listGroups();
+    // Open the exact conversation identified by a message notification.
+    final targetType = widget.initialTargetType;
+    final targetId = widget.initialTargetId;
+    if (targetType == 'private_message' && targetId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openPrivateMessages(initialContactId: targetId);
+      });
+    } else if (targetType == 'group' && targetId != null) {
+      _groupsFuture.then((groups) {
+        if (!mounted) return;
+        for (final group in groups) {
+          if (group.id == targetId) {
+            _openGroup(group);
+            break;
+          }
+        }
+      }).catchError((_) {});
+    }
     // Keep the Messages navigation widget while restoring live updates in its
     // conversation list, so new group messages refresh the preview and time.
     _groupsChannel = Supabase.instance.client
@@ -145,7 +165,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     if (mounted) _reload();
   }
 
-  Future<void> _openPrivateMessages() async {
+  Future<void> _openPrivateMessages({String? initialContactId}) async {
     final attachment = _pendingSharedAttachment;
     if (attachment != null) setState(() => _pendingSharedAttachment = null);
     await Navigator.push(
@@ -155,6 +175,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           locale: widget.locale,
           profile: widget.profile,
           initialAttachment: attachment,
+          initialContactId: initialContactId,
         ),
       ),
     );
