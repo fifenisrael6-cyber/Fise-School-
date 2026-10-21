@@ -111,7 +111,14 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
       final navigator = _navigatorKey.currentState;
       if (navigator == null) return;
       final type = (data['type'] ?? 'info').toLowerCase();
-      if (type == 'message' || type == 'group_message' || type == 'private_message') {
+      final targetType = (data['target_type'] ?? '').toLowerCase();
+      final isConversationTarget =
+          targetType == 'group' || targetType == 'private_message';
+      if (isConversationTarget ||
+          type == 'message' ||
+          type == 'group_message' ||
+          type == 'private_message' ||
+          type == 'group_member') {
         await navigator.push<void>(
           MaterialPageRoute<void>(
             builder: (_) => MessagesHubPage(
