@@ -54,6 +54,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     _classesFuture = _loadCompatibleClasses().then((list) {
       final available = list.where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName)).toList(growable: false);
       _allClasses = available;
+      _notify();
       return available;
     });
   }
@@ -61,16 +62,44 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   Future<List<SchoolClass>> _loadCompatibleClasses() async {
     final profile = await Supabase.instance.client
         .from('profiles')
-        .select('subsystem, sector')
+        .select('subsystem, sector, teaching_stream')
         .eq('id', widget.teacherId)
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
+    final teacherStream = _normalizeStream(profile?['teaching_stream']?.toString());
     final all = await _service.listTeacherCompatibleClasses();
-    return all.where((room) =>
+    _teacherStream = teacherStream;
+    final compatible = all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
       (sector != null && sector.isNotEmpty && room.sector.name == sector)
     ).toList(growable: false);
+    // Restore the teacher's saved room choices whenever this selector opens.
+    try {
+      final followedIds = await _service.listTeacherFollowedClassIds();
+      if (followedIds.isNotEmpty) {
+        _selectedIds
+          ..clear()
+          ..addAll(compatible.where((room) => followedIds.contains(room.id)).map((room) => room.id));
+      }
+    } catch (_) {
+      // Keep selection available if older deployments do not expose preferences.
+    }
+    return compatible;
+  }
+
+  String? _normalizeStream(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    if (['literary', 'litteraire', 'littéraire'].contains(normalized)) return 'literary';
+    if (['scientific', 'scientifique'].contains(normalized)) return 'scientific';
+    return null;
+  }
+
+  String? _teacherStream;
+
+  bool _canTeachSubject(Subject subject) {
+    final stream = _normalizeStream(subject.teachingStream);
+    return _teacherStream != null && (stream == 'both' || stream == _teacherStream);
   }
 
   bool _isCombinedLanguageRoom(String label) {
@@ -155,7 +184,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
       final selectedClass = classes.first;
       final subjects = (common ?? <String, Subject>{}).values
-          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector)
+          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector && _canTeachSubject(subject))
           .toList();
       setState(() {
         _subjects = subjects;
@@ -191,7 +220,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     try {
       for (final schoolClass in classes) {
         for (final subject in await _service.listAddableSubjects(schoolClass.id)) {
-          addable[subject.id] = subject;
+          if (_canTeachSubject(subject)) addable[subject.id] = subject;
         }
       }
     } catch (error) {

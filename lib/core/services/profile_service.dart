@@ -94,6 +94,7 @@ class ProfileService {
     String? exam,
     String? track,
     String? className,
+    String? teachingStream,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -117,6 +118,7 @@ class ProfileService {
       exam: exam,
       track: track,
       className: className,
+      teachingStream: teachingStream,
     );
 
     final payload = profile.toMap();

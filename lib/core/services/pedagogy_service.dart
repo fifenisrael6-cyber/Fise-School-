@@ -626,15 +626,14 @@ class CourseService {
   /// Salles suivies par l'enseignant. Lors de la première utilisation, avant
   /// toute sélection enregistrée, affiche toutes les salles compatibles.
   Future<List<SchoolClass>> listTeacherSelectedClasses() async {
-    final all = await listTeacherCompatibleClasses();
+    var all = await listTeacherCompatibleClasses();
+    // Rooms are limited by subsystem and sector, never by teacher series/specialty.
     final selectedIds = await listTeacherFollowedClassIds();
     if (selectedIds.isEmpty) return all;
     final selected = all
         .where((schoolClass) => selectedIds.contains(schoolClass.id))
         .toList(growable: false);
-    // Older saved preferences may contain only empty generic level buckets.
-    // If filtering removes all of them, keep the picker usable and show the
-    // current real classrooms instead of presenting an empty list.
+    // Ignore stale preferences if the selected track changed or a room was archived.
     return selected.isEmpty ? all : selected;
   }
 

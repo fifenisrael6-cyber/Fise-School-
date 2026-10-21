@@ -152,9 +152,13 @@ class GroupMessageService {
     }
   }
 
-  Future<String> createGroup({required String name, String? classId}) async {
+  Future<String> createGroup({required String name, String? classId, List<String>? classIds}) async {
+    final selectedIds = (classIds ?? <String>[if (classId != null) classId]).toSet().toList(growable: false);
+    if (selectedIds.isEmpty) {
+      throw StateError('Choose at least one classroom.');
+    }
     final id = await _client.rpc('create_message_group', params: {
-      'p_name': name, 'p_class_ids': classId == null ? <String>[] : <String>[classId],
+      'p_name': name, 'p_class_ids': selectedIds,
     });
     return id as String;
   }

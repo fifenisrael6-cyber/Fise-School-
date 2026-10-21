@@ -40,6 +40,7 @@ class AuthService {
     String? track,
     String? className,
     String? languageOption,
+    String? teachingStream,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
@@ -62,6 +63,7 @@ class AuthService {
         'track': track,
         'class_name': className,
         'language_option': languageOption,
+        'teaching_stream': teachingStream,
       },
     );
 
@@ -96,6 +98,7 @@ class AuthService {
         exam: exam,
         track: track,
         className: className,
+        teachingStream: teachingStream,
       );
       } catch (e) {
         debugPrint('Profil non enregistré à l’inscription: $e');
@@ -110,12 +113,20 @@ class AuthService {
       return;
     }
 
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
     final existing = await _profileService.getCurrentProfile();
     if (existing != null) {
+      final stream = metadata['teaching_stream']?.toString().toLowerCase().trim();
+      if (existing.role == 'teacher' &&
+          (existing.teachingStream == null || existing.teachingStream!.trim().isEmpty) &&
+          (stream == 'literary' || stream == 'scientific')) {
+        // Signup may require e-mail confirmation, so the profile row can exist
+        // before the first authenticated session. Fill the stream once on login.
+        await _client.from('profiles').update({'teaching_stream': stream}).eq('id', user.id);
+        await _profileService.getCurrentProfile();
+      }
       return;
     }
-
-    final metadata = user.userMetadata ?? const <String, dynamic>{};
 
     await _profileService.saveCurrentProfile(
       firstName: metadata['first_name'] as String? ?? '',
@@ -132,6 +143,7 @@ class AuthService {
       exam: metadata['exam'] as String?,
       track: metadata['track'] as String?,
       className: metadata['class_name'] as String?,
+      teachingStream: metadata['teaching_stream'] as String?,
     );
   }
 
