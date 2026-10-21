@@ -148,7 +148,7 @@ class _StudentHome extends StatelessWidget {
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BulletinPage(locale: locale, studentId: profile.id, studentName: '${profile.firstName} ${profile.lastName}'.trim(), className: profile.className))),
           ),
           const SizedBox(height: 8),
-          _SmallAction(icon: Icons.notifications_outlined, leading: UnreadNotificationIcon(userId: profile.id), label: fr ? 'Notifications' : 'Notifications', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(locale: locale, userId: profile.id)))),
+          _SmallAction(icon: Icons.notifications_outlined, leading: UnreadNotificationIcon(userId: profile.id), label: fr ? 'Notifications' : 'Notifications', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(locale: locale, userId: profile.id, profile: profile)))),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: _SmallAction(icon: Icons.assignment_outlined, label: fr ? 'QCM' : 'Quizzes', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AssignmentsPage(locale: locale, profile: profile))))),
