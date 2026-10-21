@@ -88,6 +88,21 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 24),
             _schoolInfo(texts),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _loading ? null : () => _save(texts),
+                icon: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.save_rounded),
+                label: Text(texts.isEnglish ? 'Save profile' : 'Enregistrer le profil'),
+              ),
+            ),
             if (widget.profile.role == 'student') ...[
               const SizedBox(height: 12),
               Card(
