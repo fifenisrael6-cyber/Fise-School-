@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -391,7 +392,7 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
             method: "POST",
             headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
             body: JSON.stringify({
-              systemInstruction: { parts: [{ text: schoolContext }] },
+              systemInstruction: { parts: [{ text: `${AI_SCHOOL_SYSTEM_RULES}\n${schoolContext}` }] },
               contents,
               generationConfig: { maxOutputTokens: 500 },
             }),
