@@ -19,12 +19,14 @@ class PrivateMessagesPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
   final PickedAttachment? initialAttachment;
+  final String? initialContactId;
 
   const PrivateMessagesPage({
     super.key,
     required this.locale,
     required this.profile,
     this.initialAttachment,
+    this.initialContactId,
   });
 
   @override
@@ -78,6 +80,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   bool _gateOpen = false;
+  bool _initialContactHandled = false;
 
   /// Le serveur a refusé un envoi (quota gratuit épuisé ou pièce jointe réservée) :
   /// on ouvre la fenêtre Premium ; si le paiement est confirmé, l'élève peut renvoyer son message.
@@ -234,6 +237,19 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             return Center(child: Text('${snapshot.error}'));
           }
           final contacts = snapshot.data ?? const <MessageContact>[];
+          final initialId = widget.initialContactId;
+          if (!_initialContactHandled && initialId != null) {
+            _initialContactHandled = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              for (final contact in contacts) {
+                if (contact.id == initialId) {
+                  _select(contact);
+                  break;
+                }
+              }
+            });
+          }
           if (contacts.isEmpty) {
             return Center(
               child: Text(
