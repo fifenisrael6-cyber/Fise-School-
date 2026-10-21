@@ -156,7 +156,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
         for (final targetId in _additionalClassIds) {
           final room = allClasses.where((item) => item.id == targetId).firstOrNull;
           try {
-            final sourceTitles = chapterTitles[sourceChapterId] ?? <String>{};
+            final sourceTitles = chapterTitles[sourceChapterId ?? ''] ?? <String>{};
             final targetCourses = teacherCourses.where((course) =>
                 course.classId == targetId &&
                 course.subjectId == _selectedCourse!.subjectId &&
