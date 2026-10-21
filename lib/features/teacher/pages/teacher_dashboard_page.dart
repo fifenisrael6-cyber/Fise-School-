@@ -180,6 +180,7 @@ class TeacherDashboardPage extends StatelessWidget {
                           builder: (_) => NotificationsPage(
                             locale: locale,
                             userId: profile.id,
+                            profile: profile,
                           ),
                         ),
                       ),
