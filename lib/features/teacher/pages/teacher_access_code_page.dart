@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/teacher_access_code_service.dart';
 import '../../../models/teacher_access_code.dart';
 import '../../../models/user_profile.dart';
@@ -25,6 +26,9 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
   String? _error;
   TeacherAccessCode? _selectedCode;
   bool _isEditing = false;
+  String? _teacherSpecialty;
+  bool _savingSpecialty = false;
+  bool _editingSpecialty = false;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
   @override
@@ -46,10 +50,17 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
     });
 
     try {
-      final codes = await _service.getTeacherAccessCodes(widget.profile.id);
+      final result = await Future.wait<dynamic>([
+        _service.getTeacherAccessCodes(widget.profile.id),
+        Supabase.instance.client.from('profiles').select('teacher_specialty').eq('id', widget.profile.id).maybeSingle(),
+      ]);
+      final codes = result[0] as List<TeacherAccessCode>;
+      final profileRow = result[1] as Map<String, dynamic>?;
+      final specialty = profileRow?['teacher_specialty']?.toString();
       if (mounted) {
         setState(() {
           _codes = codes;
+          _teacherSpecialty = specialty == 'literary' || specialty == 'scientific' ? specialty : null;
           _loading = false;
         });
       }
@@ -62,6 +73,30 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _saveSpecialty(String? value) async {
+    if (value == null || _savingSpecialty) return;
+    setState(() => _savingSpecialty = true);
+    try {
+      await Supabase.instance.client.from('profiles').update({
+        'teacher_specialty': value,
+      }).eq('id', widget.profile.id);
+      if (!mounted) return;
+      setState(() {
+        _teacherSpecialty = value;
+        _editingSpecialty = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        _isFrench ? 'Spécialité enregistrée.' : 'Specialty saved.',
+      )));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        '${_isFrench ? 'Enregistrement impossible' : 'Could not save'}: $error',
+      )));
+    } finally {
+      if (mounted) setState(() => _savingSpecialty = false);
     }
   }
 
@@ -145,6 +180,8 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _buildSpecialtyCard(),
+                      const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -208,6 +245,55 @@ class _TeacherAccessCodePageState extends State<TeacherAccessCodePage> {
                     ],
                   ),
                 ),
+    );
+  }
+
+  Widget _buildSpecialtyCard() {
+    final showPicker = _teacherSpecialty == null || _editingSpecialty;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_isFrench ? 'Spécialité de l’enseignant' : 'Teacher specialty',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 6),
+            Text(_isFrench
+                ? 'Choisissez votre filière. Les matières proposées seront limitées à cette spécialité.'
+                : 'Choose your track. Available subjects will be limited to this specialty.'),
+            const SizedBox(height: 10),
+            if (showPicker)
+              DropdownButtonFormField<String>(
+                value: _teacherSpecialty,
+                decoration: InputDecoration(
+                  labelText: _isFrench ? 'Choisir une spécialité' : 'Choose a specialty',
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem(value: 'literary', child: Text(_isFrench ? 'Littéraire' : 'Literary')),
+                  DropdownMenuItem(value: 'scientific', child: Text(_isFrench ? 'Scientifique' : 'Scientific')),
+                ],
+                onChanged: _savingSpecialty ? null : _saveSpecialty,
+              )
+            else
+              Row(children: [
+                Expanded(child: Text(
+                  _teacherSpecialty == 'literary'
+                      ? (_isFrench ? 'Littéraire' : 'Literary')
+                      : (_isFrench ? 'Scientifique' : 'Scientific'),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                )),
+                TextButton.icon(
+                  onPressed: () => setState(() => _editingSpecialty = true),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(_isFrench ? 'Modifier' : 'Change'),
+                ),
+              ]),
+            if (_savingSpecialty) const LinearProgressIndicator(),
+          ],
+        ),
+      ),
     );
   }
 

@@ -38,6 +38,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   List<Subject> _subjects = const [];
   Subject? _subject;
   bool _loadingSubjects = false;
+  String? _teacherSpecialty;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -61,11 +62,12 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   Future<List<SchoolClass>> _loadCompatibleClasses() async {
     final profile = await Supabase.instance.client
         .from('profiles')
-        .select('subsystem, sector')
+        .select('subsystem, sector, teacher_specialty')
         .eq('id', widget.teacherId)
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
+    _teacherSpecialty = profile?['teacher_specialty']?.toString();
     final all = await _service.listTeacherCompatibleClasses();
     return all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
@@ -135,7 +137,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
       final selectedClass = classes.first;
       final subjects = (common ?? <String, Subject>{}).values
-          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector)
+          .where((subject) => subject.subsystem == selectedClass.subsystem && subject.sector == selectedClass.sector && _matchesSpecialty(subject))
           .toList();
       setState(() {
         _subjects = subjects;
@@ -156,6 +158,18 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     }
   }
 
+  bool _matchesSpecialty(Subject subject) {
+    final specialty = _teacherSpecialty;
+    if (specialty != 'literary' && specialty != 'scientific') return true;
+    final label = '${subject.nameFr} ${subject.nameEn} ${subject.code}'.toLowerCase();
+    const literary = ['français', 'french', 'littérature', 'literature', 'anglais', 'english', 'allemand', 'german', 'espagnol', 'spanish', 'arabe', 'arabic', 'histoire', 'history', 'géographie', 'geography', 'philosophie', 'philosophy', 'économie', 'economics', 'droit', 'law', 'sociologie', 'sociology', 'citoyenneté', 'civics'];
+    const scientific = ['math', 'mathématique', 'mathematics', 'physique', 'physics', 'chimie', 'chemistry', 'biologie', 'biology', 'svt', 'science', 'informatique', 'computer', 'technologie', 'technology', 'dessin technique', 'technical drawing'];
+    final isLiterary = literary.any(label.contains);
+    final isScientific = scientific.any(label.contains);
+    if (isLiterary && isScientific) return false;
+    return specialty == 'literary' ? isLiterary : isScientific;
+  }
+
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -171,7 +185,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     try {
       for (final schoolClass in classes) {
         for (final subject in await _service.listAddableSubjects(schoolClass.id)) {
-          addable[subject.id] = subject;
+          if (_matchesSpecialty(subject)) addable[subject.id] = subject;
         }
       }
     } catch (error) {
