@@ -627,29 +627,7 @@ class CourseService {
   /// toute sélection enregistrée, affiche toutes les salles compatibles.
   Future<List<SchoolClass>> listTeacherSelectedClasses() async {
     var all = await listTeacherCompatibleClasses();
-    // Apply the teacher's selected series/specialty as an additional curriculum
-    // boundary, not only subsystem/sector. Generic rooms without a track remain
-    // available for subjects shared by the programme.
-    try {
-      final userId = _client.auth.currentUser?.id;
-      if (userId != null) {
-        final profile = await _client
-            .from('profiles')
-            .select('series_id, specialty_id')
-            .eq('id', userId)
-            .maybeSingle();
-        final seriesId = profile?['series_id']?.toString();
-        final specialtyId = profile?['specialty_id']?.toString();
-        if (seriesId != null && seriesId.isNotEmpty) {
-          all = all.where((room) => room.seriesId == null || room.seriesId == seriesId).toList(growable: false);
-        }
-        if (specialtyId != null && specialtyId.isNotEmpty) {
-          all = all.where((room) => room.specialtyId == null || room.specialtyId == specialtyId).toList(growable: false);
-        }
-      }
-    } catch (_) {
-      // Keep the compatible-room list usable on older schema versions.
-    }
+    // Rooms are limited by subsystem and sector, never by teacher series/specialty.
     final selectedIds = await listTeacherFollowedClassIds();
     if (selectedIds.isEmpty) return all;
     final selected = all
