@@ -17,7 +17,7 @@ where lower(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coal
 
 update public.subjects
 set teaching_stream = 'literary'
-where lower(unaccent(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, '')))
+where lower(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, ''))
   ~ '(philosoph|litt[eé]rature|literature|histoire|history|g[eé]ographie|geography|sociolog|psycholog|droit|law|latin|grec ancien|ancient greek|instruction civique|civic education)'
   and teaching_stream = 'both';
 
