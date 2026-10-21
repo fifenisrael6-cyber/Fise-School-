@@ -43,6 +43,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   PrivateMessage? _replyTo;
   final PhotoService _photoService = PhotoService();
   RealtimeChannel? _channel;
+  int _conversationLoadGeneration = 0;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -110,19 +111,28 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   Future<void> _select(MessageContact contact) async {
+    final generation = ++_conversationLoadGeneration;
     setState(() {
-      if (_selected?.id != contact.id) _replyTo = null;
+      if (_selected?.id != contact.id) {
+        _replyTo = null;
+        _messages = const [];
+      }
       _selected = contact;
       _loadingMessages = true;
     });
     try {
       final messages = await _service.listConversation(contact.id);
+      if (!mounted || generation != _conversationLoadGeneration || _selected?.id != contact.id) return;
+      setState(() => _messages = messages);
       await _service.markConversationRead(contact.id);
-      if (mounted) {
-        setState(() => _messages = messages);
+    } catch (error) {
+      if (mounted && generation == _conversationLoadGeneration && _selected?.id == contact.id) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${_isFrench ? 'Chargement des messages impossible' : 'Could not load messages'}: $error'),
+        ));
       }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _conversationLoadGeneration) {
         setState(() => _loadingMessages = false);
       }
     }
