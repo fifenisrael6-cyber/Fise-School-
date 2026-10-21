@@ -62,15 +62,19 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   Future<List<SchoolClass>> _loadCompatibleClasses() async {
     final profile = await Supabase.instance.client
         .from('profiles')
-        .select('subsystem, sector')
+        .select('subsystem, sector, series_id, specialty_id')
         .eq('id', widget.teacherId)
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
+    final seriesId = profile?['series_id']?.toString();
+    final specialtyId = profile?['specialty_id']?.toString();
     final all = await _service.listTeacherCompatibleClasses();
     final compatible = all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
-      (sector != null && sector.isNotEmpty && room.sector.name == sector)
+      (sector != null && sector.isNotEmpty && room.sector.name == sector) &&
+      (seriesId == null || seriesId.isEmpty || room.seriesId == null || room.seriesId == seriesId) &&
+      (specialtyId == null || specialtyId.isEmpty || room.specialtyId == null || room.specialtyId == specialtyId)
     ).toList(growable: false);
     // Restore the teacher's saved room choices whenever this selector opens.
     try {
