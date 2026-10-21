@@ -140,10 +140,13 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       setState(() => _qcmFeedback[question.id] = Map<String, dynamic>.from(result));
     } catch (_) {
       if (mounted) {
+        // Let the student retry the same saved choice if the feedback request
+        // failed. If the server already locked it, only that same choice can pass.
+        setState(() => _selectedAnswers.remove(question.id));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_isEnglish
-              ? 'Unable to validate this answer. Please try again.'
-              : 'Impossible de valider cette réponse. Réessayez.')),
+              ? 'Unable to validate this answer. Please select the same answer again to retry.'
+              : 'Impossible de valider cette réponse. Cochez de nouveau la même réponse pour réessayer.')),
         );
       }
     } finally {

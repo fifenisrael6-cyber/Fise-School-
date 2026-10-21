@@ -77,6 +77,42 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
         callback: (_) { _load(showLoader: false); _loadGroupSettings(); },
       )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) {
+          _loadGroupSettings();
+          if (mounted) {
+            _snack(_fr
+                ? 'Un membre a rejoint le groupe.'
+                : 'A member joined the group.');
+          }
+        },
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.delete,
+        schema: 'public',
+        table: 'message_group_members',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) {
+          _loadGroupSettings();
+          if (mounted) {
+            _snack(_fr
+                ? 'Un membre a quitté le groupe.'
+                : 'A member left the group.');
+          }
+        },
+      )
       ..subscribe();
   }
 

@@ -40,6 +40,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   List<Lesson> _lessons = const [];
   SchoolClass? _selectedClass;
   final Set<String> _additionalClassIds = <String>{};
+  Future<List<SchoolClass>>? _compatibleAdditionalClassesFuture;
   Course? _selectedCourse;
   Lesson? _selectedLesson;
 
@@ -252,6 +253,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     setState(() {
       _selectedClass = value;
       _additionalClassIds.clear();
+      _compatibleAdditionalClassesFuture = null;
       _selectedCourse = null;
       _selectedLesson = null;
       _courses = const [];
@@ -270,10 +272,15 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   }
 
   Future<void> _selectCourse(Course? value) async {
+    final primaryClassId = _selectedClass?.id;
     setState(() {
       _selectedCourse = value;
       _selectedLesson = null;
       _lessons = const [];
+      _additionalClassIds.clear();
+      _compatibleAdditionalClassesFuture = value == null || primaryClassId == null
+          ? null
+          : _findCompatibleAdditionalClasses(value, primaryClassId);
     });
     if (value == null) {
       return;
@@ -283,6 +290,64 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       return;
     }
     setState(() { _lessons = lessons; });
+  }
+
+  Future<List<SchoolClass>> _findCompatibleAdditionalClasses(
+    Course sourceCourse,
+    String primaryClassId,
+  ) async {
+    final sourceChapterId = sourceCourse.chapterId;
+    if (sourceChapterId == null || sourceChapterId.isEmpty) {
+      return const <SchoolClass>[];
+    }
+
+    final rooms = await _classesFuture;
+    final candidateRoomIds = rooms
+        .where((room) => room.id != primaryClassId)
+        .map((room) => room.id)
+        .toSet();
+    if (candidateRoomIds.isEmpty) return const <SchoolClass>[];
+
+    final teacherCourses = await _courseService.listTeacherCourses(widget.profile.id);
+    final candidates = teacherCourses.where((course) =>
+        candidateRoomIds.contains(course.classId) &&
+        course.subjectId == sourceCourse.subjectId &&
+        course.status != 'archived' &&
+        course.chapterId != null &&
+        course.chapterId!.isNotEmpty).toList(growable: false);
+    if (candidates.isEmpty) return const <SchoolClass>[];
+
+    final chapterIds = <String>{
+      sourceChapterId,
+      ...candidates.map((course) => course.chapterId!),
+    };
+    final rows = await Supabase.instance.client
+        .from('course_chapters')
+        .select('id,title_fr,title_en')
+        .inFilter('id', chapterIds.toList(growable: false));
+
+    String normalize(Object? value) =>
+        (value ?? '').toString().trim().toLowerCase();
+    final titlesById = <String, Set<String>>{};
+    for (final row in rows) {
+      final id = row['id']?.toString();
+      if (id == null) continue;
+      titlesById[id] = <String>{
+        normalize(row['title_fr']),
+        normalize(row['title_en']),
+      }..remove('');
+    }
+    final sourceTitles = titlesById[sourceChapterId] ?? <String>{};
+    if (sourceTitles.isEmpty) return const <SchoolClass>[];
+
+    final matchingRoomIds = candidates.where((course) {
+      final targetTitles = titlesById[course.chapterId] ?? <String>{};
+      return targetTitles.intersection(sourceTitles).isNotEmpty;
+    }).map((course) => course.classId).toSet();
+
+    return rooms
+        .where((room) => matchingRoomIds.contains(room.id))
+        .toList(growable: false);
   }
 
   Future<void> _pickDueDate() async {
@@ -462,40 +527,59 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
           ),
         ),
         const SizedBox(height: 8),
-        FutureBuilder<List<SchoolClass>>(
-          future: _classesFuture,
-          builder: (_, snapshot) {
-            final rooms = (snapshot.data ?? const <SchoolClass>[])
-                .where((room) => _selectedClass != null && room.id != _selectedClass!.id)
-                .toList(growable: false);
-            if (_selectedClass == null || rooms.isEmpty) return const SizedBox.shrink();
-            return Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_isEnglish ? 'Also publish this manual QCM to compatible rooms' : 'Publier aussi ce QCM manuel dans les salles compatibles',
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                Text(_isEnglish
-                    ? 'Only rooms with a course sharing the same subject and chapter will receive a copy.'
-                    : 'Seules les salles ayant un cours de la même matière et du même chapitre recevront une copie.'),
-                for (final room in rooms)
-                  CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: _additionalClassIds.contains(room.id),
-                    title: Text(room.displayName),
-                    onChanged: (checked) => setState(() {
-                      if (checked == true) {
-                        _additionalClassIds.add(room.id);
-                      } else {
-                        _additionalClassIds.remove(room.id);
-                      }
-                    }),
-                  ),
-              ]),
-            );
-          },
-        ),
+        if (_selectedCourse != null)
+          FutureBuilder<List<SchoolClass>>(
+            future: _compatibleAdditionalClassesFuture,
+            builder: (_, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: LinearProgressIndicator(),
+                );
+              }
+              if (snapshot.hasError) {
+                return Text(
+                  _isEnglish
+                      ? 'Unable to check compatible rooms: ${snapshot.error}'
+                      : 'Impossible de vérifier les salles compatibles : ${snapshot.error}',
+                );
+              }
+              final rooms = snapshot.data ?? const <SchoolClass>[];
+              if (rooms.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(_isEnglish
+                      ? 'No additional room has a course with this same subject and chapter.'
+                      : 'Aucune autre salle ne possède un cours de cette même matière et de ce même chapitre.'),
+                );
+              }
+              return Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_isEnglish ? 'Also publish this manual QCM to compatible rooms' : 'Publier aussi ce QCM manuel dans les salles compatibles',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text(_isEnglish
+                      ? 'Only rooms with the same subject and chapter are shown.'
+                      : 'Seules les salles ayant la même matière et le même chapitre sont affichées.'),
+                  for (final room in rooms)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: _additionalClassIds.contains(room.id),
+                      title: Text(room.displayName),
+                      onChanged: (checked) => setState(() {
+                        if (checked == true) {
+                          _additionalClassIds.add(room.id);
+                        } else {
+                          _additionalClassIds.remove(room.id);
+                        }
+                      }),
+                    ),
+                ]),
+              );
+            },
+          ),
         const SizedBox(height: 12),
         _dropdown<Course>(
           label: _isEnglish ? 'Course' : 'Cours', value: _selectedCourse, items: _courses,

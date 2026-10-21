@@ -97,7 +97,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   setState(() => _future = _service.listForUser(widget.userId));
                   // Message notifications must open the actual messaging area,
                   // not merely disappear from the notification list.
-                  if (item.type == 'message' && widget.profile != null) {
+                  final targetType = (item.targetType ?? '').toLowerCase();
+                  final opensConversation =
+                      targetType == 'group' || targetType == 'private_message';
+                  if ((item.type == 'message' ||
+                          item.type == 'group_member' ||
+                          opensConversation) &&
+                      widget.profile != null) {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => MessagesHubPage(
