@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -193,6 +194,7 @@ async function transcribeStoredResource(
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({
+          systemInstruction: { parts: [{ text: `${AI_SCHOOL_SYSTEM_RULES}\nCrée uniquement des questions scolaires basées sur le cours fourni. Retourne le format demandé.` }] },
           contents: [{ role: "user", parts: [
             { text: prompt },
             { inline_data: { mime_type: mime, data: base64 } },
@@ -479,6 +481,7 @@ Deno.serve(async (req: Request) => {
             method: "POST",
             headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
             body: JSON.stringify({
+              systemInstruction: { parts: [{ text: `${AI_SCHOOL_SYSTEM_RULES}\nCrée uniquement des questions scolaires basées sur le cours fourni. Retourne le format demandé.` }] },
               contents: [{ role: "user", parts: [{ text: retryPrompt }] }],
               generationConfig: {
                 temperature: attempt === 0 ? 0.2 : 0.0,
