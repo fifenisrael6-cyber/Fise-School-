@@ -75,10 +75,32 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
             ? 'L’IA n’a pas pu préparer les cinq questions du QCM. Vérifiez la connexion et réessayez.'
             : 'AI could not prepare all five quiz questions. Check your connection and retry.');
       }
+
+      final savedRows = await _service.listLockedQuizAnswers(quiz.id);
+      final savedAnswers = <String, int>{};
+      final savedFeedback = <String, Map<String, dynamic>>{};
+      for (final row in savedRows) {
+        final questionId = row['question_id']?.toString();
+        final selected = row['selected_option_index'];
+        if (questionId == null || selected is! num) continue;
+        savedAnswers[questionId] = selected.toInt();
+        savedFeedback[questionId] = row;
+      }
+
       if (!mounted) return;
       setState(() {
         _quiz = quiz;
         _questions = questions;
+        _answers
+          ..clear()
+          ..addAll(savedAnswers);
+        _instantFeedback
+          ..clear()
+          ..addAll(savedFeedback);
+        _lockedAnswers
+          ..clear()
+          ..addAll(savedAnswers.keys);
+        _checkingAnswers.clear();
         _loading = false;
         _generating = false;
       });
