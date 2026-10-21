@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/offline/json_cache.dart';
@@ -35,6 +36,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   late Future<List<Course>> _coursesFuture;
   final Set<String> _selectedCourseIds = <String>{};
   bool _selectionMode = false;
+  final Map<String, String> _classNames = <String, String>{};
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -42,6 +44,19 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   void initState() {
     super.initState();
     _reload();
+    _loadClassNames();
+  }
+
+  Future<void> _loadClassNames() async {
+    try {
+      final rows = await Supabase.instance.client.from('school_classes').select('id, display_name');
+      if (!mounted) return;
+      setState(() {
+        _classNames
+          ..clear()
+          ..addEntries((rows as List).map((row) => MapEntry(row['id'].toString(), row['display_name']?.toString() ?? '')));
+      });
+    } catch (_) {}
   }
 
   void _reload() {
@@ -383,6 +398,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
                 return _CourseCard(
                   course: course,
                   locale: widget.locale,
+                  className: course.classId == null ? null : _classNames[course.classId],
                   onResources: () => _manageResources(course),
                   onEdit: () => _editCourseTitle(course),
                   onDelete: () => _deleteCourse(course),
@@ -406,6 +422,7 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
 class _CourseCard extends StatelessWidget {
   final Course course;
   final Locale locale;
+  final String? className;
   final VoidCallback onResources;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -418,6 +435,7 @@ class _CourseCard extends StatelessWidget {
   const _CourseCard({
     required this.course,
     required this.locale,
+    required this.className,
     required this.onResources,
     required this.onEdit,
     required this.onDelete,
@@ -467,8 +485,18 @@ class _CourseCard extends StatelessWidget {
                 _StatusChip(status: course.status, isFrench: isFrench),
               ],
             ),
+            if (className != null && className!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.meeting_room_outlined, size: 16, color: Colors.black54),
+                const SizedBox(width: 6),
+                Expanded(child: Text(
+                  '${isFrench ? 'Salle de classe' : 'Classroom'} : $className',
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                )),
+              ]),
+            ],
             const SizedBox(height: 14),
-            const SizedBox(height: 8),
             Text(
               isFrench
                   ? 'Partagez des photos et des vidéos avec les élèves de la classe sélectionnée.'
