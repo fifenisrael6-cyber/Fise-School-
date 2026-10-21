@@ -75,7 +75,7 @@ class StudentDashboardPage extends StatelessWidget {
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => NotificationsPage(locale: locale, userId: profile.id),
+                  builder: (_) => NotificationsPage(locale: locale, userId: profile.id, profile: profile),
                 ),
               ),
             ),
@@ -135,7 +135,7 @@ class _DashboardScaffold extends StatelessWidget {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => NotificationsPage(locale: locale, userId: profile.id),
+                builder: (_) => NotificationsPage(locale: locale, userId: profile.id, profile: profile),
               ),
             ),
             icon: const Icon(Icons.notifications_none_rounded),
