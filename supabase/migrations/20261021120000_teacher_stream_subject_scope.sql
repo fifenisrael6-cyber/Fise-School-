@@ -12,7 +12,7 @@ alter table public.subjects
 -- Languages and genuinely shared subjects remain available to both streams.
 update public.subjects
 set teaching_stream = 'scientific'
-where lower(unaccent(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, '')))
+where lower(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, ''))
   ~ '(math[ée]mat|physique|physics|chimie|chemistry|biolog|svt|informatique|computer science|algorithm|robotique|robotics|sciences? physiques|sciences? de la vie|g[eé]ologie|geology|electronique|electronics)';
 
 update public.subjects
