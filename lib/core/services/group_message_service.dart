@@ -169,6 +169,15 @@ class GroupMessageService {
   Future<List<GroupMessage>> listMessages(String groupId) async {
     try {
       await syncPending();
+      // Opening a group conversation marks incoming messages as delivered and read.
+      // Keep these calls on the server so the WhatsApp-style receipts are reliable
+      // across devices and are not inferred from the local/offline cache.
+      await _client.rpc('mark_group_messages_delivered', params: {
+        'p_group_id': groupId,
+      }).timeout(const Duration(seconds: 8));
+      await _client.rpc('mark_group_messages_read', params: {
+        'p_group_id': groupId,
+      }).timeout(const Duration(seconds: 8));
       final result = await _client.rpc('list_message_group_messages', params: {'p_group_id': groupId})
           .timeout(const Duration(seconds: 8));
       final remote = (result as List)
