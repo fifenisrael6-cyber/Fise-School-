@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
-/// Lecteur vocal compact, lisible et intégré aux bulles de messagerie.
+/// Lecteur vocal compact. Précharge la source afin de récupérer la durée
+/// avant le premier appui sur Lecture.
 class VoiceMessageBubble extends StatefulWidget {
   final String url;
   final bool isFrench;
@@ -18,27 +21,69 @@ class VoiceMessageBubble extends StatefulWidget {
 
 class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
   late final AudioPlayer _player = AudioPlayer();
+  StreamSubscription<PlayerState>? _stateSub;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<void>? _completeSub;
   PlayerState _state = PlayerState.stopped;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _starting = false;
+  bool _sourceReady = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _player.onPlayerStateChanged.listen((value) {
+    _stateSub = _player.onPlayerStateChanged.listen((value) {
       if (mounted) setState(() => _state = value);
     });
-    _player.onPositionChanged.listen((value) {
+    _positionSub = _player.onPositionChanged.listen((value) {
       if (mounted) setState(() => _position = value);
     });
-    _player.onDurationChanged.listen((value) {
-      if (mounted) setState(() => _duration = value);
+    _durationSub = _player.onDurationChanged.listen((value) {
+      if (mounted && value > Duration.zero) setState(() => _duration = value);
     });
-    _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _position = Duration.zero);
+    _completeSub = _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() {
+        _position = Duration.zero;
+        _state = PlayerState.completed;
+      });
     });
+    unawaited(_prepareSource());
+  }
+
+  @override
+  void didUpdateWidget(covariant VoiceMessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _sourceReady = false;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      unawaited(_prepareSource());
+    }
+  }
+
+  Future<void> _prepareSource() async {
+    if (widget.url.trim().isEmpty) return;
+    try {
+      await _player.setSource(UrlSource(widget.url));
+      final duration = await _player.getDuration();
+      if (!mounted) return;
+      setState(() {
+        _sourceReady = true;
+        if (duration != null && duration > Duration.zero) _duration = duration;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sourceReady = false;
+        _error = widget.isFrench
+            ? 'Audio indisponible. Vérifiez la connexion.'
+            : 'Audio unavailable. Check your connection.';
+      });
+    }
   }
 
   String _time(Duration value) {
@@ -57,18 +102,20 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
       if (_state == PlayerState.playing) {
         await _player.pause();
       } else {
-        if (_state == PlayerState.stopped || _state == PlayerState.completed) {
-          await _player.setSourceUrl(widget.url);
-          await _player.resume();
-        } else {
-          await _player.resume();
+        if (!_sourceReady || _state == PlayerState.stopped || _state == PlayerState.completed) {
+          await _prepareSource();
+        }
+        await _player.resume();
+        final duration = await _player.getDuration();
+        if (mounted && duration != null && duration > Duration.zero) {
+          setState(() => _duration = duration);
         }
       }
     } catch (_) {
       if (mounted) {
         setState(() => _error = widget.isFrench
-            ? 'Lecture vocale indisponible. Vérifiez la connexion.'
-            : 'Voice playback unavailable. Check your connection.');
+            ? 'Lecture vocale impossible. Vérifiez la connexion.'
+            : 'Voice playback failed. Check your connection.');
       }
     } finally {
       if (mounted) setState(() => _starting = false);
@@ -77,6 +124,10 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
 
   @override
   void dispose() {
+    _stateSub?.cancel();
+    _positionSub?.cancel();
+    _durationSub?.cancel();
+    _completeSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -102,11 +153,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
             visualDensity: VisualDensity.compact,
             onPressed: _starting ? null : _toggle,
             icon: _starting
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
                 : Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
             iconSize: 34,
             color: const Color(0xFF166534),
@@ -119,24 +166,16 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.mic_rounded, size: 15, color: Color(0xFF166534)),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        widget.isFrench ? 'Message vocal' : 'Voice message',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: Color(0xFF17452A),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                Row(children: [
+                  const Icon(Icons.mic_rounded, size: 15, color: Color(0xFF166534)),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(
+                    widget.isFrench ? 'Message vocal' : 'Voice message',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF17452A)),
+                  )),
+                ]),
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     trackHeight: 3,
@@ -145,19 +184,15 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                   ),
                   child: Slider(
                     value: progress,
-                    onChanged: totalMs <= 0
-                        ? null
-                        : (value) => _player.seek(Duration(
-                              milliseconds: (totalMs * value).round(),
-                            )),
+                    onChanged: totalMs <= 0 ? null : (value) {
+                      _player.seek(Duration(milliseconds: (totalMs * value).round()));
+                    },
                     activeColor: const Color(0xFF166534),
                     inactiveColor: const Color(0xFFB7D6BF),
                   ),
                 ),
-                Text(
-                  '${_time(_position)} / ${_time(_duration)}',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF315B3C)),
-                ),
+                Text('${_time(_position)} / ${_time(_duration)}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF315B3C))),
                 if (_error != null)
                   Text(_error!, style: const TextStyle(fontSize: 10, color: Colors.red)),
               ],
