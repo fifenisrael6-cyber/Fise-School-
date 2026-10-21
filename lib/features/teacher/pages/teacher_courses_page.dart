@@ -33,6 +33,8 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
   final ResourceService _resources = ResourceService();
 
   late Future<List<Course>> _coursesFuture;
+  final Set<String> _selectedCourseIds = <String>{};
+  bool _selectionMode = false;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -181,6 +183,47 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
     }
   }
 
+  void _toggleCourseSelection(Course course, bool? selected) {
+    setState(() {
+      if (selected == true) { _selectedCourseIds.add(course.id); }
+      else { _selectedCourseIds.remove(course.id); }
+      _selectionMode = _selectedCourseIds.isNotEmpty;
+    });
+  }
+
+  Future<void> _deleteSelectedCourses() async {
+    if (_selectedCourseIds.isEmpty) return;
+    final selectedIds = Set<String>.from(_selectedCourseIds);
+    final count = selectedIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isFrench ? 'Supprimer les cours sélectionnés ?' : 'Delete selected courses?'),
+        content: Text(_isFrench ? 'Cette action supprimera $count cours et leurs fichiers associés.' : 'This will delete $count courses and their associated files.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_isFrench ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_isFrench ? 'Tout supprimer' : 'Delete all')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final selectedCourses = (await _coursesFuture).where((course) => selectedIds.contains(course.id)).toList(growable: false);
+    try {
+      for (final course in selectedCourses) {
+        final resources = await _resources.listForCourse(course.id);
+        for (final resource in resources) { await _resources.deleteResource(resource); }
+        await _service.deleteCourse(course.id);
+      }
+      if (!mounted) return;
+      setState(() { _selectedCourseIds.clear(); _selectionMode = false; _reload(); });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isFrench ? '$count cours supprimés.' : '$count courses deleted.')));
+    } catch (error) {
+      if (!mounted) return;
+      setState(_reload);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Suppression incomplète: $error')));
+    }
+  }
+
   Future<void> _deleteCourse(Course course) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -278,7 +321,15 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
     final texts = AppTexts(widget.locale);
 
     return Scaffold(
-      appBar: AppBar(title: Text(_isFrench ? 'Mes médias de classe' : 'My classroom media')),
+      appBar: AppBar(
+        title: Text(_selectionMode ? (_isFrench ? 'Sélection des cours' : 'Select courses') : (_isFrench ? 'Mes médias de classe' : 'My classroom media')),
+        actions: [
+          if (_selectionMode)
+            IconButton(tooltip: _isFrench ? 'Supprimer la sélection' : 'Delete selection', onPressed: _deleteSelectedCourses, icon: const Icon(Icons.delete_outline_rounded))
+          else
+            IconButton(tooltip: _isFrench ? 'Sélectionner plusieurs cours' : 'Select multiple courses', onPressed: () => setState(() => _selectionMode = true), icon: const Icon(Icons.checklist_rounded)),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createCourse,
         icon: const Icon(Icons.perm_media_rounded),
@@ -339,6 +390,9 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
                       ? () => _archiveCourse(course)
                       : null,
                   isFrench: _isFrench,
+                  selectionMode: _selectionMode,
+                  selected: _selectedCourseIds.contains(course.id),
+                  onToggleSelected: (value) => _toggleCourseSelection(course, value),
                 );
               },
             ),
@@ -357,6 +411,9 @@ class _CourseCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback? onArchive;
   final bool isFrench;
+  final bool selectionMode;
+  final bool selected;
+  final ValueChanged<bool?> onToggleSelected;
 
   const _CourseCard({
     required this.course,
@@ -366,6 +423,9 @@ class _CourseCard extends StatelessWidget {
     required this.onDelete,
     required this.onArchive,
     required this.isFrench,
+    required this.selectionMode,
+    required this.selected,
+    required this.onToggleSelected,
   });
 
   @override
@@ -382,6 +442,7 @@ class _CourseCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (selectionMode) Checkbox(value: selected, onChanged: onToggleSelected),
                 Container(
                   width: 46,
                   height: 46,
