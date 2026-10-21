@@ -81,7 +81,9 @@ class PhotoService {
       case 'mp4':
         return 'video/mp4';
       case 'mp3':
+        return 'audio/mpeg';
       case 'm4a':
+        return 'audio/mp4';
       case 'aac':
         return 'audio/aac';
       case 'txt':
