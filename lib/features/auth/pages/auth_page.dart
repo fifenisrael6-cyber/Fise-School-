@@ -50,6 +50,7 @@ class _AuthPageState extends State<AuthPage> {
   ExamCatalogEntry? _track;
   String? _languageOption;
   String? _languageOption2;
+  String? _teacherStream;
   static const _languageOptions = <String, String>{
     'allemand': 'Allemand',
     'espagnol': 'Espagnol',
@@ -139,6 +140,10 @@ class _AuthPageState extends State<AuthPage> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    if (_isRegistering && _role == 'teacher' && _teacherStream == null) {
+      _showError(_lang == 'en' ? 'Choose Literary or Scientific.' : 'Choisissez Littéraire ou Scientifique.');
+      return;
+    }
     if (_isRegistering && _role == 'teacher' && _track == null) {
       _showError(_lang == 'en'
           ? 'Choose your teaching stream or specialty before registering.'
@@ -157,6 +162,7 @@ class _AuthPageState extends State<AuthPage> {
           firstName: _firstNameController.text,
           lastName: _lastNameController.text,
           role: _role,
+          teachingStream: _role == 'teacher' ? _teacherStream : null,
           subsystem: _subsystem?.name,
           sector: _sector?.name,
           examLevelId: level?.id,
@@ -403,6 +409,21 @@ class _AuthPageState extends State<AuthPage> {
           color: Color(0xFF14532D),
         ),
       ),
+      if (_role == 'teacher') ...[
+        DropdownButtonFormField<String>(
+          key: const ValueKey('teacher-stream'),
+          initialValue: _teacherStream,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: _lang == 'en' ? 'Teaching stream' : 'Filière d’enseignement'),
+          items: [
+            DropdownMenuItem(value: 'literary', child: Text(_lang == 'en' ? 'Literary' : 'Littéraire')),
+            DropdownMenuItem(value: 'scientific', child: Text(_lang == 'en' ? 'Scientific' : 'Scientifique')),
+          ],
+          validator: (value) => _role == 'teacher' && value == null ? texts.selectionRequired : null,
+          onChanged: (value) => setState(() => _teacherStream = value),
+        ),
+        const SizedBox(height: 14),
+      ],
       const SizedBox(height: 12),
       DropdownButtonFormField<ExamSubsystem>(
         key: const ValueKey('subsystem'),
