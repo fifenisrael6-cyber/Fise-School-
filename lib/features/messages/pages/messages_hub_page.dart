@@ -263,8 +263,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
           .where((schoolClass) =>
               (widget.profile.subsystem != null && schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
-              (widget.profile.sector != null && schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()) &&
-              true)
+              (widget.profile.sector != null && schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
           .toList(growable: false);
       savedRoomIds = await courseService.listTeacherFollowedClassIds();
       savedRoomIds.retainAll(classes.map((room) => room.id));
