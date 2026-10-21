@@ -92,15 +92,46 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
     }
   }
 
-  Future<void> _checkAnswer(ChapterLearningQuizQuestion question, int selectedIndex) async {
-    if (!mounted) return;
+  Future<void> _checkAnswer(
+    ChapterLearningQuizQuestion question,
+    int selectedIndex,
+  ) async {
+    if (!mounted ||
+        _lockedAnswers.contains(question.id) ||
+        _checkingAnswers.contains(question.id)) {
+      return;
+    }
     setState(() {
-      // Students may revise their choice until they submit the whole QCM.
       _answers[question.id] = selectedIndex;
-      _instantFeedback.remove(question.id);
-      _checkingAnswers.remove(question.id);
-      _lockedAnswers.remove(question.id);
+      _checkingAnswers.add(question.id);
     });
+    try {
+      final feedback = await _service.checkQuizAnswer(
+        questionId: question.id,
+        selectedIndex: selectedIndex,
+      );
+      if (!mounted) return;
+      setState(() {
+        _instantFeedback[question.id] = feedback;
+        _lockedAnswers.add(question.id);
+        _checkingAnswers.remove(question.id);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _answers.remove(question.id);
+        _checkingAnswers.remove(question.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _fr
+                ? 'Réponse non enregistrée. Vérifiez la connexion puis cochez de nouveau. ($error)'
+                : 'Answer not saved. Check your connection and select again. ($error)',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _submit() async {
