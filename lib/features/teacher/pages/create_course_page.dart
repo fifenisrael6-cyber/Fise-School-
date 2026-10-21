@@ -295,6 +295,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   }
 
   void _selectCommonChapter(String? key) {
+    CourseChapter? selectedReference;
     setState(() {
       _commonChapterKey = key;
       _selectedChapterByClass.clear();
@@ -302,6 +303,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
       final options = _commonChapterOptions;
       final reference = options.where((chapter) => _chapterKey(chapter) == key).firstOrNull;
       if (reference == null) return;
+      selectedReference = reference;
       for (final room in _classes) {
         final chapters = _chaptersByClass[room.id] ?? const <CourseChapter>[];
         final refFr = reference.titleFr.trim().toLowerCase();
@@ -315,6 +317,57 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
         if (match != null) _selectedChapterByClass[room.id] = match.id;
       }
     });
+    final reference = selectedReference;
+    if (reference != null && _subject != null) {
+      unawaited(_authorizeMatchingRoomsInBackground(reference, _subject!));
+    }
+  }
+
+  /// Silently authorizes only other rooms that have this subject and a
+  /// curriculum chapter with the same bilingual title. Publication itself
+  /// still targets the rooms explicitly selected by the teacher.
+  Future<void> _authorizeMatchingRoomsInBackground(
+    CourseChapter reference,
+    Subject subject,
+  ) async {
+    try {
+      final rooms = await _service.listTeacherCompatibleClasses();
+      final eligibleIds = <String>{};
+      final wantedFr = reference.titleFr.trim().toLowerCase();
+      final wantedEn = reference.titleEn.trim().toLowerCase();
+      for (final room in rooms) {
+        final roomSubjects = await _service.listSubjectsForClass(room.id);
+        if (!roomSubjects.any((item) => item.id == subject.id)) continue;
+        final curricula = await _service.listCurricula(subject.id);
+        final matchingCurricula = curricula.where((curriculum) =>
+          curriculum.subsystem == room.subsystem &&
+          curriculum.sector == room.sector &&
+          (curriculum.examLevelId == null || curriculum.examLevelId == room.examLevelId) &&
+          (curriculum.seriesId == null || curriculum.seriesId == room.seriesId) &&
+          (curriculum.specialtyId == null || curriculum.specialtyId == room.specialtyId)
+        ).toList(growable: false);
+        var hasSameChapter = false;
+        for (final curriculum in matchingCurricula) {
+          final chapters = await _service.listChapters(curriculum.id);
+          if (chapters.any((chapter) {
+            final fr = chapter.titleFr.trim().toLowerCase();
+            final en = chapter.titleEn.trim().toLowerCase();
+            return (wantedFr.isNotEmpty && (fr == wantedFr || en == wantedFr)) ||
+                (wantedEn.isNotEmpty && (fr == wantedEn || en == wantedEn));
+          })) {
+            hasSameChapter = true;
+            break;
+          }
+        }
+        if (hasSameChapter) eligibleIds.add(room.id);
+      }
+      if (eligibleIds.isNotEmpty) {
+        await _service.authorizeTeacherClasses(eligibleIds.toList(growable: false));
+      }
+    } catch (error) {
+      // Background authorization must never block the teacher's publication UI.
+      debugPrint('Background compatible-room authorization failed: $error');
+    }
   }
 
   Future<void> _save() async {
