@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +31,7 @@ async function geminiJson(apiKey: string, prompt: string) {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
+      systemInstruction: { parts: [{ text: `${AI_SCHOOL_SYSTEM_RULES}\nGénère uniquement la leçon scolaire demandée à partir de la source fournie. Respecte le JSON exigé.` }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
     }),
