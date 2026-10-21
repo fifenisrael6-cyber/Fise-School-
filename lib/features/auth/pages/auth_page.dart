@@ -139,6 +139,12 @@ class _AuthPageState extends State<AuthPage> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    if (_isRegistering && _role == 'teacher' && _track == null) {
+      _showError(_lang == 'en'
+          ? 'Choose your teaching stream or specialty before registering.'
+          : 'Choisissez votre filière ou spécialité avant de vous inscrire.');
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       var signedIn = true;
