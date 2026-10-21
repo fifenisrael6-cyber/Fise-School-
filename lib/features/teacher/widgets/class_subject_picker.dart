@@ -54,6 +54,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     _classesFuture = _loadCompatibleClasses().then((list) {
       final available = list.where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName)).toList(growable: false);
       _allClasses = available;
+      _notify();
       return available;
     });
   }
@@ -67,10 +68,22 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
     final all = await _service.listTeacherCompatibleClasses();
-    return all.where((room) =>
+    final compatible = all.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
       (sector != null && sector.isNotEmpty && room.sector.name == sector)
     ).toList(growable: false);
+    // Restore the teacher's saved room choices whenever this selector opens.
+    try {
+      final followedIds = await _service.listTeacherFollowedClassIds();
+      if (followedIds.isNotEmpty) {
+        _selectedIds
+          ..clear()
+          ..addAll(compatible.where((room) => followedIds.contains(room.id)).map((room) => room.id));
+      }
+    } catch (_) {
+      // Keep selection available if older deployments do not expose preferences.
+    }
+    return compatible;
   }
 
   bool _isCombinedLanguageRoom(String label) {
