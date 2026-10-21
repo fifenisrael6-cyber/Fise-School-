@@ -60,6 +60,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
   final Map<String, List<CourseChapter>> _chaptersByClass = <String, List<CourseChapter>>{};
   final Map<String, String> _selectedChapterByClass = <String, String>{};
   bool _loadingChapters = false;
+  String? _commonChapterKey;
   final List<_CourseAttachment> _attachments = [];
   bool _saving = false;
 
@@ -227,6 +228,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     _curriculumByClass.clear();
     _chaptersByClass.clear();
     _selectedChapterByClass.clear();
+    _commonChapterKey = null;
     if (classes.isEmpty || subject == null) {
       if (mounted) setState(() => _loadingChapters = false);
       return;
@@ -267,6 +269,52 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     } finally {
       if (mounted) setState(() => _loadingChapters = false);
     }
+  }
+
+  String _chapterKey(CourseChapter chapter) {
+    final fr = chapter.titleFr.trim().toLowerCase();
+    return fr.isNotEmpty ? fr : chapter.titleEn.trim().toLowerCase();
+  }
+
+  List<CourseChapter> get _commonChapterOptions {
+    if (_classes.isEmpty) return const <CourseChapter>[];
+    final first = _chaptersByClass[_classes.first.id] ?? const <CourseChapter>[];
+    return first.where((chapter) {
+      final fr = chapter.titleFr.trim().toLowerCase();
+      final en = chapter.titleEn.trim().toLowerCase();
+      return _classes.skip(1).every((room) {
+        final roomChapters = _chaptersByClass[room.id] ?? const <CourseChapter>[];
+        return roomChapters.any((candidate) {
+          final candidateFr = candidate.titleFr.trim().toLowerCase();
+          final candidateEn = candidate.titleEn.trim().toLowerCase();
+          return (fr.isNotEmpty && (candidateFr == fr || candidateEn == fr)) ||
+              (en.isNotEmpty && (candidateFr == en || candidateEn == en));
+        });
+      });
+    }).toList(growable: false);
+  }
+
+  void _selectCommonChapter(String? key) {
+    setState(() {
+      _commonChapterKey = key;
+      _selectedChapterByClass.clear();
+      if (key == null) return;
+      final options = _commonChapterOptions;
+      final reference = options.where((chapter) => _chapterKey(chapter) == key).firstOrNull;
+      if (reference == null) return;
+      for (final room in _classes) {
+        final chapters = _chaptersByClass[room.id] ?? const <CourseChapter>[];
+        final refFr = reference.titleFr.trim().toLowerCase();
+        final refEn = reference.titleEn.trim().toLowerCase();
+        final match = chapters.where((candidate) {
+          final candidateFr = candidate.titleFr.trim().toLowerCase();
+          final candidateEn = candidate.titleEn.trim().toLowerCase();
+          return (refFr.isNotEmpty && (candidateFr == refFr || candidateEn == refFr)) ||
+              (refEn.isNotEmpty && (candidateFr == refEn || candidateEn == refEn));
+        }).firstOrNull;
+        if (match != null) _selectedChapterByClass[room.id] = match.id;
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -518,55 +566,43 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
           ),
           const SizedBox(height: 14),
           Text(
-            _fr ? 'Chapitre de destination (pour chaque classe)' : 'Destination chapter (for each classroom)',
+            _fr ? 'Chapitre commun aux salles sélectionnées' : 'Chapter shared by selected classrooms',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           if (_loadingChapters)
             const LinearProgressIndicator()
           else if (_classes.isEmpty || _subject == null)
-            Text(_fr ? 'Choisissez d’abord les classes et la matière.' : 'Choose classrooms and a subject first.')
+            Text(_fr ? 'Choisissez d’abord les salles et la matière.' : 'Choose classrooms and a subject first.')
+          else if (_commonChapterOptions.isEmpty)
+            Text(_fr
+                ? 'Aucun chapitre commun trouvé. Sélectionnez des salles ayant le même programme pour cette matière.'
+                : 'No common chapter found. Select classrooms that share the same curriculum for this subject.')
           else
-            ..._classes.map((schoolClass) {
-              final curriculum = _curriculumByClass[schoolClass.id];
-              final chapters = _chaptersByClass[schoolClass.id] ?? const <CourseChapter>[];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(schoolClass.displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    if (curriculum == null)
-                      Text(_fr ? 'Aucun programme correspondant trouvé pour cette classe.' : 'No matching curriculum found for this classroom.')
-                    else if (chapters.isEmpty)
-                      Text(_fr ? 'Aucun chapitre actif dans ce programme.' : 'No active chapters in this curriculum.')
-                    else
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('chapter-${schoolClass.id}-${curriculum.id}-${chapters.length}'),
-                        initialValue: _selectedChapterByClass[schoolClass.id],
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          border: const OutlineInputBorder(),
-                          labelText: _fr ? 'Choisir un chapitre' : 'Choose a chapter',
-                        ),
-                        items: chapters.map((chapter) => DropdownMenuItem<String>(
-                          value: chapter.id,
-                          child: Text(chapter.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
-                        )).toList(growable: false),
-                        onChanged: (chapterId) {
-                          setState(() {
-                            if (chapterId == null) {
-                              _selectedChapterByClass.remove(schoolClass.id);
-                            } else {
-                              _selectedChapterByClass[schoolClass.id] = chapterId;
-                            }
-                          });
-                        },
-                      ),
-                  ],
-                ),
-              );
-            }),
+            DropdownButtonFormField<String>(
+              key: ValueKey('common-chapter-${_classes.map((room) => room.id).join('-')}-${_commonChapterOptions.length}'),
+              initialValue: _commonChapterKey,
+              isExpanded: true,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                labelText: _fr ? 'Choisir le chapitre commun' : 'Choose the shared chapter',
+              ),
+              items: _commonChapterOptions.map((chapter) => DropdownMenuItem<String>(
+                value: _chapterKey(chapter),
+                child: Text(chapter.labelFor(widget.locale.languageCode), overflow: TextOverflow.ellipsis),
+              )).toList(growable: false),
+              onChanged: _selectCommonChapter,
+            ),
+          if (_classes.isNotEmpty && _subject != null && _commonChapterOptions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                _fr
+                    ? 'Le cours sera lié au chapitre correspondant dans chacune des ${_classes.length} salles sélectionnées.'
+                    : 'The course will be linked to the matching chapter in each of the ${_classes.length} selected classrooms.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
           const SizedBox(height: 20),
           TextField(
             controller: _title,
