@@ -295,6 +295,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 children: [
                   TextField(
                     controller: nameController,
+                    onChanged: (_) => setDialogState(() {}),
                     autofocus: true,
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
@@ -324,7 +325,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                   if (classes.isEmpty)
                     Text(_fr ? 'Aucune salle compatible disponible.' : 'No compatible classrooms available.')
                   else
-                    Flexible(
+                    SizedBox(
+                      height: 260,
                       child: ListView(
                         shrinkWrap: true,
                         children: visibleClasses.map((room) => CheckboxListTile(
