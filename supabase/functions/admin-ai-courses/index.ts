@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -169,7 +170,7 @@ Respecte strictement le programme et le chapitre. Explique notions, définitions
           method: "POST",
           headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: "Tu es l'auteur pédagogique de Fise School au Cameroun. Respecte strictement les données de programme fournies. N'invente pas une référence officielle. Réponds uniquement avec le JSON demandé." }] },
+            systemInstruction: { parts: [{ text: `${AI_SCHOOL_SYSTEM_RULES}\nTu es le rédacteur pédagogique de Fise School au Cameroun. Respecte strictement les données du programme, n’invente aucune référence officielle et retourne uniquement le JSON demandé.` }] },
             contents: [{ role: "user", parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.25 },
           }),
