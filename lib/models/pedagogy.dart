@@ -2,6 +2,7 @@ import 'exam_catalog.dart';
 
 class Subject {
   final String id, nameFr, nameEn, code;
+  final String teachingStream;
   final ExamSubsystem subsystem;
   final ExamSector sector;
   final String? descriptionFr, descriptionEn;
@@ -12,6 +13,7 @@ class Subject {
     required this.nameFr,
     required this.nameEn,
     required this.code,
+    this.teachingStream = 'both',
     required this.subsystem,
     required this.sector,
     this.descriptionFr,
@@ -23,6 +25,7 @@ class Subject {
     nameFr: map['name_fr'] as String,
     nameEn: map['name_en'] as String,
     code: map['code'] as String,
+    teachingStream: (map['teaching_stream'] ?? 'both').toString().toLowerCase(),
     subsystem: examSubsystemFromValue(map['subsystem'])!,
     sector: examSectorFromValue(map['sector'])!,
     descriptionFr: map['description_fr'] as String?,
