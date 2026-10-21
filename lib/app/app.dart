@@ -9,6 +9,9 @@ import '../core/services/push_service.dart';
 import '../core/services/session_service.dart';
 import '../features/auth/widgets/auth_gate.dart';
 import '../features/auth/pages/password_reset_page.dart';
+import '../features/messages/pages/messages_hub_page.dart';
+import '../features/notifications/pages/notifications_page.dart';
+import '../models/user_profile.dart';
 import '../supabase_config.dart';
 import 'routes.dart';
 import 'theme.dart';
@@ -65,6 +68,7 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
   @override
   void initState() {
     super.initState();
+    PushService.setNotificationTapHandler(_openFromPushNotification);
     _loadSavedLanguage();
     if (_supabaseInitialized) {
       _authStateSubscription =
@@ -94,6 +98,39 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
         .whenComplete(() {
           _passwordResetPageOpen = false;
         });
+  }
+
+  Future<void> _openFromPushNotification(Map<String, String> data) async {
+    // Wait until login/profile loading has completed before navigating.
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final row = await client.from('profiles').select().eq('id', user.id).single();
+      final profile = UserProfile.fromMap(Map<String, dynamic>.from(row));
+      final navigator = _navigatorKey.currentState;
+      if (navigator == null) return;
+      final type = (data['type'] ?? 'info').toLowerCase();
+      if (type == 'message' || type == 'group_message' || type == 'private_message') {
+        await navigator.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => MessagesHubPage(locale: _locale, profile: profile),
+          ),
+        );
+      } else {
+        await navigator.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => NotificationsPage(
+              locale: _locale,
+              userId: profile.id,
+              profile: profile,
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      debugPrint('Ouverture de la notification impossible: $error');
+    }
   }
 
   @override
