@@ -264,3 +264,61 @@ after insert or delete on public.message_group_members
 for each row execute function public.notify_group_membership_change();
 
 notify pgrst, 'reload schema';
+
+-- Restore already locked choices when a student returns to the quiz.
+create or replace function public.list_locked_chapter_quiz_answers(p_quiz_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_uid uuid := auth.uid();
+  v_chapter uuid;
+  v_result jsonb;
+begin
+  if v_uid is null then raise exception 'Authentication required'; end if;
+  select q.chapter_id into v_chapter
+  from public.chapter_quizzes q
+  where q.id = p_quiz_id and q.is_published;
+  if v_chapter is null or not public.student_can_access_chapter(v_chapter) then
+    raise exception 'Quiz is not available to this student';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'question_id', s.question_id,
+    'selected_option_index', s.selected_option_index,
+    'correct_option_index', k.correct_option_index,
+    'is_correct', s.is_correct,
+    'explanation_fr', coalesce(k.explanation_fr, ''),
+    'explanation_en', coalesce(k.explanation_en, ''),
+    'locked', true
+  )), '[]'::jsonb)
+  into v_result
+  from public.chapter_quiz_answer_selections s
+  join public.chapter_quiz_questions question
+    on question.id = s.question_id and question.quiz_id = p_quiz_id
+  join public.chapter_quiz_answer_keys k on k.question_id = s.question_id
+  where s.student_id = v_uid and s.quiz_id = p_quiz_id;
+
+  return v_result;
+end;
+$function$;
+revoke all on function public.list_locked_chapter_quiz_answers(uuid) from public, anon;
+grant execute on function public.list_locked_chapter_quiz_answers(uuid) to authenticated;
+
+-- Ensure membership changes are delivered to live chat screens.
+do $publication$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'message_group_members'
+     ) then
+    alter publication supabase_realtime add table public.message_group_members;
+  end if;
+end;
+$publication$;
+
