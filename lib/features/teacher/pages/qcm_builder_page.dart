@@ -28,6 +28,12 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
   }
 
   Future<List<Map<String, dynamic>>> _loadAiQuizzes() async {
+    final profileRow = await _db.from('profiles').select('teaching_stream').eq('id', widget.profile.id).maybeSingle();
+    final rawStream = (profileRow?['teaching_stream'] ?? '').toString().toLowerCase().trim();
+    final teacherStream = ['literary', 'litteraire', 'littéraire'].contains(rawStream)
+        ? 'literary'
+        : ['scientific', 'scientifique'].contains(rawStream) ? 'scientific' : null;
+
     final quizRows = await _db
         .from('chapter_quizzes')
         .select('id,title_fr,title_en,description_fr,description_en,chapter_id,position,is_published,created_by')
@@ -59,7 +65,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
         .toList();
     final subjectRows = subjectIds.isEmpty
         ? <Map<String, dynamic>>[]
-        : (await _db.from('subjects').select('id,name_fr,name_en').inFilter('id', subjectIds))
+        : (await _db.from('subjects').select('id,name_fr,name_en,teaching_stream').inFilter('id', subjectIds))
             .map((r) => Map<String, dynamic>.from(r)).toList();
     final subjects = {for (final s in subjectRows) s['id'].toString(): s};
 
@@ -69,6 +75,8 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
       if (chapter == null) continue;
       final curriculum = curricula[chapter['curriculum_id'].toString()];
       final subject = curriculum == null ? null : subjects[curriculum['subject_id'].toString()];
+      final subjectStream = (subject?['teaching_stream'] ?? 'both').toString().toLowerCase();
+      if (teacherStream != null && !['both', teacherStream].contains(subjectStream)) continue;
       final questionRows = await _db
           .from('chapter_quiz_questions')
           .select('id')
