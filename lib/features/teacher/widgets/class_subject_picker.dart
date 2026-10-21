@@ -99,7 +99,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   bool _canTeachSubject(Subject subject) {
     final stream = _normalizeStream(subject.teachingStream);
-    return _teacherStream == null || stream == null || stream == 'both' || stream == _teacherStream;
+    return _teacherStream != null && (stream == 'both' || stream == _teacherStream);
   }
 
   bool _isCombinedLanguageRoom(String label) {
