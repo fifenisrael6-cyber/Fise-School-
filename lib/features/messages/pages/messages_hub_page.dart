@@ -256,82 +256,115 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
 
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
+    Set<String> savedRoomIds = <String>{};
     try {
-      classes = (await CourseService().listTeacherCompatibleClasses())
+      final courseService = CourseService();
+      classes = (await courseService.listTeacherCompatibleClasses())
           .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
           .where((schoolClass) =>
               (widget.profile.subsystem != null && schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
               (widget.profile.sector != null && schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
           .toList(growable: false);
+      savedRoomIds = await courseService.listTeacherFollowedClassIds();
+      savedRoomIds.retainAll(classes.map((room) => room.id));
     } catch (_) {
       classes = const [];
     }
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     final nameController = TextEditingController();
     final classSearchController = TextEditingController();
-    String? classId;
+    final selectedClassIds = <String>{...savedRoomIds};
 
     final created = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(_fr ? 'Créer un groupe' : 'Create a group'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  labelText: _fr ? 'Nom du groupe' : 'Group name',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: classSearchController,
-                onChanged: (_) => setDialogState(() {}),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: classId,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: _fr ? 'Salle (facultatif)' : 'Classroom (optional)',
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  DropdownMenuItem<String>(
-                    value: null,
-                    child: Text(_fr ? 'Toutes les salles compatibles' : 'All compatible classrooms'),
+        builder: (context, setDialogState) {
+          final query = classSearchController.text.trim().toLowerCase();
+          final visibleClasses = classes
+              .where((room) => room.displayName.toLowerCase().contains(query))
+              .toList(growable: false);
+          return AlertDialog(
+            title: Text(_fr ? 'Créer un groupe' : 'Create a group'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      labelText: _fr ? 'Nom du groupe' : 'Group name',
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
-                  ...classes.where((c) => c.displayName.toLowerCase().contains(classSearchController.text.trim().toLowerCase()))
-                    .map((c) => DropdownMenuItem<String>(value: c.id, child: Text(c.displayName))),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _fr ? 'Choisissez une ou plusieurs salles' : 'Choose one or more classrooms',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: classSearchController,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: _fr ? 'Rechercher une salle…' : 'Search classrooms…',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (classes.isEmpty)
+                    Text(_fr ? 'Aucune salle compatible disponible.' : 'No compatible classrooms available.')
+                  else
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: visibleClasses.map((room) => CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: selectedClassIds.contains(room.id),
+                          title: Text(room.displayName),
+                          onChanged: (checked) => setDialogState(() {
+                            if (checked == true) {
+                              selectedClassIds.add(room.id);
+                            } else {
+                              selectedClassIds.remove(room.id);
+                            }
+                          }),
+                        )).toList(growable: false),
+                      ),
+                    ),
+                  if (selectedClassIds.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        _fr ? 'Sélectionnez au moins une salle.' : 'Select at least one classroom.',
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ),
+                    ),
                 ],
-                onChanged: (value) => setDialogState(() => classId = value),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(_fr ? 'Annuler' : 'Cancel'),
+              ),
+              FilledButton(
+                onPressed: selectedClassIds.isEmpty || nameController.text.trim().isEmpty
+                    ? null
+                    : () => Navigator.pop(dialogContext, true),
+                child: Text(_fr ? 'Créer' : 'Create'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(_fr ? 'Annuler' : 'Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(_fr ? 'Créer' : 'Create'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
 
@@ -339,18 +372,16 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     nameController.dispose();
     classSearchController.dispose();
 
-    if (created != true || name.isEmpty) {
-      return;
-    }
+    if (created != true || name.isEmpty || selectedClassIds.isEmpty) return;
 
     try {
-      await _service.createGroup(name: name, classId: classId);
+      await _service.createGroup(name: name, classIds: selectedClassIds.toList(growable: false));
       await _reload();
       _snack(_fr
-          ? 'Groupe créé. Ouvrez-le pour voir le code d’invitation.'
-          : 'Group created. Open it to see the invitation code.');
+          ? 'Groupe créé pour ${selectedClassIds.length} salle(s). Ouvrez-le pour voir le code d’invitation.'
+          : 'Group created for ${selectedClassIds.length} classroom(s). Open it to see the invitation code.');
     } catch (error) {
-      _snack('$error');
+      _snack('${_fr ? 'Création impossible' : 'Could not create group'}: $error');
     }
   }
 
