@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/student_class_change_service.dart';
+import '../../../models/user_profile.dart';
 
 class StudentClassSwitchPage extends StatefulWidget {
   final Locale locale;
-  const StudentClassSwitchPage({super.key, required this.locale});
+  final UserProfile profile;
+
+  const StudentClassSwitchPage({
+    super.key,
+    required this.locale,
+    required this.profile,
+  });
 
   @override
   State<StudentClassSwitchPage> createState() => _StudentClassSwitchPageState();
