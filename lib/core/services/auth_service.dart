@@ -40,6 +40,7 @@ class AuthService {
     String? track,
     String? className,
     String? languageOption,
+    String? teachingStream,
   }) async {
     final cleanEmail = email.trim().toLowerCase();
 
@@ -62,6 +63,7 @@ class AuthService {
         'track': track,
         'class_name': className,
         'language_option': languageOption,
+        'teaching_stream': teachingStream,
       },
     );
 
@@ -96,6 +98,7 @@ class AuthService {
         exam: exam,
         track: track,
         className: className,
+        teachingStream: teachingStream,
       );
       } catch (e) {
         debugPrint('Profil non enregistré à l’inscription: $e');
@@ -132,6 +135,7 @@ class AuthService {
       exam: metadata['exam'] as String?,
       track: metadata['track'] as String?,
       className: metadata['class_name'] as String?,
+      teachingStream: metadata['teaching_stream'] as String?,
     );
   }
 
