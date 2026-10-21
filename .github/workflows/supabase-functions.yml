@@ -43,6 +43,18 @@ jobs:
         if: steps.config.outputs.ready == 'true'
         run: supabase functions deploy index-course-file --project-ref "$SUPABASE_PROJECT_REF"
 
+      - name: Deploy admin-ai-courses
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy admin-ai-courses --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy daily-lesson
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy daily-lesson --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy evaluation-correct-worker
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy evaluation-correct-worker --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+
       - name: Deploy grade-assignment
         if: steps.config.outputs.ready == 'true'
         run: supabase functions deploy grade-assignment --project-ref "$SUPABASE_PROJECT_REF"
