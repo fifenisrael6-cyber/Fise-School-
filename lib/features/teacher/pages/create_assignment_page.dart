@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/assignment_service.dart';
 import '../../../models/user_profile.dart';
@@ -44,6 +45,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   String _status = 'draft';
   DateTime? _dueAt;
   bool _saving = false;
+  String? _teacherSpecialty;
 
   bool get _isEnglish => widget.locale.languageCode == 'en';
 
@@ -51,6 +53,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   void initState() {
     super.initState();
     _classesFuture = _courseService.listTeacherClasses(widget.profile.id);
+    _loadTeacherSpecialty();
   }
 
   @override
@@ -63,8 +66,33 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     super.dispose();
   }
 
+  Future<void> _loadTeacherSpecialty() async {
+    try {
+      final row = await Supabase.instance.client.from('profiles')
+          .select('teacher_specialty').eq('id', widget.profile.id).maybeSingle();
+      if (mounted) setState(() => _teacherSpecialty = row?['teacher_specialty']?.toString());
+    } catch (_) {}
+  }
+
+  bool _matchesSpecialty(Subject subject) {
+    final specialty = _teacherSpecialty;
+    if (specialty != 'literary' && specialty != 'scientific') return false;
+    final label = '${subject.nameFr} ${subject.nameEn} ${subject.code}'.toLowerCase();
+    const literary = ['français', 'french', 'littérature', 'literature', 'anglais', 'english', 'allemand', 'german', 'espagnol', 'spanish', 'arabe', 'arabic', 'histoire', 'history', 'géographie', 'geography', 'philosophie', 'philosophy', 'économie', 'economics', 'droit', 'law', 'sociologie', 'sociology', 'citoyenneté', 'civics'];
+    const scientific = ['math', 'mathématique', 'mathematics', 'physique', 'physics', 'chimie', 'chemistry', 'biologie', 'biology', 'svt', 'science', 'informatique', 'computer', 'technologie', 'technology', 'dessin technique', 'technical drawing'];
+    final isLiterary = literary.any(label.contains);
+    final isScientific = scientific.any(label.contains);
+    if (isLiterary && isScientific) return false;
+    return specialty == 'literary' ? isLiterary : isScientific;
+  }
+
   Future<void> _saveAssignment() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_teacherSpecialty != 'literary' && _teacherSpecialty != 'scientific') {
+      _showMessage(_isEnglish ? 'Choose your specialty on the unique access-code page first.' : 'Choisissez d’abord votre spécialité dans la page du code unique.');
       return;
     }
 
@@ -169,12 +197,16 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
     if (value == null) {
       return;
     }
-    final courses = await _courseService.listTeacherCourses(widget.profile.id);
-    if (!mounted) {
-      return;
-    }
+    final results = await Future.wait<dynamic>([
+      _courseService.listTeacherCourses(widget.profile.id),
+      _courseService.listSubjectsForClass(value.id),
+    ]);
+    if (!mounted) return;
+    final courses = results[0] as List<Course>;
+    final subjects = results[1] as List<Subject>;
+    final allowedSubjectIds = subjects.where(_matchesSpecialty).map((s) => s.id).toSet();
     setState(() {
-      _courses = courses.where((c) => c.classId == value.id && c.status != 'archived').toList(growable: false);
+      _courses = courses.where((c) => c.classId == value.id && c.status != 'archived' && allowedSubjectIds.contains(c.subjectId)).toList(growable: false);
     });
   }
 
