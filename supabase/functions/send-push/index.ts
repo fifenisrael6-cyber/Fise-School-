@@ -88,7 +88,12 @@ serve(async (req) => {
               title: String(record.title ?? "Fise School").slice(0, 180),
               body: String(record.body ?? "").slice(0, 500),
             },
-            data: { type: String(record.type ?? "info"), notification_id: String(record.id ?? "") },
+            data: {
+              type: String(record.type ?? "info"),
+              notification_id: String(record.id ?? ""),
+              target_type: String(record.target_type ?? ""),
+              target_id: String(record.target_id ?? ""),
+            },
             android: { priority: "HIGH" },
           },
         }),
