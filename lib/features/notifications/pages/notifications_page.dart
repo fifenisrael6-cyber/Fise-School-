@@ -103,6 +103,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         builder: (_) => MessagesHubPage(
                           locale: widget.locale,
                           profile: widget.profile!,
+                          initialTargetType: item.targetType,
+                          initialTargetId: item.targetId,
                         ),
                       ),
                     );
