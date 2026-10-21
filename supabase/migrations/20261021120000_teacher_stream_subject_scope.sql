@@ -1,12 +1,16 @@
 -- Classify subjects independently from classroom access and teacher specialty.
 alter table public.subjects
-  add column if not exists teaching_stream text not null default 'both';
+  add column if not exists teaching_stream text not null default 'unclassified';
+alter table public.subjects alter column teaching_stream set default 'unclassified';
 
 alter table public.subjects
   drop constraint if exists subjects_teaching_stream_check;
 alter table public.subjects
   add constraint subjects_teaching_stream_check
-  check (teaching_stream in ('literary', 'scientific', 'both'));
+  check (teaching_stream in ('literary', 'scientific', 'both', 'unclassified'));
+
+-- Never expose an unclassified subject to both streams by default.
+update public.subjects set teaching_stream = 'unclassified' where teaching_stream = 'both';
 
 -- Best-effort initial classification for obvious stream-specific subjects.
 -- Languages and genuinely shared subjects remain available to both streams.
@@ -19,7 +23,14 @@ update public.subjects
 set teaching_stream = 'literary'
 where lower(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, ''))
   ~ '(philosoph|litt[eé]rature|literature|histoire|history|g[eé]ographie|geography|sociolog|psycholog|droit|law|latin|grec ancien|ancient greek|instruction civique|civic education)'
-  and teaching_stream = 'both';
+  and teaching_stream = 'unclassified';
+
+-- Subjects genuinely shared by both streams. Unknown subjects remain hidden until classified.
+update public.subjects
+set teaching_stream = 'both'
+where lower(coalesce(name_fr, '') || ' ' || coalesce(name_en, '') || ' ' || coalesce(code, ''))
+  ~ '(fran[cç]ais|french|anglais|english|allemand|german|espagnol|spanish|italien|italian|arabe|arabic|portugais|portuguese|education physique|physical education|education artistique|arts plastiques|musique|music|langue[s]? vivante[s]?)'
+  and teaching_stream = 'unclassified';
 
 -- Enforce the same stream boundary when a teacher creates a course through the API.
 -- Let a teacher choose the stream once during signup; subsequent changes remain admin-only.
