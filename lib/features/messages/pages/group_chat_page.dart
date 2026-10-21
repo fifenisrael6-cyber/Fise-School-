@@ -42,6 +42,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   List<GroupMessage> _messages = const [];
   bool _loading = true;
+  String? _loadError;
+  int _loadGeneration = 0;
   bool _sending = false;
   PickedAttachment? _attachment;
   GroupMessage? _replyTo;
@@ -111,20 +113,29 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _load({bool showLoader = true}) async {
+    final generation = ++_loadGeneration;
     if (showLoader && mounted) {
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
     }
     try {
-      final messages = await _service.listMessages(widget.group.id);
-      if (mounted) {
-        setState(() => _messages = messages);
+      final messages = await _service
+          .listMessages(widget.group.id)
+          .timeout(const Duration(seconds: 20));
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _messages = messages;
+          _loadError = null;
+        });
       }
     } catch (error) {
-      if (mounted) {
-        _snack('$error');
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = error.toString());
       }
     } finally {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() => _loading = false);
       }
     }
@@ -576,16 +587,47 @@ class _GroupChatPageState extends State<GroupChatPage> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : reversed.isEmpty
+                : _loadError != null
                     ? Center(
-                        child: Text(_fr ? 'Aucun message pour le moment.' : 'No messages yet.'),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.cloud_off_rounded, size: 42),
+                              const SizedBox(height: 12),
+                              Text(
+                                _fr
+                                    ? 'Impossible de charger les messages. Vérifiez la connexion et réessayez.'
+                                    : 'Could not load messages. Check the connection and try again.',
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _loadError!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: () => _load(),
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: Text(_fr ? 'Réessayer' : 'Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
                       )
-                    : ListView.builder(
-                        reverse: true,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: reversed.length,
-                        itemBuilder: (context, index) => _bubble(reversed[index]),
-                      ),
+                    : reversed.isEmpty
+                        ? Center(
+                            child: Text(_fr ? 'Aucun message pour le moment.' : 'No messages yet.'),
+                          )
+                        : ListView.builder(
+                            reverse: true,
+                            padding: const EdgeInsets.all(12),
+                            itemCount: reversed.length,
+                            itemBuilder: (context, index) => _bubble(reversed[index]),
+                          ),
           ),
           SafeArea(
             top: false,
