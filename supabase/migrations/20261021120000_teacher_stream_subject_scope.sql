@@ -85,3 +85,82 @@ drop trigger if exists enforce_course_destination_scope on public.courses;
 create trigger enforce_course_destination_scope
 before insert or update of curriculum_id,chapter_id,subject_id,teacher_id,class_id
 on public.courses for each row execute function public.enforce_course_destination_scope();
+
+
+-- Prevent bypassing the subject filter through the classroom subject RPC.
+create or replace function public.teacher_add_class_subject(p_class_id uuid, p_subject_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_class public.school_classes%rowtype;
+  v_subject public.subjects%rowtype;
+  v_teacher public.profiles%rowtype;
+  v_pos integer;
+  v_stream text;
+begin
+  if not public.teacher_can_manage_class(p_class_id, auth.uid()) then
+    raise exception 'Teacher is not assigned to this class';
+  end if;
+  select * into v_teacher from public.profiles where id = auth.uid() and role = 'teacher';
+  select * into v_class from public.school_classes where id = p_class_id and is_active;
+  select * into v_subject from public.subjects where id = p_subject_id and is_active;
+  if v_class.id is null or v_subject.id is null then
+    raise exception 'Class or subject not found';
+  end if;
+  if v_subject.subsystem is distinct from v_class.subsystem
+     or v_subject.sector is distinct from v_class.sector then
+    raise exception 'Subject does not match the class subsystem and sector';
+  end if;
+  v_stream := lower(trim(coalesce(v_teacher.teaching_stream, '')));
+  if v_stream in ('littéraire','litteraire') then v_stream := 'literary'; end if;
+  if v_stream = 'scientifique' then v_stream := 'scientific'; end if;
+  if v_stream in ('literary','scientific') and v_subject.teaching_stream not in ('both', v_stream) then
+    raise exception 'This subject is not available for your teaching stream';
+  end if;
+  select coalesce(max(position), 0) + 1 into v_pos
+    from public.class_subjects where class_id = p_class_id;
+  insert into public.class_subjects (class_id, subject_id, is_compulsory, option_group, position, is_active)
+  values (p_class_id, p_subject_id, false, 'Option', v_pos, true)
+  on conflict (class_id, subject_id) do update set is_active = true;
+end;
+$function$;
+
+-- A teacher cannot create an assignment/QCM for a subject from the other stream.
+create or replace function public.enforce_assignment_teacher_stream()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_teacher public.profiles%rowtype;
+  v_subject public.subjects%rowtype;
+  v_subject_id uuid;
+  v_stream text;
+begin
+  select * into v_teacher from public.profiles where id = new.teacher_id;
+  if not found or v_teacher.role <> 'teacher' then
+    return new;
+  end if;
+  v_subject_id := new.subject_id;
+  if v_subject_id is null and new.course_id is not null then
+    select subject_id into v_subject_id from public.courses where id = new.course_id;
+  end if;
+  if v_subject_id is null then return new; end if;
+  select * into v_subject from public.subjects where id = v_subject_id;
+  v_stream := lower(trim(coalesce(v_teacher.teaching_stream, '')));
+  if v_stream in ('littéraire','litteraire') then v_stream := 'literary'; end if;
+  if v_stream = 'scientifique' then v_stream := 'scientific'; end if;
+  if v_stream in ('literary','scientific') and v_subject.teaching_stream not in ('both', v_stream) then
+    raise exception 'This subject is not available for your teaching stream';
+  end if;
+  return new;
+end;
+$function$;
+drop trigger if exists enforce_assignment_teacher_stream on public.assignments;
+create trigger enforce_assignment_teacher_stream
+before insert or update of subject_id, teacher_id, course_id
+on public.assignments for each row execute function public.enforce_assignment_teacher_stream();
