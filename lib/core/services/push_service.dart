@@ -23,6 +23,17 @@ class PushService {
   static bool _ready = false;
   static bool _listening = false;
   static String? _token;
+  static void Function(Map<String, String> data)? notificationTapHandler;
+
+  static void setNotificationTapHandler(
+    void Function(Map<String, String> data)? handler,
+  ) {
+    notificationTapHandler = handler;
+  }
+
+  static void _handleNotificationOpen(RemoteMessage message) {
+    notificationTapHandler?.call(Map<String, String>.from(message.data));
+  }
 
   static Future<void> initialize() async {
     try {
@@ -59,6 +70,15 @@ class PushService {
           await _save(fresh);
         });
         FirebaseMessaging.onMessage.listen(_showForegroundBanner);
+        FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpen);
+        // If Android launched the app from a terminated state, route after the
+        // authenticated shell has had a chance to register its handler.
+        final initialMessage = await messaging.getInitialMessage();
+        if (initialMessage != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _handleNotificationOpen(initialMessage);
+          });
+        }
       }
     } catch (e) {
       debugPrint('Enregistrement push impossible : $e');
