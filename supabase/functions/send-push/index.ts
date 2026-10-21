@@ -46,16 +46,41 @@ async function getAccessToken(sa: { client_email: string; private_key: string })
 
 serve(async (req) => {
   try {
-    const secret = Deno.env.get("PUSH_WEBHOOK_SECRET");
-    if (!secret || req.headers.get("x-webhook-secret") !== secret) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const saRaw = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
-    if (!supabaseUrl || !serviceKey || !saRaw) {
-      return new Response("Configuration push manquante.", { status: 500 });
+    if (!supabaseUrl || !serviceKey) {
+      return new Response("Configuration Supabase manquante.", { status: 500 });
+    }
+
+    const suppliedSecret = req.headers.get("x-webhook-secret");
+    const configuredSecret = Deno.env.get("PUSH_WEBHOOK_SECRET");
+    const admin = createClient(supabaseUrl, serviceKey);
+
+    // Prefer an explicitly configured Edge Function secret. If it is absent,
+    // validate the secret generated/stored in Supabase Vault by the database
+    // trigger migration. This lets database-triggered push work without copying
+    // the same secret manually into two dashboards.
+    if (configuredSecret) {
+      if (suppliedSecret !== configuredSecret) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    } else {
+      if (!suppliedSecret) return new Response("Unauthorized", { status: 401 });
+      const { data: validSecret, error: secretError } = await admin.rpc(
+        "validate_push_webhook_secret",
+        { p_secret: suppliedSecret },
+      );
+      if (secretError || validSecret !== true) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    }
+
+    if (!saRaw) {
+      return new Response(
+        "Configuration Firebase manquante : définir FIREBASE_SERVICE_ACCOUNT dans les secrets Edge Functions.",
+        { status: 500 },
+      );
     }
 
     const payload = await req.json();
@@ -64,7 +89,6 @@ serve(async (req) => {
       return new Response("Ignoré", { status: 200 });
     }
 
-    const admin = createClient(supabaseUrl, serviceKey);
     const { data: tokens, error } = await admin
       .from("device_tokens")
       .select("token")
