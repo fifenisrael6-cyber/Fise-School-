@@ -113,12 +113,20 @@ class AuthService {
       return;
     }
 
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
     final existing = await _profileService.getCurrentProfile();
     if (existing != null) {
+      final stream = metadata['teaching_stream']?.toString().toLowerCase().trim();
+      if (existing.role == 'teacher' &&
+          (existing.teachingStream == null || existing.teachingStream!.trim().isEmpty) &&
+          (stream == 'literary' || stream == 'scientific')) {
+        // Signup may require e-mail confirmation, so the profile row can exist
+        // before the first authenticated session. Fill the stream once on login.
+        await _client.from('profiles').update({'teaching_stream': stream}).eq('id', user.id);
+        await _profileService.getCurrentProfile();
+      }
       return;
     }
-
-    final metadata = user.userMetadata ?? const <String, dynamic>{};
 
     await _profileService.saveCurrentProfile(
       firstName: metadata['first_name'] as String? ?? '',
