@@ -114,7 +114,12 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
       if (type == 'message' || type == 'group_message' || type == 'private_message') {
         await navigator.push<void>(
           MaterialPageRoute<void>(
-            builder: (_) => MessagesHubPage(locale: _locale, profile: profile),
+            builder: (_) => MessagesHubPage(
+              locale: _locale,
+              profile: profile,
+              initialTargetType: data['target_type'],
+              initialTargetId: data['target_id'],
+            ),
           ),
         );
       } else {
