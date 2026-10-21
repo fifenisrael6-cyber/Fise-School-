@@ -92,12 +92,32 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
 
   Future<void> _toggleClass(SchoolClass schoolClass, bool selected) async {
     setState(() {
-      // Publish to one classroom at a time so its programme/chapter mapping is
-      // unambiguous. Teachers can repeat the operation for another classroom.
-      _selectedIds.clear();
-      if (selected) _selectedIds.add(schoolClass.id);
+      // Multiple rooms are allowed. The subject list below is the intersection
+      // of the curricula actually assigned to every selected room.
+      if (selected) {
+        _selectedIds.add(schoolClass.id);
+      } else {
+        _selectedIds.remove(schoolClass.id);
+      }
     });
     await _reloadSubjects();
+  }
+
+  Future<void> _saveFollowedRooms() async {
+    final ids = _selectedIds.toList(growable: false);
+    if (ids.isEmpty) {
+      _snack(_fr ? 'Choisissez au moins une salle.' : 'Choose at least one classroom.');
+      return;
+    }
+    try {
+      await _service.saveTeacherFollowedClasses(ids);
+      if (!mounted) return;
+      _snack(_fr
+          ? '${ids.length} salle(s) enregistrée(s) dans « Mes salles ».'
+          : '${ids.length} classroom(s) saved in “My classrooms”.');
+    } catch (error) {
+      if (mounted) _snack('${_fr ? 'Enregistrement impossible' : 'Could not save'}: $error');
+    }
   }
 
   Future<void> _reloadSubjects() async {
@@ -336,7 +356,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
           children: [
             Expanded(
               child: Text(
-                _fr ? 'Matière' : 'Subject',
+                _fr ? 'Matière commune aux salles' : 'Subject shared by selected rooms',
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
@@ -346,6 +366,14 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
               label: Text(_fr ? 'Ajouter une matière' : 'Add a subject'),
             ),
           ],
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _saveFollowedRooms,
+            icon: const Icon(Icons.bookmark_add_outlined),
+            label: Text(_fr ? 'Enregistrer comme « Mes salles »' : 'Save as “My classrooms”'),
+          ),
         ),
         if (_loadingSubjects)
           const LinearProgressIndicator()
