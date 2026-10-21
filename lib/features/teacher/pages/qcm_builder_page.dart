@@ -33,6 +33,7 @@ class _QcmBuilderPageState extends State<QcmBuilderPage> {
     final teacherStream = ['literary', 'litteraire', 'littéraire'].contains(rawStream)
         ? 'literary'
         : ['scientific', 'scientifique'].contains(rawStream) ? 'scientific' : null;
+    if (teacherStream == null) return const <Map<String, dynamic>>[];
 
     final quizRows = await _db
         .from('chapter_quizzes')
