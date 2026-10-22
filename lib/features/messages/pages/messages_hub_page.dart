@@ -507,7 +507,31 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
               : 'FISE code validated. This teacher’s evaluations are now accessible; no group has been created for your classroom yet.')
           : (_fr ? 'Groupes autorisés ajoutés.' : 'Eligible groups added.'));
     } catch (error) {
-      _snack(_fr ? 'Code invalide ou accès refusé.' : 'Invalid code or access denied.');
+      // Show the actionable reason returned by the existing secured RPC instead
+      // of hiding every failure behind the same "invalid code" message.
+      final detail = error.toString().toLowerCase();
+      final message = detail.contains('invalid or inactive fise code') ||
+              detail.contains('invalid invitation code') ||
+              detail.contains('invitation code')
+          ? (_fr
+              ? 'Code FISE invalide ou désactivé. Demandez le code FISE actuel à votre professeur.'
+              : 'Invalid or inactive FISE code. Ask your teacher for the current FISE code.')
+          : detail.contains('no active classroom')
+              ? (_fr
+                  ? 'Aucune classe active n’est associée à votre compte. Faites vérifier votre classe.'
+                  : 'No active classroom is assigned to your account. Please have your class checked.')
+              : detail.contains('belongs to another teacher')
+                  ? (_fr
+                      ? 'Ce code appartient à un autre enseignant.'
+                      : 'This code belongs to another teacher.')
+                  : detail.contains('profile not found')
+                      ? (_fr
+                          ? 'Votre profil scolaire est introuvable. Reconnectez-vous ou faites vérifier votre compte.'
+                          : 'Your school profile was not found. Sign in again or have your account checked.')
+                      : (_fr
+                          ? 'Impossible de rejoindre le groupe. Vérifiez le code FISE et votre classe, puis réessayez.'
+                          : 'Could not join the group. Check the FISE code and your class, then try again.');
+      _snack(message);
     }
   }
 
