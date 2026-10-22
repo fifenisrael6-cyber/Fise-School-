@@ -59,7 +59,17 @@ class GeminiService {
       attachmentBytes: attachmentBytes, attachmentMimeType: attachmentMimeType, attachmentName: attachmentName);
     } on FunctionException catch (e) {
       final details = e.details;
-      final Map<String, dynamic>? body = details is Map ? Map<String, dynamic>.from(details) : null;
+      Map<String, dynamic>? body;
+      if (details is Map) {
+        body = Map<String, dynamic>.from(details);
+      } else if (details is String && details.trim().startsWith('{')) {
+        try {
+          final decoded = jsonDecode(details);
+          if (decoded is Map) body = Map<String, dynamic>.from(decoded);
+        } catch (_) {
+          // Keep the original FunctionException fallback below.
+        }
+      }
       final lang = profile.preferredLanguage == 'en' ? 'en' : 'fr';
       if (body?['code'] == 'PREMIUM_REQUIRED' || e.status == 402) {
         throw AiPremiumRequiredException((body?['message'] ?? '').toString());
@@ -67,8 +77,31 @@ class GeminiService {
       if (body?['code'] == 'DAILY_LIMIT_REACHED' || (e.status == 429 && body?['kind'] == 'question')) {
         throw AiDailyLimitReachedException.messageForLanguage(lang);
       }
-      final msg = body?['message'] ?? body?['error'];
-      throw Exception(msg is String && msg.trim().isNotEmpty ? msg.trim() : 'AI_REQUEST_FAILED');
+      final code = (body?['code'] ?? body?['error'])?.toString();
+      final serverMessage = body?['message'];
+      if (serverMessage is String && serverMessage.trim().isNotEmpty) {
+        throw Exception(serverMessage.trim());
+      }
+      final friendly = switch (code) {
+        'AI_REQUEST_TIMEOUT' => lang == 'en'
+            ? 'The AI service took too long to respond. Please try again.'
+            : 'Le service IA met trop de temps à répondre. Réessaie.',
+        'AI_QUOTA_EXCEEDED' => lang == 'en'
+            ? 'The AI service is temporarily busy. Please try again shortly.'
+            : 'Le service IA est temporairement saturé. Réessaie bientôt.',
+        'AI_PROVIDER_CONFIGURATION_ERROR' || 'AI_MODEL_CONFIGURATION_ERROR' =>
+          lang == 'en'
+              ? 'The AI service is being checked. Please try again later.'
+              : 'Le service IA est en cours de vérification. Réessaie plus tard.',
+        'AI_UPSTREAM_NETWORK_ERROR' => lang == 'en'
+            ? 'Could not connect to the AI service. Check your internet connection.'
+            : 'Connexion au service IA impossible. Vérifie Internet.',
+        'AI_UPSTREAM_ERROR' => lang == 'en'
+            ? 'The AI service is temporarily unavailable. Please try again shortly.'
+            : 'Le service IA est momentanément indisponible. Réessaie bientôt.',
+        _ => null,
+      };
+      throw Exception(friendly ?? (code?.isNotEmpty == true ? code : 'AI_REQUEST_FAILED'));
     }
     if (response.data is! Map) {
       throw Exception('Réponse IA invalide.');
