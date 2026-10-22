@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/chapter_learning_content.dart';
+import '../../../core/utils/educational_text.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
@@ -869,7 +870,7 @@ class _ChapterInteractiveQuizPageState extends State<ChapterInteractiveQuizPage>
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${questionIndex + 1}. ${question.promptFor(widget.locale.languageCode)}',
+                          Text('${questionIndex + 1}. ${readableEducationalText(question.promptFor(widget.locale.languageCode))}',
                             style: const TextStyle(fontWeight: FontWeight.w800)),
                           const SizedBox(height: 8),
                           Row(
@@ -893,13 +894,13 @@ class _ChapterInteractiveQuizPageState extends State<ChapterInteractiveQuizPage>
                             ],
                           ),
                           const SizedBox(height: 6),
-                          Text('${_en ? 'Your answer' : 'Ta réponse'}: $selectedText'),
-                          Text('${_en ? 'Correct answer' : 'Bonne réponse'}: $correctText',
+                          Text('${_en ? 'Your answer' : 'Ta réponse'}: ${readableEducationalText(selectedText)}'),
+                          Text('${_en ? 'Correct answer' : 'Bonne réponse'}: ${readableEducationalText(correctText)}',
                             style: TextStyle(fontWeight: FontWeight.w700,
                               color: isCorrect ? Colors.green.shade800 : Colors.red.shade700)),
                           if (explanation != null && explanation.trim().isNotEmpty) ...[
                             const SizedBox(height: 6),
-                            Text('${_en ? 'Explanation' : 'Explication'}: $explanation'),
+                            Text('${_en ? 'Explanation' : 'Explication'}: ${readableEducationalText(explanation)}'),
                           ],
                         ],
                       );
@@ -911,13 +912,13 @@ class _ChapterInteractiveQuizPageState extends State<ChapterInteractiveQuizPage>
             child: Padding(padding: const EdgeInsets.all(12), child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text((i + 1).toString() + '. ' + questions[i].promptFor(widget.locale.languageCode), style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text((i + 1).toString() + '. ' + readableEducationalText(questions[i].promptFor(widget.locale.languageCode)), style: const TextStyle(fontWeight: FontWeight.w800)),
                 for (var j = 0; j < questions[i].optionsFor(widget.locale.languageCode).length; j++)
                   RadioListTile<int>(
                     contentPadding: EdgeInsets.zero,
                     value: j,
                     groupValue: _answers[questions[i].id],
-                    title: Text(questions[i].optionsFor(widget.locale.languageCode)[j]),
+                    title: Text(readableEducationalText(questions[i].optionsFor(widget.locale.languageCode)[j])),
                     onChanged: _result != null ? null : (value) { if (value != null) setState(() => _answers[questions[i].id] = value); },
                   ),
               ],
