@@ -861,9 +861,34 @@ class _GroupChatPageState extends State<GroupChatPage> {
             const SizedBox(height: 2),
             Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                '${_formatTime(message.createdAt)}${message.isPending ? '  ◷' : ''}',
-                style: const TextStyle(fontSize: 10, color: Colors.black45),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: const TextStyle(fontSize: 10, color: Colors.black45),
+                  ),
+                  if (mine) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      message.isPending
+                          ? Icons.schedule_rounded
+                          : (message.readCount > 0
+                              ? Icons.done_all_rounded
+                              : (message.deliveredCount > 0
+                                  ? Icons.done_all_rounded
+                                  : Icons.done_rounded)),
+                      size: 15,
+                      color: message.isPending
+                          ? Colors.black45
+                          : (message.readCount > 0
+                              ? const Color(0xFF2EAD65)
+                              : (message.deliveredCount > 0
+                                  ? Colors.black54
+                                  : Colors.black87)),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
