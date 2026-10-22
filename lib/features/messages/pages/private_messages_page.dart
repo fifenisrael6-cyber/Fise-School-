@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/private_message_service.dart';
+import '../../../core/offline/app_database.dart';
 import '../../../models/private_message.dart';
 import '../../../core/services/message_quota_events.dart';
 import '../widgets/message_media.dart';
@@ -36,6 +37,9 @@ class PrivateMessagesPage extends StatefulWidget {
 
 class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   final _service = PrivateMessageService();
+  final AppDatabase _localDb = AppDatabase();
+  Map<String, Map<String, dynamic>> _conversationPreferences = {};
+  bool _showArchived = false;
   final _composer = TextEditingController();
   final _searchController = TextEditingController();
   bool _searching = false;
@@ -57,6 +61,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     MessageQuotaEvents.denied.addListener(_onMessageDenied);
     _attachment = widget.initialAttachment;
     _contactsFuture = _service.listContacts();
+    _loadConversationPreferences();
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
         final row = payload.newRecord;
@@ -80,6 +85,91 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         }
       })
       .subscribe();
+  }
+
+
+  Future<void> _loadConversationPreferences() async {
+    try {
+      final preferences = await _localDb.getMessageConversationPreferences(widget.profile.id);
+      if (mounted) setState(() => _conversationPreferences = preferences);
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _contactPreference(String id) =>
+      _conversationPreferences['private:$id'] ?? const <String, dynamic>{};
+
+  Future<void> _saveContactPreference(
+    MessageContact contact, {
+    bool? pinned,
+    bool? archived,
+    String? mutedUntil,
+    bool clearMute = false,
+  }) async {
+    final current = _contactPreference(contact.id);
+    final nextPinned = pinned ?? current['pinned'] == true;
+    if (nextPinned && current['pinned'] != true) {
+      final count = _conversationPreferences.values
+          .where((value) => value['pinned'] == true && value['archived'] != true)
+          .length;
+      if (count >= 3) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isFrench ? 'Maximum 3 discussions épinglées.' : 'You can pin at most 3 chats.'),
+        ));
+        return;
+      }
+    }
+    await _localDb.saveMessageConversationPreference(
+      userId: widget.profile.id,
+      conversationType: 'private',
+      conversationId: contact.id,
+      pinned: nextPinned,
+      archived: archived ?? current['archived'] == true,
+      mutedUntil: clearMute ? null : (mutedUntil ?? current['muted_until'] as String?),
+    );
+    await _loadConversationPreferences();
+  }
+
+  Future<void> _showContactActions(MessageContact contact) async {
+    final pref = _contactPreference(contact.id);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Wrap(children: [
+        ListTile(
+          leading: Icon(pref['pinned'] == true ? Icons.push_pin_outlined : Icons.push_pin_rounded),
+          title: Text(pref['pinned'] == true ? (_isFrench ? 'Désépingler' : 'Unpin chat') : (_isFrench ? 'Épingler' : 'Pin chat')),
+          onTap: () async {
+            Navigator.pop(sheetContext);
+            await _saveContactPreference(contact, pinned: pref['pinned'] != true);
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.notifications_off_outlined),
+          title: Text(_isFrench ? 'Mettre en sourdine 8 heures' : 'Mute for 8 hours'),
+          onTap: () async {
+            Navigator.pop(sheetContext);
+            await _saveContactPreference(contact, mutedUntil: DateTime.now().add(const Duration(hours: 8)).toUtc().toIso8601String());
+          },
+        ),
+        if (pref['muted_until'] != null)
+          ListTile(
+            leading: const Icon(Icons.notifications_active_outlined),
+            title: Text(_isFrench ? 'Réactiver les notifications' : 'Unmute notifications'),
+            onTap: () async {
+              Navigator.pop(sheetContext);
+              await _saveContactPreference(contact, clearMute: true);
+            },
+          ),
+        ListTile(
+          leading: Icon(pref['archived'] == true ? Icons.unarchive_outlined : Icons.archive_outlined),
+          title: Text(pref['archived'] == true ? (_isFrench ? 'Désarchiver' : 'Unarchive chat') : (_isFrench ? 'Archiver' : 'Archive chat')),
+          onTap: () async {
+            Navigator.pop(sheetContext);
+            await _saveContactPreference(contact, archived: pref['archived'] != true);
+          },
+        ),
+      ])),
+    );
   }
 
   bool _gateOpen = false;
@@ -308,9 +398,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           }
           final contacts = snapshot.data ?? const <MessageContact>[];
           final query = _searchController.text.trim().toLowerCase();
-          final visibleContacts = _selected == null && query.isNotEmpty
-              ? contacts.where((contact) => contact.fullName.toLowerCase().contains(query)).toList(growable: false)
-              : contacts;
+          final visibleContacts = contacts.where((contact) {
+            final pref = _contactPreference(contact.id);
+            if (_showArchived != (pref['archived'] == true)) return false;
+            if (_selected == null && query.isNotEmpty && !contact.fullName.toLowerCase().contains(query)) return false;
+            return true;
+          }).toList(growable: false)
+            ..sort((a, b) {
+              final ap = _contactPreference(a.id)['pinned'] == true ? 1 : 0;
+              final bp = _contactPreference(b.id)['pinned'] == true ? 1 : 0;
+              return bp.compareTo(ap);
+            });
           final initialId = widget.initialContactId;
           if (!_initialContactHandled && initialId != null) {
             _initialContactHandled = true;
@@ -336,7 +434,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           return LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 700;
-              final list = _contacts(visibleContacts);
+              final list = Column(children: [
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
+              ChoiceChip(label: Text(_isFrench ? 'Discussions' : 'Chats'), selected: !_showArchived, onSelected: (_) => setState(() => _showArchived = false)),
+              const SizedBox(width: 8),
+              ChoiceChip(label: Text(_isFrench ? 'Archivées' : 'Archived'), selected: _showArchived, onSelected: (_) => setState(() => _showArchived = true)),
+            ])),
+            Expanded(child: _contacts(visibleContacts)),
+          ]);
               final conversation = _conversation();
               return wide
                   ? Row(
@@ -375,6 +480,11 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   ? (_isFrench ? 'Enseignant' : 'Teacher')
                   : (_isFrench ? 'Élève' : 'Student'),
             ),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (_contactPreference(contact.id)['pinned'] == true) const Icon(Icons.push_pin_rounded, size: 15),
+              if (_contactPreference(contact.id)['muted_until'] != null) const Icon(Icons.notifications_off_outlined, size: 15),
+            ]),
+            onLongPress: () => _showContactActions(contact),
             onTap: () => _select(contact),
           );
         },
