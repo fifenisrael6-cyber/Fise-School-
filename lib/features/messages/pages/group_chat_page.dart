@@ -39,6 +39,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   final GroupMessageService _service = GroupMessageService();
   final PhotoService _photoService = PhotoService();
   final TextEditingController _composer = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  bool _searching = false;
 
   List<GroupMessage> _messages = const [];
   bool _loading = true;
@@ -144,6 +146,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   void dispose() {
     MessageQuotaEvents.denied.removeListener(_onMessageDenied);
     _composer.dispose();
+    _searchController.dispose();
     _channel?.unsubscribe();
     super.dispose();
   }
@@ -289,6 +292,37 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   void _startReply(GroupMessage message) {
     setState(() => _replyTo = message);
+  }
+
+  Future<void> _showMessageActions(GroupMessage message) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text(_fr ? 'Répondre' : 'Reply'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _startReply(message);
+              },
+            ),
+            if (message.body.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(_fr ? 'Copier' : 'Copy'),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: message.body));
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  if (mounted) _snack(_fr ? 'Message copié.' : 'Message copied.');
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _snack(String message) {
@@ -584,7 +618,12 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final reversed = _messages.reversed.toList(growable: false);
+    final query = _searchController.text.trim().toLowerCase();
+    final matchingMessages = query.isEmpty
+        ? _messages
+        : _messages.where((message) => message.body.toLowerCase().contains(query) ||
+            (message.attachmentName ?? '').toLowerCase().contains(query)).toList(growable: false);
+    final reversed = matchingMessages.reversed.toList(growable: false);
 
     return Scaffold(
       backgroundColor: const Color(0xFFECE5DD),
@@ -592,25 +631,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
         backgroundColor: const Color(0xFF166534),
         foregroundColor: Colors.white,
         titleSpacing: 0,
-        title: InkWell(
-          onTap: _showInfo,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.group.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+        title: _searching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: _fr ? 'Rechercher dans la discussion' : 'Search conversation',
+                  hintStyle: const TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                ),
+                onChanged: (_) => setState(() {}),
+              )
+            : InkWell(
+                onTap: _showInfo,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.group.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                    Text(
+                      _fr ? '${_memberCount ?? widget.group.memberCount} membres · Touchez pour les infos' : '${_memberCount ?? widget.group.memberCount} members · Tap for info',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
+                    ),
+                  ],
+                ),
               ),
-              Text(
-                _fr ? '${_memberCount ?? widget.group.memberCount} membres · Touchez pour les infos' : '${_memberCount ?? widget.group.memberCount} members · Tap for info',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
-              ),
-            ],
-          ),
-        ),
         actions: [
+          IconButton(
+            tooltip: _searching ? (_fr ? 'Fermer la recherche' : 'Close search') : (_fr ? 'Rechercher' : 'Search'),
+            icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
+            onPressed: () => setState(() {
+              if (_searching) _searchController.clear();
+              _searching = !_searching;
+            }),
+          ),
           IconButton(
             tooltip: _fr ? 'Infos du groupe' : 'Group info',
             icon: Icon(_isOwner ? Icons.vpn_key_rounded : Icons.info_outline_rounded),
@@ -750,7 +805,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final isTeacher = message.senderRole == 'teacher';
     final quoted = _findMessage(message.replyToId);
 
-    return SwipeToReply(
+    return GestureDetector(
+      onLongPress: () => _showMessageActions(message),
+      child: SwipeToReply(
       enabled: !message.isPending,
       onReply: () => _startReply(message),
       child: Row(
@@ -820,6 +877,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           ),
       ],
     ),
+      ),
     );
   }
 }

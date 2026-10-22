@@ -6,6 +6,7 @@ class MessageGroup {
   final String ownerId;
   final String? inviteCode;
   final int memberCount;
+  final int unreadCount;
   final bool announcementsOnly;
   final String? lastBody;
   final DateTime? lastAt;
@@ -18,6 +19,7 @@ class MessageGroup {
     this.className,
     this.inviteCode,
     this.memberCount = 0,
+    this.unreadCount = 0,
     this.announcementsOnly = false,
     this.lastBody,
     this.lastAt,
@@ -33,6 +35,7 @@ class MessageGroup {
       ownerId: map['owner_id'] as String,
       inviteCode: map['invite_code'] as String?,
       memberCount: (map['member_count'] as num?)?.toInt() ?? 0,
+      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
       announcementsOnly: map['announcements_only'] as bool? ?? false,
       lastBody: map['last_body'] as String?,
       lastAt: last is String ? DateTime.tryParse(last) : null,
