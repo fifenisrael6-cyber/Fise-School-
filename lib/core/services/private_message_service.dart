@@ -202,12 +202,10 @@ class PrivateMessageService {
 
   Future<void> markConversationRead(String contactId) async {
     try {
-      await _client.from('private_messages')
-          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-          .eq('sender_id', contactId)
-          .eq('recipient_id', _userId)
-          .isFilter('read_at', null)
-          .timeout(const Duration(seconds: 8));
+      await _client.rpc(
+        'mark_private_messages_read',
+        params: {'p_sender_id': contactId},
+      ).timeout(const Duration(seconds: 8));
     } catch (_) {
       // Keep cached messages readable while offline; read receipts sync on next open.
     }
