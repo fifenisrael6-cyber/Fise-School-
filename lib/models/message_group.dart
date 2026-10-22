@@ -6,6 +6,7 @@ class MessageGroup {
   final String ownerId;
   final String? inviteCode;
   final int memberCount;
+  final int unreadCount;
   final bool announcementsOnly;
   final String? lastBody;
   final DateTime? lastAt;
@@ -18,6 +19,7 @@ class MessageGroup {
     this.className,
     this.inviteCode,
     this.memberCount = 0,
+    this.unreadCount = 0,
     this.announcementsOnly = false,
     this.lastBody,
     this.lastAt,
@@ -33,6 +35,7 @@ class MessageGroup {
       ownerId: map['owner_id'] as String,
       inviteCode: map['invite_code'] as String?,
       memberCount: (map['member_count'] as num?)?.toInt() ?? 0,
+      unreadCount: (map['unread_count'] as num?)?.toInt() ?? 0,
       announcementsOnly: map['announcements_only'] as bool? ?? false,
       lastBody: map['last_body'] as String?,
       lastAt: last is String ? DateTime.tryParse(last) : null,
@@ -54,6 +57,9 @@ class GroupMessage {
   final String? localAttachmentPath;
   final String? replyToId;
   final bool isPending;
+  final int deliveredCount;
+  final int readCount;
+  final int recipientCount;
 
   const GroupMessage({
     required this.id,
@@ -69,6 +75,9 @@ class GroupMessage {
     this.localAttachmentPath,
     this.replyToId,
     this.isPending = false,
+    this.deliveredCount = 0,
+    this.readCount = 0,
+    this.recipientCount = 0,
   });
 
   factory GroupMessage.fromMap(Map<String, dynamic> map) {
@@ -86,6 +95,9 @@ class GroupMessage {
       localAttachmentPath: map['local_attachment_path'] as String?,
       replyToId: map['reply_to_id'] as String?,
       isPending: map['is_pending'] as bool? ?? false,
+      deliveredCount: (map['delivered_count'] as num?)?.toInt() ?? 0,
+      readCount: (map['read_count'] as num?)?.toInt() ?? 0,
+      recipientCount: (map['recipient_count'] as num?)?.toInt() ?? 0,
     );
   }
 }

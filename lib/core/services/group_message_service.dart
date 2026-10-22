@@ -108,6 +108,7 @@ class GroupMessageService {
           ownerId: group.ownerId,
           inviteCode: sharedTeacherCode,
           memberCount: group.memberCount,
+          unreadCount: group.unreadCount,
           lastBody: group.lastBody,
           lastAt: group.lastAt,
         );
@@ -126,6 +127,7 @@ class GroupMessageService {
               'owner_id': group.ownerId,
               'invite_code': group.inviteCode,
               'member_count': group.memberCount,
+              'unread_count': group.unreadCount,
               'last_body': group.lastBody,
               'last_at': group.lastAt?.toUtc().toIso8601String(),
             }),
@@ -167,18 +169,34 @@ class GroupMessageService {
   }
 
   Future<List<GroupMessage>> listMessages(String groupId) async {
+    // A receipt failure must not prevent the actual conversation from refreshing.
+    // Previously, any failure in syncPending/delivered/read jumped straight to the
+    // offline cache, leaving the screen stale while the group preview showed newer data.
     try {
       await syncPending();
-      // Opening a group conversation marks incoming messages as delivered and read.
-      // Keep these calls on the server so the WhatsApp-style receipts are reliable
-      // across devices and are not inferred from the local/offline cache.
+    } catch (_) {
+      // Pending sends remain queued in Drift and will retry on connectivity changes.
+    }
+
+    try {
       await _client.rpc('mark_group_messages_delivered', params: {
         'p_group_id': groupId,
       }).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Delivery receipts are best-effort; still fetch the latest messages.
+    }
+
+    try {
       await _client.rpc('mark_group_messages_read', params: {
         'p_group_id': groupId,
       }).timeout(const Duration(seconds: 8));
-      final result = await _client.rpc('list_message_group_messages', params: {'p_group_id': groupId})
+    } catch (_) {
+      // Read receipts are best-effort; still fetch the latest messages.
+    }
+
+    try {
+      final result = await _client
+          .rpc('list_message_group_messages', params: {'p_group_id': groupId})
           .timeout(const Duration(seconds: 8));
       final remote = (result as List)
           .map((row) => GroupMessage.fromMap(Map<String, dynamic>.from(row as Map)))
@@ -186,15 +204,27 @@ class GroupMessageService {
       await _db.beginMessageCacheRefresh(_userId, 'group', groupId);
       for (final message in remote) {
         await _db.cacheMessage({
-          'id': message.id, 'user_id': _userId, 'kind': 'group', 'thread_id': groupId,
-          'sender_id': message.senderId, 'sender_name': message.senderName, 'sender_role': message.senderRole, 'recipient_id': null, 'body': message.body,
+          'id': message.id,
+          'user_id': _userId,
+          'kind': 'group',
+          'thread_id': groupId,
+          'sender_id': message.senderId,
+          'sender_name': message.senderName,
+          'sender_role': message.senderRole,
+          'recipient_id': null,
+          'body': message.body,
           'created_at': message.createdAt.toUtc().toIso8601String(),
-          'attachment_path': message.attachmentPath, 'attachment_name': message.attachmentName,
-          'attachment_type': message.attachmentType, 'reply_to_id': message.replyToId, 'sync_status': 'sent',
+          'attachment_path': message.attachmentPath,
+          'attachment_name': message.attachmentName,
+          'attachment_type': message.attachmentType,
+          'reply_to_id': message.replyToId,
+          'sync_status': 'sent',
         });
       }
       return _readCache(groupId);
     } catch (_) {
+      // The remote message read failed (for example, offline or access denied).
+      // Preserve readable cached messages and pending local messages.
       return _readCache(groupId);
     }
   }

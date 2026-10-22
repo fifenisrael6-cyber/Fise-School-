@@ -61,6 +61,7 @@ class PrivateMessageService {
   Future<List<PrivateMessage>> listConversation(String contactId) async {
     try {
       await syncPending();
+      await _client.rpc('mark_private_messages_delivered', params: {'p_sender_id': contactId}).timeout(const Duration(seconds: 8));
       final result = await _client.rpc(
         'list_private_messages',
         params: {'target_user_id': contactId},
@@ -74,6 +75,8 @@ class PrivateMessageService {
           'id': message.id, 'user_id': _userId, 'kind': 'private', 'thread_id': contactId,
           'sender_id': message.senderId, 'recipient_id': message.recipientId, 'body': message.body,
           'created_at': message.createdAt.toUtc().toIso8601String(),
+          'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
+          'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'read_at': message.readAt?.toUtc().toIso8601String(),
           'attachment_path': message.attachmentPath, 'attachment_name': message.attachmentName,
           'attachment_type': message.attachmentType, 'reply_to_id': message.replyToId, 'sync_status': 'sent',
@@ -93,6 +96,8 @@ class PrivateMessageService {
       'recipient_id': row.readNullable<String>('recipient_id') ?? '',
       'body': row.read<String>('body'),
       'created_at': row.read<String>('created_at'),
+      'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
+      'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
       'read_at': row.readNullable<String>('read_at'),
       'attachment_path': row.readNullable<String>('attachment_path'),
       'attachment_name': row.readNullable<String>('attachment_name'),
@@ -197,12 +202,10 @@ class PrivateMessageService {
 
   Future<void> markConversationRead(String contactId) async {
     try {
-      await _client.from('private_messages')
-          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-          .eq('sender_id', contactId)
-          .eq('recipient_id', _userId)
-          .isFilter('read_at', null)
-          .timeout(const Duration(seconds: 8));
+      await _client.rpc(
+        'mark_private_messages_read',
+        params: {'p_sender_id': contactId},
+      ).timeout(const Duration(seconds: 8));
     } catch (_) {
       // Keep cached messages readable while offline; read receipts sync on next open.
     }

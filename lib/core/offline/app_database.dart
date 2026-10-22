@@ -86,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -97,6 +97,7 @@ class AppDatabase extends _$AppDatabase {
           await _createSmartLearningTables();
           await _createMessageOfflineTables();
           await _createOfflineCatalogCacheTable();
+          await _createMessageConversationPreferences();
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -115,8 +116,72 @@ class AppDatabase extends _$AppDatabase {
           if (from < 6) {
             await _addMessageReplyColumns();
           }
+          if (from < 7) {
+            await _createMessageConversationPreferences();
+          }
         },
       );
+
+  Future<void> _createMessageConversationPreferences() async {
+    // Local-only, per-account conversation controls. This is additive and does
+    // not change or delete any remote message/group records.
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS message_conversation_preferences (
+        user_id TEXT NOT NULL,
+        conversation_type TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        is_pinned INTEGER NOT NULL DEFAULT 0,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        muted_until TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, conversation_type, conversation_id)
+      )
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS message_conversation_preferences_order_idx
+      ON message_conversation_preferences(user_id, is_archived, is_pinned, updated_at)
+    ''');
+  }
+
+  Future<Map<String, Map<String, dynamic>>> getMessageConversationPreferences(
+    String userId,
+  ) async {
+    final rows = await customSelect(
+      'SELECT conversation_type, conversation_id, is_pinned, is_archived, muted_until '
+      'FROM message_conversation_preferences WHERE user_id = ?',
+      variables: [Variable(userId)],
+    ).get();
+    return {
+      for (final row in rows)
+        '${row.read<String>('conversation_type')}:${row.read<String>('conversation_id')}': {
+          'pinned': row.read<int>('is_pinned') == 1,
+          'archived': row.read<int>('is_archived') == 1,
+          'muted_until': row.readNullable<String>('muted_until'),
+        },
+    };
+  }
+
+  Future<void> saveMessageConversationPreference({
+    required String userId,
+    required String conversationType,
+    required String conversationId,
+    required bool pinned,
+    required bool archived,
+    String? mutedUntil,
+  }) async {
+    await customStatement(
+      '''INSERT INTO message_conversation_preferences
+        (user_id, conversation_type, conversation_id, is_pinned, is_archived, muted_until, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, conversation_type, conversation_id) DO UPDATE SET
+          is_pinned=excluded.is_pinned,
+          is_archived=excluded.is_archived,
+          muted_until=excluded.muted_until,
+          updated_at=excluded.updated_at''',
+      [userId, conversationType, conversationId, pinned ? 1 : 0, archived ? 1 : 0,
+        mutedUntil, DateTime.now().toUtc().toIso8601String()],
+    );
+  }
 
   Future<void> _createOfflineCatalogCacheTable() async {
     await customStatement('''
