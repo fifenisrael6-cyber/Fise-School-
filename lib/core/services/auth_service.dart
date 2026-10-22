@@ -97,8 +97,17 @@ class AuthService {
         track: track,
         className: className,
       );
-      } catch (e) {
-        debugPrint('Profil non enregistré à l’inscription: $e');
+      } on PostgrestException catch (error, stackTrace) {
+        debugPrint('[INSCRIPTION][PROFIL] type=${error.runtimeType}');
+        debugPrint('[INSCRIPTION][PROFIL] message=${error.message}');
+        debugPrint('[INSCRIPTION][PROFIL] code=${error.code}');
+        debugPrint('[INSCRIPTION][PROFIL] details=${error.details}');
+        debugPrint('[INSCRIPTION][PROFIL] hint=${error.hint}');
+        debugPrint('[INSCRIPTION][PROFIL] stackTrace=$stackTrace');
+      } catch (error, stackTrace) {
+        debugPrint('[INSCRIPTION][PROFIL] type=${error.runtimeType}');
+        debugPrint('[INSCRIPTION][PROFIL] message=$error');
+        debugPrint('[INSCRIPTION][PROFIL] stackTrace=$stackTrace');
       }
     }
 
