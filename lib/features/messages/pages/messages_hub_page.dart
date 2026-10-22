@@ -33,6 +33,9 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   late Future<List<MessageGroup>> _groupsFuture;
   RealtimeChannel? _groupsChannel;
   PickedAttachment? _pendingSharedAttachment;
+  final TextEditingController _searchController = TextEditingController();
+  bool _searching = false;
+  String _filter = 'all';
 
   bool _isCombinedLanguageRoom(String label) {
     const languages = <String>[
@@ -117,6 +120,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   @override
   void dispose() {
     _groupsChannel?.unsubscribe();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -408,12 +412,54 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_fr ? 'Messagerie' : 'Messages'),
+        title: _searching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: _fr ? 'Rechercher une discussion' : 'Search chats',
+                  border: InputBorder.none,
+                ),
+                onChanged: (_) => setState(() {}),
+              )
+            : Text(_fr ? 'Messagerie' : 'Messages'),
         actions: [
+          IconButton(
+            tooltip: _searching
+                ? (_fr ? 'Fermer la recherche' : 'Close search')
+                : (_fr ? 'Rechercher' : 'Search'),
+            icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
+            onPressed: () => setState(() {
+              if (_searching) _searchController.clear();
+              _searching = !_searching;
+            }),
+          ),
           IconButton(
             tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
             icon: const Icon(Icons.camera_alt_rounded),
             onPressed: _quickCamera,
+          ),
+          PopupMenuButton<String>(
+            tooltip: _fr ? 'Plus d’options' : 'More options',
+            onSelected: (value) {
+              switch (value) {
+                case 'private':
+                  _openPrivateMessages();
+                  break;
+                case 'group':
+                  if (_isTeacher) _createGroup(); else _joinGroup();
+                  break;
+                case 'refresh':
+                  _reload();
+                  break;
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'private', child: Text(_fr ? 'Messages privés' : 'Private messages')),
+              PopupMenuItem(value: 'group', child: Text(_isTeacher ? (_fr ? 'Nouveau groupe' : 'New group') : (_fr ? 'Rejoindre avec un code' : 'Join with a code'))),
+              PopupMenuItem(value: 'refresh', child: Text(_fr ? 'Actualiser' : 'Refresh')),
+            ],
           ),
         ],
       ),
@@ -432,10 +478,41 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
           future: _groupsFuture,
           builder: (context, snapshot) {
             final groups = snapshot.data ?? const <MessageGroup>[];
+            final query = _searchController.text.trim().toLowerCase();
+            final visibleGroups = groups.where((group) {
+              if (_filter == 'groups' && group.id.isEmpty) return false;
+              if (query.isEmpty) return true;
+              return group.name.toLowerCase().contains(query) ||
+                  (group.lastBody ?? '').toLowerCase().contains(query) ||
+                  (group.className ?? '').toLowerCase().contains(query);
+            }).toList(growable: false)
+              ..sort((a, b) {
+                final aTime = a.lastAt?.millisecondsSinceEpoch ?? 0;
+                final bTime = b.lastAt?.millisecondsSinceEpoch ?? 0;
+                return bTime.compareTo(aTime);
+              });
 
             return ListView(
               padding: const EdgeInsets.only(bottom: 90),
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: Text(_fr ? 'Toutes' : 'All'),
+                        selected: _filter == 'all',
+                        onSelected: (_) => setState(() => _filter = 'all'),
+                      ),
+                      ChoiceChip(
+                        label: Text(_fr ? 'Groupes' : 'Groups'),
+                        selected: _filter == 'groups',
+                        onSelected: (_) => setState(() => _filter = 'groups'),
+                      ),
+                    ],
+                  ),
+                ),
                 ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: Color(0xFFDCFCE7),
@@ -460,7 +537,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                     padding: const EdgeInsets.all(24),
                     child: Text('${snapshot.error}', textAlign: TextAlign.center),
                   )
-                else if (groups.isEmpty)
+                else if (visibleGroups.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
@@ -475,7 +552,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                     ),
                   )
                 else
-                  ...groups.map(
+                  ...visibleGroups.map(
                     (group) => ListTile(
                       leading: CircleAvatar(
                         backgroundColor: const Color(0xFF166534),
