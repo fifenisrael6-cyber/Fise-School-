@@ -371,15 +371,15 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     const configuredModel = (Deno.env.get("GEMINI_MODEL") ?? "").trim().replace(/^models\//, "");
     // Prefer a stable Flash model. Keep configured/legacy models as fallbacks,
     // but try enough candidates for a temporary provider outage to be recoverable.
+    // Current provider logs confirm gemini-3.5-flash-lite is available.
+    // Older configured/2.5 models can return 404 for this API key, so do not
+    // waste the short request deadline on retired model identifiers.
     const models = [...new Set([
-      "gemini-2.5-flash",
-      ...(configuredModel ? [configuredModel] : []),
-      "gemini-2.5-flash-lite",
-      "gemini-3.8-flash",
       "gemini-3.5-flash-lite",
+      ...(configuredModel ? [configuredModel] : []),
     ].filter((name) => name.startsWith("gemini-")
       && !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen)/i.test(name)
-    ))].slice(0, 3);
+    ))].slice(0, 2);
 
     let data: any = null;
     let lastError = "Gemini request failed.";
@@ -460,20 +460,20 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     // Never log request headers or the provider API key. Error details are capped.
     console.error("[gemini-chat] request failed:", detail.replaceAll(Deno.env.get("GEMINI_API_KEY") ?? "\u0000", "[REDACTED]").slice(0, 2000));
     if (/timeout|aborted|timed out/i.test(detail)) {
-      return json({ error: "AI_REQUEST_TIMEOUT" }, 504);
+      return json({ error: "AI_REQUEST_TIMEOUT", message: "Le service IA met trop de temps à répondre. Réessaie dans quelques instants." }, 504);
     }
     if (/429|quota|resource exhausted|rate limit/i.test(detail)) {
-      return json({ error: "AI_QUOTA_EXCEEDED" }, 429);
+      return json({ error: "AI_QUOTA_EXCEEDED", message: "Le service IA est temporairement saturé. Réessaie dans quelques instants." }, 429);
     }
     if (/401|403|api.?key|permission denied|not configured/i.test(detail)) {
-      return json({ error: "AI_PROVIDER_CONFIGURATION_ERROR" }, 502);
+      return json({ error: "AI_PROVIDER_CONFIGURATION_ERROR", message: "Le service IA nécessite une vérification de configuration." }, 502);
     }
     if (/404|model.*not found|not found.*model|unsupported model/i.test(detail)) {
-      return json({ error: "AI_MODEL_CONFIGURATION_ERROR" }, 502);
+      return json({ error: "AI_MODEL_CONFIGURATION_ERROR", message: "Le modèle IA configuré n'est pas disponible. La configuration doit être corrigée." }, 502);
     }
     if (/failed to fetch|network|connection|dns|socket/i.test(detail)) {
-      return json({ error: "AI_UPSTREAM_NETWORK_ERROR" }, 502);
+      return json({ error: "AI_UPSTREAM_NETWORK_ERROR", message: "Connexion au service IA impossible. Vérifie Internet et réessaie." }, 502);
     }
-    return json({ error: "AI_UPSTREAM_ERROR" }, 502);
+    return json({ error: "AI_UPSTREAM_ERROR", message: "Le service IA est momentanément indisponible. Réessaie dans quelques instants." }, 502);
   }
 });
