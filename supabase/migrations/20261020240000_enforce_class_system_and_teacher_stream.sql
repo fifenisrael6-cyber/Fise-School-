@@ -13,10 +13,21 @@ declare
   v_class_subsystem text;
   v_class_sector text;
   v_stream text;
+  v_profile_id uuid;
 begin
+  -- class_students and class_teachers have different row types.
+  -- Select the matching ID in a separate branch to avoid referencing a field
+  -- that does not exist on the current trigger row.
+  if tg_table_name = 'class_students' then
+    v_profile_id := new.student_id;
+  else
+    v_profile_id := new.teacher_id;
+  end if;
+
   select role, subsystem::text, sector::text, teaching_stream
     into v_role, v_profile_subsystem, v_profile_sector, v_stream
-  from public.profiles where id = case when tg_table_name = 'class_students' then new.student_id else new.teacher_id end;
+  from public.profiles
+  where id = v_profile_id;
 
   select subsystem::text, sector::text
     into v_class_subsystem, v_class_sector
