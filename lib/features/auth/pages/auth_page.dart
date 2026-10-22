@@ -200,6 +200,7 @@ class _AuthPageState extends State<AuthPage> {
       debugPrint('[INSCRIPTION] AuthException.type=${error.runtimeType}');
       debugPrint('[INSCRIPTION] AuthException.message=${error.message}');
       debugPrint('[INSCRIPTION] AuthException.code=${error.code}');
+      debugPrint('[INSCRIPTION] AuthException.details=<non exposé par AuthException>');
       debugPrint('[INSCRIPTION] AuthException.statusCode=${error.statusCode}');
       debugPrint('[INSCRIPTION] AuthException.stackTrace=$stackTrace');
       if (mounted) {
