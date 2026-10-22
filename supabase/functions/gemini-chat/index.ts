@@ -369,17 +369,21 @@ Explique clairement et correctement au niveau scolaire de l'utilisateur. Répond
     // model first, then known Flash fallbacks only if the provider rejects it.
     // This removes one network round-trip (and its 10-second timeout) from normal chats.
     const configuredModel = (Deno.env.get("GEMINI_MODEL") ?? "").trim().replace(/^models\//, "");
+    // Prefer a stable Flash model. Keep configured/legacy models as fallbacks,
+    // but try enough candidates for a temporary provider outage to be recoverable.
     const models = [...new Set([
+      "gemini-2.5-flash",
       ...(configuredModel ? [configuredModel] : []),
+      "gemini-2.5-flash-lite",
       "gemini-3.8-flash",
       "gemini-3.5-flash-lite",
     ].filter((name) => name.startsWith("gemini-")
       && !/(tts|text-to-speech|image|embedding|robotics|transcrib|audio|video|live|veo|imagen)/i.test(name)
-    ))].slice(0, 2);
+    ))].slice(0, 3);
 
     let data: any = null;
     let lastError = "Gemini request failed.";
-    const deadline = Date.now() + 17000;
+    const deadline = Date.now() + 26000;
     for (const model of models) {
       const remaining = deadline - Date.now();
       if (remaining < 1000) break;
