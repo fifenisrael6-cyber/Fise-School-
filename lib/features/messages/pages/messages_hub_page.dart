@@ -513,11 +513,12 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                     ],
                   ),
                 ),
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFDCFCE7),
-                    child: Icon(Icons.person_rounded, color: Color(0xFF166534)),
-                  ),
+                if (_filter == 'all')
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFDCFCE7),
+                      child: Icon(Icons.person_rounded, color: Color(0xFF166534)),
+                    ),
                   title: Text(
                     _fr ? 'Messages privés' : 'Private messages',
                     style: const TextStyle(fontWeight: FontWeight.w800),
@@ -526,7 +527,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: _openPrivateMessages,
                 ),
-                const Divider(height: 1),
+                if (_filter == 'all') const Divider(height: 1),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const Padding(
                     padding: EdgeInsets.all(32),
