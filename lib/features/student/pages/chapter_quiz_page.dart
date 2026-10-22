@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/chapter_learning_content.dart';
+import '../../../core/utils/educational_text.dart';
 
 class ChapterQuizPage extends StatefulWidget {
   final Locale locale;
@@ -247,7 +248,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                           child: Padding(
                             padding: const EdgeInsets.all(14),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(question.promptFor(widget.locale.languageCode),
+                              Text(readableEducationalText(question.promptFor(widget.locale.languageCode)),
                                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                               const SizedBox(height: 8),
                               ...List.generate(question.optionsFor(widget.locale.languageCode).length, (index) {
@@ -271,7 +272,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                                   dense: true,
                                   value: index,
                                   groupValue: _answers[question.id],
-                                  title: Text(options[index], style: TextStyle(
+                                  title: Text(readableEducationalText(options[index]), style: TextStyle(
                                     color: optionColor,
                                     fontWeight: (isSelected || isCorrectOption) && feedback != null
                                         ? FontWeight.w700
@@ -323,7 +324,7 @@ class _ChapterQuizPageState extends State<ChapterQuizPage> {
                               if (item is Map) Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: Text(
-                                  '${item['is_correct'] == true ? '✓' : '✗'}  ${_fr ? 'Question' : 'Question'} · ${(item[_fr ? 'explanation_fr' : 'explanation_en'] ?? '').toString()}',
+                                  '${item['is_correct'] == true ? '✓' : '✗'}  ${_fr ? 'Question' : 'Question'} · ${readableEducationalText((item[_fr ? 'explanation_fr' : 'explanation_en'] ?? '').toString())}',
                                 ),
                               ),
                           ]),
