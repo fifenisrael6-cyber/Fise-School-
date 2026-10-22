@@ -108,6 +108,7 @@ class GroupMessageService {
           ownerId: group.ownerId,
           inviteCode: sharedTeacherCode,
           memberCount: group.memberCount,
+          unreadCount: group.unreadCount,
           lastBody: group.lastBody,
           lastAt: group.lastAt,
         );
@@ -126,6 +127,7 @@ class GroupMessageService {
               'owner_id': group.ownerId,
               'invite_code': group.inviteCode,
               'member_count': group.memberCount,
+              'unread_count': group.unreadCount,
               'last_body': group.lastBody,
               'last_at': group.lastAt?.toUtc().toIso8601String(),
             }),
