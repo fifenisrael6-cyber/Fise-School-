@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/private_message_service.dart';
@@ -36,6 +37,8 @@ class PrivateMessagesPage extends StatefulWidget {
 class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   final _service = PrivateMessageService();
   final _composer = TextEditingController();
+  final _searchController = TextEditingController();
+  bool _searching = false;
   late Future<List<MessageContact>> _contactsFuture;
   MessageContact? _selected;
   List<PrivateMessage> _messages = const [];
@@ -108,6 +111,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   void dispose() {
     MessageQuotaEvents.denied.removeListener(_onMessageDenied);
     _composer.dispose();
+    _searchController.dispose();
     _channel?.unsubscribe();
     super.dispose();
   }
@@ -149,6 +153,50 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         attachmentType: m.attachmentType,
         french: _isFrench,
       );
+
+  Future<void> _showMessageActions(PrivateMessage message) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text(_isFrench ? 'Répondre' : 'Reply'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                setState(() => _replyTo = message);
+              },
+            ),
+            if (message.body.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: Text(_isFrench ? 'Copier' : 'Copy'),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: message.body));
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(_isFrench ? 'Message copié.' : 'Message copied.'),
+                    ));
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<PrivateMessage> _visiblePrivateMessages() {
+    final query = _searchController.text.trim().toLowerCase();
+    if (!_searching || query.isEmpty) return _messages;
+    return _messages.where((message) =>
+      message.body.toLowerCase().contains(query) ||
+      (message.attachmentName ?? '').toLowerCase().contains(query)
+    ).toList(growable: false);
+  }
 
   Future<void> _send() async {
     final contact = _selected;
@@ -226,7 +274,29 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   Widget build(BuildContext context) {
     final title = _isFrench ? 'Messagerie privée' : 'Private messages';
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: _searching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: _isFrench ? 'Rechercher' : 'Search',
+                  border: InputBorder.none,
+                ),
+                onChanged: (_) => setState(() {}),
+              )
+            : Text(title),
+        actions: [
+          IconButton(
+            tooltip: _searching ? (_isFrench ? 'Fermer' : 'Close') : (_isFrench ? 'Rechercher' : 'Search'),
+            icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
+            onPressed: () => setState(() {
+              if (_searching) _searchController.clear();
+              _searching = !_searching;
+            }),
+          ),
+        ],
+      ),
       body: FutureBuilder<List<MessageContact>>(
         future: _contactsFuture,
         builder: (context, snapshot) {
@@ -237,6 +307,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             return Center(child: Text('${snapshot.error}'));
           }
           final contacts = snapshot.data ?? const <MessageContact>[];
+          final query = _searchController.text.trim().toLowerCase();
+          final visibleContacts = _selected == null && query.isNotEmpty
+              ? contacts.where((contact) => contact.fullName.toLowerCase().contains(query)).toList(growable: false)
+              : contacts;
           final initialId = widget.initialContactId;
           if (!_initialContactHandled && initialId != null) {
             _initialContactHandled = true;
@@ -262,7 +336,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
           return LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 700;
-              final list = _contacts(contacts);
+              final list = _contacts(visibleContacts);
               final conversation = _conversation();
               return wide
                   ? Row(
@@ -338,12 +412,14 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
+                    itemCount: _visiblePrivateMessages().length,
                     itemBuilder: (context, index) {
-                      final message = _messages[index];
+                      final message = _visiblePrivateMessages()[index];
                       final mine = message.senderId == widget.profile.id;
                       final quoted = _findMessage(message.replyToId);
-                      return SwipeToReply(
+                      return GestureDetector(
+                        onLongPress: () => _showMessageActions(message),
+                        child: SwipeToReply(
                         enabled: !message.isPending,
                         onReply: () => setState(() => _replyTo = message),
                         child: Row(
@@ -430,6 +506,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             ),
                         ],
                       ),
+                        ),
                       );
                     },
                   ),
