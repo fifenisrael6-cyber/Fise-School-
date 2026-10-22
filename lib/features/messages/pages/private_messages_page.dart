@@ -601,7 +601,21 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   ),
                                   if (mine) ...[
                                     const SizedBox(width: 4),
-                                    Icon(message.isPending ? Icons.schedule_rounded : (message.readAt == null ? Icons.done_rounded : Icons.done_all_rounded), size: 16, color: message.isPending ? Colors.black45 : (message.readAt == null ? Colors.black87 : const Color(0xFF34B7F1))),
+                                    Icon(
+                                      message.isPending
+                                          ? Icons.schedule_rounded
+                                          : (message.readAt != null || message.deliveredAt != null
+                                              ? Icons.done_all_rounded
+                                              : Icons.done_rounded),
+                                      size: 16,
+                                      color: message.isPending
+                                          ? Colors.black45
+                                          : (message.readAt != null
+                                              ? const Color(0xFF2EAD65)
+                                              : (message.deliveredAt != null
+                                                  ? Colors.black54
+                                                  : Colors.black87)),
+                                    ),
                                   ],
                                 ],
                               ),
