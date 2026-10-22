@@ -159,7 +159,7 @@ class _AuthPageState extends State<AuthPage> {
           specialtyId: isGeneral ? null : _track?.id,
           examLevel: level?.labelFor(_lang),
           exam: level?.exam?.labelFor(_lang),
-          track: _track?.labelFor(_lang),
+          track: _track?.code.toUpperCase(),
           className: level?.labelFor(_lang),
           languageOption: _languageOption == null
               ? null
@@ -196,7 +196,12 @@ class _AuthPageState extends State<AuthPage> {
         // formulaire de connexion au lieu de laisser le formulaire d'inscription.
         setState(() => _isRegistering = false);
       }
-    } on AuthException catch (error) {
+    } on AuthException catch (error, stackTrace) {
+      debugPrint('[INSCRIPTION] AuthException.type=${error.runtimeType}');
+      debugPrint('[INSCRIPTION] AuthException.message=${error.message}');
+      debugPrint('[INSCRIPTION] AuthException.code=${error.code}');
+      debugPrint('[INSCRIPTION] AuthException.statusCode=${error.statusCode}');
+      debugPrint('[INSCRIPTION] AuthException.stackTrace=$stackTrace');
       if (mounted) {
         _showError(
           AuthMessages.from(
@@ -206,7 +211,15 @@ class _AuthPageState extends State<AuthPage> {
           ),
         );
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('[INSCRIPTION] Erreur technique.type=${error.runtimeType}');
+      debugPrint('[INSCRIPTION] Erreur technique.message=$error');
+      if (error is PostgrestException) {
+        debugPrint('[INSCRIPTION] PostgrestException.code=${error.code}');
+        debugPrint('[INSCRIPTION] PostgrestException.details=${error.details}');
+        debugPrint('[INSCRIPTION] PostgrestException.hint=${error.hint}');
+      }
+      debugPrint('[INSCRIPTION] Erreur technique.stackTrace=$stackTrace');
       if (mounted) {
         _showError(texts.networkError);
       }
@@ -521,8 +534,7 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
-          validator: (value) =>
-              _isStudent && value == null ? texts.selectionRequired : null,
+          validator: (value) => null,
           onChanged: (value) => setState(() {
             _track = value;
             _languageOption = null;
