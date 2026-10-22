@@ -587,6 +587,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
               if (_filter == 'archived' && preference['archived'] != true) return false;
               if (_filter != 'archived' && preference['archived'] == true) return false;
               if (_filter == 'groups' && group.id.isEmpty) return false;
+              if (_filter == 'unread' && group.unreadCount <= 0) return false;
               if (query.isEmpty) return true;
               return group.name.toLowerCase().contains(query) ||
                   (group.lastBody ?? '').toLowerCase().contains(query) ||
@@ -617,18 +618,25 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                         onSelected: (_) => setState(() => _filter = 'all'),
                       ),
                       ChoiceChip(
+                        label: Text(_fr ? 'Non lues' : 'Unread'),
+                        selected: _filter == 'unread',
+                        onSelected: (_) => setState(() => _filter = 'unread'),
+                      ),
+                      ChoiceChip(
                         label: Text(_fr ? 'Groupes' : 'Groups'),
                         selected: _filter == 'groups',
                         onSelected: (_) => setState(() => _filter = 'groups'),
                       ),
-                      ChoiceChip(
-                        label: Text(_fr ? 'Archivées' : 'Archived'),
-                        selected: _filter == 'archived',
-                        onSelected: (_) => setState(() => _filter = 'archived'),
-                      ),
                     ],
                   ),
                 ),
+                if (_filter != 'archived' && _conversationPreferences.values.any((value) => value['archived'] == true))
+                  ListTile(
+                    leading: const Icon(Icons.archive_outlined),
+                    title: Text(_fr ? 'Archivées' : 'Archived'),
+                    trailing: Text('${_conversationPreferences.values.where((value) => value['archived'] == true).length}'),
+                    onTap: () => setState(() => _filter = 'archived'),
+                  ),
                 if (_filter == 'all')
                   ListTile(
                     leading: const CircleAvatar(
@@ -696,6 +704,13 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(_formatTime(group.lastAt), style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          if (group.unreadCount > 0)
+                            Container(
+                              margin: const EdgeInsets.only(top: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: const BoxDecoration(color: Color(0xFF166534), shape: BoxShape.circle),
+                              child: Text('${group.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                            ),
                           if (_preferenceFor(group.id)['pinned'] == true || _preferenceFor(group.id)['muted_until'] != null)
                             Row(mainAxisSize: MainAxisSize.min, children: [
                               if (_preferenceFor(group.id)['pinned'] == true) const Icon(Icons.push_pin_rounded, size: 13),
