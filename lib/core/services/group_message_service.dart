@@ -311,7 +311,16 @@ class GroupMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    unawaited(syncPending());
+    // Wait for the immediate attempt so the composer can report failures.
+    // The queued row remains in Drift when delivery is unsuccessful.
+    await syncPending();
+    final stillPending = await _db.getQueuedMessages(_userId, 'group');
+    if (stillPending.any((row) => row.read<String>('id') == id)) {
+      throw StateError(
+        'Le message est conservé sur cet appareil, mais le serveur ne l’a pas accepté. '
+        'Vérifiez votre connexion et votre accès au groupe, puis réessayez.',
+      );
+    }
   }
 
   Future<void> syncPending() async {
