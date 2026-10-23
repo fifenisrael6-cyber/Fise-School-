@@ -113,7 +113,64 @@ class _TeacherEvaluationsPageState extends State<TeacherEvaluationsPage> {
                                 '${e.errorCount > 0 ? ' · ${_fr ? 'erreurs' : 'errors'} ${e.errorCount}' : ''}',
                               ),
                               isThreeLine: true,
-                              trailing: const Icon(Icons.chevron_right_rounded),
+                              trailing: PopupMenuButton<String>(
+                                tooltip: _fr ? 'Actions sur l’épreuve' : 'Exam actions',
+                                onSelected: (action) async {
+                                  if (action == 'close') {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: Text(_fr ? 'Annuler l’épreuve ?' : 'Cancel exam?'),
+                                        content: Text(_fr
+                                            ? 'L’épreuve sera fermée. Les remises déjà reçues seront conservées.'
+                                            : 'The exam will be closed. Existing submissions will be kept.'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Retour' : 'Back')),
+                                          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Fermer' : 'Close')),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed != true || !mounted) return;
+                                    try {
+                                      await _service.closeEvaluation(e.id);
+                                      await _load();
+                                    } catch (error) {
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(EvaluationService.friendlyError(error, fr: _fr))));
+                                    }
+                                  } else if (action == 'edit') {
+                                    final controller = TextEditingController(text: e.title);
+                                    final title = await showDialog<String>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: Text(_fr ? 'Modifier le titre' : 'Edit title'),
+                                        content: TextField(
+                                          controller: controller,
+                                          autofocus: true,
+                                          maxLength: 200,
+                                          decoration: InputDecoration(labelText: _fr ? 'Titre' : 'Title'),
+                                        ),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(_fr ? 'Retour' : 'Back')),
+                                          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: Text(_fr ? 'Enregistrer' : 'Save')),
+                                        ],
+                                      ),
+                                    );
+                                    controller.dispose();
+                                    if (title == null || title.trim().length < 3 || !mounted) return;
+                                    try {
+                                      await _service.updateEvaluationTitle(e.id, title.trim());
+                                      await _load();
+                                    } catch (error) {
+                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(EvaluationService.friendlyError(error, fr: _fr))));
+                                    }
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier le titre' : 'Edit title')),
+                                  if (e.status == 'published')
+                                    PopupMenuItem(value: 'close', child: Text(_fr ? 'Annuler / fermer' : 'Cancel / close')),
+                                ],
+                              ),
                               onTap: () async {
                                 await Navigator.push(
                                   context,
