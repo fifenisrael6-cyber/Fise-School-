@@ -284,8 +284,25 @@ class EvaluationService {
     }
   }
 
+  Future<void> updateEvaluationTitle(String id, String title) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.length < 3 || cleanTitle.length > 200) {
+      throw ArgumentError('Le titre doit contenir entre 3 et 200 caractères.');
+    }
+    await _client.from('evaluations').update({
+      'title': cleanTitle,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+    await JsonCache.instance.remove('teacher_evaluations_${_client.auth.currentUser?.id ?? 'anonymous'}');
+    await JsonCache.instance.remove('student_evaluations_${_client.auth.currentUser?.id ?? 'anonymous'}');
+  }
+
   Future<void> closeEvaluation(String id) async {
-    await _client.from('evaluations').update({'status': 'closed'}).eq('id', id);
+    await _client.from('evaluations').update({
+      'status': 'closed',
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+    await JsonCache.instance.remove('teacher_evaluations_${_client.auth.currentUser?.id ?? 'anonymous'}');
   }
 
   Future<List<ReviewRow>> listReview(String evaluationId) {
