@@ -147,7 +147,21 @@ class PrivateMessageService {
     }
   }
 
-  Future<void> syncPending() async {
+  Future<void>? _syncPendingFuture;
+
+  Future<void> syncPending() {
+    final active = _syncPendingFuture;
+    if (active != null) return active;
+    final task = _syncPendingImpl();
+    _syncPendingFuture = task;
+    return task.whenComplete(() {
+      if (identical(_syncPendingFuture, task)) {
+        _syncPendingFuture = null;
+      }
+    });
+  }
+
+  Future<void> _syncPendingImpl() async {
     if (_client.auth.currentUser == null) return;
     final pending = await _db.getQueuedMessages(_userId, 'private');
     for (final row in pending) {
