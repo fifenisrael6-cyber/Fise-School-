@@ -134,7 +134,17 @@ class PrivateMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    unawaited(syncPending());
+    // Try to deliver immediately and only report success when the server
+    // accepted the message. If offline or rejected, keep the queued copy so the
+    // composer can show a useful error and the user can retry without losing text.
+    await syncPending();
+    final stillPending = await _db.getQueuedMessages(_userId, 'private');
+    if (stillPending.any((row) => row.read<String>('id') == id)) {
+      throw StateError(
+        'Le message est conservé sur cet appareil, mais Supabase ne l’a pas accepté. '
+        'Vérifiez votre connexion et que le destinataire est autorisé pour cette conversation, puis réessayez.',
+      );
+    }
   }
 
   Future<void> syncPending() async {
