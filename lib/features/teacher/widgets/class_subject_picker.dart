@@ -66,8 +66,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         .maybeSingle();
     final subsystem = profile?['subsystem']?.toString();
     final sector = profile?['sector']?.toString();
-    final all = await _service.listTeacherCompatibleClasses();
-    return all.where((room) =>
+    // Publication forms must only offer rooms explicitly selected in
+    // the teacher's « Mes classes » settings.
+    final selected = await _service.listTeacherClasses(widget.teacherId);
+    return selected.where((room) =>
       (subsystem != null && subsystem.isNotEmpty && room.subsystem.name == subsystem) &&
       (sector != null && sector.isNotEmpty && room.sector.name == sector)
     ).toList(growable: false);
