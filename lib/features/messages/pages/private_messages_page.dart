@@ -326,6 +326,21 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         });
       }
       await _select(contact);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Bad state: ', ''),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: _isFrench ? 'Réessayer' : 'Retry',
+            onPressed: () => _send(),
+          ),
+        ));
+      }
     } finally {
       if (mounted) {
         setState(() => _sending = false);
