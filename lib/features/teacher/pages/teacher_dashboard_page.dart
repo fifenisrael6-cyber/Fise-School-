@@ -271,8 +271,10 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
   final CourseService _service = CourseService();
 
   bool _loading = true;
+  bool _saving = false;
   String? _error;
   List<SchoolClass> _classes = [];
+  final Set<String> _selectedIds = <String>{};
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -289,7 +291,9 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
     });
 
     try {
-      final classes = await _service.listTeacherClasses(widget.profile.id);
+      // This screen manages the rooms available in teacher forms and to students.
+      final classes = await _service.listTeacherCompatibleClasses();
+      final selectedIds = await _service.listTeacherFollowedClassIds();
 
       if (!mounted) {
         return;
@@ -297,6 +301,9 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
 
       setState(() {
         _classes = classes;
+        _selectedIds
+          ..clear()
+          ..addAll(selectedIds.where((id) => classes.any((room) => room.id == id)));
         _loading = false;
       });
     } catch (_) {
@@ -310,6 +317,43 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
             ? 'Impossible de charger vos classes.'
             : 'Unable to load your classes.';
       });
+    }
+  }
+
+  Future<void> _saveSelection() async {
+    if (widget.profile.role != 'teacher') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Seuls les comptes enseignants peuvent enregistrer les salles.'
+            : 'Only teacher accounts can save classroom selections.')),
+      );
+      return;
+    }
+    if (_selectedIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Choisissez au moins une salle.'
+            : 'Select at least one classroom.')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await _service.saveTeacherFollowedClasses(_selectedIds.toList(growable: false));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isFrench
+            ? 'Salles enregistrées. Seules ces salles seront proposées aux élèves et dans vos formulaires.'
+            : 'Classrooms saved. Only these rooms will be offered to students and in your forms.')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_isFrench ? 'Enregistrement impossible' : 'Could not save'}: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -370,14 +414,51 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
             : ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
-                itemCount: _classes.length,
+                itemCount: _classes.length + 2,
                 itemBuilder: (context, index) {
-                  final schoolClass = _classes[index];
-
+                  if (index == 0) {
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          _isFrench
+                              ? 'Cochez les salles que vous enseignez, puis enregistrez. Seules les salles choisies seront proposées aux élèves pour changer de classe et dans vos formulaires de publication.'
+                              : 'Select the classrooms you teach, then save. Only selected rooms will be offered to students when changing class and in your publishing forms.',
+                        ),
+                      ),
+                    );
+                  }
+                  if (index == _classes.length + 1) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _saveSelection,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18, height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save_rounded),
+                        label: Text(_saving
+                            ? (_isFrench ? 'Enregistrement…' : 'Saving…')
+                            : (_isFrench ? 'Enregistrer les salles choisies' : 'Save selected classrooms')),
+                      ),
+                    );
+                  }
+                  final schoolClass = _classes[index - 1];
                   return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: CircleAvatar(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: CheckboxListTile(
+                      value: _selectedIds.contains(schoolClass.id),
+                      onChanged: (value) => setState(() {
+                        if (value == true) {
+                          _selectedIds.add(schoolClass.id);
+                        } else {
+                          _selectedIds.remove(schoolClass.id);
+                        }
+                      }),
+                      secondary: CircleAvatar(
                         backgroundColor: const Color(0xFFDCFCE7),
                         child: Icon(
                           Icons.groups_rounded,
@@ -389,7 +470,7 @@ class _TeacherClassesPageState extends State<_TeacherClassesPage> {
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                       subtitle: Text(schoolClass.name),
-                      trailing: const Icon(Icons.chevron_right_rounded),
+                      controlAffinity: ListTileControlAffinity.trailing,
                     ),
                   );
                 },
