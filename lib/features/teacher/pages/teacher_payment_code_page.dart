@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/teacher_payment_code_service.dart';
 import '../../../models/user_profile.dart';
@@ -19,6 +20,9 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
   final _codeController = TextEditingController();
   bool _loading = true;
   bool _editing = false;
+  bool _savingSpecialty = false;
+  String? _specialty;
+  String? _savedSpecialty;
   String? _code;
   int _balance = 0;
 
@@ -38,24 +42,102 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
 
   Future<void> _load() async {
     try {
-      final existing = await _service.getOwnCode();
-      _balance = await _service.getWalletBalance();
-      if (existing != null && existing['active'] == true) {
-        _code = existing['code']?.toString();
+      final client = Supabase.instance.client;
+      final row = await client
+          .from('profiles')
+          .select('teacher_specialty, teaching_stream')
+          .eq('id', widget.profile.id)
+          .eq('role', 'teacher')
+          .maybeSingle();
+      final raw = (row?['teacher_specialty'] ?? row?['teaching_stream'])
+          ?.toString()
+          .trim()
+          .toLowerCase();
+      if (raw == 'literary' || raw == 'litteraire' || raw == 'littéraire') {
+        _specialty = 'literary';
+        _savedSpecialty = 'literary';
+      } else if (raw == 'scientific' || raw == 'scientifique') {
+        _specialty = 'scientific';
+        _savedSpecialty = 'scientific';
+      }
+
+      // Do not call the code RPC until the teacher's specialty is saved:
+      // that RPC can create/synchronize the canonical FISE code.
+      if (_savedSpecialty != null) {
+        final existing = await _service.getOwnCode();
+        _balance = await _service.getWalletBalance();
+        if (existing != null && existing['active'] == true) {
+          _code = existing['code']?.toString();
+        }
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_fr
-              ? 'Impossible de charger le code FISE. Réessayez plus tard.'
-              : 'Unable to load the FISE code. Please try again later.')),
+              ? 'Impossible de charger la spécialité ou le code FISE. Réessayez.'
+              : 'Unable to load the specialty or FISE code. Please try again.')),
         );
       }
     }
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _saveSpecialty() async {
+    final value = _specialty;
+    if (value != 'literary' && value != 'scientific') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr
+            ? 'Choisissez Littéraire ou Scientifique avant de continuer.'
+            : 'Choose Literary or Scientific before continuing.')),
+      );
+      return;
+    }
+    setState(() => _savingSpecialty = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'set_teacher_specialty',
+        params: {'p_specialty': value},
+      );
+      final changed = _savedSpecialty != value;
+      _savedSpecialty = value;
+      if (changed) {
+        _code = null;
+        _editing = false;
+        _codeController.clear();
+        final existing = await _service.getOwnCode();
+        if (existing != null && existing['active'] == true) {
+          _code = existing['code']?.toString();
+        }
+        _balance = await _service.getWalletBalance();
+      }
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_fr
+              ? 'Spécialité enregistrée. Vous pouvez maintenant consulter ou modifier votre code unique FISE.'
+              : 'Specialty saved. You can now view or change your unique FISE code.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_fr ? 'Enregistrement de la spécialité impossible' : 'Could not save specialty'}: ${error.toString().replaceFirst('Exception: ', '')}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingSpecialty = false);
+    }
+  }
+
   Future<void> _save() async {
+    if (_savedSpecialty != 'literary' && _savedSpecialty != 'scientific') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_fr
+            ? 'Enregistrez d’abord votre spécialité.'
+            : 'Save your specialty first.')),
+      );
+      return;
+    }
     final value = _codeController.text.trim().toUpperCase();
     if (!RegExp(r'^(FISE-?)?[A-Z0-9]{6}$').hasMatch(value)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -130,8 +212,67 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
+                    Text(
+                      _fr ? 'Spécialité de l’enseignant' : 'Teacher specialty',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _fr
+                          ? 'Choisissez une seule spécialité. Ce choix détermine les matières disponibles dans vos cours et évaluations. Vous devez l’enregistrer avant de consulter ou modifier votre code unique FISE.'
+                          : 'Choose one specialty. It determines the subjects available in your lessons and assessments. Save it before viewing or changing your unique FISE code.',
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _specialty,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Votre spécialité' : 'Your specialty',
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'literary',
+                          child: Text(_fr ? 'Littéraire' : 'Literary'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'scientific',
+                          child: Text(_fr ? 'Scientifique' : 'Scientific'),
+                        ),
+                      ],
+                      onChanged: _loading || _savingSpecialty
+                          ? null
+                          : (value) => setState(() => _specialty = value),
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: _loading || _savingSpecialty ? null : _saveSpecialty,
+                      icon: _savingSpecialty
+                          ? const SizedBox(
+                              width: 18, height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check_circle_outline_rounded),
+                      label: Text(_savingSpecialty
+                          ? (_fr ? 'Enregistrement…' : 'Saving…')
+                          : (_fr ? 'Enregistrer ma spécialité' : 'Save my specialty')),
+                    ),
+                    const SizedBox(height: 24),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
+                    else if (_savedSpecialty == null)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _fr
+                              ? 'Le code unique FISE reste verrouillé. Choisissez et enregistrez votre spécialité ci-dessus pour continuer.'
+                              : 'Your unique FISE code remains locked. Choose and save your specialty above to continue.',
+                          textAlign: TextAlign.center,
+                        ),
+                      )
                     else if (_code == null || _editing) ...[
                       TextField(
                         controller: _codeController,
