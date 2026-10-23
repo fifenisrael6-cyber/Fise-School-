@@ -343,12 +343,15 @@ class GroupMessageService {
           }
         }
         try {
-          await _client.from('message_group_messages').insert({
+          // A timed-out request may already have committed on the server.
+          // Reusing the stable local ID must therefore be idempotent.
+          await _client.from('message_group_messages').upsert({
             'id': id, 'group_id': row.read<String>('thread_id'), 'sender_id': _userId,
             'body': row.read<String>('body'), 'attachment_path': remotePath,
             'attachment_name': name, 'attachment_type': row.readNullable<String>('attachment_type'),
             'reply_to_id': row.readNullable<String>('reply_to_id'),
-          }).timeout(const Duration(seconds: 12));
+          }, onConflict: 'id', ignoreDuplicates: true)
+              .timeout(const Duration(seconds: 12));
         } catch (insertError) {
           final denial = MessageQuotaEvents.kindFrom(insertError);
           if (denial != null) {
@@ -356,9 +359,7 @@ class GroupMessageService {
             MessageQuotaEvents.notify(denial);
             continue;
           }
-          final existing = await _client.from('message_group_messages').select('id')
-              .eq('id', id).maybeSingle().timeout(const Duration(seconds: 8));
-          if (existing == null) rethrow;
+          rethrow;
         }
         await _db.markMessageSent(id, attachmentPath: remotePath);
       } catch (_) {
