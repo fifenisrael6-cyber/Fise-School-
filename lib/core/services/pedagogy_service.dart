@@ -623,19 +623,16 @@ class CourseService {
     await authorizeTeacherClasses(classIds);
   }
 
-  /// Salles suivies par l'enseignant. Lors de la première utilisation, avant
-  /// toute sélection enregistrée, affiche toutes les salles compatibles.
+  /// Seules les salles explicitement choisies par l'enseignant sont
+  /// proposées dans ses formulaires. Une sélection vide reste vide : elle
+  /// doit être configurée depuis « Mes classes ».
   Future<List<SchoolClass>> listTeacherSelectedClasses() async {
     final all = await listTeacherCompatibleClasses();
     final selectedIds = await listTeacherFollowedClassIds();
-    if (selectedIds.isEmpty) return all;
-    final selected = all
+    if (selectedIds.isEmpty) return const <SchoolClass>[];
+    return all
         .where((schoolClass) => selectedIds.contains(schoolClass.id))
         .toList(growable: false);
-    // Older saved preferences may contain only empty generic level buckets.
-    // If filtering removes all of them, keep the picker usable and show the
-    // current real classrooms instead of presenting an empty list.
-    return selected.isEmpty ? all : selected;
   }
 
   /// Active les affectations nécessaires pour les salles compatibles choisies.
