@@ -331,7 +331,7 @@ class _CreateCoursePageState extends State<CreateCoursePage> {
     Subject subject,
   ) async {
     try {
-      final rooms = await _service.listTeacherCompatibleClasses();
+      final rooms = await _service.listTeacherClasses(widget.profile.id);
       final eligibleIds = <String>{};
       final wantedFr = reference.titleFr.trim().toLowerCase();
       final wantedEn = reference.titleEn.trim().toLowerCase();
