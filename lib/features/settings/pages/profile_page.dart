@@ -7,6 +7,7 @@ import '../../../core/services/photo_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../models/user_profile.dart';
 import '../../student/pages/pages/premium_page.dart';
+import '../../teacher/pages/teacher_class_selection_page.dart';
 
 class ProfilePage extends StatefulWidget {
   final Locale locale;
@@ -88,6 +89,27 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 24),
             _schoolInfo(texts),
+            if (widget.profile.role == 'teacher') ...[
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.meeting_room_rounded),
+                  title: Text(widget.locale.languageCode == 'fr'
+                      ? 'Mes cours et mes salles'
+                      : 'My courses and classrooms'),
+                  subtitle: Text(widget.locale.languageCode == 'fr'
+                      ? 'Ajouter ou retirer les salles affichées dans votre espace de travail pour les cours, QCM et activités.'
+                      : 'Add or remove classrooms shown in your workspace for courses, quizzes and activities.'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => TeacherClassSelectionPage(
+                      locale: widget.locale,
+                      profile: _profile,
+                    ),
+                  )),
+                ),
+              ),
+            ],
             if (widget.profile.role == 'student') ...[
               const SizedBox(height: 12),
               Card(
