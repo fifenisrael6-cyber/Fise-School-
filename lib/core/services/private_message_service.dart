@@ -176,7 +176,9 @@ class PrivateMessageService {
           }
         }
         try {
-          await _client.from('private_messages').insert({
+          // A timed-out request may already have committed on the server.
+          // Reusing the stable local ID must therefore be idempotent.
+          await _client.from('private_messages').upsert({
             'id': id,
             'sender_id': _userId,
             'recipient_id': row.read<String>('thread_id'),
@@ -186,7 +188,8 @@ class PrivateMessageService {
             'attachment_type': row.readNullable<String>('attachment_type'),
             'attachment_size': localPath == null ? null : await File(localPath).length(),
             'reply_to_id': row.readNullable<String>('reply_to_id'),
-          }).timeout(const Duration(seconds: 12));
+          }, onConflict: 'id', ignoreDuplicates: true)
+              .timeout(const Duration(seconds: 12));
         } catch (insertError) {
           final denial = MessageQuotaEvents.kindFrom(insertError);
           if (denial != null) {
@@ -194,9 +197,7 @@ class PrivateMessageService {
             MessageQuotaEvents.notify(denial);
             continue;
           }
-          final existing = await _client.from('private_messages').select('id')
-              .eq('id', id).maybeSingle().timeout(const Duration(seconds: 8));
-          if (existing == null) rethrow; // Keep queued unless the first attempt reached the server.
+          rethrow;
         }
         await _db.markMessageSent(id, attachmentPath: remotePath);
       } catch (_) {
