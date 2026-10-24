@@ -93,7 +93,7 @@ async function callGemini(apiKey: string, parts: unknown[]): Promise<{ result: a
 
 async function processCorrection(admin: any, geminiKey: string, minConfidence: number, job: any) {
   const [{ data: evaluation }, { data: key }, { data: photos }] = await Promise.all([
-    admin.from("evaluations").select("id,title,instructions,max_score,pdf_path").eq("id", job.evaluation_id).single(),
+    admin.from("evaluations").select("id,title,instructions,max_score,pdf_path,correction_pdf_path").eq("id", job.evaluation_id).single(),
     admin.from("evaluation_keys").select("scheme,criteria").eq("evaluation_id", job.evaluation_id).maybeSingle(),
     admin.from("evaluation_photos").select("id,storage_path,position").eq("submission_id", job.submission_id)
       .order("position").order("received_at"),
@@ -109,7 +109,7 @@ async function processCorrection(admin: any, geminiKey: string, minConfidence: n
     })).filter((s: SchemeItem) => s.points > 0)
     : [];
   const criteria = String(key?.criteria ?? "").trim();
-  const hasReference = scheme.length > 0 || criteria.length > 0;
+  let hasReference = scheme.length > 0 || criteria.length > 0;
 
   const reasons: string[] = [];
   const parts: any[] = [];
@@ -127,6 +127,23 @@ async function processCorrection(admin: any, geminiKey: string, minConfidence: n
       }
     } else {
       reasons.push("Énoncé PDF illisible par le correcteur");
+    }
+  }
+
+  // Le corrigé officiel fourni par l'enseignant est une référence prioritaire pour la correction.
+  if (evaluation.correction_pdf_path) {
+    const correction = await admin.storage.from("evaluation-papers").download(evaluation.correction_pdf_path);
+    if (!correction.error && correction.data) {
+      const bytes = new Uint8Array(await correction.data.arrayBuffer());
+      if (bytes.length <= MAX_PDF_BYTES) {
+        parts.push({ text: "CORRIGÉ OFFICIEL DE L'ENSEIGNANT (PDF) : respecte ce corrigé et son barème lorsqu'ils sont présents." });
+        parts.push({ inlineData: { mimeType: "application/pdf", data: toBase64(bytes) } });
+        hasReference = true;
+      } else {
+        reasons.push("Corrigé PDF trop volumineux pour l'analyse automatique");
+      }
+    } else {
+      reasons.push("Corrigé PDF officiel inaccessible au correcteur");
     }
   }
 
