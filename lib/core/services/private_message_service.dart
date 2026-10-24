@@ -37,6 +37,14 @@ class PrivateMessageService {
     return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
   }
 
+  /// Returns the saved contacts without waiting for a network round-trip.
+  Future<List<MessageContact>> getCachedContacts() async {
+    final rows = await _db.getCachedMessageContacts(_userId);
+    return rows.map((row) => MessageContact.fromMap(
+      Map<String, dynamic>.from(jsonDecode(row.read<String>('data_json')) as Map),
+    )).toList(growable: false);
+  }
+
   Future<List<MessageContact>> listContacts() async {
     try {
       final result = await _client.rpc('list_private_message_contacts').timeout(const Duration(seconds: 8));
@@ -51,10 +59,7 @@ class PrivateMessageService {
       }
       return contacts;
     } catch (_) {
-      final rows = await _db.getCachedMessageContacts(_userId);
-      return rows.map((row) => MessageContact.fromMap(
-        Map<String, dynamic>.from(jsonDecode(row.read<String>('data_json')) as Map),
-      )).toList();
+      return getCachedContacts();
     }
   }
 
