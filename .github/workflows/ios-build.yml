@@ -3,8 +3,7 @@ name: Fise School iOS Build
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '**.dart'
       - 'pubspec.yaml'
@@ -29,46 +28,34 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Preserve existing iOS app settings
+      - name: Repair missing iOS platform files without touching app files
         shell: bash
         run: |
-          if [ -f ios/Runner/Info.plist ]; then
-            cp ios/Runner/Info.plist "$RUNNER_TEMP/fise-school-Info.plist"
+          set -euo pipefail
+          scaffold="$RUNNER_TEMP/fise-school-ios-scaffold"
+          flutter create --platforms=ios --org com.fiseschool --project-name fise_school "$scaffold"
+          mkdir -p ios/Flutter
+          if [ ! -f ios/Podfile ]; then cp "$scaffold/ios/Podfile" ios/Podfile; fi
+          for file in Debug.xcconfig Release.xcconfig AppFrameworkInfo.plist; do
+            if [ ! -f "ios/Flutter/$file" ]; then cp "$scaffold/ios/Flutter/$file" "ios/Flutter/$file"; fi
+          done
+          if [ ! -f ios/Runner.xcodeproj/project.pbxproj ]; then cp -R "$scaffold/ios/Runner.xcodeproj" ios/; fi
+          if [ ! -f ios/Runner.xcworkspace/contents.xcworkspacedata ]; then
+            mkdir -p ios/Runner.xcworkspace
+            cp "$scaffold/ios/Runner.xcworkspace/contents.xcworkspacedata" ios/Runner.xcworkspace/
           fi
-
-      - name: Repair or generate iOS platform scaffold
-        shell: bash
-        run: |
-          if [ ! -f ios/Podfile ] || [ ! -f ios/Flutter/Debug.xcconfig ] || [ ! -f ios/Flutter/Release.xcconfig ]; then
-            flutter create --platforms=ios --org com.fiseschool --project-name fise_school --overwrite .
+          if [ ! -f ios/Runner/Info.plist ]; then cp "$scaffold/ios/Runner/Info.plist" ios/Runner/; fi
+          if [ ! -f ios/Runner/AppDelegate.swift ]; then cp "$scaffold/ios/Runner/AppDelegate.swift" ios/Runner/; fi
+          if [ ! -f ios/Runner/Base.lproj/Main.storyboard ]; then
+            mkdir -p ios/Runner/Base.lproj
+            cp "$scaffold/ios/Runner/Base.lproj/Main.storyboard" ios/Runner/Base.lproj/
           fi
-
-      - name: Restore app permissions and URL scheme
-        shell: bash
-        run: |
-          if [ -f "$RUNNER_TEMP/fise-school-Info.plist" ]; then
-            python3 - <<'PY'
-          import os, plistlib
-          old_path = os.path.join(os.environ["RUNNER_TEMP"], "fise-school-Info.plist")
-          new_path = "ios/Runner/Info.plist"
-          with open(old_path, "rb") as f:
-              old = plistlib.load(f)
-          with open(new_path, "rb") as f:
-              new = plistlib.load(f)
-          for key in (
-              "NSMicrophoneUsageDescription",
-              "NSCameraUsageDescription",
-              "NSPhotoLibraryUsageDescription",
-              "NSPhotoLibraryAddUsageDescription",
-              "CFBundleURLTypes",
-          ):
-              if key in old:
-                  new[key] = old[key]
-          new["CFBundleDisplayName"] = "Fise School"
-          with open(new_path, "wb") as f:
-              plistlib.dump(new, f)
-          PY
+          if [ ! -f ios/Runner/Base.lproj/LaunchScreen.storyboard ]; then
+            mkdir -p ios/Runner/Base.lproj
+            cp "$scaffold/ios/Runner/Base.lproj/LaunchScreen.storyboard" ios/Runner/Base.lproj/
           fi
+          echo "Confirming required app dependencies are still present:"
+          grep -E '^  (supabase_flutter|drift|shared_preferences|path_provider|file_picker):' pubspec.yaml
 
       - name: Resolve Flutter dependencies
         run: flutter pub get
@@ -85,14 +72,27 @@ jobs:
       - name: Build unsigned iOS IPA
         run: flutter build ipa --release --no-codesign
 
-      - name: Upload iOS build artifacts
+      - name: Package iOS build outputs
+        if: always()
+        shell: bash
+        run: |
+          set -e
+          mkdir -p build/ios/download
+          [ ! -d build/ios/ipa ] || cp -R build/ios/ipa build/ios/download/
+          [ ! -d build/ios/iphoneos ] || cp -R build/ios/iphoneos build/ios/download/
+          [ ! -d build/ios/archive ] || cp -R build/ios/archive build/ios/download/
+          if [ -n "$(find build/ios/download -mindepth 1 -print -quit 2>/dev/null)" ]; then
+            cd build/ios/download
+            zip -r "$GITHUB_WORKSPACE/Fise-School-iOS-build.zip" .
+          fi
+
+      - name: Upload iOS ZIP
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Fise-School-iOS-${{ github.run_number }}
           path: |
+            Fise-School-iOS-build.zip
             build/ios/ipa/*.ipa
-            build/ios/archive/*.xcarchive
-            build/ios/iphoneos/*.app
           if-no-files-found: warn
           retention-days: 14
