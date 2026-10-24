@@ -708,6 +708,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   name: message.attachmentName,
                                   type: message.attachmentType,
                                   localPath: message.localAttachmentPath,
+                cacheScope: widget.profile.id,
                                   remotePath: message.attachmentPath,
                                   resolveUrl: _service.signedAttachmentUrl,
                                   french: _isFrench,
