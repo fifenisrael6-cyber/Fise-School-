@@ -171,6 +171,24 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
     }
   }
 
+  Future<void> _openCorrectionPdf(StudentEvaluation evaluation) async {
+    setState(() => _openingId = evaluation.id);
+    try {
+      final correction = await _evaluationService.releasedCorrectionPdf(evaluation.id);
+      if (correction == null) {
+        _show(_fr ? 'Le PDF de correction est encore en préparation.' : 'The correction PDF is still being prepared.');
+        return;
+      }
+      final signed = await _evaluationService.openCorrectionPdfUrl(correction.path);
+      final opened = await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
+      if (!opened) throw StateError(_fr ? 'Impossible d’ouvrir le PDF corrigé.' : 'Unable to open corrected PDF.');
+    } catch (e) {
+      _show((_fr ? 'Correction PDF indisponible : ' : 'Correction PDF unavailable: ') + e.toString());
+    } finally {
+      if (mounted) setState(() => _openingId = null);
+    }
+  }
+
   Future<void> _submitCopy(StudentEvaluation evaluation) async {
     if (!_automatedIsOpen(evaluation) || evaluation.submitted) {
       _show(_fr ? 'Cette épreuve n’accepte plus de nouvelle remise.' : 'This exam is no longer accepting submissions.');
@@ -374,6 +392,14 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
               Text(
                 '${_fr ? 'Note' : 'Score'} : ${result.finalScore?.toStringAsFixed(2) ?? '—'}/${result.maxScore.toStringAsFixed(2)}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: busy ? null : () => _openCorrectionPdf(evaluation),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: Text(_fr ? 'Ouvrir ma copie corrigée (PDF)' : 'Open my corrected copy (PDF)'),
+                ),
               ),
               if ((result.comment ?? '').trim().isNotEmpty) Text(result.comment!),
               ...result.questions.map((question) => Padding(
