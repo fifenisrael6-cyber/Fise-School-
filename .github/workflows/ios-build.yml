@@ -3,7 +3,7 @@ name: Fise School iOS Build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/whatsapp-offline-first-media-cache-20261024]
     paths:
       - '**.dart'
       - 'pubspec.yaml'
