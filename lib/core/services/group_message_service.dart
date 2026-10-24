@@ -338,7 +338,10 @@ class GroupMessageService {
       'reply_to_id': replyToId,
     });
     // Render from the local cache immediately; deliver asynchronously.
-    unawaited(syncPending());
+    unawaited(syncPending()
+        .catchError((_) {})
+        .then((_) => syncPending())
+        .catchError((_) {}));
   }
 
   Future<void>? _syncPendingFuture;
