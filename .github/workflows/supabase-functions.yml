@@ -65,7 +65,15 @@ jobs:
 
       - name: Deploy notchpay-callback
         if: steps.config.outputs.ready == 'true'
-        run: supabase functions deploy notchpay-callback --project-ref "$SUPABASE_PROJECT_REF"
+        run: supabase functions deploy notchpay-callback --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy notchpay-verify
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy notchpay-verify --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy notchpay-webhook
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy notchpay-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Deploy send-push
         if: steps.config.outputs.ready == 'true'
