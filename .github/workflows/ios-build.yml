@@ -1,0 +1,98 @@
+name: Fise School iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Preserve existing iOS app settings
+        shell: bash
+        run: |
+          if [ -f ios/Runner/Info.plist ]; then
+            cp ios/Runner/Info.plist "$RUNNER_TEMP/fise-school-Info.plist"
+          fi
+
+      - name: Repair or generate iOS platform scaffold
+        shell: bash
+        run: |
+          if [ ! -f ios/Podfile ] || [ ! -f ios/Flutter/Debug.xcconfig ] || [ ! -f ios/Flutter/Release.xcconfig ]; then
+            flutter create --platforms=ios --org com.fiseschool --project-name fise_school --overwrite .
+          fi
+
+      - name: Restore app permissions and URL scheme
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/fise-school-Info.plist" ]; then
+            python3 - <<'PY'
+          import os, plistlib
+          old_path = os.path.join(os.environ["RUNNER_TEMP"], "fise-school-Info.plist")
+          new_path = "ios/Runner/Info.plist"
+          with open(old_path, "rb") as f:
+              old = plistlib.load(f)
+          with open(new_path, "rb") as f:
+              new = plistlib.load(f)
+          for key in (
+              "NSMicrophoneUsageDescription",
+              "NSCameraUsageDescription",
+              "NSPhotoLibraryUsageDescription",
+              "NSPhotoLibraryAddUsageDescription",
+              "CFBundleURLTypes",
+          ):
+              if key in old:
+                  new[key] = old[key]
+          new["CFBundleDisplayName"] = "Fise School"
+          with open(new_path, "wb") as f:
+              plistlib.dump(new, f)
+          PY
+          fi
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Install CocoaPods dependencies
+        shell: bash
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Build unsigned iOS IPA
+        run: flutter build ipa --release --no-codesign
+
+      - name: Upload iOS build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fise-School-iOS-${{ github.run_number }}
+          path: |
+            build/ios/ipa/*.ipa
+            build/ios/archive/*.xcarchive
+            build/ios/iphoneos/*.app
+          if-no-files-found: warn
+          retention-days: 14
