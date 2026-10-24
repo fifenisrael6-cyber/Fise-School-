@@ -78,6 +78,7 @@ class PrivateMessageService {
           'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'read_at': message.readAt?.toUtc().toIso8601String(),
+          'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
           'attachment_path': message.attachmentPath, 'attachment_name': message.attachmentName,
           'attachment_type': message.attachmentType, 'reply_to_id': message.replyToId, 'sync_status': 'sent',
         });
@@ -99,6 +100,7 @@ class PrivateMessageService {
       'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
       'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
       'read_at': row.readNullable<String>('read_at'),
+      'deleted_at': row.data.containsKey('deleted_at') ? row.readNullable<String>('deleted_at') : null,
       'attachment_path': row.readNullable<String>('attachment_path'),
       'attachment_name': row.readNullable<String>('attachment_name'),
       'attachment_type': row.readNullable<String>('attachment_type'),
@@ -222,6 +224,20 @@ class PrivateMessageService {
         await _db.markMessageSent(id, attachmentPath: remotePath);
       } catch (_) {
         await _db.incrementMessageAttempts(id);
+      }
+    }
+  }
+
+  Future<void> deleteMessage(String messageId, {required bool forEveryone}) async {
+    final path = await _client.rpc('delete_private_message', params: {
+      'p_message_id': messageId,
+      'p_for_everyone': forEveryone,
+    });
+    if (forEveryone && path is String && path.isNotEmpty) {
+      try {
+        await _client.storage.from('private-message-attachments').remove([path]);
+      } catch (_) {
+        // Message tombstone is already saved; storage cleanup is best-effort.
       }
     }
   }
