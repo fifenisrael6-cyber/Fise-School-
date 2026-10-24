@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/offline/app_database.dart';
 import '../../../core/offline/course_offline_service.dart';
@@ -30,6 +29,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
   DownloadedFileRecord? _local;
   String? _signedUrl;
   bool _loading = true;
+  bool _opening = false;
 
   bool get _fr => widget.locale.languageCode != 'en';
 
@@ -83,29 +83,33 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
   }
 
   Future<void> _open() async {
-    final local = _local;
-    if (local != null && local.status == 'done' && File(local.localPath).existsSync()) {
-      await _offline.markOpened(widget.profile.id, widget.resource.id);
-      if (!mounted) {
-        return;
-      }
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
-        locale: widget.locale, userId: widget.profile.id, resource: widget.resource, localPath: local.localPath,
-      )));
-      return;
-    }
+    if (_opening) return;
+    setState(() => _opening = true);
     try {
-      if (widget.resource.storagePath.isEmpty) {
-        throw StateError('offline-only');
-      }
-      _signedUrl ??= await _resources.createSignedUrl(widget.resource.storagePath);
-      if (_signedUrl != null) {
-        await launchUrl(Uri.parse(_signedUrl!), mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {
+      // First open downloads into the persistent course cache; later opens use
+      // the local file immediately, including while offline.
+      final localPath = await _offline.openResource(
+        userId: widget.profile.id,
+        resource: widget.resource,
+      );
+      await _load();
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
+        locale: widget.locale,
+        userId: widget.profile.id,
+        resource: widget.resource,
+        localPath: localPath,
+      )));
+    } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr ? 'Fichier indisponible hors connexion.' : 'File unavailable offline.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr
+              ? 'Ouverture impossible : le fichier nécessite une connexion ou est indisponible.'
+              : 'Unable to open: this file needs a connection or is unavailable.'),
+        ));
       }
+    } finally {
+      if (mounted) setState(() => _opening = false);
     }
   }
 
@@ -167,7 +171,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
             Text(_fr ? 'Échec — appuyez pour réessayer' : 'Failed — tap to retry', style: const TextStyle(fontSize: 10, color: Colors.redAccent)),
         ])),
         const SizedBox(width: 6),
-        if (_loading) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+        if (_loading || _opening) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
         else if (done)
           IconButton(onPressed: _open, tooltip: _fr ? 'Ouvrir' : 'Open', icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF166534)))
         else
