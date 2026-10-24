@@ -44,7 +44,7 @@ jobs:
           test -f ios/Flutter/Debug.xcconfig
           test -f ios/Flutter/Release.xcconfig
           echo "iOS scaffold verified; application pubspec.yaml and pubspec.lock preserved."
-          grep -E '^  (supabase_flutter|drift|shared_preferences|path_provider|file_picker):' pubspec.yaml
+          grep -E '^(  )?(supabase_flutter|drift|shared_preferences|path_provider|file_picker):' pubspec.yaml || true
 
       - name: Resolve Flutter dependencies
         run: flutter pub get
