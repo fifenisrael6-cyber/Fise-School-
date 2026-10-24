@@ -80,6 +80,17 @@ class _GroupChatPageState extends State<GroupChatPage> {
         callback: (_) { _load(showLoader: false); _loadGroupSettings(); },
       )
       ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'message_group_messages',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'group_id',
+          value: widget.group.id,
+        ),
+        callback: (_) => _load(showLoader: false),
+      )
+      ..onPostgresChanges(
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'message_group_members',
