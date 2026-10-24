@@ -45,16 +45,37 @@ class _TeacherEvaluationPublicationPageState
             ? 'La session ne correspond pas au profil enseignant. Reconnectez-vous.'
             : 'The active session does not match this teacher profile. Sign in again.');
       }
-      final rows = await _db
-          .from('assignments')
-          .select('id,teacher_id,class_id,subject_id,exam_id,title_fr,title_en,starts_at,due_at,results_publish_at,evaluation_file_path,evaluation_file_name,status')
-          .eq('teacher_id', widget.profile.id)
-          .not('exam_id', 'is', null)
-          .inFilter('status', ['published', 'closed'])
-          .order('starts_at');
+      final rows = await Future.wait<dynamic>([
+        _db.from('assignments')
+            .select('id,teacher_id,class_id,subject_id,exam_id,title_fr,title_en,starts_at,due_at,results_publish_at,evaluation_file_path,evaluation_file_name,status')
+            .eq('teacher_id', widget.profile.id)
+            .not('exam_id', 'is', null)
+            .inFilter('status', ['published', 'closed'])
+            .order('starts_at'),
+        _db.from('evaluations')
+            .select('id,teacher_id,subject_id,exam_id,title,starts_at,due_at,results_visible_at,pdf_path,pdf_name,correction_pdf_path,correction_pdf_name,status')
+            .eq('teacher_id', widget.profile.id)
+            .not('exam_id', 'is', null)
+            .inFilter('status', ['draft', 'published', 'closed'])
+            .order('starts_at'),
+      ]);
       if (!mounted) return;
+      final legacy = (rows[0] as List).map((r) => Map<String, dynamic>.from(r));
+      final automated = (rows[1] as List).map((raw) {
+        final row = Map<String, dynamic>.from(raw);
+        return <String, dynamic>{
+          ...row,
+          'title_fr': row['title'],
+          'title_en': row['title'],
+          'results_publish_at': row['results_visible_at'],
+          'evaluation_file_path': row['pdf_path'],
+          'evaluation_file_name': row['pdf_name'],
+          '_automated_evaluation': true,
+        };
+      });
       setState(() {
-        _exams = rows.map((r) => Map<String, dynamic>.from(r)).toList();
+        _exams = [...legacy, ...automated].toList()
+          ..sort((a, b) => (a['starts_at']?.toString() ?? '').compareTo(b['starts_at']?.toString() ?? ''));
         _loading = false;
       });
     } catch (e) {
@@ -76,6 +97,10 @@ class _TeacherEvaluationPublicationPageState
   }
 
   Future<void> _uploadPdf(Map<String, dynamic> exam) async {
+    if (exam['_automated_evaluation'] == true) {
+      await _uploadScheduledEvaluation(exam);
+      return;
+    }
     final user = _db.auth.currentUser;
     if (user == null || user.id != widget.profile.id) {
       _show(_fr ? 'Session expirée. Reconnectez-vous.' : 'Session expired. Sign in again.');
@@ -124,6 +149,103 @@ class _TeacherEvaluationPublicationPageState
         try { await _db.storage.from('assignment-files').remove([path]); } catch (_) {}
       }
       _show((_fr ? 'Échec de publication du PDF : ' : 'PDF upload failed: ') + e.toString());
+    } finally {
+      if (mounted) setState(() => _uploadingId = null);
+    }
+  }
+
+  Future<void> _uploadScheduledEvaluation(Map<String, dynamic> exam) async {
+    final user = _db.auth.currentUser;
+    if (user == null || user.id != widget.profile.id) {
+      _show(_fr ? 'Session expirée. Reconnectez-vous.' : 'Session expired. Sign in again.');
+      return;
+    }
+    if ((exam['pdf_path']?.toString() ?? '').trim().isNotEmpty ||
+        (exam['correction_pdf_path']?.toString() ?? '').trim().isNotEmpty) {
+      _show(_fr
+          ? 'Un sujet ou un corrigé est déjà associé. Contactez l’administration pour le remplacer.'
+          : 'An exam or correction PDF is already attached. Contact administration to replace it.');
+      return;
+    }
+
+    final subjectPick = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: const ['pdf'], withData: true,
+    );
+    if (subjectPick == null || subjectPick.files.isEmpty) return;
+    final subjectFile = subjectPick.files.single;
+    final subjectBytes = subjectFile.bytes;
+    if (subjectBytes == null || subjectBytes.isEmpty) {
+      _show(_fr ? 'Le sujet PDF est vide ou illisible.' : 'The exam PDF is empty or unreadable.');
+      return;
+    }
+
+    final correctionPick = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: const ['pdf'], withData: true,
+    );
+    if (correctionPick == null || correctionPick.files.isEmpty) return;
+    final correctionFile = correctionPick.files.single;
+    final correctionBytes = correctionFile.bytes;
+    if (correctionBytes == null || correctionBytes.isEmpty) {
+      _show(_fr ? 'Le corrigé PDF est vide ou illisible.' : 'The correction PDF is empty or unreadable.');
+      return;
+    }
+
+    final id = exam['id'].toString();
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    String safe(String name) => name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final subjectPath = '${widget.profile.id}/${id}_${stamp}_sujet_${safe(subjectFile.name)}';
+    final correctionPath = '${widget.profile.id}/${id}_${stamp}_corrige_${safe(correctionFile.name)}';
+    setState(() => _uploadingId = id);
+    var subjectUploaded = false;
+    var correctionUploaded = false;
+    var linked = false;
+    try {
+      await _db.storage.from('evaluation-papers').uploadBinary(
+        subjectPath, subjectBytes,
+        fileOptions: const FileOptions(contentType: 'application/pdf', upsert: false),
+      );
+      subjectUploaded = true;
+      await _db.storage.from('evaluation-papers').uploadBinary(
+        correctionPath, correctionBytes,
+        fileOptions: const FileOptions(contentType: 'application/pdf', upsert: false),
+      );
+      correctionUploaded = true;
+
+      await _db.from('evaluations').update({
+        'pdf_path': subjectPath,
+        'pdf_name': subjectFile.name,
+        'correction_pdf_path': correctionPath,
+        'correction_pdf_name': correctionFile.name,
+      }).eq('id', id).eq('teacher_id', widget.profile.id).select('id').single();
+      linked = true;
+
+      await _db.from('evaluations').update({
+        'status': 'published',
+      }).eq('id', id).eq('teacher_id', widget.profile.id).select('id').single();
+
+      _show(_fr
+          ? 'Sujet et corrigé PDF envoyés. L’épreuve est publiée dans le calendrier officiel.'
+          : 'Exam and correction PDFs uploaded. The exam is published in the official calendar.');
+      await _load();
+    } catch (e) {
+      if (linked) {
+        try {
+          await _db.from('evaluations').update({
+            'pdf_path': null,
+            'pdf_name': null,
+            'correction_pdf_path': null,
+            'correction_pdf_name': null,
+          }).eq('id', id).eq('teacher_id', widget.profile.id).eq('status', 'draft');
+        } catch (_) {}
+      }
+      final paths = <String>[
+        if (subjectUploaded) subjectPath,
+        if (correctionUploaded) correctionPath,
+      ];
+      if (paths.isNotEmpty) {
+        try { await _db.storage.from('evaluation-papers').remove(paths); } catch (_) {}
+      }
+      _show((_fr ? 'Échec de publication du sujet/corrigé : ' : 'Exam/correction upload failed: ') + e.toString());
     } finally {
       if (mounted) setState(() => _uploadingId = null);
     }
@@ -182,8 +304,14 @@ class _TeacherEvaluationPublicationPageState
                                     ListTile(
                                       contentPadding: EdgeInsets.zero,
                                       leading: const Icon(Icons.verified, color: Colors.green),
-                                      title: Text(_fr ? 'Sujet PDF publié' : 'PDF published'),
-                                      subtitle: Text(exam['evaluation_file_name']?.toString() ?? ''),
+                                      title: Text(exam['_automated_evaluation'] == true
+                                          ? (_fr ? 'Sujet et corrigé PDF publiés' : 'Exam and correction PDFs published')
+                                          : (_fr ? 'Sujet PDF publié' : 'PDF published')),
+                                      subtitle: Text([
+                                        exam['evaluation_file_name']?.toString() ?? '',
+                                        if (exam['_automated_evaluation'] == true)
+                                          exam['correction_pdf_name']?.toString() ?? '',
+                                      ].where((v) => v.trim().isNotEmpty).join(' · ')),
                                     )
                                   else
                                     SizedBox(
@@ -195,7 +323,9 @@ class _TeacherEvaluationPublicationPageState
                                             : const Icon(Icons.upload_file),
                                         label: Text(busy
                                             ? (_fr ? 'Envoi en cours…' : 'Uploading…')
-                                            : (_fr ? 'Joindre le sujet PDF' : 'Attach exam PDF')),
+                                            : (exam['_automated_evaluation'] == true
+                                                ? (_fr ? 'Envoyer le sujet ET le corrigé PDF' : 'Upload exam AND correction PDFs')
+                                                : (_fr ? 'Joindre le sujet PDF' : 'Attach exam PDF'))),
                                       ),
                                     ),
                                 ],
