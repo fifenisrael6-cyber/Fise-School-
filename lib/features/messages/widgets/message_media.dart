@@ -281,9 +281,11 @@ class _DocumentCard extends StatelessWidget {
 
 /// Lecteur de note vocale / audio : lecture-pause, barre de progression, durée.
 class AudioMessagePlayer extends StatefulWidget {
-  const AudioMessagePlayer({super.key, this.localPath, this.url, this.loading = false});
+  const AudioMessagePlayer({super.key, this.localPath, this.url, this.remotePath, this.fileName, this.loading = false});
   final String? localPath;
   final String? url;
+  final String? remotePath;
+  final String? fileName;
   final bool loading;
 
   @override
@@ -322,10 +324,23 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
       await _player.resume();
       return;
     }
-    final local = widget.localPath;
+    var local = widget.localPath;
+    if (local == null || !File(local).existsSync()) {
+      local = await _MessageMediaCache.find(
+        remotePath: widget.remotePath,
+        fileName: widget.fileName,
+        url: widget.url,
+      );
+    }
     if (local != null && File(local).existsSync()) {
       await _player.play(DeviceFileSource(local));
     } else if (widget.url != null) {
+      // Start playback immediately; persist the full audio for later offline use.
+      unawaited(_MessageMediaCache.download(
+        remotePath: widget.remotePath,
+        fileName: widget.fileName,
+        url: widget.url,
+      ));
       await _player.play(UrlSource(widget.url!));
     }
   }
@@ -374,29 +389,67 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
   }
 }
 
-class MediaImageViewerPage extends StatelessWidget {
-  const MediaImageViewerPage({super.key, this.localPath, this.url, required this.title});
+class MediaImageViewerPage extends StatefulWidget {
+  const MediaImageViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
+  State<MediaImageViewerPage> createState() => _MediaImageViewerPageState();
+}
+
+class _MediaImageViewerPageState extends State<MediaImageViewerPage> {
+  String? _cachedPath;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_prepareCache());
+  }
+
+  Future<void> _prepareCache() async {
+    if (widget.localPath != null && await File(widget.localPath!).exists()) return;
+    final cached = await _MessageMediaCache.find(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (cached != null) {
+      if (mounted) setState(() => _cachedPath = cached);
+      return;
+    }
+    final saved = await _MessageMediaCache.download(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (mounted && saved != null) setState(() => _cachedPath = saved);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final Widget image = localPath != null && File(localPath!).existsSync()
-        ? Image.file(File(localPath!))
-        : (url != null ? Image.network(url!) : const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64));
+    final local = _cachedPath ??
+        ((widget.localPath != null && File(widget.localPath!).existsSync()) ? widget.localPath : null);
+    final Widget image = local != null
+        ? Image.file(File(local))
+        : (widget.url != null
+            ? Image.network(widget.url!)
+            : const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64));
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(title, overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.title, overflow: TextOverflow.ellipsis)),
       body: Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: image)),
     );
   }
 }
 
 class MediaVideoViewerPage extends StatefulWidget {
-  const MediaVideoViewerPage({super.key, this.localPath, this.url, required this.title});
+  const MediaVideoViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
@@ -410,22 +463,42 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
   @override
   void initState() {
     super.initState();
-    final local = widget.localPath;
-    final VideoPlayerController? c = (local != null && File(local).existsSync())
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    var local = widget.localPath;
+    if (local == null || !await File(local).exists()) {
+      local = await _MessageMediaCache.find(
+        remotePath: widget.remotePath,
+        fileName: widget.title,
+        url: widget.url,
+      );
+    }
+    if (local == null && widget.url != null) {
+      // Stream the video now; cache it in parallel for the next offline opening.
+      unawaited(_MessageMediaCache.download(
+        remotePath: widget.remotePath,
+        fileName: widget.title,
+        url: widget.url,
+      ));
+    }
+    final VideoPlayerController? c = local != null && await File(local).exists()
         ? VideoPlayerController.file(File(local))
         : (widget.url != null ? VideoPlayerController.networkUrl(Uri.parse(widget.url!)) : null);
     if (c == null) {
-      _failed = true;
+      if (mounted) setState(() => _failed = true);
       return;
     }
     _controller = c;
-    c.initialize().then((_) {
+    try {
+      await c.initialize();
       if (!mounted) return;
       setState(() {});
-      c.play();
-    }).catchError((_) {
+      await c.play();
+    } catch (_) {
       if (mounted) setState(() => _failed = true);
-    });
+    }
   }
 
   @override
@@ -463,9 +536,10 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
 }
 
 class MediaPdfViewerPage extends StatefulWidget {
-  const MediaPdfViewerPage({super.key, this.localPath, this.url, required this.title});
+  const MediaPdfViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
@@ -484,17 +558,30 @@ class _MediaPdfViewerPageState extends State<MediaPdfViewerPage> {
 
   Future<void> _load() async {
     try {
-      final local = widget.localPath;
-      final Future<PdfDocument> doc;
-      if (local != null && File(local).existsSync()) {
-        doc = PdfDocument.openFile(local);
-      } else if (widget.url != null) {
-        final res = await http.get(Uri.parse(widget.url!)).timeout(const Duration(seconds: 30));
-        if (res.statusCode != 200) throw Exception('http ${res.statusCode}');
-        doc = PdfDocument.openData(res.bodyBytes);
-      } else {
-        throw Exception('no source');
+      var local = widget.localPath;
+      if (local == null || !await File(local).exists()) {
+        local = await _MessageMediaCache.find(
+          remotePath: widget.remotePath,
+          fileName: widget.title,
+          url: widget.url,
+        );
       }
+      if (local != null && await File(local).exists()) {
+        final doc = PdfDocument.openFile(local);
+        if (!mounted) return;
+        setState(() => _controller = PdfControllerPinch(document: doc));
+        return;
+      }
+      if (widget.url == null) throw Exception('no source');
+      final res = await http.get(Uri.parse(widget.url!)).timeout(const Duration(seconds: 60));
+      if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('http ${res.statusCode}');
+      final key = (widget.remotePath?.isNotEmpty == true) ? widget.remotePath! : widget.url!;
+      final savedPath = await _MessageMediaCache.saveBytes(
+        remotePath: key,
+        fileName: widget.title,
+        bytes: res.bodyBytes,
+      );
+      final doc = PdfDocument.openFile(savedPath);
       if (!mounted) return;
       setState(() => _controller = PdfControllerPinch(document: doc));
     } catch (_) {
@@ -516,5 +603,129 @@ class _MediaPdfViewerPageState extends State<MediaPdfViewerPage> {
             : _controller == null
                 ? const Center(child: CircularProgressIndicator())
                 : PdfViewPinch(controller: _controller!),
+      );
+}
+
+/// In-app document screen. Web-readable formats are rendered in the embedded
+/// WebView; text formats are rendered natively. The original file is cached so
+/// subsequent opens do not need to download it again.
+class MediaDocumentViewerPage extends StatefulWidget {
+  const MediaDocumentViewerPage({
+    super.key,
+    this.localPath,
+    this.url,
+    this.remotePath,
+    required this.title,
+    this.mimeType,
+    this.french = true,
+  });
+
+  final String? localPath;
+  final String? url;
+  final String? remotePath;
+  final String title;
+  final String? mimeType;
+  final bool french;
+
+  @override
+  State<MediaDocumentViewerPage> createState() => _MediaDocumentViewerPageState();
+}
+
+class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
+  String? _localPath;
+  String? _textContent;
+  WebViewController? _webController;
+  bool _loading = true;
+  bool _failed = false;
+
+  bool get _isTextFile {
+    final name = widget.title.toLowerCase();
+    return name.endsWith('.txt') || name.endsWith('.csv') ||
+        name.endsWith('.json') || name.endsWith('.md') || name.endsWith('.xml');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_prepare());
+  }
+
+  Future<void> _prepare() async {
+    try {
+      var local = widget.localPath;
+      if (local == null || !await File(local).exists()) {
+        local = await _MessageMediaCache.find(
+          remotePath: widget.remotePath,
+          fileName: widget.title,
+          url: widget.url,
+        );
+      }
+      if (local != null && await File(local).exists()) {
+        _localPath = local;
+        if (_isTextFile) {
+          _textContent = await File(local).readAsString();
+        } else if (widget.url == null) {
+          if (mounted) setState(() { _loading = false; });
+          return;
+        }
+      }
+
+      if (widget.url != null) {
+        final controller = WebViewController()
+          ..setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.loadRequest(Uri.parse(widget.url!));
+        _webController = controller;
+        if (local == null) {
+          unawaited(_cacheInBackground());
+        }
+      } else if (local == null) {
+        throw Exception('no source');
+      }
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) setState(() { _failed = _localPath == null; _loading = false; });
+    }
+  }
+
+  Future<void> _cacheInBackground() async {
+    final saved = await _MessageMediaCache.download(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (mounted && saved != null) setState(() => _localPath = saved);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(widget.title, overflow: TextOverflow.ellipsis)),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _failed
+                ? Center(child: Text(widget.french ? 'Impossible d’ouvrir ce fichier.' : 'Unable to open this file.'))
+                : _textContent != null
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: SelectableText(_textContent!),
+                      )
+                    : _webController != null
+                        ? WebViewWidget(controller: _webController!)
+                        : Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.insert_drive_file_outlined, size: 56),
+                                  const SizedBox(height: 12),
+                                  Text(widget.title, textAlign: TextAlign.center),
+                                  const SizedBox(height: 8),
+                                  Text(widget.french
+                                      ? 'Fichier conservé sur cet appareil. L’aperçu intégré de ce format n’est pas disponible.'
+                                      : 'File saved on this device. An embedded preview for this format is unavailable.'),
+                                ],
+                              ),
+                            ),
+                          ),
       );
 }
