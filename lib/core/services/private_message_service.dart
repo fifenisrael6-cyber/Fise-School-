@@ -148,7 +148,10 @@ class PrivateMessageService {
     // Network delivery continues in the background; the message stays visible
     // with a pending check until Supabase confirms it.
     _lastRejectedMessageId = null;
-    unawaited(syncPending());
+    unawaited(syncPending()
+        .catchError((_) {})
+        .then((_) => syncPending())
+        .catchError((_) {}));
   }
 
   Future<void>? _syncPendingFuture;
