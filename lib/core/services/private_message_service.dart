@@ -60,7 +60,7 @@ class PrivateMessageService {
 
   Future<List<PrivateMessage>> listConversation(String contactId) async {
     try {
-      await syncPending();
+      unawaited(syncPending());
       await _client.rpc('mark_private_messages_delivered', params: {'p_sender_id': contactId}).timeout(const Duration(seconds: 8));
       final result = await _client.rpc(
         'list_private_messages',
@@ -88,6 +88,10 @@ class PrivateMessageService {
       return _readPrivateCache(contactId);
     }
   }
+
+  /// Returns the local snapshot without waiting for Supabase. Used to paint chats instantly.
+  Future<List<PrivateMessage>> getCachedConversation(String contactId) =>
+      _readPrivateCache(contactId);
 
   Future<List<PrivateMessage>> _readPrivateCache(String contactId, {List<dynamic>? fallbackRows}) async {
     final rows = fallbackRows ?? await _db.getCachedMessages(_userId, 'private', contactId);
@@ -136,21 +140,11 @@ class PrivateMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    // Try delivery immediately. A server quota denial removes the rejected
-    // outbox item, but must still be reported as failure so the composer keeps
-    // the draft instead of pretending the message was sent.
+    // The local outbox/cache is the source of truth for immediate UI feedback.
+    // Network delivery continues in the background; the message stays visible
+    // with a pending check until Supabase confirms it.
     _lastRejectedMessageId = null;
-    await syncPending();
-    if (_lastRejectedMessageId == id) {
-      throw StateError('La limite gratuite de messagerie est atteinte. Réessayez après le renouvellement du quota ou utilisez Premium.');
-    }
-    final stillPending = await _db.getQueuedMessages(_userId, 'private');
-    if (stillPending.any((row) => row.read<String>('id') == id)) {
-      throw StateError(
-        'Le message est conservé sur cet appareil, mais Supabase ne l’a pas accepté. '
-        'Vérifiez votre connexion et que le destinataire est autorisé pour cette conversation, puis réessayez.',
-      );
-    }
+    unawaited(syncPending());
   }
 
   Future<void>? _syncPendingFuture;
