@@ -134,10 +134,14 @@ class PrivateMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    // Try to deliver immediately and only report success when the server
-    // accepted the message. If offline or rejected, keep the queued copy so the
-    // composer can show a useful error and the user can retry without losing text.
+    // Try delivery immediately. A server quota denial removes the rejected
+    // outbox item, but must still be reported as failure so the composer keeps
+    // the draft instead of pretending the message was sent.
+    _lastRejectedMessageId = null;
     await syncPending();
+    if (_lastRejectedMessageId == id) {
+      throw StateError('La limite gratuite de messagerie est atteinte. Réessayez après le renouvellement du quota ou utilisez Premium.');
+    }
     final stillPending = await _db.getQueuedMessages(_userId, 'private');
     if (stillPending.any((row) => row.read<String>('id') == id)) {
       throw StateError(
@@ -148,6 +152,7 @@ class PrivateMessageService {
   }
 
   Future<void>? _syncPendingFuture;
+  String? _lastRejectedMessageId;
 
   Future<void> syncPending() {
     final active = _syncPendingFuture;
@@ -208,6 +213,7 @@ class PrivateMessageService {
           final denial = MessageQuotaEvents.kindFrom(insertError);
           if (denial != null) {
             await _db.discardRejectedMessage(id);
+            _lastRejectedMessageId = id;
             MessageQuotaEvents.notify(denial);
             continue;
           }
