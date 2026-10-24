@@ -46,8 +46,8 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
         _db.from('profiles')
             .select('id,first_name,last_name,email,subsystem,sector')
             .eq('role', 'teacher').order('last_name'),
-        _db.from('assignments')
-            .select('id,teacher_id,class_id,subject_id,exam_id,title_fr,title_en,starts_at,due_at,results_publish_at,evaluation_file_path,evaluation_file_name,status')
+        _db.from('evaluations')
+            .select('id,teacher_id,subject_id,exam_id,title,starts_at,due_at,results_visible_at,pdf_path,pdf_name,correction_pdf_path,correction_pdf_name,status,evaluation_classes(class_id)')
             .not('exam_id', 'is', null).order('starts_at'),
         _db.from('class_subjects')
             .select('class_id,subject_id').eq('is_active', true),
@@ -58,7 +58,22 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
         _subjects = (results[1] as List).map((r) => Map<String, dynamic>.from(r)).toList();
         _exams = (results[2] as List).map((r) => Map<String, dynamic>.from(r)).toList();
         _teachers = (results[3] as List).map((r) => Map<String, dynamic>.from(r)).toList();
-        _schedules = (results[4] as List).map((r) => Map<String, dynamic>.from(r)).toList();
+        _schedules = (results[4] as List).map((raw) {
+          final row = Map<String, dynamic>.from(raw);
+          final targets = row.remove('evaluation_classes') as List? ?? const [];
+          final targetClassId = targets.isEmpty
+              ? null
+              : Map<String, dynamic>.from(targets.first as Map)['class_id'];
+          return {
+            ...row,
+            'class_id': targetClassId,
+            'title_fr': row['title'],
+            'title_en': row['title'],
+            'results_publish_at': row['results_visible_at'],
+            'evaluation_file_path': row['pdf_path'],
+            'evaluation_file_name': row['pdf_name'],
+          };
+        }).toList();
         _classSubjects = (results[5] as List).map((r) => Map<String, dynamic>.from(r)).toList();
         _loading = false;
       });
@@ -103,7 +118,34 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
 
   DateTime _defaultStart() {
     final tomorrow = DateTime.now().add(const Duration(days: 1));
-    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 8);
+    final isWeekend = tomorrow.weekday == DateTime.saturday ||
+        tomorrow.weekday == DateTime.sunday;
+    return DateTime(
+      tomorrow.year,
+      tomorrow.month,
+      tomorrow.day,
+      isWeekend ? 18 : 19,
+      isWeekend ? 0 : 20,
+    );
+  }
+
+  bool _isAllowedWindow(DateTime startsAt, DateTime dueAt) {
+    if (startsAt.year != dueAt.year ||
+        startsAt.month != dueAt.month ||
+        startsAt.day != dueAt.day) {
+      return false;
+    }
+    final isWeekend = startsAt.weekday == DateTime.saturday ||
+        startsAt.weekday == DateTime.sunday;
+    final earliest = isWeekend
+        ? const TimeOfDay(hour: 18, minute: 0)
+        : const TimeOfDay(hour: 19, minute: 20);
+    final startMinutes = startsAt.hour * 60 + startsAt.minute;
+    final dueMinutes = dueAt.hour * 60 + dueAt.minute;
+    final earliestMinutes = earliest.hour * 60 + earliest.minute;
+    return startMinutes >= earliestMinutes &&
+        dueMinutes <= 22 * 60 &&
+        dueMinutes > startMinutes;
   }
 
   Future<DateTime?> _pickDateTime(BuildContext context, DateTime current) async {
@@ -247,29 +289,45 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
     final selectedExam = _byId(_exams, result['exam_id']);
     final selectedSubject = _byId(_subjects, result['subject_id']);
     final selectedClass = _byId(_classes, result['class_id']);
+    final starts = result['starts_at'] as DateTime;
+    final due = result['due_at'] as DateTime;
+    if (!_isAllowedWindow(starts, due)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr
+        ? 'Horaires autorisés : du lundi au vendredi de 19 h 20 à 22 h, le week-end de 18 h à 22 h. L’épreuve doit se terminer le même jour.'
+        : 'Allowed hours: Monday-Friday 19:20-22:00, weekends 18:00-22:00. The exam must finish on the same day.')));
+      return;
+    }
+    final title = '${selectedExam?['name_fr'] ?? selectedExam?['name_en'] ?? ''} — ${selectedSubject?['name_fr'] ?? selectedSubject?['name_en'] ?? ''} (${selectedClass?['display_name'] ?? ''})';
+    String? evaluationId;
     try {
-      await _db.from('assignments').insert({
-        'course_id': null,
-        'lesson_id': null,
+      final inserted = await _db.from('evaluations').insert({
         'teacher_id': result['teacher_id'],
-        'class_id': result['class_id'],
         'subject_id': result['subject_id'],
         'exam_id': result['exam_id'],
-        'title_fr': '${selectedExam?['name_fr'] ?? selectedExam?['name_en'] ?? ''} — ${selectedSubject?['name_fr'] ?? selectedSubject?['name_en'] ?? ''} (${selectedClass?['display_name'] ?? ''})',
-        'title_en': '${selectedExam?['name_en'] ?? selectedExam?['name_fr'] ?? ''} — ${selectedSubject?['name_en'] ?? selectedSubject?['name_fr'] ?? ''} (${selectedClass?['display_name'] ?? ''})',
-        'instructions_fr': 'Épreuve officielle programmée par l’administration.',
-        'instructions_en': 'Official examination scheduled by the administration.',
-        'starts_at': (result['starts_at'] as DateTime).toUtc().toIso8601String(),
-        'due_at': (result['due_at'] as DateTime).toUtc().toIso8601String(),
-        'results_publish_at': (result['results_publish_at'] as DateTime).toUtc().toIso8601String(),
-        'status': 'published',
+        'title': title,
+        'instructions': 'Épreuve officielle programmée par l’administration.',
+        'starts_at': starts.toUtc().toIso8601String(),
+        'due_at': due.toUtc().toIso8601String(),
+        'results_visible_at': (result['results_publish_at'] as DateTime).toUtc().toIso8601String(),
         'max_score': 20,
+        'weight': 1,
+        'status': 'draft',
+      }).select('id').single();
+      evaluationId = inserted['id'].toString();
+      await _db.from('evaluation_classes').insert({
+        'evaluation_id': evaluationId,
+        'class_id': result['class_id'],
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr ? 'Calendrier publié. L’enseignant peut maintenant joindre le PDF.' : 'Schedule published. The teacher can now attach the PDF.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr
+          ? 'Épreuve programmée. L’enseignant doit maintenant envoyer le sujet PDF et son corrigé PDF.'
+          : 'Exam scheduled. The teacher must now upload the exam PDF and its correction PDF.')));
         await _load();
       }
     } catch (e) {
+      if (evaluationId != null) {
+        try { await _db.from('evaluations').delete().eq('id', evaluationId); } catch (_) {}
+      }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((_fr ? 'Échec de programmation : ' : 'Scheduling failed: ') + e.toString())));
     }
   }
