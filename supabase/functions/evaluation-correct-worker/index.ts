@@ -144,7 +144,24 @@ async function createCorrectionPdf(admin: any, job: any, questions: any[]) {
     const scale = Math.min(pageWidth / image.width, (pageHeight - 34) / image.height);
     const width = image.width * scale;
     const height = image.height * scale;
-    page.drawImage(image, { x: (pageWidth - width) / 2, y: 24 + (pageHeight - 34 - height) / 2, width, height });
+    const imageX = (pageWidth - width) / 2;
+    const imageY = 24 + (pageHeight - 34 - height) / 2;
+    page.drawImage(image, { x: imageX, y: imageY, width, height });
+    // Only draw model-identified regions with high confidence; never guess coordinates.
+    const photoIndex = photos.indexOf(photo) + 1;
+    for (const q of questions) {
+      const a = q?.annotation;
+      if (!a || Number(a.photo) !== photoIndex || Number(a.confidence) < 0.85) continue;
+      const nx = Number(a.x), ny = Number(a.y), nw = Number(a.width), nh = Number(a.height);
+      if (![nx, ny, nw, nh].every(Number.isFinite) || nx < 0 || ny < 0 ||
+          nw <= 0 || nh <= 0 || nx + nw > 1 || ny + nh > 1) continue;
+      page.drawRectangle({
+        x: imageX + nx * width, y: imageY + (1 - ny - nh) * height,
+        width: nw * width, height: nh * height,
+        borderColor: rgb(0.85, 0.02, 0.06), borderWidth: 2,
+        color: rgb(1, 0.05, 0.05), opacity: 0.04, borderOpacity: 0.95,
+      });
+    }
     page.drawRectangle({ x: 0, y: pageHeight - 28, width: pageWidth, height: 28, color: rgb(0.72, 0.05, 0.08) });
     page.drawText(pdfSafeText("COPIE ORIGINALE - voir le releve des erreurs a la fin"), {
       x: 18, y: pageHeight - 19, size: 9, font: bold, color: rgb(1, 1, 1),
@@ -285,6 +302,7 @@ async function processCorrection(admin: any, geminiKey: string, minConfidence: n
       `- confidence entre 0 et 1, honnête (n'affiche pas de certitude que tu n'as pas).\n` +
       `- ai_points entre 0 et max_points. Pas de note hors barème.\n` +
       `- feedback_fr : une phrase courte et factuelle.\n` +
+      `- annotation : objet optionnel {"photo":1,"x":0.1,"y":0.2,"width":0.3,"height":0.08,"confidence":0.9}. Ajoute-le UNIQUEMENT si tu localises avec grande certitude la zone exacte de cette réponse sur une photo. Coordonnées normalisées de 0 à 1 depuis le coin supérieur gauche ; photo=1 pour la première photo. Si incertain, omets annotation. Ne devine jamais.\\n` +
       `- flags : parmi "illisible", "ambigu", "hors_sujet", "incomplet", "bareme_deduit", "image_floue".\n` +
       `- image_quality : une entrée par photographie fournie, quality = "bonne" | "moyenne" | "mauvaise" | "illisible".\n` +
       `FORMAT JSON STRICT : {"questions":[{"question_key":"1","question_label":"...","student_answer":"...",` +
@@ -323,6 +341,17 @@ async function processCorrection(admin: any, geminiKey: string, minConfidence: n
       ai_points: aiPoints,
       max_points: max,
       feedback_fr: q ? String(q.feedback_fr ?? "") : "Question non retrouvée dans la copie.",
+      annotation: (() => {
+        const a = q?.annotation;
+        if (!a || Number(a.confidence) < 0.85) return null;
+        const photo = Number(a.photo);
+        const x = Number(a.x), y = Number(a.y), width = Number(a.width), height = Number(a.height);
+        if (!Number.isInteger(photo) || photo < 1 || photo > photos.length ||
+            ![x, y, width, height].every(Number.isFinite) ||
+            x < 0 || y < 0 || width <= 0 || height <= 0 ||
+            x + width > 1 || y + height > 1) return null;
+        return { photo, x, y, width, height, confidence: Math.min(1, Number(a.confidence)) };
+      })(),
       flags,
     };
   };
