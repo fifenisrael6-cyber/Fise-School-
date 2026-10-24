@@ -68,6 +68,17 @@ class NotchPayService {
     );
   }
 
+  Future<Map<String, dynamic>> verifyPayment(String reference) async {
+    final response = await _client.functions.invoke(
+      'notchpay-verify',
+      body: {'reference': reference},
+    );
+    if (response.data is! Map) {
+      throw Exception('Réponse de vérification du paiement invalide.');
+    }
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<String> getPaymentStatus(String reference) async {
     final result = await _client.from('payment_orders')
         .select('status').eq('reference', reference).maybeSingle();
