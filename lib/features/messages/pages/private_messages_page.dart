@@ -60,7 +60,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.initState();
     MessageQuotaEvents.denied.addListener(_onMessageDenied);
     _attachment = widget.initialAttachment;
-    _contactsFuture = _service.listContacts();
+    _contactsFuture = _loadContactsInstant();
     _loadConversationPreferences();
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
@@ -71,7 +71,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             _select(selected);
           }
           if (mounted) {
-            setState(() => _contactsFuture = _service.listContacts());
+            setState(() => _contactsFuture = _loadContactsInstant());
           }
         }
       })
@@ -87,6 +87,18 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       .subscribe();
   }
 
+
+  Future<List<MessageContact>> _loadContactsInstant() async {
+    final cached = await _service.getCachedContacts();
+    if (cached.isEmpty) return _service.listContacts();
+    unawaited(_refreshContactsInBackground());
+    return cached;
+  }
+
+  Future<void> _refreshContactsInBackground() async {
+    final contacts = await _service.listContacts();
+    if (mounted) setState(() => _contactsFuture = Future.value(contacts));
+  }
 
   Future<void> _loadConversationPreferences() async {
     try {
