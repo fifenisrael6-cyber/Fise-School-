@@ -12,10 +12,10 @@ const LITERARY_SHARE = 200;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Authentication required." }, 401);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const publicKey = Deno.env.get("NOTCHPAY_PUBLIC_KEY");
     if (!supabaseUrl || !publicKey) throw new Error("Notch Pay secrets are not configured.");
@@ -24,32 +24,45 @@ Deno.serve(async (req) => {
     const { data: authData, error: authError } = await admin.auth.getUser(authHeader.substring(7));
     if (authError || !authData.user) return json({ error: "Invalid session." }, 401);
 
+    const { data: settings, error: settingsError } = await admin
+      .from("payment_settings").select("enabled").eq("id", true).maybeSingle();
+    if (settingsError) throw settingsError;
+    if (settings?.enabled !== true) {
+      return json({ error: "Les paiements sont temporairement désactivés. Réessaie plus tard." }, 503);
+    }
+
     const body = await req.json().catch(() => ({}));
-    // Le prix est fixé par le serveur : toute autre valeur envoyée par le client est refusée.
     const amount = Number(body?.amount ?? PREMIUM_PRICE_XAF);
     const currency = String(body?.currency ?? PREMIUM_CURRENCY).toUpperCase();
     if (amount !== PREMIUM_PRICE_XAF || currency !== PREMIUM_CURRENCY) {
-      return json({ error: `Fise School Premium costs ${PREMIUM_PRICE_XAF} ${PREMIUM_CURRENCY}.` }, 400);
+      return json({ error: `Fise School Premium coûte ${PREMIUM_PRICE_XAF} ${PREMIUM_CURRENCY}.` }, 400);
     }
+    const channel = String(body?.channel ?? "");
+    if (!["cm.mtn", "cm.orange"].includes(channel)) {
+      return json({ error: "Choisis MTN Mobile Money ou Orange Money." }, 400);
+    }
+    const rawPhone = String(body?.phone ?? "").trim().replace(/[\s().-]/g, "");
+    const digits = rawPhone.replace(/^\+?237/, "");
+    if (!/^6[0-9]{8}$/.test(digits)) {
+      return json({ error: "Entre un numéro camerounais valide à 9 chiffres, commençant par 6." }, 400);
+    }
+    const phone = `+237${digits}`;
 
     const { data: profile, error: profileError } = await admin
       .from("profiles").select("first_name,last_name,email,role").eq("id", authData.user.id).single();
     if (profileError) throw profileError;
-    if (profile.role !== "student") return json({ error: "Premium is reserved for students." }, 403);
+    if (profile.role !== "student") return json({ error: "Premium est réservé aux élèves." }, 403);
 
-    // Enseignants concernés selon l'affectation de classe de l'élève
     const { data: teachers } = await admin.rpc("resolve_premium_teachers", { p_student_id: authData.user.id });
     const scienceTeacher: string | null = teachers?.science_teacher_id ?? null;
     const literaryTeacher: string | null = teachers?.literary_teacher_id ?? null;
     const scienceCommission = scienceTeacher ? SCIENCE_SHARE : 0;
     const literaryCommission = literaryTeacher ? LITERARY_SHARE : 0;
-
-    // Code enseignant historique (traçabilité uniquement ; il ne crée plus de commission à lui seul)
     const teacherCode = String(body?.teacher_code ?? "").trim();
     let legacyTeacherId: string | null = null;
     if (teacherCode) {
       const { data: resolved, error: resolveError } = await admin.rpc("resolve_teacher_payment_code", { p_code: teacherCode });
-      if (resolveError || !resolved) return json({ error: "Invalid teacher code." }, 400);
+      if (resolveError || !resolved) return json({ error: "Code enseignant invalide." }, 400);
       legacyTeacherId = String(resolved);
     }
 
@@ -58,44 +71,49 @@ Deno.serve(async (req) => {
     const email = String(profile.email ?? authData.user.email ?? "").trim();
     const name = `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim();
     const description = "Abonnement Fise School Premium — 30 jours";
-
-    // 1) On enregistre la commande AVANT d'appeler Notch Pay (pas de paiement orphelin).
     const { error: insertError } = await admin.from("payment_orders").insert({
       user_id: authData.user.id, reference, amount, currency, status: "NOTPAY", description, provider: "notchpay",
-      teacher_id: legacyTeacherId,
-      science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
+      teacher_id: legacyTeacherId, science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
       science_commission_xaf: scienceCommission, literary_commission_xaf: literaryCommission,
       teacher_commission_xaf: scienceCommission + literaryCommission,
       platform_revenue_xaf: amount - scienceCommission - literaryCommission,
     });
     if (insertError) throw insertError;
 
-    const paymentResponse = await fetch("https://api.notchpay.co/payments", {
+    const initResponse = await fetch("https://api.notchpay.co/payments", {
       method: "POST",
       headers: { Authorization: publicKey, "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        amount, currency,
-        customer: { name: name || "Fise School Student", ...(email ? { email } : {}) },
+        amount, currency, customer: { name: name || "Fise School Student", ...(email ? { email } : {}), phone },
         description, reference, callback,
       }),
     });
-    const paymentData = await paymentResponse.json().catch(() => ({}));
-    if (!paymentResponse.ok) {
+    const initData = await initResponse.json().catch(() => ({}));
+    if (!initResponse.ok) {
       await admin.rpc("mark_notchpay_payment_failed", { p_reference: reference, p_status: "FAILED", p_reason: "init_failed" });
-      throw new Error(paymentData?.message ?? "Notch Pay payment initialization failed.");
+      return json({ error: initData?.message ?? "Impossible de créer la transaction chez Notch Pay." }, 502);
     }
 
-    const authorizationUrl = paymentData?.authorization_url ?? paymentData?.transaction?.authorization_url;
-    const returnedReference = String(paymentData?.transaction?.merchant_reference ?? reference);
-    if (!authorizationUrl) throw new Error("Notch Pay returned no authorization URL.");
-
-    await admin.from("payment_orders").update({
-      status: "PENDING",
-      provider_transaction_id: paymentData?.transaction?.id ?? null,
-      updated_at: new Date().toISOString(),
+    const providerReference = String(initData?.transaction?.reference ?? initData?.transaction?.merchant_reference ?? reference);
+    const chargeResponse = await fetch(`https://api.notchpay.co/payments/${encodeURIComponent(providerReference)}`, {
+      method: "POST",
+      headers: { Authorization: publicKey, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ channel, phone }),
+    });
+    const chargeData = await chargeResponse.json().catch(() => ({}));
+    if (!chargeResponse.ok) {
+      await admin.rpc("mark_notchpay_payment_failed", { p_reference: reference, p_status: "FAILED", p_reason: "charge_init_failed" });
+      return json({ error: chargeData?.message ?? "L'opérateur n'a pas accepté la demande de paiement." }, 502);
+    }
+    const { error: updateError } = await admin.from("payment_orders").update({
+      status: "PENDING", provider_transaction_id: providerReference, updated_at: new Date().toISOString(),
     }).eq("reference", reference);
-
-    return json({ authorization_url: authorizationUrl, reference: returnedReference });
+    if (updateError) throw updateError;
+    return json({
+      reference, status: String(chargeData?.status ?? "Accepted").toUpperCase(),
+      message: chargeData?.message ?? "Demande envoyée. Confirme le paiement sur ton téléphone.",
+      channel, phone,
+    });
   } catch (error) {
     console.error("[notchpay-payment]", error instanceof Error ? error.message : error);
     return json({ error: "Impossible de démarrer le paiement. Réessaie dans un instant." }, 500);
