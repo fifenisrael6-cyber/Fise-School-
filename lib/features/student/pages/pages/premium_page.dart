@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/notchpay_service.dart';
 import '../../../../core/services/subscription_service.dart';
@@ -25,11 +24,22 @@ class _PremiumPageState extends State<PremiumPage> {
 
   bool _loading = true;
   bool _processingPayment = false;
+  bool _verifyingPayment = false;
+  final TextEditingController _phoneController = TextEditingController();
+  String _paymentChannel = 'cm.orange';
+  String? _paymentReference;
+  String? _paymentStatus;
 
   @override
   void initState() {
     super.initState();
     _loadSubscription();
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSubscription() async {
@@ -72,133 +82,81 @@ class _PremiumPageState extends State<PremiumPage> {
   }
 
   Future<void> _startPremiumPayment() async {
-    if (_processingPayment) {
-      return;
-    }
-
+    if (_processingPayment) return;
     final user = Supabase.instance.client.auth.currentUser;
-
     if (user == null) {
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Tu dois être connecté pour effectuer un paiement.'
-            : 'You must be signed in to make a payment.',
-      );
-
+      _showMessage(widget.locale.languageCode == 'fr'
+          ? 'Tu dois être connecté pour effectuer un paiement.'
+          : 'You must be signed in to make a payment.');
       return;
     }
 
-    final email = user.email?.trim();
-
-    if (email == null || email.isEmpty) {
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Aucune adresse e-mail n’est associée à ton compte.'
-            : 'No email address is associated with your account.',
-      );
-
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty) {
+      _showMessage(widget.locale.languageCode == 'fr'
+          ? 'Saisis le numéro MTN ou Orange à débiter.'
+          : 'Enter the MTN or Orange number to charge.');
       return;
     }
 
-    setState(() {
-      _processingPayment = true;
-    });
-
+    setState(() => _processingPayment = true);
     try {
-      final metadata = user.userMetadata;
-
-      final metadataName =
-          metadata?['full_name'] ??
-          metadata?['name'] ??
-          metadata?['display_name'];
-
-      final name = metadataName is String && metadataName.trim().isNotEmpty
-          ? metadataName.trim()
-          : 'Fise School Student';
-
       final payment = await _notchPayService.createPayment(
-        email: email,
-        name: name,
         amount: 2000,
         currency: 'XAF',
         description: 'Abonnement Fise School Premium - 30 jours',
+        channel: _paymentChannel,
+        phone: phone,
       );
-
-      if (!mounted) {
-        return;
-      }
-
-      final authorizationUrl = payment.authorizationUrl;
-
-      if (authorizationUrl.trim().isEmpty) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Le lien de paiement est vide.'
-              : 'The payment link is empty.',
-        );
-
-        return;
-      }
-
-      final url = Uri.tryParse(authorizationUrl);
-
-      if (url == null || !url.hasScheme || !url.hasAuthority) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Le lien de paiement reçu est invalide.'
-              : 'The payment link received is invalid.',
-        );
-
-        return;
-      }
-
-      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-
-      if (!mounted) {
-        return;
-      }
-
-      if (!opened) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Impossible d’ouvrir la page de paiement.'
-              : 'Unable to open the payment page.',
-        );
-
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'La page de paiement a été ouverte. Après le paiement, actualise ton abonnement.'
-            : 'The payment page has been opened. After payment, refresh your subscription.',
-      );
+      if (!mounted) return;
+      setState(() {
+        _paymentReference = payment.reference;
+        _paymentStatus = payment.status.toUpperCase();
+      });
+      _showMessage(payment.message);
     } on AuthException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Session utilisateur invalide : ${error.message}'
-            : 'Invalid user session: ${error.message}',
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Une erreur est survenue pendant le paiement.'
-            : 'An error occurred during payment.',
-      );
-    } finally {
       if (mounted) {
-        setState(() {
-          _processingPayment = false;
-        });
+        _showMessage(widget.locale.languageCode == 'fr'
+            ? 'Session utilisateur invalide : ${error.message}'
+            : 'Invalid user session: ${error.message}');
       }
+    } catch (error) {
+      if (mounted) {
+        _showMessage(error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _processingPayment = false);
+    }
+  }
+
+  Future<void> _verifyPremiumPayment() async {
+    final reference = _paymentReference;
+    if (reference == null || _verifyingPayment) return;
+    setState(() => _verifyingPayment = true);
+    try {
+      final result = await _notchPayService.verifyPayment(reference);
+      final status = (result['status'] ?? 'UNKNOWN').toString().toUpperCase();
+      if (!mounted) return;
+      setState(() => _paymentStatus = status);
+      await _loadSubscription();
+      if (!mounted) return;
+      _showMessage(status == 'SUCCESS'
+          ? (widget.locale.languageCode == 'fr'
+              ? 'Paiement confirmé. Ton abonnement Premium est activé.'
+              : 'Payment confirmed. Your Premium subscription is active.')
+          : status == 'FAILED'
+              ? (widget.locale.languageCode == 'fr'
+                  ? 'Le paiement a échoué ou a été annulé.'
+                  : 'Payment failed or was cancelled.')
+              : (widget.locale.languageCode == 'fr'
+                  ? 'Paiement toujours en attente. Confirme la demande sur ton téléphone puis réessaie.'
+                  : 'Payment is still pending. Confirm the request on your phone and try again.'));
+    } catch (error) {
+      if (mounted) {
+        _showMessage(error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _verifyingPayment = false);
     }
   }
 
@@ -477,6 +435,55 @@ class _PremiumPageState extends State<PremiumPage> {
                   : 'Payment is securely processed through Notch Pay.',
             ),
             const SizedBox(height: 18),
+            if (!isPremium) ...[
+              DropdownButtonFormField<String>(
+                value: _paymentChannel,
+                decoration: InputDecoration(
+                  labelText: isFrench ? 'Opérateur de paiement' : 'Payment operator',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.account_balance_wallet_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'cm.orange', child: Text('Orange Money')),
+                  DropdownMenuItem(value: 'cm.mtn', child: Text('MTN Mobile Money')),
+                ],
+                onChanged: _processingPayment ? null : (value) {
+                  if (value != null) setState(() => _paymentChannel = value);
+                },
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: isFrench ? 'Numéro Mobile Money' : 'Mobile Money number',
+                  hintText: '6XXXXXXXX',
+                  prefixIcon: const Icon(Icons.phone_android_rounded),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isFrench
+                    ? 'Le code unique FISE de l’enseignant est géré dans les groupes, paiements et évaluations. Aucun code enseignant n’est à saisir ici.'
+                    : 'The teacher’s unique FISE code is managed by the system for groups, payments and assessments. Do not enter a teacher code here.',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+            if (_paymentReference != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${isFrench ? 'Référence' : 'Reference'} : $_paymentReference\n${isFrench ? 'État' : 'Status'} : ${_paymentStatus ?? 'PENDING'}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              OutlinedButton.icon(
+                onPressed: _verifyingPayment ? null : _verifyPremiumPayment,
+                icon: _verifyingPayment
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.verified_outlined),
+                label: Text(isFrench ? 'Vérifier le paiement' : 'Verify payment'),
+              ),
+            ],
             if (isPremium)
               OutlinedButton.icon(
                 onPressed: _loadSubscription,
