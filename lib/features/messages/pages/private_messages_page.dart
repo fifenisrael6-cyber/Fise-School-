@@ -212,16 +212,33 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       _selected = contact;
       _loadingMessages = true;
     });
+
+    // Paint the persisted Drift snapshot first; never make opening a chat wait
+    // for the network or for the pending-message outbox to finish syncing.
     try {
-      final messages = await _service.listConversation(contact.id);
-      await _service.markConversationRead(contact.id);
-      if (mounted) {
-        setState(() => _messages = messages);
-      }
-    } finally {
-      if (mounted) {
+      final cached = await _service.getCachedConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() {
+        _messages = cached;
+        _loadingMessages = false;
+      });
+    } catch (_) {
+      if (mounted && _selected?.id == contact.id) {
         setState(() => _loadingMessages = false);
       }
+    }
+
+    unawaited(_refreshConversation(contact));
+  }
+
+  Future<void> _refreshConversation(MessageContact contact) async {
+    try {
+      final messages = await _service.listConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() => _messages = messages);
+      unawaited(_service.markConversationRead(contact.id));
+    } catch (error) {
+      debugPrint('Could not refresh private conversation: $error');
     }
   }
 
