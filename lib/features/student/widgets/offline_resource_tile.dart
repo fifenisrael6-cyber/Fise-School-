@@ -92,8 +92,9 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
         userId: widget.profile.id,
         resource: widget.resource,
       );
-      await _load();
+      final localRecord = await _offline.getLocal(widget.profile.id, widget.resource.id);
       if (!mounted) return;
+      setState(() => _local = localRecord);
       await Navigator.push(context, MaterialPageRoute(builder: (_) => OfflineResourceViewer(
         locale: widget.locale,
         userId: widget.profile.id,
