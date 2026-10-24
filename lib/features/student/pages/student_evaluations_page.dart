@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/evaluation_service.dart';
+import '../../../core/services/photo_service.dart';
+import '../../../models/evaluation.dart';
 import '../../../models/user_profile.dart';
 
 /// Calendar of official exams. Supabase RLS limits this list to the student's
@@ -22,9 +26,14 @@ class StudentEvaluationsPage extends StatefulWidget {
 
 class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
   final SupabaseClient _db = Supabase.instance.client;
+  final EvaluationService _evaluationService = EvaluationService();
+  final PhotoService _photoService = PhotoService();
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _rows = [];
+  List<StudentEvaluation> _automatedEvaluations = [];
+  Duration _serverOffset = Duration.zero;
+  String? _submittingId;
   Map<String, Map<String, dynamic>> _exams = {};
   Map<String, Map<String, dynamic>> _subjects = {};
   Map<String, Map<String, dynamic>> _classes = {};
@@ -51,12 +60,20 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         _db.from('subjects').select('id,name_fr,name_en'),
         _db.from('school_classes').select('id,display_name,name'),
       ]);
+      StudentEvaluationList? automated;
+      try {
+        automated = await _evaluationService.listMine(forceRefresh: true);
+      } catch (_) {
+        // Keep the legacy calendar available even if the automated evaluation list is offline.
+      }
       if (!mounted) return;
       setState(() {
         _rows = (results[0] as List).map((r) => Map<String, dynamic>.from(r)).toList();
         _exams = {for (final r in results[1] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
         _subjects = {for (final r in results[2] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
         _classes = {for (final r in results[3] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
+        _automatedEvaluations = automated?.items ?? [];
+        _serverOffset = automated?.serverOffset ?? Duration.zero;
         _loading = false;
       });
     } catch (e) {
@@ -127,6 +144,244 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
     }
   }
 
+  bool _automatedIsOpen(StudentEvaluation evaluation) {
+    final now = DateTime.now().add(_serverOffset);
+    return !now.isBefore(evaluation.startsAt) && now.isBefore(evaluation.dueAt);
+  }
+
+  Future<void> _openAutomatedPdf(StudentEvaluation evaluation) async {
+    final path = evaluation.pdfPath?.trim() ?? '';
+    if (path.isEmpty) {
+      _show(_fr ? 'Le sujet PDF n’est pas encore publié.' : 'The exam PDF has not been published yet.');
+      return;
+    }
+    if (!_automatedIsOpen(evaluation)) {
+      _show(_fr ? 'Le sujet est accessible uniquement pendant l’épreuve.' : 'The exam paper is available only during the exam window.');
+      return;
+    }
+    setState(() => _openingId = evaluation.id);
+    try {
+      final signed = await _evaluationService.openPaperUrl(path);
+      final opened = await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
+      if (!opened) throw StateError(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open the PDF.');
+    } catch (e) {
+      _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + e.toString());
+    } finally {
+      if (mounted) setState(() => _openingId = null);
+    }
+  }
+
+  Future<void> _submitCopy(StudentEvaluation evaluation) async {
+    if (!_automatedIsOpen(evaluation) || evaluation.submitted) {
+      _show(_fr ? 'Cette épreuve n’accepte plus de nouvelle remise.' : 'This exam is no longer accepting submissions.');
+      return;
+    }
+    final picked = <XFile>[];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(_fr ? 'Remettre la copie' : 'Submit your paper'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_fr
+                    ? 'Photographie toutes les pages dans l’ordre. Les images seront envoyées une fois que tu confirmes.'
+                    : 'Photograph every page in order. Photos are uploaded only after you confirm.'),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: picked.length >= 40 ? null : () async {
+                        final file = await _photoService.takePhoto(maxWidth: 2000);
+                        if (file != null && dialogContext.mounted) {
+                          setDialogState(() => picked.add(file));
+                        }
+                      },
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: Text(_fr ? 'Photo' : 'Camera'),
+                    )),
+                    const SizedBox(width: 8),
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: picked.length >= 40 ? null : () async {
+                        final file = await _photoService.pickFromGallery(maxWidth: 2000);
+                        if (file != null && dialogContext.mounted) {
+                          setDialogState(() => picked.add(file));
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text(_fr ? 'Galerie' : 'Gallery'),
+                    )),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(_fr ? '${picked.length}/40 page(s) ajoutée(s)' : '${picked.length}/40 page(s) added'),
+                if (picked.isNotEmpty)
+                  SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      itemCount: picked.length,
+                      itemBuilder: (_, index) => ListTile(
+                        dense: true,
+                        leading: Text('${index + 1}.'),
+                        title: Text(picked[index].name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: IconButton(
+                          tooltip: _fr ? 'Retirer' : 'Remove',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setDialogState(() => picked.removeAt(index)),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_fr ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: picked.isEmpty ? null : () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.send),
+              label: Text(_fr ? 'Envoyer la copie' : 'Submit paper'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || picked.isEmpty || !mounted) return;
+
+    setState(() => _submittingId = evaluation.id);
+    try {
+      final submissionId = await _evaluationService.startSubmission(evaluation.id);
+      final existing = await _db
+          .from('evaluation_photos')
+          .select('position')
+          .eq('submission_id', submissionId)
+          .order('position');
+      var position = 0;
+      for (final row in existing as List) {
+        final value = (row['position'] as num?)?.toInt() ?? 0;
+        if (value > position) position = value;
+      }
+      for (final file in picked) {
+        if (position >= 40) {
+          throw StateError(_fr ? 'La limite de 40 pages est atteinte.' : 'The 40-page limit has been reached.');
+        }
+        position++;
+        final bytes = await file.readAsBytes();
+        final extension = file.name.contains('.') ? file.name.split('.').last : 'jpg';
+        await _evaluationService.uploadPhoto(
+          evaluationId: evaluation.id,
+          bytes: bytes,
+          extension: extension,
+          position: position,
+        );
+      }
+      await _evaluationService.submit(evaluation.id);
+      _show(_fr
+          ? 'Copie envoyée. La correction IA est en cours de traitement.'
+          : 'Paper submitted. AI correction is being processed.');
+      await _load();
+    } catch (e) {
+      _show((_fr ? 'Envoi de la copie impossible : ' : 'Could not submit paper: ') +
+          EvaluationService.friendlyError(e, fr: _fr));
+    } finally {
+      if (mounted) setState(() => _submittingId = null);
+    }
+  }
+
+  Widget _automatedCard(StudentEvaluation evaluation) {
+    final isOpen = _automatedIsOpen(evaluation);
+    final hasPdf = (evaluation.pdfPath ?? '').trim().isNotEmpty;
+    final busy = _openingId == evaluation.id;
+    final submitting = _submittingId == evaluation.id;
+    final result = evaluation.result;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const CircleAvatar(
+                backgroundColor: Color(0xFFE4F2E9),
+                child: Icon(Icons.fact_check_outlined, color: Color(0xFF166534)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(evaluation.title,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+            ]),
+            const SizedBox(height: 8),
+            Text('${_fr ? 'Matière' : 'Subject'} : ${evaluation.subjectFor(_fr)}'),
+            Text('${_fr ? 'Début' : 'Starts'} : ${_date(evaluation.startsAt.toIso8601String())}'),
+            Text('${_fr ? 'Fin' : 'Ends'} : ${_date(evaluation.dueAt.toIso8601String())}'),
+            const SizedBox(height: 6),
+            Chip(
+              avatar: Icon(evaluation.submitted ? Icons.check_circle : (isOpen ? Icons.play_circle_outline : Icons.schedule), size: 18),
+              label: Text(evaluation.submitted
+                  ? (_fr ? 'Copie remise' : 'Paper submitted')
+                  : (!isOpen
+                      ? (DateTime.now().add(_serverOffset).isBefore(evaluation.startsAt)
+                          ? (_fr ? 'À venir' : 'Upcoming')
+                          : (_fr ? 'Épreuve terminée' : 'Exam ended'))
+                      : (_fr ? 'Épreuve en cours' : 'Exam in progress'))),
+            ),
+            if (hasPdf && isOpen)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: busy ? null : () => _openAutomatedPdf(evaluation),
+                  icon: busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.picture_as_pdf_outlined),
+                  label: Text(busy ? (_fr ? 'Ouverture…' : 'Opening…') : (_fr ? 'Ouvrir le sujet PDF' : 'Open exam PDF')),
+                ),
+              )
+            else if (!hasPdf)
+              Text(_fr ? 'Sujet PDF en attente de publication par l’enseignant.' : 'Waiting for the teacher to publish the exam PDF.',
+                style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+            if (isOpen && !evaluation.submitted)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: submitting ? null : () => _submitCopy(evaluation),
+                  icon: submitting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.upload_file_outlined),
+                  label: Text(submitting ? (_fr ? 'Envoi en cours…' : 'Submitting…') : (_fr ? 'Remettre ma copie' : 'Submit my paper')),
+                ),
+              ),
+            if (evaluation.submitted && result == null)
+              Text(_fr
+                  ? 'Copie reçue. La note et la correction seront visibles après validation et à la date de publication prévue.'
+                  : 'Paper received. The score and correction will appear after validation and at the scheduled release time.'),
+            if (result != null) ...[
+              const Divider(height: 24),
+              Text(
+                '${_fr ? 'Note' : 'Score'} : ${result.finalScore?.toStringAsFixed(2) ?? '—'}/${result.maxScore.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              if ((result.comment ?? '').trim().isNotEmpty) Text(result.comment!),
+              ...result.questions.map((question) => Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${question.label} — ${question.points?.toStringAsFixed(2) ?? '—'}/${question.maxPoints.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                  if ((question.feedback ?? '').trim().isNotEmpty) Text(question.feedback!),
+                ]),
+              )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   void _show(String message) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -142,7 +397,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
-              : _rows.isEmpty
+              : _rows.isEmpty && _automatedEvaluations.isEmpty
                   ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(
                       _fr ? 'Aucune évaluation officielle programmée pour vos salles.' : 'No official exams are scheduled for your classrooms.',
                       textAlign: TextAlign.center,
@@ -152,10 +407,13 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
                       child: ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.all(16),
-                        itemCount: _rows.length,
+                        itemCount: _automatedEvaluations.length + _rows.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (_, index) {
-                          final row = _rows[index];
+                          if (index < _automatedEvaluations.length) {
+                            return _automatedCard(_automatedEvaluations[index]);
+                          }
+                          final row = _rows[index - _automatedEvaluations.length];
                           final subject = _label(_subjects[row['subject_id']?.toString()], 'name_fr', 'name_en');
                           final schoolClass = _classes[row['class_id']?.toString()];
                           final className = schoolClass?['display_name']?.toString() ?? schoolClass?['name']?.toString() ?? '';
