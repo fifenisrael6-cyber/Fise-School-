@@ -343,8 +343,17 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
                 ),
               )
             else if (!hasPdf)
-              Text(_fr ? 'Sujet PDF en attente de publication par l’enseignant.' : 'Waiting for the teacher to publish the exam PDF.',
-                style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+              Text(
+                evaluation.status == 'published' &&
+                        DateTime.now().add(_serverOffset).isBefore(evaluation.startsAt)
+                    ? (_fr
+                        ? 'Sujet protégé : il sera accessible à l’heure prévue.'
+                        : 'Protected paper: it will be available at the scheduled start.')
+                    : (_fr
+                        ? 'Sujet PDF en attente de publication par l’enseignant.'
+                        : 'Waiting for the teacher to publish the exam PDF.'),
+                style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600),
+              ),
             if (isOpen && !evaluation.submitted)
               SizedBox(
                 width: double.infinity,
