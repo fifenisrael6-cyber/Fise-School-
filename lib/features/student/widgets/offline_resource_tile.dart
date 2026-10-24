@@ -56,7 +56,10 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
     } catch (_) {
       // A local-cache error must not prevent access to the remote file.
     }
-    if (widget.resource.resourceType == 'image' &&
+    final hasUsableLocal = local != null &&
+        local.status == 'done' && File(local.localPath).existsSync();
+    if (!hasUsableLocal &&
+        widget.resource.resourceType == 'image' &&
         widget.resource.storagePath.isNotEmpty) {
       try {
         signedUrl = await _resources.createSignedUrl(
