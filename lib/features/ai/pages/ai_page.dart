@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/gemini_service.dart';
 import '../../../core/offline/app_database.dart';
+import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/services/quota_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
@@ -126,6 +127,35 @@ class _AiPageState extends State<AiPage> {
     final selectedAttachment = _attachment;
     final contextAttachment = selectedAttachment ?? _conversationAttachment;
     if ((text.isEmpty && contextAttachment == null) || _sending) {
+      return;
+    }
+
+    // Save the student's question immediately when there is no network instead
+    // of leaving the composer spinning while the remote AI endpoint times out.
+    final online = await ConnectivityService().isOnline();
+    if (!online) {
+      final savedUserText = text.isNotEmpty
+          ? text
+          : '[Pièce jointe : ${contextAttachment!.name}]';
+      _messageController.clear();
+      setState(() {
+        _messages.add(_AiMessage(
+          text: text,
+          fromUser: true,
+          attachmentName: selectedAttachment?.name,
+          attachmentMimeType: selectedAttachment?.mimeType,
+          attachmentBytes: selectedAttachment?.bytes,
+        ));
+        _attachment = null;
+        _messages.add(_AiMessage(
+          text: _isFrench
+              ? 'Question enregistrée sur cet appareil. La réponse de l’IA nécessite une connexion Internet. Si tu as joint une photo ou un document, il faudra le joindre à nouveau après reconnexion.'
+              : 'Question saved on this device. The AI needs an internet connection to answer. If you attached a photo or document, attach it again after reconnecting.',
+          fromUser: false,
+        ));
+      });
+      await _saveCachedAiMessage('user', savedUserText);
+      _scrollToBottom();
       return;
     }
 
