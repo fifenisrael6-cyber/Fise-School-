@@ -170,24 +170,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
         _loadError = null;
       });
     }
+
+    List<GroupMessage> cached = const [];
+    try {
+      cached = await _service.getCachedMessages(widget.group.id);
+    } catch (_) {
+      // A local cache failure must not prevent the remote refresh.
+    }
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {
+      _messages = cached;
+      if (cached.isNotEmpty || !showLoader) _loading = false;
+      if (cached.isNotEmpty) _loadError = null;
+    });
+
+    // Refresh in the background after the saved conversation is already visible.
+    unawaited(_refreshMessages(generation, hadCache: cached.isNotEmpty));
+  }
+
+  Future<void> _refreshMessages(int generation, {required bool hadCache}) async {
     try {
       final messages = await _service
           .listMessages(widget.group.id)
           .timeout(const Duration(seconds: 20));
-      if (mounted && generation == _loadGeneration) {
-        setState(() {
-          _messages = messages;
-          _loadError = null;
-        });
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _messages = messages;
+        _loadError = null;
+        _loading = false;
+      });
     } catch (error) {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loadError = error.toString());
-      }
-    } finally {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loading = false);
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loadError = hadCache ? null : error.toString();
+        _loading = false;
+      });
     }
   }
 
