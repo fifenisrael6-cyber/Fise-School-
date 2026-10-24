@@ -34,16 +34,20 @@ jobs:
           set -euo pipefail
           cp pubspec.yaml "$RUNNER_TEMP/pubspec.yaml.original"
           if [ -f pubspec.lock ]; then cp pubspec.lock "$RUNNER_TEMP/pubspec.lock.original"; fi
-          # Run in the existing project without --overwrite. This creates the missing
-          # iOS scaffold while protecting the application's own pubspec and source.
+          # Generate a clean iOS template outside the repository so existing app files
+          # and platform customizations are never overwritten.
+          mkdir -p "$RUNNER_TEMP/fise-school-ios-scaffold"
+          cd "$RUNNER_TEMP/fise-school-ios-scaffold"
           flutter create --platforms=ios --org com.fiseschool --project-name fise_school --no-pub .
-          cp "$RUNNER_TEMP/pubspec.yaml.original" pubspec.yaml
-          if [ -f "$RUNNER_TEMP/pubspec.lock.original" ]; then cp "$RUNNER_TEMP/pubspec.lock.original" pubspec.lock; fi
+          cd "$GITHUB_WORKSPACE"
+          # The repository already contains its customized Runner project; restore only
+          # the missing CocoaPods Podfile from the clean template.
+          if [ ! -f ios/Podfile ]; then cp "$RUNNER_TEMP/fise-school-ios-scaffold/ios/Podfile" ios/Podfile; fi
           test -f ios/Podfile
           test -f ios/Runner.xcodeproj/project.pbxproj
           test -f ios/Flutter/Debug.xcconfig
           test -f ios/Flutter/Release.xcconfig
-          echo "iOS scaffold verified; application pubspec.yaml and pubspec.lock preserved."
+          echo "iOS files verified; existing app project and pubspec files preserved."
           grep -E '^(  )?(supabase_flutter|drift|shared_preferences|path_provider|file_picker):' pubspec.yaml || true
 
       - name: Resolve Flutter dependencies
