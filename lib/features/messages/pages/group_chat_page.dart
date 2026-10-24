@@ -151,6 +151,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
             : 'Premium activé. Renvoie ton message.'),
       ));
     }
+    // Remove a locally queued message if the server definitively rejected it.
+    if (mounted) unawaited(_load(showLoader: false));
   }
 
   @override
@@ -170,24 +172,41 @@ class _GroupChatPageState extends State<GroupChatPage> {
         _loadError = null;
       });
     }
+
+    List<GroupMessage> cached = const [];
+    try {
+      cached = await _service.getCachedMessages(widget.group.id);
+    } catch (_) {
+      // A local cache failure must not prevent the remote refresh.
+    }
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {
+      _messages = cached;
+      if (cached.isNotEmpty || !showLoader) _loading = false;
+      if (cached.isNotEmpty) _loadError = null;
+    });
+
+    // Refresh in the background after the saved conversation is already visible.
+    unawaited(_refreshMessages(generation, hadCache: cached.isNotEmpty));
+  }
+
+  Future<void> _refreshMessages(int generation, {required bool hadCache}) async {
     try {
       final messages = await _service
           .listMessages(widget.group.id)
           .timeout(const Duration(seconds: 20));
-      if (mounted && generation == _loadGeneration) {
-        setState(() {
-          _messages = messages;
-          _loadError = null;
-        });
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _messages = messages;
+        _loadError = null;
+        _loading = false;
+      });
     } catch (error) {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loadError = error.toString());
-      }
-    } finally {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loading = false);
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loadError = hadCache ? null : error.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -938,6 +957,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 name: message.attachmentName,
                 type: message.attachmentType,
                 localPath: message.localAttachmentPath,
+                cacheScope: widget.profile.id,
                 remotePath: message.attachmentPath,
                 resolveUrl: _service.signedAttachmentUrl,
                 french: _fr,
@@ -966,7 +986,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       color: message.isPending
                           ? Colors.black45
                           : (message.readCount > 0
-                              ? const Color(0xFF2EAD65)
+                              ? const Color(0xFF34B7F1)
                               : (message.deliveredCount > 0
                                   ? Colors.black54
                                   : Colors.black87)),

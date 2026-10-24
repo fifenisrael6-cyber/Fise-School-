@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/offline/course_offline_service.dart';
 import '../../../core/services/evaluation_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/evaluation.dart';
 import '../../../models/user_profile.dart';
+import '../../messages/widgets/message_media.dart';
 
 /// Calendar of official exams. Supabase RLS limits this list to the student's
 /// real classroom (and compatible general classes); the PDF is time-gated too.
@@ -134,9 +135,21 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
     }
     setState(() => _openingId = id);
     try {
-      final signed = await _db.storage.from('assignment-files').createSignedUrl(path, 180);
-      final opened = await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
-      if (!opened) throw StateError(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open the PDF.');
+      final fileName = row['evaluation_file_name']?.toString().trim().isNotEmpty == true
+          ? row['evaluation_file_name'].toString().trim()
+          : '$id.pdf';
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'evaluation-$id-paper',
+        courseId: 'evaluations-$id',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () => _db.storage.from('assignment-files').createSignedUrl(path, 180),
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
+      ));
     } catch (e) {
       _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + e.toString());
     } finally {
@@ -161,9 +174,19 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
     }
     setState(() => _openingId = evaluation.id);
     try {
-      final signed = await _evaluationService.openPaperUrl(path);
-      final opened = await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
-      if (!opened) throw StateError(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open the PDF.');
+      final fileName = '${evaluation.id}.pdf';
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'evaluation-${evaluation.id}-paper',
+        courseId: 'evaluations-${evaluation.id}',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () => _evaluationService.openPaperUrl(path),
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
+      ));
     } catch (e) {
       _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + e.toString());
     } finally {
@@ -179,9 +202,19 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         _show(_fr ? 'Le PDF de correction est encore en préparation.' : 'The correction PDF is still being prepared.');
         return;
       }
-      final signed = await _evaluationService.openCorrectionPdfUrl(correction.path);
-      final opened = await launchUrl(Uri.parse(signed), mode: LaunchMode.externalApplication);
-      if (!opened) throw StateError(_fr ? 'Impossible d’ouvrir le PDF corrigé.' : 'Unable to open corrected PDF.');
+      final fileName = '${evaluation.id}-correction.pdf';
+      final localPath = await CourseOfflineService().openExternalFile(
+        userId: widget.profile.id,
+        resourceId: 'evaluation-${evaluation.id}-correction-${correction.path.split('/').last}',
+        courseId: 'evaluations-${evaluation.id}',
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        signedUrlProvider: () => _evaluationService.openCorrectionPdfUrl(correction.path),
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
+      ));
     } catch (e) {
       _show((_fr ? 'Correction PDF indisponible : ' : 'Correction PDF unavailable: ') + e.toString());
     } finally {

@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/exam_catalog_service.dart';
 import '../../../core/services/past_paper_service.dart';
@@ -83,8 +82,7 @@ class _PastPapersPageState extends State<PastPapersPage> {
   }
 
   Future<void> _open(PastPaper paper) async {
-    // Quota annales : 2 / 24 h pour un élève gratuit. Un fichier déjà téléchargé
-    // reste lisible hors ligne même sans réseau (offlineFallback).
+    // Keep the existing quota/window rules, but always open inside Fise School.
     final profile = widget.profile;
     if (profile != null) {
       final allowed = await PremiumGate.ensure(
@@ -96,31 +94,34 @@ class _PastPapersPageState extends State<PastPapersPage> {
       );
       if (!allowed || !mounted) return;
     }
+    if (_downloadingIds.contains(paper.id)) return;
+    setState(() => _downloadingIds.add(paper.id));
     try {
       var localPath = _localPaths[paper.id];
-      localPath ??= await _service.localFilePath(paper);
-      if (localPath != null && File(localPath).existsSync()) {
-        if (!mounted) return;
-        await Navigator.push(context, MaterialPageRoute(
-          builder: (_) => PastPaperViewerPage(
-            locale: widget.locale,
-            localPath: localPath!,
-            fileName: paper.fileName,
-          ),
-        ));
-        return;
+      if (localPath == null || !File(localPath).existsSync()) {
+        localPath = await _service.localFilePath(paper);
       }
-      final url = await _service.signedUrl(paper.filePath);
-      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        _snack(_fr ? 'Aucune application pour ouvrir ce fichier.' : 'No app can open this file.');
+      if (localPath == null || !File(localPath).existsSync()) {
+        // First open downloads the PDF and stores it for instant offline reuse.
+        localPath = await _service.download(paper);
       }
+      if (!mounted) return;
+      setState(() => _localPaths[paper.id] = localPath!);
+      await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => PastPaperViewerPage(
+          locale: widget.locale,
+          localPath: localPath!,
+          fileName: paper.fileName,
+        ),
+      ));
     } catch (_) {
       if (mounted) {
         _snack(_fr
-            ? 'Fichier indisponible. Télécharge-le lorsque tu as Internet pour le lire hors ligne.'
-            : 'File unavailable. Download it while online to read it offline.');
+            ? 'Impossible de télécharger ou d’ouvrir cette annale. Vérifie la connexion puis réessaie.'
+            : 'Unable to download or open this paper. Check the connection and retry.');
       }
+    } finally {
+      if (mounted) setState(() => _downloadingIds.remove(paper.id));
     }
   }
 

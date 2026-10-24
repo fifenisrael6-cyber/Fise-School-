@@ -60,7 +60,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.initState();
     MessageQuotaEvents.denied.addListener(_onMessageDenied);
     _attachment = widget.initialAttachment;
-    _contactsFuture = _service.listContacts();
+    _contactsFuture = _loadContactsInstant();
     _loadConversationPreferences();
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
@@ -71,7 +71,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             _select(selected);
           }
           if (mounted) {
-            setState(() => _contactsFuture = _service.listContacts());
+            setState(() => _contactsFuture = _loadContactsInstant());
           }
         }
       })
@@ -87,6 +87,18 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       .subscribe();
   }
 
+
+  Future<List<MessageContact>> _loadContactsInstant() async {
+    final cached = await _service.getCachedContacts();
+    if (cached.isEmpty) return _service.listContacts();
+    unawaited(_refreshContactsInBackground());
+    return cached;
+  }
+
+  Future<void> _refreshContactsInBackground() async {
+    final contacts = await _service.listContacts();
+    if (mounted) setState(() => _contactsFuture = Future.value(contacts));
+  }
 
   Future<void> _loadConversationPreferences() async {
     try {
@@ -195,6 +207,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             : 'Premium activé. Renvoie ton message.'),
       ));
     }
+    // A server quota rejection removes the pending row; refresh the local
+    // snapshot so a rejected message cannot remain displayed as if queued.
+    final selected = _selected;
+    if (mounted && selected != null) unawaited(_select(selected));
   }
 
   @override
@@ -212,16 +228,33 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       _selected = contact;
       _loadingMessages = true;
     });
+
+    // Paint the persisted Drift snapshot first; never make opening a chat wait
+    // for the network or for the pending-message outbox to finish syncing.
     try {
-      final messages = await _service.listConversation(contact.id);
-      await _service.markConversationRead(contact.id);
-      if (mounted) {
-        setState(() => _messages = messages);
-      }
-    } finally {
-      if (mounted) {
+      final cached = await _service.getCachedConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() {
+        _messages = cached;
+        _loadingMessages = false;
+      });
+    } catch (_) {
+      if (mounted && _selected?.id == contact.id) {
         setState(() => _loadingMessages = false);
       }
+    }
+
+    unawaited(_refreshConversation(contact));
+  }
+
+  Future<void> _refreshConversation(MessageContact contact) async {
+    try {
+      final messages = await _service.listConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() => _messages = messages);
+      unawaited(_service.markConversationRead(contact.id));
+    } catch (error) {
+      debugPrint('Could not refresh private conversation: $error');
     }
   }
 
@@ -687,6 +720,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   name: message.attachmentName,
                                   type: message.attachmentType,
                                   localPath: message.localAttachmentPath,
+                cacheScope: widget.profile.id,
                                   remotePath: message.attachmentPath,
                                   resolveUrl: _service.signedAttachmentUrl,
                                   french: _isFrench,
@@ -711,7 +745,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                       color: message.isPending
                                           ? Colors.black45
                                           : (message.readAt != null
-                                              ? const Color(0xFF2EAD65)
+                                              ? const Color(0xFF34B7F1)
                                               : (message.deliveredAt != null
                                                   ? Colors.black54
                                                   : Colors.black87)),

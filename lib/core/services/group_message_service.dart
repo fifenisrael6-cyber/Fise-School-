@@ -37,6 +37,11 @@ class GroupMessageService {
     return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
   }
 
+  /// Read the saved group list without waiting for remote RPCs.
+  Future<List<MessageGroup>> getCachedGroups() async {
+    return getCachedGroups();
+  }
+
   Future<List<MessageGroup>> listGroups() async {
     final byId = <String, MessageGroup>{};
 
@@ -172,11 +177,7 @@ class GroupMessageService {
     // A receipt failure must not prevent the actual conversation from refreshing.
     // Previously, any failure in syncPending/delivered/read jumped straight to the
     // offline cache, leaving the screen stale while the group preview showed newer data.
-    try {
-      await syncPending();
-    } catch (_) {
-      // Pending sends remain queued in Drift and will retry on connectivity changes.
-    }
+    unawaited(syncPending());
 
     try {
       await _client.rpc('mark_group_messages_delivered', params: {
@@ -219,6 +220,9 @@ class GroupMessageService {
           'attachment_type': message.attachmentType,
           'reply_to_id': message.replyToId,
           'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
+          'delivered_count': message.deliveredCount,
+          'read_count': message.readCount,
+          'recipient_count': message.recipientCount,
           'sync_status': 'sent',
         });
       }
@@ -232,6 +236,9 @@ class GroupMessageService {
       return _readCache(groupId);
     }
   }
+
+  /// Returns the local snapshot without waiting for Supabase.
+  Future<List<GroupMessage>> getCachedMessages(String groupId) => _readCache(groupId);
 
   Future<List<GroupMessage>> _readCache(String groupId, {List<dynamic>? fallbackRows}) async {
     final rows = fallbackRows ?? await _db.getCachedMessages(_userId, 'group', groupId);
@@ -248,6 +255,9 @@ class GroupMessageService {
       'attachment_type': row.readNullable<String>('attachment_type'),
       'local_attachment_path': row.readNullable<String>('local_attachment_path'),
       'reply_to_id': row.readNullable<String>('reply_to_id'),
+      'delivered_count': row.read<int>('delivered_count'),
+      'read_count': row.read<int>('read_count'),
+      'recipient_count': row.read<int>('recipient_count'),
       'is_pending': row.read<String>('sync_status') == 'pending',
     })).toList();
   }
@@ -327,16 +337,11 @@ class GroupMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    // Wait for the immediate attempt so the composer can report failures.
-    // The queued row remains in Drift when delivery is unsuccessful.
-    await syncPending();
-    final stillPending = await _db.getQueuedMessages(_userId, 'group');
-    if (stillPending.any((row) => row.read<String>('id') == id)) {
-      throw StateError(
-        'Le message est conservé sur cet appareil, mais le serveur ne l’a pas accepté. '
-        'Vérifiez votre connexion et votre accès au groupe, puis réessayez.',
-      );
-    }
+    // Render from the local cache immediately; deliver asynchronously.
+    unawaited(syncPending()
+        .catchError((_) {})
+        .then((_) => syncPending())
+        .catchError((_) {}));
   }
 
   Future<void>? _syncPendingFuture;

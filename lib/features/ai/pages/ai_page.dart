@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/gemini_service.dart';
+import '../../../core/offline/app_database.dart';
+import '../../../core/offline/connectivity_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/services/quota_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
@@ -31,6 +33,8 @@ class _AiPageState extends State<AiPage> {
   final ScrollController _scrollController = ScrollController();
   final GeminiService _geminiService = GeminiService();
   final PhotoService _photoService = PhotoService();
+  final AppDatabase _offlineDatabase = AppDatabase();
+  static const String _localConversationId = 'current';
 
   final List<_AiMessage> _messages = [];
   PickedAttachment? _attachment;
@@ -46,12 +50,58 @@ class _AiPageState extends State<AiPage> {
   void initState() {
     super.initState();
     _messageController.text = widget.initialPrompt ?? '';
+    _showWelcomeMessage();
+    unawaited(_restoreCachedConversation());
+  }
+
+  void _showWelcomeMessage() {
+    if (_messages.isNotEmpty) return;
     _messages.add(_AiMessage(
       text: _isFrench
           ? 'Bonjour ${widget.profile.firstName} 👋\n\nJe suis l’assistant IA de Fise School. Pose-moi une question sur tes cours, envoie un document, une photo ou prends une photo directement avec ton téléphone.'
           : 'Hello ${widget.profile.firstName} 👋\n\nI am the Fise School AI assistant. Ask about your lessons, attach a document or photo, or take a photo directly with your phone.',
       fromUser: false,
     ));
+  }
+
+  Future<void> _restoreCachedConversation() async {
+    try {
+      final rows = await _offlineDatabase.getAiConversationMessages(
+        widget.profile.id,
+        _localConversationId,
+      );
+      if (!mounted || rows.isEmpty) return;
+      final restored = rows.map((row) => _AiMessage(
+        text: row.read<String>('content'),
+        fromUser: row.read<String>('role') == 'user',
+      )).toList(growable: false);
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(restored);
+      });
+      _scrollToBottom();
+    } catch (error) {
+      debugPrint('Could not restore local AI conversation: $error');
+    }
+  }
+
+  Future<void> _saveCachedAiMessage(String role, String content) async {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      final now = DateTime.now();
+      await _offlineDatabase.saveAiConversationMessage(
+        messageId: '${widget.profile.id}:${now.microsecondsSinceEpoch}:$role',
+        userId: widget.profile.id,
+        conversationId: _localConversationId,
+        role: role,
+        content: trimmed,
+        createdAt: now,
+      );
+    } catch (error) {
+      debugPrint('Could not save local AI conversation: $error');
+    }
   }
 
   @override
@@ -77,6 +127,35 @@ class _AiPageState extends State<AiPage> {
     final selectedAttachment = _attachment;
     final contextAttachment = selectedAttachment ?? _conversationAttachment;
     if ((text.isEmpty && contextAttachment == null) || _sending) {
+      return;
+    }
+
+    // Save the student's question immediately when there is no network instead
+    // of leaving the composer spinning while the remote AI endpoint times out.
+    final online = await ConnectivityService().isOnline();
+    if (!online) {
+      final savedUserText = text.isNotEmpty
+          ? text
+          : '[Pièce jointe : ${contextAttachment!.name}]';
+      _messageController.clear();
+      setState(() {
+        _messages.add(_AiMessage(
+          text: text,
+          fromUser: true,
+          attachmentName: selectedAttachment?.name,
+          attachmentMimeType: selectedAttachment?.mimeType,
+          attachmentBytes: selectedAttachment?.bytes,
+        ));
+        _attachment = null;
+        _messages.add(_AiMessage(
+          text: _isFrench
+              ? 'Question enregistrée sur cet appareil. La réponse de l’IA nécessite une connexion Internet. Si tu as joint une photo ou un document, il faudra le joindre à nouveau après reconnexion.'
+              : 'Question saved on this device. The AI needs an internet connection to answer. If you attached a photo or document, attach it again after reconnecting.',
+          fromUser: false,
+        ));
+      });
+      await _saveCachedAiMessage('user', savedUserText);
+      _scrollToBottom();
       return;
     }
 
@@ -134,6 +213,11 @@ class _AiPageState extends State<AiPage> {
         attachmentMimeType: contextAttachment?.mimeType,
         attachmentName: contextAttachment?.name,
       );
+      final savedUserText = text.isNotEmpty
+          ? text
+          : (selectedAttachment == null ? '' : '[Fichier joint : ${selectedAttachment.name}]');
+      await _saveCachedAiMessage('user', savedUserText);
+      await _saveCachedAiMessage('model', answer);
       if (!mounted) {
         return;
       }
@@ -166,6 +250,10 @@ class _AiPageState extends State<AiPage> {
         return;
       }
       final quotaException = error is AiDailyLimitReachedException ? error : null;
+      final savedUserText = text.isNotEmpty
+          ? text
+          : (selectedAttachment == null ? '' : '[Fichier joint : ${selectedAttachment.name}]');
+      await _saveCachedAiMessage('user', savedUserText);
       setState(() {
         _messages.add(_AiMessage(
           text: quotaException?.message ?? _friendlyError(error),
@@ -306,6 +394,10 @@ class _AiPageState extends State<AiPage> {
   }
 
   void _clearConversation() {
+    unawaited(_offlineDatabase.clearAiConversation(
+      widget.profile.id,
+      _localConversationId,
+    ));
     setState(() {
       _messages
         ..clear()
