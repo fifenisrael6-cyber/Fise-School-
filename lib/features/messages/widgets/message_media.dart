@@ -676,7 +676,7 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
         }
       }
 
-      if (local != null && widget.url != null &&
+      if (local != null &&
           (widget.title.toLowerCase().endsWith('.html') || widget.title.toLowerCase().endsWith('.htm'))) {
         final controller = WebViewController();
         await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
