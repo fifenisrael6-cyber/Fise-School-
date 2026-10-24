@@ -1,39 +1,35 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotchPayResult {
-  final String authorizationUrl;
   final String reference;
+  final String status;
+  final String message;
 
   const NotchPayResult({
-    required this.authorizationUrl,
     required this.reference,
+    required this.status,
+    required this.message,
   });
 }
 
 class NotchPayService {
   NotchPayService({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
-  /// Vérifie si l'utilisateur est connecté.
-  bool get isConfigured {
-    return _client.auth.currentUser != null;
-  }
+  bool get isConfigured => _client.auth.currentUser != null;
 
-  /// Crée une demande de paiement via l'Edge Function Supabase.
+  /// Starts a Cameroon Mobile Money charge. Teacher codes are never entered
+  /// during checkout; the server resolves teachers from the student's classes.
   Future<NotchPayResult> createPayment({
-    required String email,
-    required String name,
     required int amount,
     String currency = 'XAF',
     String? description,
-    String? reference,
-    String? teacherCode,
+    required String channel,
+    required String phone,
   }) async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
+    if (_client.auth.currentUser == null) {
       throw const AuthException('No active user session.');
     }
 
@@ -42,11 +38,9 @@ class NotchPayService {
       body: {
         'amount': amount,
         'currency': currency,
-        'email': email,
-        'name': name,
         'description': description ?? 'Abonnement Fise School',
-        ...?reference == null ? null : {'reference': reference},
-        ...?teacherCode == null || teacherCode.trim().isEmpty ? null : {'teacher_code': teacherCode.trim()},
+        'channel': channel,
+        'phone': phone.trim(),
       },
     );
 
@@ -55,40 +49,34 @@ class NotchPayService {
     }
 
     final data = Map<String, dynamic>.from(response.data as Map);
-
-    final authorizationUrl =
-        data['authorization_url'] ?? data['transaction']?['authorization_url'];
-
-    if (authorizationUrl is! String || authorizationUrl.trim().isEmpty) {
-      throw Exception('Notch Pay n’a pas retourné de lien de paiement.');
+    final reference = data['reference']?.toString().trim() ?? '';
+    if (reference.isEmpty) {
+      final message = data['error']?.toString();
+      throw Exception(message?.isNotEmpty == true
+          ? message
+          : 'Notch Pay n’a pas retourné la référence de transaction.');
     }
 
-    final returnedReference =
-        data['reference'] ??
-        data['transaction']?['reference'] ??
-        reference ??
-        '';
-
     return NotchPayResult(
-      authorizationUrl: authorizationUrl,
-      reference: returnedReference.toString(),
+      reference: reference,
+      status: data['status']?.toString() ?? 'PENDING',
+      message: data['message']?.toString() ??
+          'Demande envoyée. Confirme le paiement sur ton téléphone.',
     );
   }
 
-  /// Ouvre l'URL de paiement dans le navigateur.
-  Future<bool> openPaymentUrl(String url) async {
-    final uri = Uri.tryParse(url);
-
-    if (uri == null || !uri.hasScheme) {
-      return false;
+  /// Re-checks a transaction against Notch Pay on the trusted server.
+  Future<Map<String, dynamic>> verifyPayment(String reference) async {
+    final response = await _client.functions.invoke(
+      'notchpay-verify',
+      body: {'reference': reference.trim()},
+    );
+    if (response.data is! Map) {
+      throw Exception('Réponse de vérification invalide.');
     }
-
-    // L'ouverture du navigateur est volontairement laissée
-    // à la page Flutter avec url_launcher.
-    return true;
+    return Map<String, dynamic>.from(response.data as Map);
   }
 
-  /// Récupère le statut actuel d'une commande de paiement.
   Future<String> getPaymentStatus(String reference) async {
     final result = await _client
         .from('payment_orders')
@@ -100,12 +88,6 @@ class NotchPayService {
       throw Exception('Commande de paiement introuvable.');
     }
 
-    final status = result['status'];
-
-    if (status == null) {
-      return 'UNKNOWN';
-    }
-
-    return status.toString().toUpperCase();
+    return result['status']?.toString().toUpperCase() ?? 'UNKNOWN';
   }
 }
