@@ -247,9 +247,31 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
                     onChanged: (v) => setDialogState(() => teacherId = v),
                   ),
                   const SizedBox(height: 14),
-                  _timeButton(dialogContext, _fr ? 'Début de l’épreuve' : 'Exam starts', startsAt, (v) => setDialogState(() => startsAt = v)),
-                  _timeButton(dialogContext, _fr ? 'Fin de l’épreuve' : 'Exam ends', dueAt, (v) => setDialogState(() => dueAt = v)),
-                  _timeButton(dialogContext, _fr ? 'Publication des résultats' : 'Results release', resultsAt, (v) => setDialogState(() => resultsAt = v)),
+                  _timeButton(
+                    dialogContext,
+                    _fr ? 'Début de l’épreuve' : 'Exam starts',
+                    startsAt,
+                    (v) => setDialogState(() {
+                      startsAt = v;
+                      dueAt = v.add(const Duration(hours: 2));
+                      resultsAt = dueAt.add(const Duration(hours: 24));
+                    }),
+                  ),
+                  _timeButton(
+                    dialogContext,
+                    _fr ? 'Fin de l’épreuve' : 'Exam ends',
+                    dueAt,
+                    (v) => setDialogState(() {
+                      dueAt = v;
+                      resultsAt = v.add(const Duration(hours: 24));
+                    }),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_fr ? 'Publication automatique de la correction' : 'Automatic correction release'),
+                    subtitle: Text(_date(resultsAt)),
+                    trailing: const Icon(Icons.lock_clock_outlined),
+                  ),
                   const SizedBox(height: 8),
                   Text(_fr
                     ? 'Le PDF sera ajouté ensuite par l’enseignant affecté. Il ne sera accessible aux élèves que pendant la période prévue.'
