@@ -37,6 +37,11 @@ class GroupMessageService {
     return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
   }
 
+  /// Read the saved group list without waiting for remote RPCs.
+  Future<List<MessageGroup>> getCachedGroups() async {
+    return getCachedGroups();
+  }
+
   Future<List<MessageGroup>> listGroups() async {
     final byId = <String, MessageGroup>{};
 
