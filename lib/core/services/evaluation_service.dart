@@ -108,6 +108,23 @@ class EvaluationService {
     return _client.storage.from(_papers).createSignedUrl(path, 900);
   }
 
+  /// Returns a short-lived link only when Supabase confirms this student's result is released.
+  Future<({String path, String name})?> releasedCorrectionPdf(String evaluationId) async {
+    final raw = await _client.rpc('my_released_correction_pdf_path', params: {
+      'p_evaluation': evaluationId,
+    });
+    final row = Map<String, dynamic>.from(raw as Map);
+    final path = row['path']?.toString().trim() ?? '';
+    if (path.isEmpty) return null;
+    return (path: path, name: (row['name']?.toString().trim().isNotEmpty ?? false)
+        ? row['name'].toString()
+        : 'copie_corrigee.pdf');
+  }
+
+  Future<String> openCorrectionPdfUrl(String path) {
+    return _client.storage.from('evaluation-corrections').createSignedUrl(path, 600);
+  }
+
   Future<String> startSubmission(String evaluationId) async {
     final id = await _client.rpc('start_evaluation_submission', params: {'p_evaluation': evaluationId});
     return id.toString();
