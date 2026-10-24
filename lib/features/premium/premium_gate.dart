@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/notchpay_service.dart';
 import '../../core/services/quota_service.dart';
 import '../../models/user_profile.dart';
+import '../student/pages/pages/payment_page.dart';
 
 /// Point d'entrée unique : vérifie les droits côté serveur et ouvre la fenêtre
 /// Premium si besoin. Retourne true si l'action demandée peut continuer.
@@ -182,37 +182,12 @@ class _PremiumGatePageState extends State<PremiumGatePage> with WidgetsBindingOb
 
   Future<void> _start() async {
     if (_starting) return;
-    final email = widget.profile.email?.trim() ?? '';
-    if (email.isEmpty) {
-      setState(() => _error = _fr ? 'Aucune adresse e-mail n’est associée à ton compte.' : 'No email is linked to your account.');
-      return;
-    }
-    setState(() {
-      _starting = true;
-      _error = null;
-    });
+    setState(() { _starting = true; _error = null; });
     try {
-      final payment = await _notch.createPayment(
-        email: email,
-        name: '${widget.profile.firstName} ${widget.profile.lastName}'.trim(),
-        amount: 2000,
-        description: 'Abonnement Fise School Premium - 30 jours',
-      );
-      final uri = Uri.tryParse(payment.authorizationUrl);
-      if (uri == null || !uri.hasScheme || !uri.hasAuthority) throw Exception('invalid url');
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) throw Exception('cannot open');
-      _reference = payment.reference;
-      if (!mounted) return;
-      setState(() => _waiting = true);
-      _poll?.cancel();
-      _poll = Timer.periodic(const Duration(seconds: 5), (_) => _check());
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error = _fr
-            ? 'Impossible d’ouvrir le paiement. Réessaie dans un instant.'
-            : 'Could not open the payment. Please try again shortly.');
-      }
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => PaymentPage(locale: Locale(_fr ? 'fr' : 'en'), profile: widget.profile)));
+      if (mounted) await _check();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _starting = false);
     }
