@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     if (!/^6[0-9]{8}$/.test(digits)) {
       return json({ error: "Entre un numéro camerounais valide à 9 chiffres, commençant par 6." }, 400);
     }
-    const phone = `+237${digits}`;
+    const phone = `237${digits}`;
 
     const { data: profile, error: profileError } = await admin
       .from("profiles").select("first_name,last_name,email,role").eq("id", authData.user.id).single();
