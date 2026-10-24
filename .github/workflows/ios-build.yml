@@ -34,6 +34,10 @@ jobs:
           set -euo pipefail
           cp pubspec.yaml "$RUNNER_TEMP/pubspec.yaml.original"
           if [ -f pubspec.lock ]; then cp pubspec.lock "$RUNNER_TEMP/pubspec.lock.original"; fi
+          # connectivity_plus 7.x requires Xcode 26.1.1+ (NWPath.isUltraConstrained),
+          # unavailable on the current macos-15 runner. Pin the CI workspace to 6.1.x;
+          # the committed pubspec.yaml remains unchanged.
+          python3 -c "from pathlib import Path; p=Path('pubspec.yaml'); s=p.read_text(); old='  connectivity_plus: ^7.3.1'; assert old in s, 'Expected connectivity_plus ^7.3.1 dependency not found'; p.write_text(s.replace(old, '  connectivity_plus: ^6.1.5', 1))"
           # The existing iOS Runner project has no Podfile. Create the standard
           # Flutter CocoaPods integration file directly without regenerating app files.
           if [ ! -f ios/Podfile ]; then
