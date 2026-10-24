@@ -245,21 +245,23 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       );
 
   Future<void> _showMessageActions(PrivateMessage message) async {
+    final mine = message.senderId == widget.profile.id;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Wrap(
           children: [
-            ListTile(
-              leading: const Icon(Icons.reply_rounded),
-              title: Text(_isFrench ? 'Répondre' : 'Reply'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                setState(() => _replyTo = message);
-              },
-            ),
-            if (message.body.isNotEmpty)
+            if (message.deletedAt == null)
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: Text(_isFrench ? 'Répondre' : 'Reply'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _replyTo = message);
+                },
+              ),
+            if (message.deletedAt == null && message.body.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy_rounded),
                 title: Text(_isFrench ? 'Copier' : 'Copy'),
@@ -273,10 +275,77 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                   }
                 },
               ),
+            if (!message.isPending)
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: Text(_isFrench ? 'Supprimer pour moi' : 'Delete for me'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(message, forEveryone: false);
+                },
+              ),
+            if (mine && !message.isPending && message.deletedAt == null)
+              ListTile(
+                leading: const Icon(Icons.delete_forever_rounded, color: Colors.red),
+                title: Text(_isFrench ? 'Supprimer pour tout le monde' : 'Delete for everyone'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(message, forEveryone: true);
+                },
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _deleteMessage(PrivateMessage message, {required bool forEveryone}) async {
+    final contact = _selected;
+    if (contact == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(forEveryone
+            ? (_isFrench ? 'Supprimer pour tout le monde ?' : 'Delete for everyone?')
+            : (_isFrench ? 'Supprimer pour vous ?' : 'Delete for you?')),
+        content: Text(forEveryone
+            ? (_isFrench
+                ? 'Le message sera remplacé par une indication de suppression chez vous et chez le destinataire.'
+                : 'The message will be replaced by a deletion notice for you and the recipient.')
+            : (_isFrench
+                ? 'Ce message sera masqué uniquement dans votre conversation.'
+                : 'This message will be hidden only in your conversation.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            style: forEveryone ? FilledButton.styleFrom(backgroundColor: Colors.red) : null,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.deleteMessage(message.id, forEveryone: forEveryone);
+      await _select(contact);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(forEveryone
+              ? (_isFrench ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
+              : (_isFrench ? 'Message supprimé pour vous.' : 'Message deleted for you.'),
+        ));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text((_isFrench ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString()),
+        ));
+      }
+    }
   }
 
   List<PrivateMessage> _visiblePrivateMessages() {
@@ -571,14 +640,30 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (message.replyToId != null)
+                              Text(
+                                _isFrench
+                                    ? (mine ? 'MESSAGE ENVOYÉ' : 'MESSAGE REÇU')
+                                    : (mine ? 'SENT MESSAGE' : 'RECEIVED MESSAGE'),
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                  color: mine ? const Color(0xFF28734A) : Colors.blueGrey.shade600,
+                                ),
+                              ),
+                              if (message.deletedAt == null && message.replyToId != null)
                                 QuotedMessage(
                                   author: quoted == null ? '' : _authorOf(quoted, contact),
                                   snippet: quoted == null
                                       ? (_isFrench ? 'Message indisponible' : 'Message unavailable')
                                       : _snippetOf(quoted),
                                 ),
-                              if (message.body == '__PREMIUM_LOCKED__')
+                              if (message.deletedAt != null)
+                                Text(
+                                  _isFrench ? 'Ce message a été supprimé.' : 'This message was deleted.',
+                                  style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+                                )
+                              else if (message.body == '__PREMIUM_LOCKED__')
                                 InkWell(
                                   onTap: () => PremiumGate.openForServerDenial(
                                     context,
@@ -597,7 +682,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                 )
                               else if (message.body.isNotEmpty)
                                 Text(message.body),
-                              if (message.attachmentPath != null || message.localAttachmentPath != null)
+                              if (message.deletedAt == null && (message.attachmentPath != null || message.localAttachmentPath != null))
                                 MessageAttachmentView(
                                   name: message.attachmentName,
                                   type: message.attachmentType,
