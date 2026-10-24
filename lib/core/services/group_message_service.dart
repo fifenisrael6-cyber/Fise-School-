@@ -242,6 +242,7 @@ class GroupMessageService {
       'sender_role': row.read<String>('sender_role'),
       'body': row.read<String>('body'),
       'created_at': row.read<String>('created_at'),
+      'deleted_at': row.readNullable<String>('deleted_at'),
       'attachment_path': row.readNullable<String>('attachment_path'),
       'attachment_name': row.readNullable<String>('attachment_name'),
       'attachment_type': row.readNullable<String>('attachment_type'),
