@@ -79,6 +79,7 @@ class MessageAttachmentView extends StatelessWidget {
     required this.localPath,
     required this.remotePath,
     required this.resolveUrl,
+    this.cacheScope,
     this.french = true,
   });
 
@@ -87,7 +88,12 @@ class MessageAttachmentView extends StatelessWidget {
   final String? localPath;
   final String? remotePath;
   final Future<String?> Function(String? path) resolveUrl;
+  final String? cacheScope;
   final bool french;
+
+  String? get _cacheKey => remotePath == null
+      ? null
+      : (cacheScope == null ? remotePath : '$cacheScope::$remotePath');
 
   bool get _hasLocal => localPath != null && File(localPath!).existsSync();
   String get _mime => (type ?? '').toLowerCase();
@@ -105,7 +111,7 @@ class MessageAttachmentView extends StatelessWidget {
       child: FutureBuilder<String?>(
         future: _hasLocal
             ? Future.value(localPath)
-            : _MessageMediaCache.find(remotePath: remotePath, fileName: name),
+            : _MessageMediaCache.find(remotePath: _cacheKey, fileName: name),
         builder: (context, cacheSnapshot) {
           final cachedPath = cacheSnapshot.data;
           if (!_hasLocal && cacheSnapshot.connectionState != ConnectionState.done) {
@@ -142,7 +148,7 @@ class MessageAttachmentView extends StatelessWidget {
                 return AudioMessagePlayer(
                   localPath: effectiveLocal,
                   url: url,
-                  remotePath: remotePath,
+                  remotePath: _cacheKey,
                   fileName: name,
                   loading: waiting,
                 );
@@ -176,7 +182,7 @@ class MessageAttachmentView extends StatelessWidget {
         builder: (_) => MediaImageViewerPage(
           localPath: effectiveLocal,
           url: url,
-          remotePath: remotePath,
+          remotePath: _cacheKey,
           title: name ?? '',
         ),
       )),
@@ -190,7 +196,7 @@ class MessageAttachmentView extends StatelessWidget {
         builder: (_) => MediaVideoViewerPage(
           localPath: effectiveLocal,
           url: url,
-          remotePath: remotePath,
+          remotePath: _cacheKey,
           title: name ?? '',
         ),
       )),
@@ -217,7 +223,7 @@ class MessageAttachmentView extends StatelessWidget {
         builder: (_) => MediaPdfViewerPage(
           localPath: effectiveLocal,
           url: url,
-          remotePath: remotePath,
+          remotePath: _cacheKey,
           title: name ?? 'PDF',
         ),
       ));
@@ -227,7 +233,7 @@ class MessageAttachmentView extends StatelessWidget {
       builder: (_) => MediaDocumentViewerPage(
         localPath: effectiveLocal,
         url: url,
-        remotePath: remotePath,
+        remotePath: _cacheKey,
         title: name ?? (french ? 'Fichier' : 'File'),
         mimeType: type,
         french: french,
