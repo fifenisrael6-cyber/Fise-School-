@@ -83,7 +83,7 @@ class PrivateMessageService {
           'attachment_type': message.attachmentType, 'reply_to_id': message.replyToId, 'sync_status': 'sent',
         });
       }
-      return _readPrivateCache(contactId);
+      return messages;
     } catch (_) {
       return _readPrivateCache(contactId);
     }
