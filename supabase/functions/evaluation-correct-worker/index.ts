@@ -1,4 +1,4 @@
-import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
+import { AI_SCHOOL_SYSTEM_RULES } from "./ai-school-rules.ts";
 
 // Worker de correction automatique des épreuves remises en photographies.
 //
