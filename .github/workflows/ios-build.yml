@@ -34,15 +34,47 @@ jobs:
           set -euo pipefail
           cp pubspec.yaml "$RUNNER_TEMP/pubspec.yaml.original"
           if [ -f pubspec.lock ]; then cp pubspec.lock "$RUNNER_TEMP/pubspec.lock.original"; fi
-          # Generate a clean iOS template outside the repository so existing app files
-          # and platform customizations are never overwritten.
-          mkdir -p "$RUNNER_TEMP/fise-school-ios-scaffold"
-          cd "$RUNNER_TEMP/fise-school-ios-scaffold"
-          flutter create --platforms=ios --org com.fiseschool --project-name fise_school --no-pub .
-          cd "$GITHUB_WORKSPACE"
-          # The repository already contains its customized Runner project; restore only
-          # the missing CocoaPods Podfile from the clean template.
-          if [ ! -f ios/Podfile ]; then cp "$RUNNER_TEMP/fise-school-ios-scaffold/ios/Podfile" ios/Podfile; fi
+          # The existing iOS Runner project has no Podfile. Create the standard
+          # Flutter CocoaPods integration file directly without regenerating app files.
+          if [ ! -f ios/Podfile ]; then
+            cat > ios/Podfile <<'PODFILE'
+          platform :ios, '13.0'
+          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+          project 'Runner', {
+            'Debug' => :debug,
+            'Profile' => :release,
+            'Release' => :release,
+          }
+
+          def flutter_root
+            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+            unless File.exist?(generated_xcode_build_settings_path)
+              raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first"
+            end
+            File.foreach(generated_xcode_build_settings_path) do |line|
+              matches = line.match(/FLUTTER_ROOT=(.*)/)
+              return matches[1].strip if matches
+            end
+            raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+          end
+
+          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+          flutter_ios_podfile_setup
+
+          target 'Runner' do
+            use_frameworks!
+            use_modular_headers!
+            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+          end
+
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              flutter_additional_ios_build_settings(target)
+            end
+          end
+          PODFILE
+          fi
           test -f ios/Podfile
           test -f ios/Runner.xcodeproj/project.pbxproj
           test -f ios/Flutter/Debug.xcconfig
