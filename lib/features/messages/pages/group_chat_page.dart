@@ -151,6 +151,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
             : 'Premium activé. Renvoie ton message.'),
       ));
     }
+    // Remove a locally queued message if the server definitively rejected it.
+    if (mounted) unawaited(_load(showLoader: false));
   }
 
   @override
