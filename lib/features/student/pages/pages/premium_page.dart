@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/services/notchpay_service.dart';
 import '../../../../core/services/quota_service.dart';
 import '../../../../core/services/subscription_service.dart';
 import '../../../../models/user_profile.dart';
+import 'payment_page.dart';
 
 class PremiumPage extends StatefulWidget {
   final Locale locale;
@@ -81,134 +81,8 @@ class _PremiumPageState extends State<PremiumPage> {
   }
 
   Future<void> _startPremiumPayment() async {
-    if (_processingPayment) {
-      return;
-    }
-
-    final user = Supabase.instance.client.auth.currentUser;
-
-    if (user == null) {
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Tu dois être connecté pour effectuer un paiement.'
-            : 'You must be signed in to make a payment.',
-      );
-
-      return;
-    }
-
-    final email = user.email?.trim();
-
-    if (email == null || email.isEmpty) {
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Aucune adresse e-mail n’est associée à ton compte.'
-            : 'No email address is associated with your account.',
-      );
-
-      return;
-    }
-
-    setState(() {
-      _processingPayment = true;
-    });
-
-    try {
-      final metadata = user.userMetadata;
-
-      final metadataName =
-          metadata?['full_name'] ??
-          metadata?['name'] ??
-          metadata?['display_name'];
-
-      final name = metadataName is String && metadataName.trim().isNotEmpty
-          ? metadataName.trim()
-          : 'Fise School Student';
-
-      final payment = await _notchPayService.createPayment(
-        email: email,
-        name: name,
-        amount: 2000,
-        currency: 'XAF',
-        description: 'Abonnement Fise School Premium - 30 jours',
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      final authorizationUrl = payment.authorizationUrl;
-
-      if (authorizationUrl.trim().isEmpty) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Le lien de paiement est vide.'
-              : 'The payment link is empty.',
-        );
-
-        return;
-      }
-
-      final url = Uri.tryParse(authorizationUrl);
-
-      if (url == null || !url.hasScheme || !url.hasAuthority) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Le lien de paiement reçu est invalide.'
-              : 'The payment link received is invalid.',
-        );
-
-        return;
-      }
-
-      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-
-      if (!mounted) {
-        return;
-      }
-
-      if (!opened) {
-        _showMessage(
-          widget.locale.languageCode == 'fr'
-              ? 'Impossible d’ouvrir la page de paiement.'
-              : 'Unable to open the payment page.',
-        );
-
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'La page de paiement a été ouverte. Après le paiement, actualise ton abonnement.'
-            : 'The payment page has been opened. After payment, refresh your subscription.',
-      );
-    } on AuthException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Session utilisateur invalide : ${error.message}'
-            : 'Invalid user session: ${error.message}',
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      _showMessage(
-        widget.locale.languageCode == 'fr'
-            ? 'Une erreur est survenue pendant le paiement.'
-            : 'An error occurred during payment.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _processingPayment = false;
-        });
-      }
-    }
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile)));
+    if (mounted) await _loadSubscription();
   }
 
   String _fmt(DateTime d) =>
