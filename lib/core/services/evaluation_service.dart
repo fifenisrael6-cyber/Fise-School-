@@ -42,38 +42,21 @@ class EvaluationService {
     StudentEvaluationList decode(Object? raw) => StudentEvaluationList.fromMap(
       Map<String, dynamic>.from(raw as Map),
     );
-    final result = forceRefresh
-        ? decode(await fetch())
-        : await JsonCache.instance.cachedRead<StudentEvaluationList>(
-            key: 'student_evaluations_$userId',
-            fetch: fetch,
-            decode: decode,
-          );
+    late final StudentEvaluationList result;
     if (forceRefresh) {
+      final raw = await fetch();
+      result = decode(raw);
       try {
-        await JsonCache.instance.write('student_evaluations_$userId', {
-          'server_now': DateTime.now().toUtc().toIso8601String(),
-          'evaluations': result.items.map((e) => {
-            'id': e.id,
-            'title': e.title,
-            'instructions': e.instructions,
-            'subject_name_fr': e.subjectFr,
-            'subject_name_en': e.subjectEn,
-            'starts_at': e.startsAt.toUtc().toIso8601String(),
-            'due_at': e.dueAt.toUtc().toIso8601String(),
-            'duration_minutes': e.durationMinutes,
-            'late_policy': e.latePolicy,
-            'late_grace_minutes': e.lateGraceMinutes,
-            'late_penalty_percent': e.latePenaltyPercent,
-            'max_score': e.maxScore,
-            'status': e.status,
-            'pdf_name': e.pdfName,
-            'pdf_path': e.pdfPath,
-          }).toList(),
-        });
+        await JsonCache.instance.write('student_evaluations_$userId', raw);
       } catch (_) {
         // A successful server response must not fail because of cache persistence.
       }
+    } else {
+      result = await JsonCache.instance.cachedRead<StudentEvaluationList>(
+        key: 'student_evaluations_$userId',
+        fetch: fetch,
+        decode: decode,
+      );
     }
     try {
       final profile = await _client.from('profiles').select('role')
