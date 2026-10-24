@@ -215,6 +215,9 @@ class GroupMessageService {
           'attachment_type': message.attachmentType,
           'reply_to_id': message.replyToId,
           'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
+          'delivered_count': message.deliveredCount,
+          'read_count': message.readCount,
+          'recipient_count': message.recipientCount,
           'sync_status': 'sent',
         });
       }
@@ -247,6 +250,9 @@ class GroupMessageService {
       'attachment_type': row.readNullable<String>('attachment_type'),
       'local_attachment_path': row.readNullable<String>('local_attachment_path'),
       'reply_to_id': row.readNullable<String>('reply_to_id'),
+      'delivered_count': row.read<int>('delivered_count'),
+      'read_count': row.read<int>('read_count'),
+      'recipient_count': row.read<int>('recipient_count'),
       'is_pending': row.read<String>('sync_status') == 'pending',
     })).toList();
   }
