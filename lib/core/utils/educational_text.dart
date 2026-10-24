@@ -8,9 +8,11 @@ String readableEducationalText(String input) {
     RegExp(r'\\vec\{([^{}]+)\}'),
     (match) => '${match[1]}⃗',
   );
+  // Accept simple and one-level nested braces, as commonly returned by AI
+  // for fractions such as \frac{M_T \cdot M_L}{TL^2}.
   text = text.replaceAllMapped(
-    RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}'),
-    (match) => '(${match[1]}) ÷ (${match[2]})',
+    RegExp(r'\\frac\{((?:[^{}]|\{[^{}]*\})*)\}\{((?:[^{}]|\{[^{}]*\})*)\}'),
+    (match) => 'fraction ${match[1]} sur ${match[2]}',
   );
   text = text.replaceAllMapped(
     RegExp(r'\\sqrt\{([^{}]+)\}'),

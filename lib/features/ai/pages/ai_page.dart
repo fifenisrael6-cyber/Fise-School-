@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/gemini_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../core/services/quota_service.dart';
+import '../../../core/widgets/rich_lesson_text.dart';
 import '../../premium/premium_gate.dart';
 import '../../../models/user_profile.dart';
 
@@ -408,13 +409,20 @@ class _AiPageState extends State<AiPage> {
               if (message.text.isNotEmpty) const SizedBox(height: 8),
             ],
             if (message.text.isNotEmpty)
-              SelectableText(
-                message.text,
-                style: TextStyle(
-                  color: user ? Colors.white : const Color(0xFF0F172A),
-                  height: 1.45,
+              if (user)
+                SelectableText(
+                  message.text,
+                  style: const TextStyle(color: Colors.white, height: 1.45),
+                )
+              else
+                RichLessonText(
+                  text: message.text,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 15,
+                    height: 1.55,
+                  ),
                 ),
-              ),
           ],
         ),
       ),
