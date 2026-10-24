@@ -86,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -98,6 +98,7 @@ class AppDatabase extends _$AppDatabase {
           await _createMessageOfflineTables();
           await _createOfflineCatalogCacheTable();
           await _createMessageConversationPreferences();
+          await _createAiConversationCacheTable();
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -122,7 +123,57 @@ class AppDatabase extends _$AppDatabase {
           if (from < 8) {
             await _addMessageDeletedAtColumn();
           }
+          if (from < 9) {
+            await _createAiConversationCacheTable();
+          }
         },
+      );
+
+  Future<void> _createAiConversationCacheTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS ai_conversation_cache (
+        message_id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('user','model')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS ai_conversation_cache_thread_idx ON ai_conversation_cache(user_id, conversation_id, created_at)',
+    );
+  }
+
+  Future<void> saveAiConversationMessage({
+    required String messageId,
+    required String userId,
+    required String conversationId,
+    required String role,
+    required String content,
+    required DateTime createdAt,
+  }) async {
+    await customStatement(
+      '''INSERT OR REPLACE INTO ai_conversation_cache
+        (message_id, user_id, conversation_id, role, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)''',
+      [messageId, userId, conversationId, role, content, createdAt.toUtc().toIso8601String()],
+    );
+  }
+
+  Future<List<QueryRow>> getAiConversationMessages(
+    String userId,
+    String conversationId,
+  ) => customSelect(
+    'SELECT message_id, role, content, created_at FROM ai_conversation_cache '
+    'WHERE user_id = ? AND conversation_id = ? ORDER BY created_at ASC, message_id ASC',
+    variables: [Variable(userId), Variable(conversationId)],
+  ).get();
+
+  Future<void> clearAiConversation(String userId, String conversationId) =>
+      customStatement(
+        'DELETE FROM ai_conversation_cache WHERE user_id = ? AND conversation_id = ?',
+        [userId, conversationId],
       );
 
   Future<void> _createMessageConversationPreferences() async {
