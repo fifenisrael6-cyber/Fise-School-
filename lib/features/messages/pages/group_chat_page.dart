@@ -295,21 +295,24 @@ class _GroupChatPageState extends State<GroupChatPage> {
   }
 
   Future<void> _showMessageActions(GroupMessage message) async {
+    final mine = message.senderId == widget.profile.id;
+    final canDeleteForEveryone = mine || _isOwner;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Wrap(
           children: [
-            ListTile(
-              leading: const Icon(Icons.reply_rounded),
-              title: Text(_fr ? 'Répondre' : 'Reply'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _startReply(message);
-              },
-            ),
-            if (message.body.isNotEmpty)
+            if (message.deletedAt == null)
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: Text(_fr ? 'Répondre' : 'Reply'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _startReply(message);
+                },
+              ),
+            if (message.deletedAt == null && message.body.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy_rounded),
                 title: Text(_fr ? 'Copier' : 'Copy'),
@@ -319,10 +322,74 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   if (mounted) _snack(_fr ? 'Message copié.' : 'Message copied.');
                 },
               ),
+            if (!message.isPending)
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: Text(_fr ? 'Supprimer pour moi' : 'Delete for me'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(message, forEveryone: false);
+                },
+              ),
+            if (canDeleteForEveryone && !message.isPending && message.deletedAt == null)
+              ListTile(
+                leading: const Icon(Icons.delete_forever_rounded, color: Colors.red),
+                title: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone'),
+                subtitle: _isOwner && !mine
+                    ? Text(_fr ? 'Modération enseignant' : 'Teacher moderation')
+                    : null,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(message, forEveryone: true);
+                },
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _deleteMessage(GroupMessage message, {required bool forEveryone}) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(forEveryone
+            ? (_fr ? 'Supprimer pour tout le monde ?' : 'Delete for everyone?')
+            : (_fr ? 'Supprimer pour vous ?' : 'Delete for you?')),
+        content: Text(forEveryone
+            ? (_fr
+                ? 'Le message sera supprimé pour tous les membres du groupe.'
+                : 'The message will be deleted for every group member.')
+            : (_fr
+                ? 'Le message sera masqué uniquement pour vous.'
+                : 'The message will be hidden only for you.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            style: forEveryone ? FilledButton.styleFrom(backgroundColor: Colors.red) : null,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _service.deleteMessage(message.id, forEveryone: forEveryone);
+      await _load(showLoader: false);
+      if (mounted) {
+        _snack(forEveryone
+            ? (_fr ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
+            : (_fr ? 'Message supprimé pour vous.' : 'Message deleted for you.'));
+      }
+    } catch (error) {
+      if (mounted) {
+        _snack((_fr ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString());
+      }
+    }
   }
 
   void _snack(String message) {
@@ -841,15 +908,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
                   color: isTeacher ? const Color(0xFF166534) : Colors.blueGrey.shade700,
                 ),
               ),
-            if (message.replyToId != null)
+            if (message.deletedAt == null && message.replyToId != null)
               QuotedMessage(
                 author: quoted == null ? '' : _authorOf(quoted),
                 snippet: quoted == null
                     ? (_fr ? 'Message indisponible' : 'Message unavailable')
                     : _snippetOf(quoted),
               ),
-            if (message.body.isNotEmpty) Text(message.body),
-            if (message.attachmentPath != null || message.localAttachmentPath != null)
+            if (message.deletedAt != null)
+              Text(
+                _fr ? 'Ce message a été supprimé.' : 'This message was deleted.',
+                style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.black54),
+              )
+            else if (message.body.isNotEmpty)
+              Text(message.body),
+            if (message.deletedAt == null && (message.attachmentPath != null || message.localAttachmentPath != null))
               MessageAttachmentView(
                 name: message.attachmentName,
                 type: message.attachmentType,
