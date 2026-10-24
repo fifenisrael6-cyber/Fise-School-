@@ -57,7 +57,7 @@ begin
     update public.message_group_messages
     set deleted_at = now(),
         deleted_by = v_user_id,
-        body = '',
+        body = '[deleted]',
         attachment_path = null,
         attachment_name = null,
         attachment_type = null
@@ -122,7 +122,7 @@ begin
     update public.private_messages
     set deleted_at = now(),
         deleted_by = v_user_id,
-        body = '',
+        body = '[deleted]',
         attachment_path = null,
         attachment_name = null,
         attachment_type = null
