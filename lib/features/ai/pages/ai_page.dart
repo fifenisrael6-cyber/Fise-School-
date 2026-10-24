@@ -57,8 +57,8 @@ class _AiPageState extends State<AiPage> {
     if (_messages.isNotEmpty) return;
     _messages.add(_AiMessage(
       text: _isFrench
-          ? 'Bonjour ${widget.profile.firstName} 👋\\n\\nJe suis l’assistant IA de Fise School. Pose-moi une question sur tes cours, envoie un document, une photo ou prends une photo directement avec ton téléphone.'
-          : 'Hello ${widget.profile.firstName} 👋\\n\\nI am the Fise School AI assistant. Ask about your lessons, attach a document or photo, or take a photo directly with your phone.',
+          ? 'Bonjour ${widget.profile.firstName} 👋\n\nJe suis l’assistant IA de Fise School. Pose-moi une question sur tes cours, envoie un document, une photo ou prends une photo directement avec ton téléphone.'
+          : 'Hello ${widget.profile.firstName} 👋\n\nI am the Fise School AI assistant. Ask about your lessons, attach a document or photo, or take a photo directly with your phone.',
       fromUser: false,
     ));
   }
