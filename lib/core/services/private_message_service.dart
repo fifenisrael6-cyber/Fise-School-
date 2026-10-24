@@ -76,7 +76,6 @@ class PrivateMessageService {
           'sender_id': message.senderId, 'recipient_id': message.recipientId, 'body': message.body,
           'created_at': message.createdAt.toUtc().toIso8601String(),
           'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
-          'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'read_at': message.readAt?.toUtc().toIso8601String(),
           'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
           'attachment_path': message.attachmentPath, 'attachment_name': message.attachmentName,
