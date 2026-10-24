@@ -28,33 +28,22 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Repair missing iOS platform files without touching app files
+      - name: Generate missing iOS platform files safely
         shell: bash
         run: |
           set -euo pipefail
-          scaffold="$RUNNER_TEMP/fise-school-ios-scaffold"
-          flutter create --platforms=ios --org com.fiseschool --project-name fise_school "$scaffold"
-          mkdir -p ios/Flutter
-          if [ ! -f ios/Podfile ]; then cp "$scaffold/ios/Podfile" ios/Podfile; fi
-          for file in Debug.xcconfig Release.xcconfig AppFrameworkInfo.plist; do
-            if [ ! -f "ios/Flutter/$file" ]; then cp "$scaffold/ios/Flutter/$file" "ios/Flutter/$file"; fi
-          done
-          if [ ! -f ios/Runner.xcodeproj/project.pbxproj ]; then cp -R "$scaffold/ios/Runner.xcodeproj" ios/; fi
-          if [ ! -f ios/Runner.xcworkspace/contents.xcworkspacedata ]; then
-            mkdir -p ios/Runner.xcworkspace
-            cp "$scaffold/ios/Runner.xcworkspace/contents.xcworkspacedata" ios/Runner.xcworkspace/
-          fi
-          if [ ! -f ios/Runner/Info.plist ]; then cp "$scaffold/ios/Runner/Info.plist" ios/Runner/; fi
-          if [ ! -f ios/Runner/AppDelegate.swift ]; then cp "$scaffold/ios/Runner/AppDelegate.swift" ios/Runner/; fi
-          if [ ! -f ios/Runner/Base.lproj/Main.storyboard ]; then
-            mkdir -p ios/Runner/Base.lproj
-            cp "$scaffold/ios/Runner/Base.lproj/Main.storyboard" ios/Runner/Base.lproj/
-          fi
-          if [ ! -f ios/Runner/Base.lproj/LaunchScreen.storyboard ]; then
-            mkdir -p ios/Runner/Base.lproj
-            cp "$scaffold/ios/Runner/Base.lproj/LaunchScreen.storyboard" ios/Runner/Base.lproj/
-          fi
-          echo "Confirming required app dependencies are still present:"
+          cp pubspec.yaml "$RUNNER_TEMP/pubspec.yaml.original"
+          if [ -f pubspec.lock ]; then cp pubspec.lock "$RUNNER_TEMP/pubspec.lock.original"; fi
+          # Run in the existing project without --overwrite. This creates the missing
+          # iOS scaffold while protecting the application's own pubspec and source.
+          flutter create --platforms=ios --org com.fiseschool --project-name fise_school --no-pub .
+          cp "$RUNNER_TEMP/pubspec.yaml.original" pubspec.yaml
+          if [ -f "$RUNNER_TEMP/pubspec.lock.original" ]; then cp "$RUNNER_TEMP/pubspec.lock.original" pubspec.lock; fi
+          test -f ios/Podfile
+          test -f ios/Runner.xcodeproj/project.pbxproj
+          test -f ios/Flutter/Debug.xcconfig
+          test -f ios/Flutter/Release.xcconfig
+          echo "iOS scaffold verified; application pubspec.yaml and pubspec.lock preserved."
           grep -E '^  (supabase_flutter|drift|shared_preferences|path_provider|file_picker):' pubspec.yaml
 
       - name: Resolve Flutter dependencies
