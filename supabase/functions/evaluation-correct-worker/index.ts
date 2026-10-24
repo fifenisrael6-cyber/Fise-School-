@@ -17,6 +17,7 @@ import { AI_SCHOOL_SYSTEM_RULES } from "../_shared/ai-school-rules.ts";
 // Optionnels : GEMINI_MODEL, EVAL_MIN_CONFIDENCE.
 // Déploiement : supabase functions deploy evaluation-correct-worker --no-verify-jwt
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 
 const MAX_IMAGE_BYTES_TOTAL = 18 * 1024 * 1024;
 const MAX_PDF_BYTES = 12 * 1024 * 1024;
@@ -89,6 +90,106 @@ async function callGemini(apiKey: string, parts: unknown[]): Promise<{ result: a
     }
   }
   throw new Error(lastError);
+}
+
+ 
+function pdfSafeText(value: string): string {
+  return value.replace(/[\u2010-\u2015]/g, "-").replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"').replace(/[^\x20-\xFF]/g, "?");
+}
+
+function wrapPdfText(value: string, maxChars = 88): string[] {
+  const words = pdfSafeText(value).split(/\s+/);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    if ((line ? line.length + 1 : 0) + word.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line += (line ? " " : "") + word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// Produces a single PDF containing the submitted copy pages and a red-marked
+// feedback report. It deliberately does not draw guessed coordinates over handwriting.
+async function createCorrectionPdf(admin: any, job: any, questions: any[]) {
+  const { data: photos } = await admin.from("evaluation_photos")
+    .select("storage_path,position").eq("submission_id", job.submission_id)
+    .order("position").order("received_at");
+  if (!photos?.length) return;
+
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+
+  for (const photo of photos) {
+    const downloaded = await admin.storage.from("evaluation-photos").download(photo.storage_path);
+    if (downloaded.error || !downloaded.data) continue;
+    const bytes = new Uint8Array(await downloaded.data.arrayBuffer());
+    const path = String(photo.storage_path).toLowerCase();
+    let image: any;
+    try {
+      if (path.endsWith(".png")) image = await doc.embedPng(bytes);
+      else if (path.endsWith(".jpg") || path.endsWith(".jpeg")) image = await doc.embedJpg(bytes);
+      else continue;
+    } catch (_) { continue; }
+
+    const page = doc.addPage([pageWidth, pageHeight]);
+    const scale = Math.min(pageWidth / image.width, (pageHeight - 34) / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    page.drawImage(image, { x: (pageWidth - width) / 2, y: 24 + (pageHeight - 34 - height) / 2, width, height });
+    page.drawRectangle({ x: 0, y: pageHeight - 28, width: pageWidth, height: 28, color: rgb(0.72, 0.05, 0.08) });
+    page.drawText(pdfSafeText("COPIE ORIGINALE - voir le releve des erreurs a la fin"), {
+      x: 18, y: pageHeight - 19, size: 9, font: bold, color: rgb(1, 1, 1),
+    });
+  }
+
+  let page = doc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - 42;
+  const newPage = () => { page = doc.addPage([pageWidth, pageHeight]); y = pageHeight - 42; };
+  const drawLine = (text: string, options: { bold?: boolean; red?: boolean; size?: number } = {}) => {
+    const lines = wrapPdfText(text, options.size && options.size > 10 ? 72 : 92);
+    for (const line of lines) {
+      if (y < 48) newPage();
+      page.drawText(line, {
+        x: 34, y, size: options.size ?? 10, font: options.bold ? bold : font,
+        color: options.red ? rgb(0.78, 0.04, 0.08) : rgb(0.12, 0.12, 0.12),
+      });
+      y -= options.size && options.size > 10 ? 20 : 15;
+    }
+  };
+  page.drawText("CORRECTION DE LA COPIE", { x: 34, y, size: 17, font: bold, color: rgb(0.72, 0.05, 0.08) });
+  y -= 30;
+  drawLine("Les pages precedentes reproduisent les photos remises. Les points perdus et explications sont indiques ci-dessous.", { size: 10 });
+  y -= 8;
+  for (const q of questions.slice(0, 80)) {
+    const points = q.ai_points == null ? "A verifier" : String(q.ai_points);
+    const max = q.max_points == null ? "?" : String(q.max_points);
+    const lost = q.ai_points == null || Number(q.ai_points) < Number(q.max_points);
+    drawLine(String(q.question_label ?? ("Question " + q.question_key)), { bold: true, red: lost, size: 11 });
+    drawLine("Points : " + points + " / " + max, { bold: true, red: lost });
+    if (q.student_answer) drawLine("Reponse relevee : " + String(q.student_answer).slice(0, 900));
+    if (q.feedback_fr) drawLine("A corriger / explication : " + String(q.feedback_fr).slice(0, 1200), { red: lost });
+    y -= 7;
+  }
+
+  const bytes = await doc.save();
+  const path = String(job.evaluation_id) + "/" + String(job.student_id) + "/" + String(job.submission_id) + "-correction.pdf";
+  const upload = await admin.storage.from("evaluation-corrections").upload(path, bytes, {
+    contentType: "application/pdf", upsert: true,
+  });
+  if (upload.error) throw new Error("PDF de correction : " + upload.error.message);
+  const update = await admin.from("evaluation_submissions")
+    .update({ corrected_pdf_path: path, corrected_pdf_name: "copie_corrigee.pdf" })
+    .eq("id", job.submission_id).eq("student_id", job.student_id);
+  if (update.error) throw new Error("Enregistrement du PDF de correction : " + update.error.message);
 }
 
 async function processCorrection(admin: any, geminiKey: string, minConfidence: number, job: any) {
@@ -296,6 +397,11 @@ async function runBatch(admin: any, geminiKey: string, minConfidence: number) {
           p_min_confidence: minConfidence,
         });
         if (saveError) throw new Error(saveError.message);
+        try {
+          await createCorrectionPdf(admin, job, done.results);
+        } catch (pdfError) {
+          console.error("correction-pdf", job.id, pdfError instanceof Error ? pdfError.message : pdfError);
+        }
         processed++;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erreur inconnue";
