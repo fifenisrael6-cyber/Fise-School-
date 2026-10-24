@@ -336,7 +336,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(forEveryone
               ? (_isFrench ? 'Message supprimé pour tout le monde.' : 'Message deleted for everyone.')
-              : (_isFrench ? 'Message supprimé pour vous.' : 'Message deleted for you.'),
+              : (_isFrench ? 'Message supprimé pour vous.' : 'Message deleted for you.')),
         ));
       }
     } catch (error) {
