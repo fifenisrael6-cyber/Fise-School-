@@ -4,13 +4,73 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
-/// Affiche une pièce jointe de message comme dans les applications de messagerie :
-/// image (plein écran zoomable), note vocale / audio (lecteur), vidéo (lecteur),
-/// PDF (lecteur intégré) et autres documents (carte + ouverture).
+/// Persistent cache for message attachments. The remote object path is the cache key,
+/// so a refreshed signed URL does not cause the same file to be downloaded again.
+class _MessageMediaCache {
+  static Future<String?> find({
+    required String? remotePath,
+    required String? fileName,
+    String? url,
+  }) async {
+    final key = (remotePath?.isNotEmpty == true) ? remotePath! : url;
+    if (key == null || key.isEmpty) return null;
+    try {
+      final file = await _cacheFile(key, fileName);
+      return await file.exists() ? file.path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> download({
+    required String? remotePath,
+    required String? fileName,
+    required String? url,
+  }) async {
+    if (url == null || url.isEmpty) return null;
+    final key = (remotePath?.isNotEmpty == true) ? remotePath! : url;
+    final cached = await find(remotePath: key, fileName: fileName, url: url);
+    if (cached != null) return cached;
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 90));
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      return await saveBytes(remotePath: key, fileName: fileName, bytes: response.bodyBytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String> saveBytes({
+    required String remotePath,
+    required String? fileName,
+    required List<int> bytes,
+  }) async {
+    final file = await _cacheFile(remotePath, fileName);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  static Future<File> _cacheFile(String key, String? name) async {
+    final support = await getApplicationSupportDirectory();
+    final safeName = (name ?? 'attachment.bin').replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    var hash = 0x811c9dc5;
+    for (final unit in key.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return File('${support.path}/message_media_cache/${hash.toRadixString(16)}_$safeName');
+  }
+}
+
+/// Affiche une pièce jointe de message dans l'application. Au premier accès,
+/// le contenu est ouvert en streaming puis mis en cache; les ouvertures suivantes
+/// utilisent le fichier local et fonctionnent hors ligne.
 class MessageAttachmentView extends StatelessWidget {
   const MessageAttachmentView({
     super.key,
@@ -43,46 +103,96 @@ class MessageAttachmentView extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: FutureBuilder<String?>(
-        future: _hasLocal ? Future.value(null) : resolveUrl(remotePath),
-        builder: (context, snapshot) {
-          final url = snapshot.data;
-          final waiting = !_hasLocal && snapshot.connectionState != ConnectionState.done;
-          final unavailable = !_hasLocal && !waiting && url == null;
-          if (unavailable) return _DocumentCard(name: name, type: type, french: french, onTap: null, subtitle: french ? 'Indisponible hors ligne' : 'Unavailable offline');
-          if (_isImage) return _imageThumb(context, url);
-          if (_isAudio) return AudioMessagePlayer(localPath: _hasLocal ? localPath : null, url: url, loading: waiting);
-          if (_isVideo) return _videoCard(context, url);
-          return _DocumentCard(
-            name: name,
-            type: type,
-            french: french,
-            onTap: waiting ? null : () => _openDocument(context, url),
-            subtitle: _isPdf ? (french ? 'PDF • Appuyer pour lire' : 'PDF • Tap to read') : (french ? 'Appuyer pour ouvrir' : 'Tap to open'),
+        future: _hasLocal
+            ? Future.value(localPath)
+            : _MessageMediaCache.find(remotePath: remotePath, fileName: name),
+        builder: (context, cacheSnapshot) {
+          final cachedPath = cacheSnapshot.data;
+          if (!_hasLocal && cacheSnapshot.connectionState != ConnectionState.done) {
+            return _DocumentCard(
+              name: name,
+              type: type,
+              french: french,
+              onTap: null,
+              subtitle: french ? 'Préparation du fichier…' : 'Preparing file…',
+            );
+          }
+          return FutureBuilder<String?>(
+            future: (cachedPath != null && File(cachedPath).existsSync())
+                ? Future.value(null)
+                : resolveUrl(remotePath),
+            builder: (context, snapshot) {
+              final effectiveLocal = (cachedPath != null && File(cachedPath).existsSync())
+                  ? cachedPath
+                  : (_hasLocal ? localPath : null);
+              final url = snapshot.data;
+              final waiting = effectiveLocal == null && snapshot.connectionState != ConnectionState.done;
+              final unavailable = effectiveLocal == null && !waiting && url == null;
+              if (unavailable) {
+                return _DocumentCard(
+                  name: name,
+                  type: type,
+                  french: french,
+                  onTap: null,
+                  subtitle: french ? 'Indisponible hors ligne' : 'Unavailable offline',
+                );
+              }
+              if (_isImage) return _imageThumb(context, url, effectiveLocal);
+              if (_isAudio) {
+                return AudioMessagePlayer(
+                  localPath: effectiveLocal,
+                  url: url,
+                  remotePath: remotePath,
+                  fileName: name,
+                  loading: waiting,
+                );
+              }
+              if (_isVideo) return _videoCard(context, url, effectiveLocal);
+              return _DocumentCard(
+                name: name,
+                type: type,
+                french: french,
+                onTap: waiting ? null : () => _openDocument(context, url, effectiveLocal),
+                subtitle: _isPdf
+                    ? (french ? 'PDF • Appuyer pour lire' : 'PDF • Tap to read')
+                    : (french ? 'Appuyer pour ouvrir dans Fise School' : 'Tap to open in Fise School'),
+              );
+            },
           );
         },
       ),
     );
   }
 
-  Widget _imageThumb(BuildContext context, String? url) {
-    final image = _hasLocal
-        ? Image.file(File(localPath!), width: 220, height: 180, fit: BoxFit.cover)
+  Widget _imageThumb(BuildContext context, String? url, String? effectiveLocal) {
+    final image = effectiveLocal != null && File(effectiveLocal).existsSync()
+        ? Image.file(File(effectiveLocal), width: 220, height: 180, fit: BoxFit.cover)
         : (url == null
             ? const SizedBox(width: 220, height: 180, child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
             : Image.network(url, width: 220, height: 180, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox(width: 220, height: 180, child: Icon(Icons.broken_image_outlined))));
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaImageViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? ''),
+        builder: (_) => MediaImageViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: remotePath,
+          title: name ?? '',
+        ),
       )),
       child: ClipRRect(borderRadius: BorderRadius.circular(10), child: image),
     );
   }
 
-  Widget _videoCard(BuildContext context, String? url) {
+  Widget _videoCard(BuildContext context, String? url, String? effectiveLocal) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaVideoViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? ''),
+        builder: (_) => MediaVideoViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: remotePath,
+          title: name ?? '',
+        ),
       )),
       child: Container(
         width: 220,
@@ -101,17 +211,28 @@ class MessageAttachmentView extends StatelessWidget {
     );
   }
 
-  Future<void> _openDocument(BuildContext context, String? url) async {
+  Future<void> _openDocument(BuildContext context, String? url, String? effectiveLocal) async {
     if (_isPdf) {
       await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaPdfViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? 'PDF'),
+        builder: (_) => MediaPdfViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: remotePath,
+          title: name ?? 'PDF',
+        ),
       ));
       return;
     }
-    if (url != null) {
-      final uri = Uri.tryParse(url);
-      if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MediaDocumentViewerPage(
+        localPath: effectiveLocal,
+        url: url,
+        remotePath: remotePath,
+        title: name ?? (french ? 'Fichier' : 'File'),
+        mimeType: type,
+        french: french,
+      ),
+    ));
   }
 }
 
