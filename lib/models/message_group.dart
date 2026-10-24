@@ -56,6 +56,7 @@ class GroupMessage {
   final DateTime createdAt;
   final String? localAttachmentPath;
   final String? replyToId;
+  final DateTime? deletedAt;
   final bool isPending;
   final int deliveredCount;
   final int readCount;
@@ -74,6 +75,7 @@ class GroupMessage {
     this.attachmentType,
     this.localAttachmentPath,
     this.replyToId,
+    this.deletedAt,
     this.isPending = false,
     this.deliveredCount = 0,
     this.readCount = 0,
@@ -94,6 +96,7 @@ class GroupMessage {
       createdAt: DateTime.parse(map['created_at'] as String),
       localAttachmentPath: map['local_attachment_path'] as String?,
       replyToId: map['reply_to_id'] as String?,
+      deletedAt: map['deleted_at'] == null ? null : DateTime.parse(map['deleted_at'] as String),
       isPending: map['is_pending'] as bool? ?? false,
       deliveredCount: (map['delivered_count'] as num?)?.toInt() ?? 0,
       readCount: (map['read_count'] as num?)?.toInt() ?? 0,
