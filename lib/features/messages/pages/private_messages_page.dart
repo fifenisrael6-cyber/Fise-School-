@@ -728,7 +728,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                       color: message.isPending
                                           ? Colors.black45
                                           : (message.readAt != null
-                                              ? const Color(0xFF2EAD65)
+                                              ? const Color(0xFF34B7F1)
                                               : (message.deliveredAt != null
                                                   ? Colors.black54
                                                   : Colors.black87)),
