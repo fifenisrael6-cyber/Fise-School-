@@ -983,7 +983,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                       color: message.isPending
                           ? Colors.black45
                           : (message.readCount > 0
-                              ? const Color(0xFF2EAD65)
+                              ? const Color(0xFF34B7F1)
                               : (message.deliveredCount > 0
                                   ? Colors.black54
                                   : Colors.black87)),
