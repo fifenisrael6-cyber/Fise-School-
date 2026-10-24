@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/services/notchpay_service.dart';
@@ -90,7 +92,53 @@ class _PaymentPageState extends State<PaymentPage> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text(payment.message), behavior: SnackBarBehavior.floating));
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text(_isFrench
+                ? 'Demande envoyée. Confirme le paiement sur ton téléphone.'
+                : 'Request sent. Confirm the payment on your phone.'),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ));
+      }
+
+      // Vérification côté serveur : l'application ne marque jamais elle-même
+      // une commande comme payée.
+      for (var attempt = 0; attempt < 30; attempt++) {
+        await Future<void>.delayed(const Duration(seconds: 4));
+        if (!mounted) return;
+        final verification = await _notchPayService.verifyPayment(payment.reference);
+        final status = (verification['status'] ?? 'PENDING').toString().toUpperCase();
+        if (status == 'SUCCESS') {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text(_isFrench
+                  ? 'Paiement confirmé ! Ton abonnement Premium est activé.'
+                  : 'Payment confirmed! Your Premium subscription is active.'),
+              duration: const Duration(seconds: 3),
+            ));
+          await Future<void>.delayed(const Duration(seconds: 2));
+          if (mounted) Navigator.of(context).pop();
+          return;
+        }
+        if (['FAILED', 'CANCELED', 'CLOSED'].contains(status)) {
+          throw Exception(_isFrench
+              ? 'Le paiement a été refusé, annulé ou a expiré. Tu peux réessayer.'
+              : 'Payment was declined, canceled, or expired. You can try again.');
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text(_isFrench
+                ? 'Paiement toujours en attente. Tu peux revenir dans Premium pour vérifier son état.'
+                : 'Payment is still pending. Return to Premium to check its status.'),
+            duration: const Duration(seconds: 6),
+          ));
       }
     } catch (error) {
       if (!mounted) {
