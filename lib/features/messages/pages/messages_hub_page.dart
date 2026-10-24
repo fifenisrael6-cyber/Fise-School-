@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -58,7 +60,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   void initState() {
     super.initState();
     _pendingSharedAttachment = widget.initialSharedAttachment;
-    _groupsFuture = _service.listGroups();
+    _groupsFuture = _loadGroupsInstant();
     _loadConversationPreferences();
     // Open the exact conversation identified by a message notification.
     final targetType = widget.initialTargetType;
@@ -227,16 +229,33 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     );
   }
 
-  void _refreshGroups() {
-    if (mounted) {
-      setState(() => _groupsFuture = _service.listGroups());
+  Future<List<MessageGroup>> _loadGroupsInstant() async {
+    // A notification deep-link needs a fresh membership list to find its target.
+    if (widget.initialTargetType == 'group' && widget.initialTargetId != null) {
+      return _service.listGroups();
     }
+    final cached = await _service.getCachedGroups();
+    if (cached.isEmpty) return _service.listGroups();
+    unawaited(_refreshGroupsInBackground());
+    return cached;
+  }
+
+  Future<void> _refreshGroupsInBackground() async {
+    final groups = await _service.listGroups();
+    if (mounted) setState(() => _groupsFuture = Future.value(groups));
+  }
+
+  void _refreshGroups() {
+    unawaited(_refreshGroupsInBackground());
   }
 
   Future<void> _reload() async {
     if (!mounted) return;
-    setState(() => _groupsFuture = _service.listGroups());
-    await _groupsFuture;
+    final cached = await _service.getCachedGroups();
+    if (cached.isNotEmpty && mounted) {
+      setState(() => _groupsFuture = Future.value(cached));
+    }
+    await _refreshGroupsInBackground();
   }
 
   void _snack(String message) {
