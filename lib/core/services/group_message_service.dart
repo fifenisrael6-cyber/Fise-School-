@@ -172,11 +172,7 @@ class GroupMessageService {
     // A receipt failure must not prevent the actual conversation from refreshing.
     // Previously, any failure in syncPending/delivered/read jumped straight to the
     // offline cache, leaving the screen stale while the group preview showed newer data.
-    try {
-      await syncPending();
-    } catch (_) {
-      // Pending sends remain queued in Drift and will retry on connectivity changes.
-    }
+    unawaited(syncPending());
 
     try {
       await _client.rpc('mark_group_messages_delivered', params: {
@@ -232,6 +228,9 @@ class GroupMessageService {
       return _readCache(groupId);
     }
   }
+
+  /// Returns the local snapshot without waiting for Supabase.
+  Future<List<GroupMessage>> getCachedMessages(String groupId) => _readCache(groupId);
 
   Future<List<GroupMessage>> _readCache(String groupId, {List<dynamic>? fallbackRows}) async {
     final rows = fallbackRows ?? await _db.getCachedMessages(_userId, 'group', groupId);
@@ -327,16 +326,8 @@ class GroupMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    // Wait for the immediate attempt so the composer can report failures.
-    // The queued row remains in Drift when delivery is unsuccessful.
-    await syncPending();
-    final stillPending = await _db.getQueuedMessages(_userId, 'group');
-    if (stillPending.any((row) => row.read<String>('id') == id)) {
-      throw StateError(
-        'Le message est conservé sur cet appareil, mais le serveur ne l’a pas accepté. '
-        'Vérifiez votre connexion et votre accès au groupe, puis réessayez.',
-      );
-    }
+    // Render from the local cache immediately; deliver asynchronously.
+    unawaited(syncPending());
   }
 
   Future<void>? _syncPendingFuture;
