@@ -4,7 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:video_player/video_player.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../models/pedagogy.dart';
 
@@ -31,14 +31,38 @@ class OfflineResourceViewer extends StatefulWidget {
 class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   AudioPlayer? _audioPlayer;
   PdfControllerPinch? _pdfController;
+  String? _textContent;
+  WebViewController? _webController;
 
   bool get _fr => widget.locale.languageCode != 'en';
 
   @override
   void initState() {
     super.initState();
-    if (widget.localPath != null && widget.resource.resourceType == 'pdf') {
-      _pdfController = PdfControllerPinch(document: PdfDocument.openFile(widget.localPath!));
+    final path = widget.localPath;
+    if (path != null && widget.resource.resourceType == 'pdf') {
+      _pdfController = PdfControllerPinch(document: PdfDocument.openFile(path));
+    } else if (path != null && widget.resource.resourceType != 'image' &&
+        widget.resource.resourceType != 'audio' && widget.resource.resourceType != 'video') {
+      _prepareDocument(path);
+    }
+  }
+
+  Future<void> _prepareDocument(String path) async {
+    final name = widget.resource.fileName.toLowerCase();
+    try {
+      if (name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.json') ||
+          name.endsWith('.md') || name.endsWith('.xml')) {
+        final text = await File(path).readAsString();
+        if (mounted) setState(() => _textContent = text);
+      } else if (name.endsWith('.html') || name.endsWith('.htm')) {
+        final controller = WebViewController()
+          ..setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.loadFile(path);
+        if (mounted) setState(() => _webController = controller);
+      }
+    } catch (_) {
+      // The downloaded file remains available even if this format has no previewer.
     }
   }
 
@@ -81,6 +105,15 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
       case 'video':
         return _VideoLocalPlayer(path: path, locale: widget.locale);
       default:
+        if (_textContent != null) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SelectableText(_textContent!),
+          );
+        }
+        if (_webController != null) {
+          return WebViewWidget(controller: _webController!);
+        }
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -89,28 +122,13 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
               children: [
                 const Icon(Icons.insert_drive_file_outlined, size: 56, color: Color(0xFF166534)),
                 const SizedBox(height: 12),
+                Text(widget.resource.fileName, textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
                 Text(_fr
-                    ? 'Ce document est enregistré sur le téléphone. Ouvre-le avec une application compatible.'
-                    : 'This document is saved on the phone. Open it with a compatible app.',
+                    ? 'Le fichier est téléchargé et conservé hors ligne. L’aperçu intégré n’est pas disponible pour ce format.'
+                    : 'The file is downloaded and stored offline. An embedded preview is not available for this format.',
                     textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () async {
-                    final opened = await launchUrl(
-                      Uri.file(path),
-                      mode: LaunchMode.externalApplication,
-                    );
-                    if (!opened && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(_fr
-                            ? 'Aucune application compatible pour ce document.'
-                            : 'No compatible app found for this document.'),
-                      ));
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: Text(_fr ? 'Ouvrir le document' : 'Open document'),
-                ),
               ],
             ),
           ),
