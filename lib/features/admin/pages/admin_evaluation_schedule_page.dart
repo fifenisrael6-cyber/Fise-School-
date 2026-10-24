@@ -354,6 +354,95 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
     }
   }
 
+  Future<void> _generateBatchSchedule() async {
+    if (_exams.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        _fr ? 'Aucun examen actif disponible.' : 'No active exam available.')));
+      return;
+    }
+    String? examId = _exams.first['id']?.toString();
+    DateTime startDate = DateTime.now().add(const Duration(days: 1));
+    final daysController = TextEditingController(text: '7');
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) =>
+        AlertDialog(
+          title: Text(_fr ? 'Programmer automatiquement' : 'Generate schedule automatically'),
+          content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              initialValue: examId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: _fr ? 'Examen' : 'Exam'),
+              items: _exams.map((e) => DropdownMenuItem<String>(
+                value: e['id'].toString(),
+                child: Text(_label(e, 'name_fr', 'name_en'), overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: (v) => setDialogState(() => examId = v),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(_fr ? 'Date de début' : 'Start date'),
+              subtitle: Text('${startDate.day.toString().padLeft(2, '0')}/${startDate.month.toString().padLeft(2, '0')}/${startDate.year}'),
+              trailing: const Icon(Icons.calendar_month),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: dialogContext,
+                  initialDate: startDate,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (picked != null) setDialogState(() => startDate = DateTime(picked.year, picked.month, picked.day));
+              },
+            ),
+            TextField(
+              controller: daysController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: _fr ? 'Nombre de jours (1 à 30)' : 'Number of days (1 to 30)',
+                helperText: _fr ? 'Il faut au moins un jour par matière.' : 'At least one day per subject is required.',
+              ),
+            ),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(_fr ? 'Annuler' : 'Cancel')),
+            FilledButton(onPressed: () {
+              final days = int.tryParse(daysController.text.trim());
+              if (examId == null || days == null || days < 1 || days > 30) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+                  _fr ? 'Choisissez un examen et un nombre de jours entre 1 et 30.' : 'Select an exam and 1–30 days.')));
+                return;
+              }
+              Navigator.pop(dialogContext, {'exam_id': examId, 'start_date': startDate, 'days': days});
+            }, child: Text(_fr ? 'Générer' : 'Generate')),
+          ],
+        ),
+      ),
+    );
+    daysController.dispose();
+    if (result == null || !mounted) return;
+    setState(() { _loading = true; _error = null; });
+    try {
+      final response = await _db.rpc('generate_official_exam_schedule', params: {
+        'p_exam_id': result['exam_id'],
+        'p_start_date': (result['start_date'] as DateTime).toIso8601String().substring(0, 10),
+        'p_days': result['days'],
+        'p_class_ids': null,
+      });
+      if (!mounted) return;
+      final data = Map<String, dynamic>.from(response as Map);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_fr
+        ? 'Programmation terminée : ${data['created'] ?? 0} épreuve(s), ${data['skipped_existing'] ?? 0} déjà présente(s), ${data['missing_teacher'] ?? 0} sans enseignant.'
+        : 'Schedule complete: ${data['created'] ?? 0} exam(s), ${data['skipped_existing'] ?? 0} already present, ${data['missing_teacher'] ?? 0} without a teacher.')));
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        setState(() { _loading = false; _error = e.toString(); });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          (_fr ? 'Échec de la programmation automatique : ' : 'Automatic scheduling failed: ') + e.toString())));
+      }
+    }
+  }
+
   Widget _timeButton(BuildContext context, String label, DateTime current, ValueChanged<DateTime> onSet) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -377,7 +466,7 @@ class _AdminEvaluationSchedulePageState extends State<AdminEvaluationSchedulePag
     return Scaffold(
       appBar: AppBar(
         title: Text(_fr ? 'Calendrier des évaluations' : 'Exam schedule'),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: _fr ? 'Actualiser' : 'Refresh')],
+        actions: [IconButton(onPressed: _generateBatchSchedule, icon: const Icon(Icons.auto_awesome), tooltip: _fr ? 'Programmer toutes les matières' : 'Schedule all subjects'), IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: _fr ? 'Actualiser' : 'Refresh')],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createSchedule,
