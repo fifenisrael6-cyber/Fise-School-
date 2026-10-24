@@ -195,6 +195,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             : 'Premium activé. Renvoie ton message.'),
       ));
     }
+    // A server quota rejection removes the pending row; refresh the local
+    // snapshot so a rejected message cannot remain displayed as if queued.
+    final selected = _selected;
+    if (mounted && selected != null) unawaited(_select(selected));
   }
 
   @override
