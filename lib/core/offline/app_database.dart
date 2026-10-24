@@ -86,7 +86,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -118,6 +118,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await _createMessageConversationPreferences();
+          }
+          if (from < 8) {
+            await _addMessageDeletedAtColumn();
           }
         },
       );
@@ -437,6 +440,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
 
+  Future<void> _addMessageDeletedAtColumn() async {
+    try {
+      await customStatement('ALTER TABLE message_cache ADD COLUMN deleted_at TEXT');
+    } catch (_) {
+      // The column already exists on databases created with the latest schema.
+    }
+  }
+
   Future<void> _addMessageReplyColumns() async {
     for (final table in const ['message_cache', 'message_outbox']) {
       try {
@@ -461,6 +472,7 @@ class AppDatabase extends _$AppDatabase {
         body TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         read_at TEXT,
+        deleted_at TEXT,
         attachment_path TEXT,
         attachment_name TEXT,
         attachment_type TEXT,
@@ -513,19 +525,20 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> cacheMessage(Map<String, Object?> message) async {
     await customStatement(
-      '''INSERT INTO message_cache(id,user_id,kind,thread_id,sender_id,sender_name,sender_role,recipient_id,body,created_at,read_at,attachment_path,attachment_name,attachment_type,local_attachment_path,reply_to_id,sync_status)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      '''INSERT INTO message_cache(id,user_id,kind,thread_id,sender_id,sender_name,sender_role,recipient_id,body,created_at,read_at,deleted_at,attachment_path,attachment_name,attachment_type,local_attachment_path,reply_to_id,sync_status)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET
         sender_name=CASE WHEN excluded.sender_name<>'' THEN excluded.sender_name ELSE message_cache.sender_name END,
         sender_role=CASE WHEN excluded.sender_role<>'' THEN excluded.sender_role ELSE message_cache.sender_role END,
         body=excluded.body, read_at=COALESCE(excluded.read_at,message_cache.read_at),
+        deleted_at=COALESCE(excluded.deleted_at,message_cache.deleted_at),
         attachment_path=COALESCE(excluded.attachment_path,message_cache.attachment_path),
         attachment_name=COALESCE(excluded.attachment_name,message_cache.attachment_name),
         attachment_type=COALESCE(excluded.attachment_type,message_cache.attachment_type),
         local_attachment_path=COALESCE(excluded.local_attachment_path,message_cache.local_attachment_path),
         reply_to_id=COALESCE(excluded.reply_to_id,message_cache.reply_to_id),
         sync_status=CASE WHEN message_cache.sync_status='pending' AND excluded.sync_status='sent' THEN 'sent' ELSE excluded.sync_status END''',
-      [message['id'], message['user_id'], message['kind'], message['thread_id'], message['sender_id'], message['sender_name'] ?? '', message['sender_role'] ?? '', message['recipient_id'], message['body'] ?? '', message['created_at'], message['read_at'], message['attachment_path'], message['attachment_name'], message['attachment_type'], message['local_attachment_path'], message['reply_to_id'], message['sync_status'] ?? 'sent'],
+      [message['id'], message['user_id'], message['kind'], message['thread_id'], message['sender_id'], message['sender_name'] ?? '', message['sender_role'] ?? '', message['recipient_id'], message['body'] ?? '', message['created_at'], message['read_at'], message['deleted_at'], message['attachment_path'], message['attachment_name'], message['attachment_type'], message['local_attachment_path'], message['reply_to_id'], message['sync_status'] ?? 'sent'],
     );
   }
 
