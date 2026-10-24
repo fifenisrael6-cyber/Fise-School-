@@ -228,21 +228,26 @@ class _TeacherEvaluationPublicationPageState
           : 'Exam and correction PDFs uploaded. The exam is published in the official calendar.');
       await _load();
     } catch (e) {
+      var safeToRemoveFiles = !linked;
       if (linked) {
         try {
-          await _db.from('evaluations').update({
+          final reset = await _db.from('evaluations').update({
             'pdf_path': null,
             'pdf_name': null,
             'correction_pdf_path': null,
             'correction_pdf_name': null,
-          }).eq('id', id).eq('teacher_id', widget.profile.id).eq('status', 'draft');
-        } catch (_) {}
+          }).eq('id', id).eq('teacher_id', widget.profile.id).eq('status', 'draft').select('id');
+          safeToRemoveFiles = (reset as List).isNotEmpty;
+        } catch (_) {
+          // A lost response may mean publication succeeded; never remove a file still referenced by a published exam.
+          safeToRemoveFiles = false;
+        }
       }
       final paths = <String>[
         if (subjectUploaded) subjectPath,
         if (correctionUploaded) correctionPath,
       ];
-      if (paths.isNotEmpty) {
+      if (safeToRemoveFiles && paths.isNotEmpty) {
         try { await _db.storage.from('evaluation-papers').remove(paths); } catch (_) {}
       }
       _show((_fr ? 'Échec de publication du sujet/corrigé : ' : 'Exam/correction upload failed: ') + e.toString());
