@@ -218,6 +218,7 @@ class GroupMessageService {
           'attachment_name': message.attachmentName,
           'attachment_type': message.attachmentType,
           'reply_to_id': message.replyToId,
+          'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
           'sync_status': 'sent',
         });
       }
@@ -283,6 +284,20 @@ class GroupMessageService {
 
   Future<void> deleteGroup(String groupId) async {
     await _client.rpc('delete_message_group', params: {'p_group_id': groupId});
+  }
+
+  Future<void> deleteMessage(String messageId, {required bool forEveryone}) async {
+    final path = await _client.rpc('delete_group_message', params: {
+      'p_message_id': messageId,
+      'p_for_everyone': forEveryone,
+    });
+    if (forEveryone && path is String && path.isNotEmpty) {
+      try {
+        await _client.storage.from(bucket).remove([path]);
+      } catch (_) {
+        // Keep the tombstone even if the attachment uploader owns the file.
+      }
+    }
   }
 
   Future<void> send({
