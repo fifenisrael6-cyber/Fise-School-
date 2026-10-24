@@ -340,7 +340,7 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
         remotePath: widget.remotePath,
         fileName: widget.fileName,
         url: widget.url,
-      ));
+      ).then<void>((_) {}));
       await _player.play(UrlSource(widget.url!));
     }
   }
@@ -481,7 +481,7 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
         remotePath: widget.remotePath,
         fileName: widget.title,
         url: widget.url,
-      ));
+      ).then<void>((_) {}));
     }
     final VideoPlayerController? c = local != null && await File(local).exists()
         ? VideoPlayerController.file(File(local))
@@ -670,14 +670,18 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
         }
       }
 
-      if (widget.url != null) {
-        final controller = WebViewController()
-          ..setJavaScriptMode(JavaScriptMode.unrestricted);
+      if (local != null && widget.url != null &&
+          (widget.title.toLowerCase().endsWith('.html') || widget.title.toLowerCase().endsWith('.htm'))) {
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.loadFile(local);
+        _webController = controller;
+      } else if (local == null && widget.url != null) {
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
         await controller.loadRequest(Uri.parse(widget.url!));
         _webController = controller;
-        if (local == null) {
-          unawaited(_cacheInBackground());
-        }
+        unawaited(_cacheInBackground());
       } else if (local == null) {
         throw Exception('no source');
       }
