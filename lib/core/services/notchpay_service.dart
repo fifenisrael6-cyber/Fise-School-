@@ -4,85 +4,90 @@ class NotchPayResult {
   final String reference;
   final String status;
   final String message;
-  final String channel;
-  final String phone;
 
   const NotchPayResult({
     required this.reference,
     required this.status,
     required this.message,
-    required this.channel,
-    required this.phone,
   });
 }
 
 class NotchPayService {
   NotchPayService({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
   bool get isConfigured => _client.auth.currentUser != null;
 
+  /// Starts a Cameroon Mobile Money charge. Teacher codes are never entered
+  /// during checkout; the server resolves teachers from the student's classes.
   Future<NotchPayResult> createPayment({
-    required String email,
-    required String name,
     required int amount,
     String currency = 'XAF',
     String? description,
-    String? reference,
-    String? teacherCode,
     required String channel,
     required String phone,
   }) async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw const AuthException('Aucune session utilisateur active.');
+    if (_client.auth.currentUser == null) {
+      throw const AuthException('No active user session.');
+    }
 
     final response = await _client.functions.invoke(
       'notchpay-payment',
       body: {
         'amount': amount,
         'currency': currency,
-        'email': email,
-        'name': name,
         'description': description ?? 'Abonnement Fise School',
         'channel': channel,
-        'phone': phone,
-        if (reference != null) 'reference': reference,
-        if (teacherCode != null && teacherCode.trim().isNotEmpty) 'teacher_code': teacherCode.trim(),
+        'phone': phone.trim(),
       },
     );
-    if (response.data is! Map) throw Exception('Réponse de paiement invalide.');
-    final data = Map<String, dynamic>.from(response.data as Map);
-    final returnedReference = data['reference'];
-    if (returnedReference is! String || returnedReference.trim().isEmpty) {
-      final error = data['error'];
-      throw Exception(error is String ? error : 'La demande de paiement n’a pas été créée.');
+
+    if (response.data is! Map) {
+      throw Exception('Réponse de paiement invalide.');
     }
+
+    final data = Map<String, dynamic>.from(response.data as Map);
+    final reference = data['reference']?.toString().trim() ?? '';
+    if (reference.isEmpty) {
+      final message = data['error']?.toString();
+      throw Exception(message?.isNotEmpty == true
+          ? message
+          : 'Notch Pay n’a pas retourné la référence de transaction.');
+    }
+
     return NotchPayResult(
-      reference: returnedReference,
-      status: (data['status'] ?? 'PENDING').toString(),
-      message: (data['message'] ?? 'Demande envoyée. Confirme le paiement sur ton téléphone.').toString(),
-      channel: (data['channel'] ?? channel).toString(),
-      phone: (data['phone'] ?? phone).toString(),
+      reference: reference,
+      status: data['status']?.toString() ?? 'PENDING',
+      message: data['message']?.toString() ??
+          'Demande envoyée. Confirme le paiement sur ton téléphone.',
     );
   }
 
+  /// Re-checks a transaction against Notch Pay on the trusted server.
   Future<Map<String, dynamic>> verifyPayment(String reference) async {
     final response = await _client.functions.invoke(
       'notchpay-verify',
-      body: {'reference': reference},
+      body: {'reference': reference.trim()},
     );
     if (response.data is! Map) {
-      throw Exception('Réponse de vérification du paiement invalide.');
+      throw Exception('Réponse de vérification invalide.');
     }
     return Map<String, dynamic>.from(response.data as Map);
   }
 
   Future<String> getPaymentStatus(String reference) async {
-    final result = await _client.from('payment_orders')
-        .select('status').eq('reference', reference).maybeSingle();
-    if (result == null) throw Exception('Commande de paiement introuvable.');
-    return (result['status'] ?? 'UNKNOWN').toString().toUpperCase();
+    final result = await _client
+        .from('payment_orders')
+        .select('status')
+        .eq('reference', reference)
+        .maybeSingle();
+
+    if (result == null) {
+      throw Exception('Commande de paiement introuvable.');
+    }
+
+    return result['status']?.toString().toUpperCase() ?? 'UNKNOWN';
   }
 }

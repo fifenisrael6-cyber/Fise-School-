@@ -1,4 +1,13 @@
-import { adminClient, PREMIUM_CURRENCY, PREMIUM_PRICE_XAF } from "../_shared/notchpay.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const PREMIUM_PRICE_XAF = 2000;
+const PREMIUM_CURRENCY = "XAF";
+function adminClient() {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) throw new Error("Supabase server secrets are not configured.");
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +27,11 @@ Deno.serve(async (req) => {
     if (!authHeader?.startsWith("Bearer ")) return json({ error: "Authentication required." }, 401);
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const publicKey = Deno.env.get("NOTCHPAY_PUBLIC_KEY");
-    if (!supabaseUrl || !publicKey) throw new Error("Notch Pay secrets are not configured.");
+    if (!supabaseUrl) throw new Error("Supabase URL is not configured.");
+    if (!publicKey) {
+      console.error("[notchpay-payment] NOTCHPAY_PUBLIC_KEY is missing.");
+      return json({ error: "Le service de paiement n'est pas encore configuré. Réessaie plus tard." }, 503);
+    }
 
     const admin = adminClient();
     const { data: authData, error: authError } = await admin.auth.getUser(authHeader.substring(7));
@@ -57,14 +70,8 @@ Deno.serve(async (req) => {
     const scienceTeacher: string | null = teachers?.science_teacher_id ?? null;
     const literaryTeacher: string | null = teachers?.literary_teacher_id ?? null;
     const scienceCommission = scienceTeacher ? SCIENCE_SHARE : 0;
-    const literaryCommission = literaryTeacher ? LITERARY_SHARE : 0;
-    const teacherCode = String(body?.teacher_code ?? "").trim();
-    let legacyTeacherId: string | null = null;
-    if (teacherCode) {
-      const { data: resolved, error: resolveError } = await admin.rpc("resolve_teacher_payment_code", { p_code: teacherCode });
-      if (resolveError || !resolved) return json({ error: "Code enseignant invalide." }, 400);
-      legacyTeacherId = String(resolved);
-    }
+    const literaryCommission = literaryTeacher && literaryTeacher !== scienceTeacher ? LITERARY_SHARE : 0;
+    // Resolve the same active standard-group memberships used by final payment settlement. The student's FISE code is used when joining the group, never entered at checkout.
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
@@ -73,7 +80,7 @@ Deno.serve(async (req) => {
     const description = "Abonnement Fise School Premium — 30 jours";
     const { error: insertError } = await admin.from("payment_orders").insert({
       user_id: authData.user.id, reference, amount, currency, status: "NOTPAY", description, provider: "notchpay",
-      teacher_id: legacyTeacherId, science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
+      teacher_id: null, science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
       science_commission_xaf: scienceCommission, literary_commission_xaf: literaryCommission,
       teacher_commission_xaf: scienceCommission + literaryCommission,
       platform_revenue_xaf: amount - scienceCommission - literaryCommission,
