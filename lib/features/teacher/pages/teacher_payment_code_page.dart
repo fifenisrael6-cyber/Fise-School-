@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/teacher_payment_code_service.dart';
@@ -17,16 +16,25 @@ class TeacherPaymentCodePage extends StatefulWidget {
 
 class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
   final _service = TeacherPaymentCodeService();
-  final _codeController = TextEditingController();
   bool _loading = true;
-  bool _editing = false;
-  bool _savingSpecialty = false;
-  String? _specialty;
-  String? _savedSpecialty;
   String? _code;
   int _balance = 0;
+  final _withdrawalAmountController = TextEditingController();
+  final _withdrawalPhoneController = TextEditingController();
+  String _withdrawalProvider = 'cm.orange';
+  bool _withdrawing = false;
+  List<Map<String, dynamic>> _withdrawals = const [];
+  String? _vocation;
+  bool _savingVocation = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
+
+  @override
+  void dispose() {
+    _withdrawalAmountController.dispose();
+    _withdrawalPhoneController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -34,158 +42,152 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
     _load();
   }
 
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
     try {
-      final client = Supabase.instance.client;
-      final row = await client
-          .from('profiles')
-          .select('teacher_specialty, teaching_stream')
-          .eq('id', widget.profile.id)
-          .eq('role', 'teacher')
-          .maybeSingle();
-      final raw = (row?['teacher_specialty'] ?? row?['teaching_stream'])
-          ?.toString()
-          .trim()
-          .toLowerCase();
-      if (raw == 'literary' || raw == 'litteraire' || raw == 'littéraire') {
-        _specialty = 'literary';
-        _savedSpecialty = 'literary';
-      } else if (raw == 'scientific' || raw == 'scientifique') {
-        _specialty = 'scientific';
-        _savedSpecialty = 'scientific';
+      // Always load the canonical shared FISE code. This RPC also synchronizes
+      // the legacy payment-code row, so group access and payments use one code.
+      final sharedCode = await _service.createOrGetCode();
+      final balance = await _service.getWalletBalance();
+      final withdrawals = await _service.listWithdrawalRequests();
+      final vocationRow = await Supabase.instance.client
+          .from('profiles').select('teacher_vocation')
+          .eq('id', widget.profile.id).maybeSingle();
+      if (mounted) {
+        setState(() {
+          _code = sharedCode.trim().toUpperCase();
+          _balance = balance;
+          _withdrawals = withdrawals;
+          _vocation = vocationRow?['teacher_vocation']?.toString();
+        });
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _fr
+                  ? 'Impossible de charger votre code unique FISE. Vérifiez votre connexion puis réessayez.'
+                  : 'Unable to load your unique FISE code. Check your connection and try again.',
+            ),
+          ),
+        );
+      }
+    }
+    if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
 
-      // Do not call the code RPC until the teacher's specialty is saved:
-      // that RPC can create/synchronize the canonical FISE code.
-      if (_savedSpecialty != null) {
-        final existing = await _service.getOwnCode();
-        _balance = await _service.getWalletBalance();
-        if (existing != null && existing['active'] == true) {
-          _code = existing['code']?.toString();
-        }
+  Future<void> _create() async {
+    setState(() => _loading = true);
+    try {
+      final code = await _service.createOrGetCode();
+      if (mounted) {
+        setState(() => _code = code);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _fr
+                  ? 'Impossible de récupérer le code unique FISE. Réessayez.'
+                  : 'Unable to retrieve the unique FISE code. Please try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _saveVocation(String? value) async {
+    if (value == null || _savingVocation) return;
+    setState(() => _savingVocation = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'set_my_teacher_vocation',
+        params: {'p_vocation': value},
+      );
+      if (mounted) {
+        setState(() => _vocation = value);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Filière enseignée enregistrée.' : 'Teaching stream saved.'),
+        ));
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr
-              ? 'Impossible de charger la spécialité ou le code FISE. Réessayez.'
-              : 'Unable to load the specialty or FISE code. Please try again.')),
-        );
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _saveSpecialty() async {
-    final value = _specialty;
-    if (value != 'literary' && value != 'scientific') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr
-            ? 'Choisissez Littéraire ou Scientifique avant de continuer.'
-            : 'Choose Literary or Scientific before continuing.')),
-      );
-      return;
-    }
-    setState(() => _savingSpecialty = true);
-    try {
-      await Supabase.instance.client.rpc(
-        'set_teacher_specialty',
-        params: {'p_specialty': value},
-      );
-      final changed = _savedSpecialty != value;
-      _savedSpecialty = value;
-      if (changed) {
-        _code = null;
-        _editing = false;
-        _codeController.clear();
-        final existing = await _service.getOwnCode();
-        if (existing != null && existing['active'] == true) {
-          _code = existing['code']?.toString();
-        }
-        _balance = await _service.getWalletBalance();
-      }
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr
-              ? 'Spécialité enregistrée. Vous pouvez maintenant consulter ou modifier votre code unique FISE.'
-              : 'Specialty saved. You can now view or change your unique FISE code.')),
-        );
-      }
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_fr ? 'Enregistrement de la spécialité impossible' : 'Could not save specialty'}: ${error.toString().replaceFirst('Exception: ', '')}')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Impossible d’enregistrer la filière.' : 'Unable to save the teaching stream.'),
+        ));
       }
     } finally {
-      if (mounted) setState(() => _savingSpecialty = false);
+      if (mounted) setState(() => _savingVocation = false);
     }
   }
 
-  Future<void> _save() async {
-    if (_savedSpecialty != 'literary' && _savedSpecialty != 'scientific') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr
-            ? 'Enregistrez d’abord votre spécialité.'
-            : 'Save your specialty first.')),
-      );
+  Future<void> _requestWithdrawal() async {
+    final amount = int.tryParse(_withdrawalAmountController.text.trim());
+    final phone = _withdrawalPhoneController.text.trim();
+    if (amount == null || amount < 1000 || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_fr
+            ? 'Saisis au moins 1 000 FCFA et un numéro mobile.'
+            : 'Enter at least 1,000 XAF and a mobile number.'),
+      ));
       return;
     }
-    final value = _codeController.text.trim().toUpperCase();
-    if (!RegExp(r'^(FISE-?)?[A-Z0-9]{6}$').hasMatch(value)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_fr
-            ? 'Choisissez exactement 6 lettres ou chiffres, avec ou sans le préfixe FISE-.'
-            : 'Choose exactly 6 letters or numbers, with or without the FISE- prefix.')),
-      );
-      return;
-    }
-
-    final normalized = value.startsWith('FISE-')
-        ? value
-        : value.startsWith('FISE')
-            ? 'FISE-${value.substring(4)}'
-            : 'FISE-$value';
-
-    setState(() => _loading = true);
+    setState(() => _withdrawing = true);
     try {
-      final saved = await _service.saveCode(normalized);
+      await _service.requestWithdrawal(
+        amountXaf: amount,
+        provider: _withdrawalProvider,
+        phone: phone,
+      );
+      _withdrawalAmountController.clear();
+      _withdrawalPhoneController.clear();
+      await _load();
       if (mounted) {
-        setState(() {
-          _code = saved;
-          _editing = false;
-          _codeController.clear();
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_fr ? 'Votre code unique FISE est enregistré.' : 'Your unique FISE code has been saved.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr
+              ? 'Demande enregistrée, en attente de traitement.'
+              : 'Request submitted and awaiting processing.'),
+        ));
       }
     } catch (error) {
       if (mounted) {
-        final raw = error.toString();
-        final message = raw.contains('already used') || raw.contains('already assigned')
-            ? (_fr ? 'Ce code est déjà utilisé par un autre enseignant.' : 'This code is already used by another teacher.')
-            : raw.replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text((_fr ? 'Enregistrement impossible : ' : 'Unable to save code: ') + message)),
-        );
+        final message = error.toString().contains('Insufficient available balance')
+            ? (_fr ? 'Solde disponible insuffisant.' : 'Insufficient available balance.')
+            : (_fr ? 'Impossible d’enregistrer le retrait.' : 'Could not submit withdrawal.');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _withdrawing = false);
+    }
+  }
+
+  String _withdrawalStatus(String status) {
+    if (_fr) {
+      switch (status) {
+        case 'paid': return 'Payé';
+        case 'rejected': return 'Refusé';
+        default: return 'En attente';
+      }
+    }
+    switch (status) {
+      case 'paid': return 'Paid';
+      case 'rejected': return 'Rejected';
+      default: return 'Pending';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Mon code unique FISE' : 'My unique FISE code')),
+      appBar: AppBar(title: Text(_fr ? 'Code de paiement enseignant' : 'Teacher payment code')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -199,109 +201,61 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                   children: [
                     const Icon(Icons.qr_code_2_rounded, size: 64, color: Color(0xFF166534)),
                     const SizedBox(height: 18),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _fr ? 'Filière enseignée (obligatoire pour les commissions Premium)'
+                            : 'Teaching stream (required for Premium commissions)',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _vocation,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Filière' : 'Teaching stream',
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'scientific',
+                          child: Text(_fr ? 'Scientifique' : 'Scientific'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'literary',
+                          child: Text(_fr ? 'Littéraire' : 'Literary'),
+                        ),
+                      ],
+                      onChanged: _savingVocation ? null : _saveVocation,
+                    ),
+                    if (_savingVocation)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(),
+                      ),
+                    const SizedBox(height: 18),
                     Text(
-                      _fr ? 'Un seul code pour les groupes, paiements et évaluations' : 'One code for groups, payments and evaluations',
+                      _fr ? 'Votre code unique' : 'Your unique code',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       _fr
-                          ? 'Créez vous-même votre code. Les élèves doivent utiliser ce code pour accéder à vos groupes et évaluations et pour vous désigner lors d’un paiement Premium. Les publications ordinaires de la salle restent accessibles à tous les élèves de cette salle. Le code ne confirme jamais un paiement à lui seul.'
-                          : 'Choose your own code. Students must use this code to access your groups and evaluations and to identify you for a Premium payment. Ordinary classroom posts remain available to every student in that classroom. The code alone never confirms a payment.',
+                          ? 'Partagez ce code aux élèves qui souhaitent payer Premium en vous désignant comme enseignant référent. Après un paiement réussi, 200 FCFA sont crédités dans votre portefeuille.'
+                          : 'Share this code with students who choose to pay Premium with you as their teacher. After a successful payment, 200 XAF are credited to your wallet.',
                       textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      _fr ? 'Spécialité de l’enseignant' : 'Teacher specialty',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _fr
-                          ? 'Choisissez une seule spécialité. Ce choix détermine les matières disponibles dans vos cours et évaluations. Vous devez l’enregistrer avant de consulter ou modifier votre code unique FISE.'
-                          : 'Choose one specialty. It determines the subjects available in your lessons and assessments. Save it before viewing or changing your unique FISE code.',
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: _specialty,
-                      decoration: InputDecoration(
-                        labelText: _fr ? 'Votre spécialité' : 'Your specialty',
-                        border: const OutlineInputBorder(),
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'literary',
-                          child: Text(_fr ? 'Littéraire' : 'Literary'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'scientific',
-                          child: Text(_fr ? 'Scientifique' : 'Scientific'),
-                        ),
-                      ],
-                      onChanged: _loading || _savingSpecialty
-                          ? null
-                          : (value) => setState(() => _specialty = value),
-                    ),
-                    const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: _loading || _savingSpecialty ? null : _saveSpecialty,
-                      icon: _savingSpecialty
-                          ? const SizedBox(
-                              width: 18, height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.check_circle_outline_rounded),
-                      label: Text(_savingSpecialty
-                          ? (_fr ? 'Enregistrement…' : 'Saving…')
-                          : (_fr ? 'Enregistrer ma spécialité' : 'Save my specialty')),
                     ),
                     const SizedBox(height: 24),
                     if (_loading)
                       const Center(child: CircularProgressIndicator())
-                    else if (_savedSpecialty == null)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7ED),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _fr
-                              ? 'Le code unique FISE reste verrouillé. Choisissez et enregistrez votre spécialité ci-dessus pour continuer.'
-                              : 'Your unique FISE code remains locked. Choose and save your specialty above to continue.',
-                          textAlign: TextAlign.center,
-                        ),
-                      )
-                    else if (_code == null || _editing) ...[
-                      TextField(
-                        controller: _codeController,
-                        autofocus: _editing,
-                        textCapitalization: TextCapitalization.characters,
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]'))],
-                        decoration: InputDecoration(
-                          labelText: _fr ? 'Le code que vous choisissez' : 'Your chosen code',
-                          hintText: 'FISE-AB12CD',
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
+                    else if (_code == null)
                       FilledButton.icon(
-                        onPressed: _save,
-                        icon: const Icon(Icons.save_rounded),
-                        label: Text(_fr ? 'Enregistrer mon code' : 'Save my code'),
-                      ),
-                      if (_editing)
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _editing = false;
-                              _codeController.clear();
-                            });
-                          },
-                          child: Text(_fr ? 'Annuler' : 'Cancel'),
-                        ),
-                    ] else ...[
+                        onPressed: _create,
+                        icon: const Icon(Icons.add_link_rounded),
+                        label: Text(_fr ? 'Créer mon code' : 'Create my code'),
+                      )
+                    else
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
@@ -314,28 +268,8 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                           style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 2),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await Clipboard.setData(ClipboardData(text: _code!));
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(_fr ? 'Code copié.' : 'Code copied.')),
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.copy_rounded),
-                        label: Text(_fr ? 'Copier le code' : 'Copy code'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          _codeController.text = _code!;
-                          setState(() => _editing = true);
-                        },
-                        icon: const Icon(Icons.edit_rounded),
-                        label: Text(_fr ? 'Modifier mon code' : 'Change my code'),
-                      ),
-                      const SizedBox(height: 16),
+                    if (_code != null) ...[
+                      const SizedBox(height: 18),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -346,10 +280,91 @@ class _TeacherPaymentCodePageState extends State<TeacherPaymentCodePage> {
                           children: [
                             const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF166534)),
                             const SizedBox(width: 12),
-                            Expanded(child: Text(_fr ? 'Solde enseignant' : 'Teacher balance')),
+                            Expanded(
+                              child: Text(_fr ? 'Solde disponible' : 'Available balance'),
+                            ),
                             Text('$_balance XAF', style: const TextStyle(fontWeight: FontWeight.w900)),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(_fr ? 'Demander un retrait' : 'Request a withdrawal',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      Text(_fr
+                          ? 'Choisis Orange Money ou MTN Mobile Money. Le montant est réservé et la demande attend le traitement.'
+                          : 'Choose Orange Money or MTN Mobile Money. The amount is reserved while the request awaits processing.'),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _withdrawalProvider,
+                        decoration: InputDecoration(
+                          labelText: _fr ? 'Moyen de retrait' : 'Withdrawal method',
+                          border: const OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'cm.orange', child: Text('Orange Money')),
+                          DropdownMenuItem(value: 'cm.mtn', child: Text('MTN Mobile Money')),
+                        ],
+                        onChanged: _withdrawing ? null : (value) {
+                          if (value != null) setState(() => _withdrawalProvider = value);
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _withdrawalPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: _fr ? 'Numéro mobile camerounais' : 'Cameroon mobile number',
+                          hintText: '+237 6XX XXX XXX',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _withdrawalAmountController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: _fr ? 'Montant (FCFA)' : 'Amount (XAF)',
+                          helperText: _fr ? 'Minimum : 1 000 FCFA' : 'Minimum: 1,000 XAF',
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: _withdrawing ? null : _requestWithdrawal,
+                        icon: _withdrawing
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.payments_outlined),
+                        label: Text(_withdrawing
+                            ? (_fr ? 'Envoi…' : 'Submitting…')
+                            : (_fr ? 'Envoyer la demande' : 'Submit request')),
+                      ),
+                      if (_withdrawals.isNotEmpty) ...[
+                        const SizedBox(height: 18),
+                        Text(_fr ? 'Mes demandes récentes' : 'Recent withdrawal requests',
+                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        ..._withdrawals.map((request) {
+                          final provider = request['provider'] == 'cm.mtn' ? 'MTN Mobile Money' : 'Orange Money';
+                          final amount = (request['amount_xaf'] as num?)?.toInt() ?? 0;
+                          final status = request['status']?.toString() ?? 'pending';
+                          return Card(
+                            child: ListTile(
+                              leading: Icon(status == 'paid' ? Icons.check_circle_outline : status == 'rejected' ? Icons.cancel_outlined : Icons.hourglass_top_rounded),
+                              title: Text('${amount} XAF • $provider'),
+                              subtitle: Text('${request['phone'] ?? ''} • ${_withdrawalStatus(status)}'),
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
+                    if (_code != null) ...[
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await _create();
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: Text(_fr ? 'Récupérer mon code' : 'Refresh my code'),
                       ),
                     ],
                   ],
