@@ -70,8 +70,8 @@ Deno.serve(async (req) => {
     const scienceTeacher: string | null = teachers?.science_teacher_id ?? null;
     const literaryTeacher: string | null = teachers?.literary_teacher_id ?? null;
     const scienceCommission = scienceTeacher ? SCIENCE_SHARE : 0;
-    const literaryCommission = literaryTeacher ? LITERARY_SHARE : 0;
-    // Teacher associations and commissions are resolved server-side from active class assignments.
+    const literaryCommission = literaryTeacher && literaryTeacher !== scienceTeacher ? LITERARY_SHARE : 0;
+    // Resolve the same active standard-group memberships used by final payment settlement. The student's FISE code is used when joining the group, never entered at checkout.
 
     const reference = `FISE-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const callback = `${supabaseUrl}/functions/v1/notchpay-callback`;
