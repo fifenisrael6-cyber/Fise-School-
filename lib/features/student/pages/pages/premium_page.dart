@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/services/notchpay_service.dart';
-import '../../../../core/services/quota_service.dart';
 import '../../../../core/services/subscription_service.dart';
 import '../../../../models/user_profile.dart';
-import 'payment_page.dart';
 
 class PremiumPage extends StatefulWidget {
   final Locale locale;
@@ -23,15 +21,25 @@ class _PremiumPageState extends State<PremiumPage> {
   final NotchPayService _notchPayService = NotchPayService();
 
   SubscriptionInfo? _subscriptionInfo;
-  QuotaStatus? _quota;
 
   bool _loading = true;
   bool _processingPayment = false;
+  bool _verifyingPayment = false;
+  final TextEditingController _phoneController = TextEditingController();
+  String _paymentChannel = 'cm.orange';
+  String? _paymentReference;
+  String? _paymentStatus;
 
   @override
   void initState() {
     super.initState();
     _loadSubscription();
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSubscription() async {
@@ -44,13 +52,6 @@ class _PremiumPageState extends State<PremiumPage> {
     });
 
     try {
-      // Retour tardif : si un paiement est en attente, on le revérifie auprès de Notch Pay.
-      try {
-        await QuotaService().verifyPayment();
-      } catch (_) {}
-      try {
-        _quota = await QuotaService().status();
-      } catch (_) {}
       final info = await _subscriptionService.getSubscriptionInfo();
 
       if (!mounted) {
@@ -81,42 +82,82 @@ class _PremiumPageState extends State<PremiumPage> {
   }
 
   Future<void> _startPremiumPayment() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PaymentPage(locale: widget.locale, profile: widget.profile)));
-    if (mounted) await _loadSubscription();
+    if (_processingPayment) return;
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      _showMessage(widget.locale.languageCode == 'fr'
+          ? 'Tu dois être connecté pour effectuer un paiement.'
+          : 'You must be signed in to make a payment.');
+      return;
+    }
+
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty) {
+      _showMessage(widget.locale.languageCode == 'fr'
+          ? 'Saisis le numéro MTN ou Orange à débiter.'
+          : 'Enter the MTN or Orange number to charge.');
+      return;
+    }
+
+    setState(() => _processingPayment = true);
+    try {
+      final payment = await _notchPayService.createPayment(
+        amount: 2000,
+        currency: 'XAF',
+        description: 'Abonnement Fise School Premium - 30 jours',
+        channel: _paymentChannel,
+        phone: phone,
+      );
+      if (!mounted) return;
+      setState(() {
+        _paymentReference = payment.reference;
+        _paymentStatus = payment.status.toUpperCase();
+      });
+      _showMessage(payment.message);
+    } on AuthException catch (error) {
+      if (mounted) {
+        _showMessage(widget.locale.languageCode == 'fr'
+            ? 'Session utilisateur invalide : ${error.message}'
+            : 'Invalid user session: ${error.message}');
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage(error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _processingPayment = false);
+    }
   }
 
-  String _fmt(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
-      '${d.hour.toString().padLeft(2, '0')}h${d.minute.toString().padLeft(2, '0')}';
-
-  List<Widget> _statusAndQuotas(bool fr) {
-    final q = _quota;
-    if (q == null) return const [];
-    final label = switch (q.state) {
-      'premium' => fr
-          ? 'Premium actif${q.premiumExpiresAt == null ? '' : ' jusqu’au ${_fmt(q.premiumExpiresAt!)}'}'
-          : 'Premium active${q.premiumExpiresAt == null ? '' : ' until ${_fmt(q.premiumExpiresAt!)}'}',
-      'pending' => fr ? 'Paiement en attente de confirmation' : 'Payment awaiting confirmation',
-      'expired' => fr ? 'Abonnement expiré' : 'Subscription expired',
-      _ => fr ? 'Compte gratuit' : 'Free account',
-    };
-    final widgets = <Widget>[
-      Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-    ];
-    if (!q.premium) {
-      widgets.add(const SizedBox(height: 8));
-      widgets.add(Text(fr ? 'Quotas gratuits (par période de 24 h)' : 'Free quotas (per 24 h)',
-          style: const TextStyle(fontWeight: FontWeight.w700)));
-      for (final f in QuotaFeature.values) {
-        final item = q.quotas[f.key];
-        if (item == null) continue;
-        final reset = item.resetsAt == null
-            ? ''
-            : (fr ? ' • renouvelé le ${_fmt(item.resetsAt!)}' : ' • resets ${_fmt(item.resetsAt!)}');
-        widgets.add(Text('${f.label(fr)} : ${item.remaining}/${item.limit}$reset'));
+  Future<void> _verifyPremiumPayment() async {
+    final reference = _paymentReference;
+    if (reference == null || _verifyingPayment) return;
+    setState(() => _verifyingPayment = true);
+    try {
+      final result = await _notchPayService.verifyPayment(reference);
+      final status = (result['status'] ?? 'UNKNOWN').toString().toUpperCase();
+      if (!mounted) return;
+      setState(() => _paymentStatus = status);
+      await _loadSubscription();
+      if (!mounted) return;
+      _showMessage(status == 'SUCCESS'
+          ? (widget.locale.languageCode == 'fr'
+              ? 'Paiement confirmé. Ton abonnement Premium est activé.'
+              : 'Payment confirmed. Your Premium subscription is active.')
+          : status == 'FAILED'
+              ? (widget.locale.languageCode == 'fr'
+                  ? 'Le paiement a échoué ou a été annulé.'
+                  : 'Payment failed or was cancelled.')
+              : (widget.locale.languageCode == 'fr'
+                  ? 'Paiement toujours en attente. Confirme la demande sur ton téléphone puis réessaie.'
+                  : 'Payment is still pending. Confirm the request on your phone and try again.'));
+    } catch (error) {
+      if (mounted) {
+        _showMessage(error.toString().replaceFirst('Exception: ', ''));
       }
+    } finally {
+      if (mounted) setState(() => _verifyingPayment = false);
     }
-    return widgets;
   }
 
   void _showMessage(String message) {
@@ -383,8 +424,8 @@ class _PremiumPageState extends State<PremiumPage> {
             const SizedBox(height: 12),
             Text(
               isFrench
-                  ? '2 000 FCFA pour 30 jours de Premium.'
-                  : '2,000 XAF for 30 days of Premium.',
+                  ? '2000 FCFA pour 30 jours de Premium.'
+                  : '2000 XAF for 30 days of Premium.',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -393,9 +434,56 @@ class _PremiumPageState extends State<PremiumPage> {
                   ? 'Le paiement est effectué de manière sécurisée via Notch Pay.'
                   : 'Payment is securely processed through Notch Pay.',
             ),
-            const SizedBox(height: 12),
-            ..._statusAndQuotas(isFrench),
             const SizedBox(height: 18),
+            if (!isPremium) ...[
+              DropdownButtonFormField<String>(
+                value: _paymentChannel,
+                decoration: InputDecoration(
+                  labelText: isFrench ? 'Opérateur de paiement' : 'Payment operator',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.account_balance_wallet_outlined),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'cm.orange', child: Text('Orange Money')),
+                  DropdownMenuItem(value: 'cm.mtn', child: Text('MTN Mobile Money')),
+                ],
+                onChanged: _processingPayment ? null : (value) {
+                  if (value != null) setState(() => _paymentChannel = value);
+                },
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: isFrench ? 'Numéro Mobile Money' : 'Mobile Money number',
+                  hintText: '6XXXXXXXX',
+                  prefixIcon: const Icon(Icons.phone_android_rounded),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isFrench
+                    ? 'Le code unique FISE de l’enseignant est géré dans les groupes, paiements et évaluations. Aucun code enseignant n’est à saisir ici.'
+                    : 'The teacher’s unique FISE code is managed by the system for groups, payments and assessments. Do not enter a teacher code here.',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+            if (_paymentReference != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${isFrench ? 'Référence' : 'Reference'} : $_paymentReference\n${isFrench ? 'État' : 'Status'} : ${_paymentStatus ?? 'PENDING'}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+              OutlinedButton.icon(
+                onPressed: _verifyingPayment ? null : _verifyPremiumPayment,
+                icon: _verifyingPayment
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.verified_outlined),
+                label: Text(isFrench ? 'Vérifier le paiement' : 'Verify payment'),
+              ),
+            ],
             if (isPremium)
               OutlinedButton.icon(
                 onPressed: _loadSubscription,
@@ -425,8 +513,8 @@ class _PremiumPageState extends State<PremiumPage> {
                             ? 'Ouverture du paiement...'
                             : 'Opening payment...'
                       : isFrench
-                      ? 'Activer Premium — 2 000 FCFA'
-                      : 'Activate Premium — 2,000 XAF',
+                      ? 'Activer Premium — 2000 FCFA'
+                      : 'Activate Premium — 2000 XAF',
                 ),
               ),
             const SizedBox(height: 10),
