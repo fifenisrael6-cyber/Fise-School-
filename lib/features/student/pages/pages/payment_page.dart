@@ -31,10 +31,7 @@ class _PaymentPageState extends State<PaymentPage> {
     super.dispose();
   }
 
-  static const int _subscriptionAmount = int.fromEnvironment(
-    'FISE_SUBSCRIPTION_AMOUNT',
-    defaultValue: 2000,
-  );
+  static const int _subscriptionAmount = 2000;
 
   Future<void> _startPayment() async {
     if (_loading) return;
