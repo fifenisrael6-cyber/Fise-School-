@@ -212,17 +212,44 @@ class _AuthPageState extends State<AuthPage> {
           ),
         );
       }
+    } on PostgrestException catch (error, stackTrace) {
+      // A database/profile failure is not necessarily a network failure.
+      // Keep the technical cause in logs and give the user a useful message.
+      debugPrint('[INSCRIPTION] PostgrestException.type=${error.runtimeType}');
+      debugPrint('[INSCRIPTION] PostgrestException.message=${error.message}');
+      debugPrint('[INSCRIPTION] PostgrestException.code=${error.code}');
+      debugPrint('[INSCRIPTION] PostgrestException.details=${error.details}');
+      debugPrint('[INSCRIPTION] PostgrestException.hint=${error.hint}');
+      debugPrint('[INSCRIPTION] PostgrestException.stackTrace=$stackTrace');
+      if (mounted) {
+        final code = error.code ?? '';
+        final message = error.message.toLowerCase();
+        final userMessage = code == '23505'
+            ? (_lang == 'en'
+                ? 'This information is already registered. Check the email address and try again.'
+                : 'Ces informations sont déjà enregistrées. Vérifiez l’adresse e-mail puis réessayez.')
+            : code == '23503' || message.contains('selected series') ||
+                    message.contains('exam level') ||
+                    message.contains('specialty')
+                ? (_lang == 'en'
+                    ? 'The selected class or series is no longer valid. Return to the class selection and choose it again.'
+                    : 'La classe ou la série choisie n’est plus valide. Revenez au choix de la classe et sélectionnez-la de nouveau.')
+                : (_lang == 'en'
+                    ? 'The account could not be saved because of a database error. Please try again; if it persists, contact support.'
+                    : 'Le compte n’a pas pu être enregistré à cause d’une erreur de base de données. Réessayez ; si le problème persiste, contactez le support.');
+        _showError(userMessage);
+      }
     } catch (error, stackTrace) {
       debugPrint('[INSCRIPTION] Erreur technique.type=${error.runtimeType}');
       debugPrint('[INSCRIPTION] Erreur technique.message=$error');
-      if (error is PostgrestException) {
-        debugPrint('[INSCRIPTION] PostgrestException.code=${error.code}');
-        debugPrint('[INSCRIPTION] PostgrestException.details=${error.details}');
-        debugPrint('[INSCRIPTION] PostgrestException.hint=${error.hint}');
-      }
       debugPrint('[INSCRIPTION] Erreur technique.stackTrace=$stackTrace');
       if (mounted) {
-        _showError(texts.networkError);
+        // Do not label every unexpected exception as a network failure.
+        _showError(
+          _lang == 'en'
+              ? 'Sign-up failed unexpectedly. Check your connection and try again.'
+              : 'L’inscription a échoué de façon inattendue. Vérifiez votre connexion et réessayez.',
+        );
       }
     } finally {
       if (mounted) {
