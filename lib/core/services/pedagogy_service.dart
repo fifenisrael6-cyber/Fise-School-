@@ -558,24 +558,19 @@ class CourseService {
     String teacherId, {
     String? status,
   }) async {
-    dynamic request = _client
-        .from('courses')
-        .select()
-        .eq('teacher_id', teacherId);
-
-    if (status != null) {
-      request = request.eq('status', status);
-    }
-
-    final response = await request.order('updated_at', ascending: false);
-    // Keep the result typed even though the query builder above is dynamic.
-    // A null, empty, or unexpected non-list response becomes an empty list.
-    final rows = response is List ? response : const <dynamic>[];
-
-    return rows
-        .whereType<Map>()
-        .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
-        .toList(growable: false);
+    return JsonCache.instance.cachedRead<List<Course>>(
+      key: 'teacher_courses_' + teacherId + '_' + (status ?? 'all'),
+      fetch: () async {
+        dynamic request = _client.from('courses').select().eq('teacher_id', teacherId);
+        if (status != null) request = request.eq('status', status);
+        return await request.order('updated_at', ascending: false) as Object?;
+      },
+      decode: (raw) => raw is List
+          ? raw.whereType<Map>()
+              .map<Course>((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+              .toList(growable: false)
+          : <Course>[],
+    );
   }
 
   /// Toutes les salles actives compatibles avec le sous-système et le secteur
