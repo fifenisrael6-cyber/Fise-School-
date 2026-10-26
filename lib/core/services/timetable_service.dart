@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/timetable_entry.dart';
+import '../offline/json_cache.dart';
 
 class TimetableService {
   TimetableService({SupabaseClient? client})
@@ -8,65 +9,100 @@ class TimetableService {
 
   final SupabaseClient _client;
 
+  Future<List<String>> _studentClassIds(String studentId) async {
+    final key = 'student_active_class_ids_' + studentId;
+    try {
+      final memberships = await _client
+          .from('class_students')
+          .select('class_id, joined_at')
+          .eq('student_id', studentId)
+          .eq('is_active', true)
+          .order('joined_at', ascending: false);
+      final ids = memberships
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      await JsonCache.instance.write(key, ids);
+      return ids;
+    } catch (_) {
+      final cached = await JsonCache.instance.read(key);
+      if (cached is List) {
+        return cached.map((value) => value.toString()).where((id) => id.isNotEmpty).toList(growable: false);
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<TimetableEntry>> _cachedEntries({
+    required String key,
+    required Future<Object?> Function() fetch,
+  }) => JsonCache.instance.cachedRead<List<TimetableEntry>>(
+    key: key,
+    fetch: fetch,
+    decode: (raw) {
+      if (raw is! List) return <TimetableEntry>[];
+      return raw.whereType<Map>()
+          .map((row) => TimetableEntry.fromMap(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
+    },
+  );
+
   Future<List<TimetableEntry>> listForStudent(String studentId) async {
-    final memberships = await _client
-        .from('class_students')
-        .select('class_id')
-        .eq('student_id', studentId)
-        .eq('is_active', true);
-    final classIds = memberships.map((r) => r['class_id']?.toString()).whereType<String>().toList();
-    if (classIds.isNotEmpty) {
-      // Élève affecté à une salle : seul l'emploi du temps de la salle fait foi.
-      final rows = await _client
+    final classIds = await _studentClassIds(studentId);
+    final sortedIds = classIds.toList()..sort();
+    final scopeKey = classIds.isEmpty ? 'legacy' : sortedIds.join('_');
+    return _cachedEntries(
+      key: 'timetable_student_' + studentId + '_' + scopeKey,
+      fetch: () async {
+        if (classIds.isNotEmpty) {
+          return await _client
+              .from('class_timetable_entries')
+              .select()
+              .inFilter('class_id', classIds)
+              .eq('is_active', true)
+              .order('day_of_week')
+              .order('start_time') as Object?;
+        }
+        return await _client
+            .from('student_timetable_entries')
+            .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
+            .eq('student_id', studentId)
+            .order('day_of_week')
+            .order('start_time') as Object?;
+      },
+    );
+  }
+
+  /// Emploi du temps de la salle de l'élève (lecture seule). Vide si l'élève n'a pas de salle.
+  Future<List<TimetableEntry>> listClassTimetableForStudent(String studentId) async {
+    final classIds = await _studentClassIds(studentId);
+    if (classIds.isEmpty) return const [];
+    final sortedIds = classIds.toList()..sort();
+    return _cachedEntries(
+      key: 'class_timetable_student_' + studentId + '_' + sortedIds.join('_'),
+      fetch: () async => await _client
           .from('class_timetable_entries')
           .select()
           .inFilter('class_id', classIds)
           .eq('is_active', true)
           .order('day_of_week')
-          .order('start_time');
-      return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
-    }
-    // Ancien emploi du temps individuel : uniquement pour un élève sans salle.
-    final legacy = await _client
-        .from('student_timetable_entries')
-        .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
-        .eq('student_id', studentId)
-        .order('day_of_week')
-        .order('start_time');
-    return legacy.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
-  }
-
-  /// Emploi du temps de la salle de l'élève (lecture seule). Vide si l'élève n'a pas de salle.
-  Future<List<TimetableEntry>> listClassTimetableForStudent(String studentId) async {
-    final memberships = await _client
-        .from('class_students')
-        .select('class_id')
-        .eq('student_id', studentId)
-        .eq('is_active', true);
-    final classIds = memberships.map((r) => r['class_id']?.toString()).whereType<String>().toList();
-    if (classIds.isEmpty) {
-      return const [];
-    }
-    final rows = await _client
-        .from('class_timetable_entries')
-        .select()
-        .inFilter('class_id', classIds)
-        .eq('is_active', true)
-        .order('day_of_week')
-        .order('start_time');
-    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
+          .order('start_time') as Object?,
+    );
   }
 
   /// Emploi du temps que l'élève construit lui-même.
-  Future<List<TimetableEntry>> listPersonal(String studentId) async {
-    final rows = await _client
-        .from('student_timetable_entries')
-        .select('id, subject_id, day_of_week, start_time, end_time, subject, subject_en, teacher_name, room, notes')
-        .eq('student_id', studentId)
-        .order('day_of_week')
-        .order('start_time');
-    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
-  }
+  Future<List<TimetableEntry>> listPersonal(String studentId) =>
+      _cachedEntries(
+        key: 'personal_timetable_' + studentId,
+        fetch: () async => await _client
+            .from('student_timetable_entries')
+            .select('id, subject_id, day_of_week, start_time, end_time, subject, subject_en, teacher_name, room, notes')
+            .eq('student_id', studentId)
+            .order('day_of_week')
+            .order('start_time') as Object?,
+      );
 
   Future<void> savePersonal({
     String? id,
@@ -129,27 +165,29 @@ class TimetableService {
     return added;
   }
 
-  Future<List<TimetableEntry>> listForTeacher(String teacherId) async {
-    final rows = await _client
-        .from('class_timetable_entries')
-        .select()
-        .eq('teacher_id', teacherId)
-        .eq('is_active', true)
-        .order('day_of_week')
-        .order('start_time');
-    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
-  }
+  Future<List<TimetableEntry>> listForTeacher(String teacherId) =>
+      _cachedEntries(
+        key: 'teacher_timetable_' + teacherId,
+        fetch: () async => await _client
+            .from('class_timetable_entries')
+            .select()
+            .eq('teacher_id', teacherId)
+            .eq('is_active', true)
+            .order('day_of_week')
+            .order('start_time') as Object?,
+      );
 
-  Future<List<TimetableEntry>> listForClass(String classId) async {
-    final rows = await _client
-        .from('class_timetable_entries')
-        .select()
-        .eq('class_id', classId)
-        .eq('is_active', true)
-        .order('day_of_week')
-        .order('start_time');
-    return rows.map((r) => TimetableEntry.fromMap(Map<String, dynamic>.from(r))).toList();
-  }
+  Future<List<TimetableEntry>> listForClass(String classId) =>
+      _cachedEntries(
+        key: 'class_timetable_' + classId,
+        fetch: () async => await _client
+            .from('class_timetable_entries')
+            .select()
+            .eq('class_id', classId)
+            .eq('is_active', true)
+            .order('day_of_week')
+            .order('start_time') as Object?,
+      );
 
   Future<void> create({
     required String classId,
