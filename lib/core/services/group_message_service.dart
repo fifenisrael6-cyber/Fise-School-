@@ -312,6 +312,15 @@ class GroupMessageService {
     }
   }
 
+  Future<bool> _hasNetworkConnection() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.any((result) => result != ConnectivityResult.none);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> send({
     required String groupId,
     required String body,
@@ -338,9 +347,10 @@ class GroupMessageService {
       'local_attachment_path': localPath, 'attachment_local_path': localPath,
       'reply_to_id': replyToId,
     });
-    // Wait for the immediate attempt so the composer can report failures.
-    // The queued row remains in Drift when delivery is unsuccessful.
-    await syncPending();
+    // The outbox is persisted before this point. Offline sends return immediately;
+    // a connectivity listener retries the queued message when the network returns.
+    if (!await _hasNetworkConnection()) return;
+    await syncPending().timeout(const Duration(seconds: 12), onTimeout: () {});
     final stillPending = await _db.getQueuedMessages(_userId, 'group');
     if (stillPending.any((row) => row.read<String>('id') == id)) {
       throw StateError(
