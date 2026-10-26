@@ -231,7 +231,10 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
 
   Future<void> _select(MessageContact contact) async {
     setState(() {
-      if (_selected?.id != contact.id) _replyTo = null;
+      if (_selected?.id != contact.id) {
+        _replyTo = null;
+        _selectedMessageIds.clear();
+      }
       _selected = contact;
       _loadingMessages = true;
     });
