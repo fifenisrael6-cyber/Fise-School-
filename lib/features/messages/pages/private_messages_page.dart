@@ -52,6 +52,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   PrivateMessage? _replyTo;
   final PhotoService _photoService = PhotoService();
   RealtimeChannel? _channel;
+  final Set<String> _selectedMessageIds = <String>{};
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -314,6 +315,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
               ),
             if (!message.isPending)
               ListTile(
+                leading: const Icon(Icons.checklist_rounded),
+                title: Text(_isFrench ? 'Sélectionner plusieurs messages' : 'Select multiple messages'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _selectedMessageIds.add(message.id));
+                },
+              ),
+            if (!message.isPending)
+              ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
                 title: Text(_isFrench ? 'Supprimer pour moi' : 'Delete for me'),
                 onTap: () {
@@ -334,6 +344,70 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
         ),
       ),
     );
+  }
+
+  void _toggleMessageSelection(String id) {
+    setState(() {
+      if (!_selectedMessageIds.add(id)) _selectedMessageIds.remove(id);
+    });
+  }
+
+  Future<void> _showBulkDeleteOptions() async {
+    final selected = _messages.where((m) => _selectedMessageIds.contains(m.id) && !m.isPending).toList();
+    if (selected.isEmpty) return;
+    final canDeleteEveryone = selected.every((m) => m.senderId == widget.profile.id && m.deletedAt == null);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Wrap(children: [
+        ListTile(
+          leading: const Icon(Icons.delete_outline_rounded),
+          title: Text(_isFrench ? 'Supprimer pour moi' : 'Delete for me'),
+          onTap: () { Navigator.pop(sheetContext); _deleteSelectedMessages(forEveryone: false); },
+        ),
+        if (canDeleteEveryone)
+          ListTile(
+            leading: const Icon(Icons.delete_forever_rounded, color: Colors.red),
+            title: Text(_isFrench ? 'Supprimer pour tout le monde' : 'Delete for everyone'),
+            onTap: () { Navigator.pop(sheetContext); _deleteSelectedMessages(forEveryone: true); },
+          ),
+      ])),
+    );
+  }
+
+  Future<void> _deleteSelectedMessages({required bool forEveryone}) async {
+    final contact = _selected;
+    if (contact == null) return;
+    final selected = _messages.where((m) => _selectedMessageIds.contains(m.id) && !m.isPending && (!forEveryone || m.deletedAt == null)).toList();
+    if (selected.isEmpty) return;
+    if (forEveryone && selected.any((m) => m.senderId != widget.profile.id)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isFrench ? 'Vous ne pouvez supprimer pour tous que vos messages.' : 'You can only delete your own messages for everyone.')));
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(' ' + selected.length.toString() + (_isFrench ? ' message(s) à supprimer ?' : ' message(s) to delete?')),
+        content: Text(forEveryone
+          ? (_isFrench ? 'Ces messages seront supprimés pour vous et le destinataire.' : 'These messages will be deleted for you and the recipient.')
+          : (_isFrench ? 'Ces messages seront masqués uniquement pour vous.' : 'These messages will be hidden only for you.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_isFrench ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_isFrench ? 'Supprimer' : 'Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      for (final message in selected) {
+        await _service.deleteMessage(message.id, forEveryone: forEveryone);
+      }
+      if (mounted) setState(() => _selectedMessageIds.clear());
+      await _select(contact);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isFrench ? 'Messages supprimés.' : 'Messages deleted.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((_isFrench ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString())));
+    }
   }
 
   Future<void> _deleteMessage(PrivateMessage message, {required bool forEveryone}) async {
@@ -496,8 +570,20 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                 ),
                 onChanged: (_) => setState(() {}),
               )
-            : Text(title),
+            : Text(_selectedMessageIds.isEmpty ? title : _selectedMessageIds.length.toString() + (_isFrench ? ' sélectionné(s)' : ' selected')),
         actions: [
+          if (_selectedMessageIds.isNotEmpty) ...[
+            IconButton(
+              tooltip: _isFrench ? 'Supprimer les messages sélectionnés' : 'Delete selected messages',
+              icon: const Icon(Icons.delete_outline_rounded),
+              onPressed: _showBulkDeleteOptions,
+            ),
+            IconButton(
+              tooltip: _isFrench ? 'Annuler la sélection' : 'Cancel selection',
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => setState(() => _selectedMessageIds.clear()),
+            ),
+          ],
           IconButton(
             tooltip: _searching ? (_isFrench ? 'Fermer' : 'Close') : (_isFrench ? 'Rechercher' : 'Search'),
             icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
@@ -649,7 +735,15 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                       final mine = message.senderId == widget.profile.id;
                       final quoted = _findMessage(message.replyToId);
                       return GestureDetector(
-                        onLongPress: () => _showMessageActions(message),
+                        onLongPress: () {
+                          if (message.isPending) return;
+                          if (_selectedMessageIds.isNotEmpty) {
+                            _toggleMessageSelection(message.id);
+                          } else {
+                            _showMessageActions(message);
+                          }
+                        },
+                        onTap: _selectedMessageIds.isEmpty || message.isPending ? null : () => _toggleMessageSelection(message.id),
                         child: SwipeToReply(
                         enabled: !message.isPending,
                         onReply: () => setState(() => _replyTo = message),
@@ -657,6 +751,11 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                         mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          if (_selectedMessageIds.contains(message.id))
+                            const Padding(
+                              padding: EdgeInsets.only(right: 6, bottom: 8),
+                              child: Icon(Icons.check_circle_rounded, color: Color(0xFF166534)),
+                            ),
                           if (!mine)
                             Padding(
                               padding: const EdgeInsets.only(right: 8, bottom: 8),
