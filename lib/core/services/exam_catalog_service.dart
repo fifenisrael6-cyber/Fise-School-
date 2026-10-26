@@ -1,18 +1,30 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/exam_catalog.dart';
+import '../offline/json_cache.dart';
 
 class ExamCatalogService {
   final SupabaseClient _client;
+
+  Future<List<Map<String, dynamic>>> _readRows(
+    String key,
+    Future<Object?> Function() fetch,
+  ) => JsonCache.instance.cachedRead<List<Map<String, dynamic>>>(
+    key: key,
+    fetch: fetch,
+    decode: (raw) => raw is List
+        ? raw.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false)
+        : <Map<String, dynamic>>[],
+  );
 
   ExamCatalogService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
   Future<List<ExamSubsystem>> getSubsystems() async {
-    final rows = await _client
-        .from('exam_levels')
-        .select('subsystem')
-        .eq('active', true);
+    final rows = await _readRows(
+      'exam_catalog_subsystems',
+      () async => await _client.from('exam_levels').select('subsystem').eq('active', true) as Object?,
+    );
     final values = rows
         .map((row) => examSubsystemFromValue(row['subsystem']))
         .whereType<ExamSubsystem>()
@@ -23,11 +35,10 @@ class ExamCatalogService {
   }
 
   Future<List<ExamSector>> getSectors(ExamSubsystem subsystem) async {
-    final rows = await _client
-        .from('exam_levels')
-        .select('sector')
-        .eq('subsystem', subsystem.name)
-        .eq('active', true);
+    final rows = await _readRows(
+      'exam_catalog_sectors_' + subsystem.name,
+      () async => await _client.from('exam_levels').select('sector').eq('subsystem', subsystem.name).eq('active', true) as Object?,
+    );
     final values = rows
         .map((row) => examSectorFromValue(row['sector']))
         .whereType<ExamSector>()
@@ -38,11 +49,10 @@ class ExamCatalogService {
   }
 
   Future<List<ExamDefinition>> getExams() async {
-    final rows = await _client
-        .from('exams')
-        .select()
-        .eq('active', true)
-        .order('name_fr');
+    final rows = await _readRows(
+      'exam_catalog_exams',
+      () async => await _client.from('exams').select().eq('active', true).order('name_fr') as Object?,
+    );
     return rows
         .map((row) => ExamDefinition.fromMap(Map<String, dynamic>.from(row)))
         .toList(growable: false);
@@ -52,27 +62,31 @@ class ExamCatalogService {
     required ExamSubsystem subsystem,
     required ExamSector sector,
   }) async {
-    final rows = await _client
-        .from('exam_levels')
-        // Jointure gauche : les classes sans examen (6ème, Form 1...) sont incluses.
-        .select('*, exams(*)')
-        .eq('subsystem', subsystem.name)
-        .eq('sector', sector.name)
-        .eq('active', true)
-        .order('level_order')
-        .order('level_name_fr');
+    final rows = await _readRows(
+      'exam_catalog_levels_' + subsystem.name + '_' + sector.name,
+      () async => await _client.from('exam_levels')
+          // Jointure gauche : les classes sans examen (6ème, Form 1...) sont incluses.
+          .select('*, exams(*)')
+          .eq('subsystem', subsystem.name)
+          .eq('sector', sector.name)
+          .eq('active', true)
+          .order('level_order')
+          .order('level_name_fr') as Object?,
+    );
     return rows
         .map((row) => ExamLevel.fromMap(Map<String, dynamic>.from(row)))
         .toList(growable: false);
   }
 
   Future<List<ExamCatalogEntry>> getSeriesForLevel(String examLevelId) async {
-    final rows = await _client
-        .from('exam_level_series')
-        .select('series!inner(*)')
-        .eq('exam_level_id', examLevelId)
-        .eq('active', true)
-        .eq('series.active', true);
+    final rows = await _readRows(
+      'exam_catalog_series_level_' + examLevelId,
+      () async => await _client.from('exam_level_series')
+          .select('series!inner(*)')
+          .eq('exam_level_id', examLevelId)
+          .eq('active', true)
+          .eq('series.active', true) as Object?,
+    );
     return rows
         .map(
           (row) => ExamCatalogEntry.fromMap(
@@ -83,11 +97,10 @@ class ExamCatalogService {
   }
 
   Future<List<ExamCatalogEntry>> getSeries() async {
-    final rows = await _client
-        .from('series')
-        .select()
-        .eq('active', true)
-        .order('name_fr');
+    final rows = await _readRows(
+      'exam_catalog_series',
+      () async => await _client.from('series').select().eq('active', true).order('name_fr') as Object?,
+    );
     return rows
         .map((row) => ExamCatalogEntry.fromMap(Map<String, dynamic>.from(row)))
         .toList(growable: false);
@@ -96,12 +109,14 @@ class ExamCatalogService {
   Future<List<ExamCatalogEntry>> getSpecialtiesForLevel(
     String examLevelId,
   ) async {
-    final rows = await _client
-        .from('exam_level_specialties')
-        .select('specialties!inner(*)')
-        .eq('exam_level_id', examLevelId)
-        .eq('active', true)
-        .eq('specialties.active', true);
+    final rows = await _readRows(
+      'exam_catalog_specialties_level_' + examLevelId,
+      () async => await _client.from('exam_level_specialties')
+          .select('specialties!inner(*)')
+          .eq('exam_level_id', examLevelId)
+          .eq('active', true)
+          .eq('specialties.active', true) as Object?,
+    );
     return rows
         .map(
           (row) => ExamCatalogEntry.fromMap(
@@ -112,11 +127,10 @@ class ExamCatalogService {
   }
 
   Future<List<ExamCatalogEntry>> getSpecialties() async {
-    final rows = await _client
-        .from('specialties')
-        .select()
-        .eq('active', true)
-        .order('name_fr');
+    final rows = await _readRows(
+      'exam_catalog_specialties',
+      () async => await _client.from('specialties').select().eq('active', true).order('name_fr') as Object?,
+    );
     return rows
         .map((row) => ExamCatalogEntry.fromMap(Map<String, dynamic>.from(row)))
         .toList(growable: false);
