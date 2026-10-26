@@ -237,8 +237,22 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     try {
       final cached = await _service.getCachedGroups();
       if (cached.isNotEmpty) {
+        // A student must never see cached groups from the classroom they just
+        // left while the server refresh is pending or unavailable. For students,
+        // only use a local snapshot explicitly tagged with the current room.
+        final visibleCached = _isTeacher
+            ? cached
+            : cached.where((group) {
+                final currentRoom = widget.profile.className?.trim();
+                final cachedRoom = group.className?.trim();
+                return currentRoom != null &&
+                    currentRoom.isNotEmpty &&
+                    cachedRoom != null &&
+                    cachedRoom.isNotEmpty &&
+                    cachedRoom == currentRoom;
+              }).toList(growable: false);
         unawaited(_refreshGroupsInBackground());
-        return cached;
+        return visibleCached;
       }
     } catch (_) {
       // Use the server list if the local snapshot is unavailable.
