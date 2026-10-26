@@ -140,6 +140,20 @@ where ay.id = c.academic_year_id
   and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
   and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
 
+-- Retire unused rooms tied to non-official francophone general series mappings.
+update public.school_classes c
+set is_active = false, updated_at = now()
+from public.academic_years ay, public.series s
+where ay.id = c.academic_year_id
+  and ay.is_current
+  and s.id = c.series_id
+  and s.code in ('abi', 'e', 'sh')
+  and c.subsystem = 'francophone'
+  and c.sector = 'general'
+  and c.is_active
+  and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
+  and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
+
 -- Retire unused generic francophone general Terminale only if no active student
 -- remains attached to it.
 update public.school_classes c
@@ -229,7 +243,8 @@ begin
     v_specialty := v_profile.specialty_id;
   end if;
 
-  if v_subsystem not in ('francophone', 'anglophone')
+  if v_subsystem is null or v_sector is null
+     or v_subsystem not in ('francophone', 'anglophone')
      or v_sector not in ('general', 'technical') then
     raise exception 'Student subsystem and sector must be set before changing classroom';
   end if;
