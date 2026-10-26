@@ -85,7 +85,23 @@ class GroupMessageService {
     }
 
     final fetchedGroups = byId.values.toList(growable: false);
+    final avatarPaths = <String, String>{};
     if (fetchedGroups.isNotEmpty) {
+      try {
+        final avatarRows = await _client.rpc('list_my_message_group_avatars')
+            .timeout(const Duration(seconds: 8));
+        if (avatarRows is List) {
+          for (final row in avatarRows) {
+            final value = Map<String, dynamic>.from(row as Map);
+            final path = value['avatar_path']?.toString();
+            if (path != null && path.isNotEmpty) {
+              avatarPaths[value['group_id'].toString()] = path;
+            }
+          }
+        }
+      } catch (_) {
+        // Group avatars are optional; preserve the normal group list on older deployments.
+      }
       // Every group owned by a teacher displays the same canonical FISE code
       // used by payments. Keep each group's legacy invite code in the database
       // so older invitations remain valid, but don't present them as separate
@@ -113,6 +129,7 @@ class GroupMessageService {
           name: group.name,
           classId: group.classId,
           className: group.className,
+          avatarPath: avatarPaths[group.id] ?? group.avatarPath,
           ownerId: group.ownerId,
           inviteCode: sharedTeacherCode,
           memberCount: group.memberCount,
@@ -132,6 +149,7 @@ class GroupMessageService {
               'name': group.name,
               'class_id': group.classId,
               'class_name': group.className,
+              'avatar_path': group.avatarPath,
               'owner_id': group.ownerId,
               'invite_code': group.inviteCode,
               'member_count': group.memberCount,
