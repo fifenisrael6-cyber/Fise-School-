@@ -66,6 +66,24 @@ Deno.serve(async (req) => {
     if (profileError) throw profileError;
     if (profile.role !== "student") return json({ error: "Premium est réservé aux élèves." }, 403);
 
+    // Bind each payment to the student's current active classroom. A Premium
+    // purchase in another classroom must never unlock this classroom.
+    const { data: activeMembership, error: membershipError } = await admin
+      .from("class_students")
+      .select("class_id, school_classes!inner(id,is_active,academic_year_id,academic_years!inner(is_current))")
+      .eq("student_id", authData.user.id)
+      .eq("is_active", true)
+      .eq("school_classes.is_active", true)
+      .eq("school_classes.academic_years.is_current", true)
+      .order("joined_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (membershipError) throw membershipError;
+    const relatedClassId = activeMembership?.class_id;
+    if (!relatedClassId) {
+      return json({ error: "Aucune salle active trouvée. Rejoins une salle avant de payer Premium." }, 409);
+    }
+
     const { data: teachers } = await admin.rpc("resolve_premium_teachers", { p_student_id: authData.user.id });
     const scienceTeacher: string | null = teachers?.science_teacher_id ?? null;
     const literaryTeacher: string | null = teachers?.literary_teacher_id ?? null;
@@ -80,6 +98,7 @@ Deno.serve(async (req) => {
     const description = "Abonnement Fise School Premium — 30 jours";
     const { error: insertError } = await admin.from("payment_orders").insert({
       user_id: authData.user.id, reference, amount, currency, status: "NOTPAY", description, provider: "notchpay",
+      related_class_id: relatedClassId,
       teacher_id: null, science_teacher_id: scienceTeacher, literary_teacher_id: literaryTeacher,
       science_commission_xaf: scienceCommission, literary_commission_xaf: literaryCommission,
       teacher_commission_xaf: scienceCommission + literaryCommission,
