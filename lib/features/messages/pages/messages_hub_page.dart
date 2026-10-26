@@ -493,6 +493,16 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   }
 
   Future<void> _joinGroup() async {
+    // A group is a paid feature scoped to the student's current classroom.
+    // The server repeats this check in join_message_group and its RLS helper.
+    final canJoin = await PremiumGate.ensure(
+      context,
+      profile: widget.profile,
+      feature: QuotaFeature.msgSent,
+      premiumOnly: true,
+    );
+    if (!canJoin || !mounted) return;
+
     final controller = TextEditingController();
 
     final confirmed = await showDialog<bool>(
@@ -541,7 +551,12 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
       // Show the actionable reason returned by the existing secured RPC instead
       // of hiding every failure behind the same "invalid code" message.
       final detail = error.toString().toLowerCase();
-      final message = detail.contains('invalid or inactive fise code') ||
+      final message = detail.contains('premium payment is required') ||
+              detail.contains('premium payment required')
+          ? (_fr
+              ? 'Payez d’abord Premium pour cette salle avant de rejoindre ses groupes.'
+              : 'Pay for Premium in this classroom before joining its groups.')
+          : detail.contains('invalid or inactive fise code') ||
               detail.contains('invalid invitation code') ||
               detail.contains('invitation code')
           ? (_fr
