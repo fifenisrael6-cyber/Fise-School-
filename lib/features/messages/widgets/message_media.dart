@@ -4,13 +4,73 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
-/// Affiche une pièce jointe de message comme dans les applications de messagerie :
-/// image (plein écran zoomable), note vocale / audio (lecteur), vidéo (lecteur),
-/// PDF (lecteur intégré) et autres documents (carte + ouverture).
+/// Persistent cache for message attachments. The remote object path is the cache key,
+/// so a refreshed signed URL does not cause the same file to be downloaded again.
+class _MessageMediaCache {
+  static Future<String?> find({
+    required String? remotePath,
+    required String? fileName,
+    String? url,
+  }) async {
+    final key = (remotePath?.isNotEmpty == true) ? remotePath! : url;
+    if (key == null || key.isEmpty) return null;
+    try {
+      final file = await _cacheFile(key, fileName);
+      return await file.exists() ? file.path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> download({
+    required String? remotePath,
+    required String? fileName,
+    required String? url,
+  }) async {
+    if (url == null || url.isEmpty) return null;
+    final key = (remotePath?.isNotEmpty == true) ? remotePath! : url;
+    final cached = await find(remotePath: key, fileName: fileName, url: url);
+    if (cached != null) return cached;
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 90));
+      if (response.statusCode < 200 || response.statusCode >= 300) return null;
+      return await saveBytes(remotePath: key, fileName: fileName, bytes: response.bodyBytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String> saveBytes({
+    required String remotePath,
+    required String? fileName,
+    required List<int> bytes,
+  }) async {
+    final file = await _cacheFile(remotePath, fileName);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  static Future<File> _cacheFile(String key, String? name) async {
+    final support = await getApplicationSupportDirectory();
+    final safeName = (name ?? 'attachment.bin').replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    var hash = 0x811c9dc5;
+    for (final unit in key.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return File('${support.path}/message_media_cache/${hash.toRadixString(16)}_$safeName');
+  }
+}
+
+/// Affiche une pièce jointe de message dans l'application. Au premier accès,
+/// le contenu est ouvert en streaming puis mis en cache; les ouvertures suivantes
+/// utilisent le fichier local et fonctionnent hors ligne.
 class MessageAttachmentView extends StatelessWidget {
   const MessageAttachmentView({
     super.key,
@@ -19,6 +79,7 @@ class MessageAttachmentView extends StatelessWidget {
     required this.localPath,
     required this.remotePath,
     required this.resolveUrl,
+    this.cacheScope,
     this.french = true,
   });
 
@@ -27,7 +88,12 @@ class MessageAttachmentView extends StatelessWidget {
   final String? localPath;
   final String? remotePath;
   final Future<String?> Function(String? path) resolveUrl;
+  final String? cacheScope;
   final bool french;
+
+  String? get _cacheKey => remotePath == null
+      ? null
+      : (cacheScope == null ? remotePath : '$cacheScope::$remotePath');
 
   bool get _hasLocal => localPath != null && File(localPath!).existsSync();
   String get _mime => (type ?? '').toLowerCase();
@@ -43,46 +109,96 @@ class MessageAttachmentView extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: FutureBuilder<String?>(
-        future: _hasLocal ? Future.value(null) : resolveUrl(remotePath),
-        builder: (context, snapshot) {
-          final url = snapshot.data;
-          final waiting = !_hasLocal && snapshot.connectionState != ConnectionState.done;
-          final unavailable = !_hasLocal && !waiting && url == null;
-          if (unavailable) return _DocumentCard(name: name, type: type, french: french, onTap: null, subtitle: french ? 'Indisponible hors ligne' : 'Unavailable offline');
-          if (_isImage) return _imageThumb(context, url);
-          if (_isAudio) return AudioMessagePlayer(localPath: _hasLocal ? localPath : null, url: url, loading: waiting);
-          if (_isVideo) return _videoCard(context, url);
-          return _DocumentCard(
-            name: name,
-            type: type,
-            french: french,
-            onTap: waiting ? null : () => _openDocument(context, url),
-            subtitle: _isPdf ? (french ? 'PDF • Appuyer pour lire' : 'PDF • Tap to read') : (french ? 'Appuyer pour ouvrir' : 'Tap to open'),
+        future: _hasLocal
+            ? Future.value(localPath)
+            : _MessageMediaCache.find(remotePath: _cacheKey, fileName: name),
+        builder: (context, cacheSnapshot) {
+          final cachedPath = cacheSnapshot.data;
+          if (!_hasLocal && cacheSnapshot.connectionState != ConnectionState.done) {
+            return _DocumentCard(
+              name: name,
+              type: type,
+              french: french,
+              onTap: null,
+              subtitle: french ? 'Préparation du fichier…' : 'Preparing file…',
+            );
+          }
+          return FutureBuilder<String?>(
+            future: (cachedPath != null && File(cachedPath).existsSync())
+                ? Future.value(null)
+                : resolveUrl(remotePath),
+            builder: (context, snapshot) {
+              final effectiveLocal = (cachedPath != null && File(cachedPath).existsSync())
+                  ? cachedPath
+                  : (_hasLocal ? localPath : null);
+              final url = snapshot.data;
+              final waiting = effectiveLocal == null && snapshot.connectionState != ConnectionState.done;
+              final unavailable = effectiveLocal == null && !waiting && url == null;
+              if (unavailable) {
+                return _DocumentCard(
+                  name: name,
+                  type: type,
+                  french: french,
+                  onTap: null,
+                  subtitle: french ? 'Indisponible hors ligne' : 'Unavailable offline',
+                );
+              }
+              if (_isImage) return _imageThumb(context, url, effectiveLocal);
+              if (_isAudio) {
+                return AudioMessagePlayer(
+                  localPath: effectiveLocal,
+                  url: url,
+                  remotePath: _cacheKey,
+                  fileName: name,
+                  loading: waiting,
+                );
+              }
+              if (_isVideo) return _videoCard(context, url, effectiveLocal);
+              return _DocumentCard(
+                name: name,
+                type: type,
+                french: french,
+                onTap: waiting ? null : () => _openDocument(context, url, effectiveLocal),
+                subtitle: _isPdf
+                    ? (french ? 'PDF • Appuyer pour lire' : 'PDF • Tap to read')
+                    : (french ? 'Appuyer pour ouvrir dans Fise School' : 'Tap to open in Fise School'),
+              );
+            },
           );
         },
       ),
     );
   }
 
-  Widget _imageThumb(BuildContext context, String? url) {
-    final image = _hasLocal
-        ? Image.file(File(localPath!), width: 220, height: 180, fit: BoxFit.cover)
+  Widget _imageThumb(BuildContext context, String? url, String? effectiveLocal) {
+    final image = effectiveLocal != null && File(effectiveLocal).existsSync()
+        ? Image.file(File(effectiveLocal), width: 220, height: 180, fit: BoxFit.cover)
         : (url == null
             ? const SizedBox(width: 220, height: 180, child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
             : Image.network(url, width: 220, height: 180, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox(width: 220, height: 180, child: Icon(Icons.broken_image_outlined))));
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaImageViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? ''),
+        builder: (_) => MediaImageViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: _cacheKey,
+          title: name ?? '',
+        ),
       )),
       child: ClipRRect(borderRadius: BorderRadius.circular(10), child: image),
     );
   }
 
-  Widget _videoCard(BuildContext context, String? url) {
+  Widget _videoCard(BuildContext context, String? url, String? effectiveLocal) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaVideoViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? ''),
+        builder: (_) => MediaVideoViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: _cacheKey,
+          title: name ?? '',
+        ),
       )),
       child: Container(
         width: 220,
@@ -101,17 +217,28 @@ class MessageAttachmentView extends StatelessWidget {
     );
   }
 
-  Future<void> _openDocument(BuildContext context, String? url) async {
+  Future<void> _openDocument(BuildContext context, String? url, String? effectiveLocal) async {
     if (_isPdf) {
       await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaPdfViewerPage(localPath: _hasLocal ? localPath : null, url: url, title: name ?? 'PDF'),
+        builder: (_) => MediaPdfViewerPage(
+          localPath: effectiveLocal,
+          url: url,
+          remotePath: _cacheKey,
+          title: name ?? 'PDF',
+        ),
       ));
       return;
     }
-    if (url != null) {
-      final uri = Uri.tryParse(url);
-      if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MediaDocumentViewerPage(
+        localPath: effectiveLocal,
+        url: url,
+        remotePath: _cacheKey,
+        title: name ?? (french ? 'Fichier' : 'File'),
+        mimeType: type,
+        french: french,
+      ),
+    ));
   }
 }
 
@@ -160,9 +287,11 @@ class _DocumentCard extends StatelessWidget {
 
 /// Lecteur de note vocale / audio : lecture-pause, barre de progression, durée.
 class AudioMessagePlayer extends StatefulWidget {
-  const AudioMessagePlayer({super.key, this.localPath, this.url, this.loading = false});
+  const AudioMessagePlayer({super.key, this.localPath, this.url, this.remotePath, this.fileName, this.loading = false});
   final String? localPath;
   final String? url;
+  final String? remotePath;
+  final String? fileName;
   final bool loading;
 
   @override
@@ -201,10 +330,23 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
       await _player.resume();
       return;
     }
-    final local = widget.localPath;
+    var local = widget.localPath;
+    if (local == null || !File(local).existsSync()) {
+      local = await _MessageMediaCache.find(
+        remotePath: widget.remotePath,
+        fileName: widget.fileName,
+        url: widget.url,
+      );
+    }
     if (local != null && File(local).existsSync()) {
       await _player.play(DeviceFileSource(local));
     } else if (widget.url != null) {
+      // Start playback immediately; persist the full audio for later offline use.
+      unawaited(_MessageMediaCache.download(
+        remotePath: widget.remotePath,
+        fileName: widget.fileName,
+        url: widget.url,
+      ).then<void>((_) {}));
       await _player.play(UrlSource(widget.url!));
     }
   }
@@ -253,29 +395,67 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
   }
 }
 
-class MediaImageViewerPage extends StatelessWidget {
-  const MediaImageViewerPage({super.key, this.localPath, this.url, required this.title});
+class MediaImageViewerPage extends StatefulWidget {
+  const MediaImageViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
+  State<MediaImageViewerPage> createState() => _MediaImageViewerPageState();
+}
+
+class _MediaImageViewerPageState extends State<MediaImageViewerPage> {
+  String? _cachedPath;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_prepareCache());
+  }
+
+  Future<void> _prepareCache() async {
+    if (widget.localPath != null && await File(widget.localPath!).exists()) return;
+    final cached = await _MessageMediaCache.find(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (cached != null) {
+      if (mounted) setState(() => _cachedPath = cached);
+      return;
+    }
+    final saved = await _MessageMediaCache.download(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (mounted && saved != null) setState(() => _cachedPath = saved);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final Widget image = localPath != null && File(localPath!).existsSync()
-        ? Image.file(File(localPath!))
-        : (url != null ? Image.network(url!) : const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64));
+    final local = _cachedPath ??
+        ((widget.localPath != null && File(widget.localPath!).existsSync()) ? widget.localPath : null);
+    final Widget image = local != null
+        ? Image.file(File(local))
+        : (widget.url != null
+            ? Image.network(widget.url!)
+            : const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64));
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(title, overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.title, overflow: TextOverflow.ellipsis)),
       body: Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: image)),
     );
   }
 }
 
 class MediaVideoViewerPage extends StatefulWidget {
-  const MediaVideoViewerPage({super.key, this.localPath, this.url, required this.title});
+  const MediaVideoViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
@@ -289,22 +469,42 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
   @override
   void initState() {
     super.initState();
-    final local = widget.localPath;
-    final VideoPlayerController? c = (local != null && File(local).existsSync())
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    var local = widget.localPath;
+    if (local == null || !await File(local).exists()) {
+      local = await _MessageMediaCache.find(
+        remotePath: widget.remotePath,
+        fileName: widget.title,
+        url: widget.url,
+      );
+    }
+    if (local == null && widget.url != null) {
+      // Stream the video now; cache it in parallel for the next offline opening.
+      unawaited(_MessageMediaCache.download(
+        remotePath: widget.remotePath,
+        fileName: widget.title,
+        url: widget.url,
+      ).then<void>((_) {}));
+    }
+    final VideoPlayerController? c = local != null && await File(local).exists()
         ? VideoPlayerController.file(File(local))
         : (widget.url != null ? VideoPlayerController.networkUrl(Uri.parse(widget.url!)) : null);
     if (c == null) {
-      _failed = true;
+      if (mounted) setState(() => _failed = true);
       return;
     }
     _controller = c;
-    c.initialize().then((_) {
+    try {
+      await c.initialize();
       if (!mounted) return;
       setState(() {});
-      c.play();
-    }).catchError((_) {
+      await c.play();
+    } catch (_) {
       if (mounted) setState(() => _failed = true);
-    });
+    }
   }
 
   @override
@@ -342,9 +542,10 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
 }
 
 class MediaPdfViewerPage extends StatefulWidget {
-  const MediaPdfViewerPage({super.key, this.localPath, this.url, required this.title});
+  const MediaPdfViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
   final String? localPath;
   final String? url;
+  final String? remotePath;
   final String title;
 
   @override
@@ -363,17 +564,30 @@ class _MediaPdfViewerPageState extends State<MediaPdfViewerPage> {
 
   Future<void> _load() async {
     try {
-      final local = widget.localPath;
-      final Future<PdfDocument> doc;
-      if (local != null && File(local).existsSync()) {
-        doc = PdfDocument.openFile(local);
-      } else if (widget.url != null) {
-        final res = await http.get(Uri.parse(widget.url!)).timeout(const Duration(seconds: 30));
-        if (res.statusCode != 200) throw Exception('http ${res.statusCode}');
-        doc = PdfDocument.openData(res.bodyBytes);
-      } else {
-        throw Exception('no source');
+      var local = widget.localPath;
+      if (local == null || !await File(local).exists()) {
+        local = await _MessageMediaCache.find(
+          remotePath: widget.remotePath,
+          fileName: widget.title,
+          url: widget.url,
+        );
       }
+      if (local != null && await File(local).exists()) {
+        final doc = PdfDocument.openFile(local);
+        if (!mounted) return;
+        setState(() => _controller = PdfControllerPinch(document: doc));
+        return;
+      }
+      if (widget.url == null) throw Exception('no source');
+      final res = await http.get(Uri.parse(widget.url!)).timeout(const Duration(seconds: 60));
+      if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('http ${res.statusCode}');
+      final key = (widget.remotePath?.isNotEmpty == true) ? widget.remotePath! : widget.url!;
+      final savedPath = await _MessageMediaCache.saveBytes(
+        remotePath: key,
+        fileName: widget.title,
+        bytes: res.bodyBytes,
+      );
+      final doc = PdfDocument.openFile(savedPath);
       if (!mounted) return;
       setState(() => _controller = PdfControllerPinch(document: doc));
     } catch (_) {
@@ -395,5 +609,133 @@ class _MediaPdfViewerPageState extends State<MediaPdfViewerPage> {
             : _controller == null
                 ? const Center(child: CircularProgressIndicator())
                 : PdfViewPinch(controller: _controller!),
+      );
+}
+
+/// In-app document screen. Web-readable formats are rendered in the embedded
+/// WebView; text formats are rendered natively. The original file is cached so
+/// subsequent opens do not need to download it again.
+class MediaDocumentViewerPage extends StatefulWidget {
+  const MediaDocumentViewerPage({
+    super.key,
+    this.localPath,
+    this.url,
+    this.remotePath,
+    required this.title,
+    this.mimeType,
+    this.french = true,
+  });
+
+  final String? localPath;
+  final String? url;
+  final String? remotePath;
+  final String title;
+  final String? mimeType;
+  final bool french;
+
+  @override
+  State<MediaDocumentViewerPage> createState() => _MediaDocumentViewerPageState();
+}
+
+class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
+  String? _localPath;
+  String? _textContent;
+  WebViewController? _webController;
+  bool _loading = true;
+  bool _failed = false;
+
+  bool get _isTextFile {
+    final name = widget.title.toLowerCase();
+    return name.endsWith('.txt') || name.endsWith('.csv') ||
+        name.endsWith('.json') || name.endsWith('.md') || name.endsWith('.xml');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_prepare());
+  }
+
+  Future<void> _prepare() async {
+    try {
+      var local = widget.localPath;
+      if (local == null || !await File(local).exists()) {
+        local = await _MessageMediaCache.find(
+          remotePath: widget.remotePath,
+          fileName: widget.title,
+          url: widget.url,
+        );
+      }
+      if (local != null && await File(local).exists()) {
+        _localPath = local;
+        if (_isTextFile) {
+          _textContent = await File(local).readAsString();
+        } else if (widget.url == null) {
+          if (mounted) setState(() { _loading = false; });
+          return;
+        }
+      }
+
+      if (local != null &&
+          (widget.title.toLowerCase().endsWith('.html') || widget.title.toLowerCase().endsWith('.htm'))) {
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.loadFile(local);
+        _webController = controller;
+      } else if (local == null && widget.url != null) {
+        final controller = WebViewController();
+        await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+        await controller.loadRequest(Uri.parse(widget.url!));
+        _webController = controller;
+        unawaited(_cacheInBackground());
+      } else if (local == null) {
+        throw Exception('no source');
+      }
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) setState(() { _failed = _localPath == null; _loading = false; });
+    }
+  }
+
+  Future<void> _cacheInBackground() async {
+    final saved = await _MessageMediaCache.download(
+      remotePath: widget.remotePath,
+      fileName: widget.title,
+      url: widget.url,
+    );
+    if (mounted && saved != null) setState(() => _localPath = saved);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: Text(widget.title, overflow: TextOverflow.ellipsis)),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _failed
+                ? Center(child: Text(widget.french ? 'Impossible d’ouvrir ce fichier.' : 'Unable to open this file.'))
+                : _textContent != null
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: SelectableText(_textContent!),
+                      )
+                    : _webController != null
+                        ? WebViewWidget(controller: _webController!)
+                        : Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.insert_drive_file_outlined, size: 56),
+                                  const SizedBox(height: 12),
+                                  Text(widget.title, textAlign: TextAlign.center),
+                                  const SizedBox(height: 8),
+                                  Text(widget.french
+                                      ? 'Fichier conservé sur cet appareil. L’aperçu intégré de ce format n’est pas disponible.'
+                                      : 'File saved on this device. An embedded preview for this format is unavailable.'),
+                                ],
+                              ),
+                            ),
+                          ),
       );
 }
