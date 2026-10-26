@@ -10,9 +10,8 @@ import '../student/pages/pages/payment_page.dart';
 /// Point d'entrée unique : vérifie les droits côté serveur et ouvre la fenêtre
 /// Premium si besoin. Retourne true si l'action demandée peut continuer.
 class PremiumGate {
-  // Temporary application-test mode: payment/quota gates stay disabled until
-  // end-to-end classroom messaging and course delivery have been validated.
-  static const bool testingMode = true;
+  // Premium checks are enforced in the app; server-side Supabase checks remain authoritative.
+  static const bool testingMode = false;
 
   static Future<bool> ensure(
     BuildContext context, {
