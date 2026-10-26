@@ -14,6 +14,7 @@ import '../../../models/user_profile.dart';
 import '../../premium/premium_gate.dart';
 import 'group_chat_page.dart';
 import 'private_messages_page.dart';
+import '../widgets/user_avatar.dart';
 
 /// Espace Messages façon WhatsApp : liste des groupes et accès aux messages
 /// privés. Le code FISE personnel de l'enseignant permet de rejoindre les
@@ -353,10 +354,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
             ),
             ...groups.map(
               (group) => ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFF166534),
-                  child: Icon(Icons.group_rounded, color: Colors.white),
-                ),
+                leading: UserAvatar(path: group.avatarPath, name: group.name, radius: 22),
                 title: Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                 onTap: () => Navigator.pop(sheetContext, group),
               ),
@@ -749,13 +747,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 else
                   ...visibleGroups.map(
                     (group) => ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFF166534),
-                        child: Text(
-                          group.name.isEmpty ? '?' : group.name.substring(0, 1).toUpperCase(),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ),
+                      leading: UserAvatar(path: group.avatarPath, name: group.name, radius: 22),
                       title: Text(
                         group.name,
                         maxLines: 1,
