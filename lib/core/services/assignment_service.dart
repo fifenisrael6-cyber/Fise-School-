@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/assignment.dart';
 import '../offline/offline_repository.dart';
+import '../offline/json_cache.dart';
 
 class AssignmentService {
   final SupabaseClient _client;
@@ -206,31 +207,29 @@ class AssignmentService {
     String? classId,
     String? status,
   }) async {
-    var request = _client
-        .from('assignments')
-        .select()
-        .eq('teacher_id', teacherId);
-
-    if (courseId != null) {
-      request = request.eq('course_id', courseId);
-    }
-
-    if (classId != null) {
-      request = request.eq('class_id', classId);
-    }
-
-    if (status != null) {
-      request = request.eq('status', status);
-    }
-
-    final rows = await request.order('updated_at', ascending: false);
+    final cacheKey = 'teacher_assignments_' + teacherId +
+        '_' + (courseId ?? 'all-courses') +
+        '_' + (classId ?? 'all-classes') +
+        '_' + (status ?? 'all-statuses');
+    final assignments = await JsonCache.instance.cachedRead<List<Assignment>>(
+      key: cacheKey,
+      fetch: () async {
+        dynamic request = _client.from('assignments').select().eq('teacher_id', teacherId);
+        if (courseId != null) request = request.eq('course_id', courseId);
+        if (classId != null) request = request.eq('class_id', classId);
+        if (status != null) request = request.eq('status', status);
+        return await request.order('updated_at', ascending: false) as Object?;
+      },
+      decode: (raw) => raw is List
+          ? raw.whereType<Map>()
+              .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
+              .toList(growable: false)
+          : <Assignment>[],
+    );
 
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getStringList('hidden_teacher_assignments_$teacherId')?.toSet() ?? <String>{};
-    return rows
-        .map((row) => Assignment.fromMap(Map<String, dynamic>.from(row)))
-        .where((assignment) => !hidden.contains(assignment.id))
-        .toList(growable: false);
+    return assignments.where((assignment) => !hidden.contains(assignment.id)).toList(growable: false);
   }
 
   Future<Assignment> saveAssignment({
