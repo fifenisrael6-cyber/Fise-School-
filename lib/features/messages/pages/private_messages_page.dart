@@ -60,7 +60,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     super.initState();
     MessageQuotaEvents.denied.addListener(_onMessageDenied);
     _attachment = widget.initialAttachment;
-    _contactsFuture = _service.listContacts();
+    _contactsFuture = _loadContactsInstant();
     _loadConversationPreferences();
     _channel = Supabase.instance.client.channel('private-messages-${widget.profile.id}')
       ..onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'private_messages', callback: (payload) {
@@ -87,6 +87,28 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       .subscribe();
   }
 
+
+  Future<List<MessageContact>> _loadContactsInstant() async {
+    try {
+      final cached = await _service.getCachedContacts();
+      if (cached.isNotEmpty) {
+        unawaited(_refreshContactsInBackground());
+        return cached;
+      }
+    } catch (_) {
+      // Continue with the remote list if the local cache is unavailable.
+    }
+    return _service.listContacts();
+  }
+
+  Future<void> _refreshContactsInBackground() async {
+    try {
+      final contacts = await _service.listContacts();
+      if (mounted) setState(() => _contactsFuture = Future.value(contacts));
+    } catch (_) {
+      // Keep the saved list visible when offline.
+    }
+  }
 
   Future<void> _loadConversationPreferences() async {
     try {
@@ -212,16 +234,31 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       _selected = contact;
       _loadingMessages = true;
     });
+
+    // Show the local Drift snapshot before waiting for Supabase.
     try {
-      final messages = await _service.listConversation(contact.id);
-      await _service.markConversationRead(contact.id);
-      if (mounted) {
-        setState(() => _messages = messages);
-      }
-    } finally {
-      if (mounted) {
+      final cached = await _service.getCachedConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() {
+        _messages = cached;
+        _loadingMessages = false;
+      });
+    } catch (_) {
+      if (mounted && _selected?.id == contact.id) {
         setState(() => _loadingMessages = false);
       }
+    }
+    unawaited(_refreshConversation(contact));
+  }
+
+  Future<void> _refreshConversation(MessageContact contact) async {
+    try {
+      final messages = await _service.listConversation(contact.id);
+      if (!mounted || _selected?.id != contact.id) return;
+      setState(() => _messages = messages);
+      unawaited(_service.markConversationRead(contact.id));
+    } catch (error) {
+      debugPrint('Could not refresh private conversation: $error');
     }
   }
 
