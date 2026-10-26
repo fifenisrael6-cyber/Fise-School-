@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/connectivity_service.dart';
+import '../../../core/offline/json_cache.dart';
 import '../../../core/services/evaluation_service.dart';
 import '../../../core/services/photo_service.dart';
 import '../../../models/evaluation.dart';
@@ -51,28 +53,81 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
   Future<void> _load() async {
     if (mounted) setState(() { _loading = true; _error = null; });
     try {
-      final results = await Future.wait<dynamic>([
-        _db.from('assignments')
-            .select('id,title_fr,title_en,instructions_fr,instructions_en,class_id,subject_id,exam_id,starts_at,due_at,results_publish_at,evaluation_file_path,evaluation_file_name,status')
-            .not('exam_id', 'is', null)
-            .inFilter('status', ['published', 'closed'])
-            .order('starts_at'),
-        _db.from('exams').select('id,name_fr,name_en'),
-        _db.from('subjects').select('id,name_fr,name_en'),
-        _db.from('school_classes').select('id,display_name,name'),
-      ]);
+      final userId = widget.profile.id;
+      final activeClassKey = 'student_active_class_id_' + userId;
+      String? activeClassId;
+      var online = true;
+      try { online = await ConnectivityService().isOnline(); } catch (_) {}
+      if (online) {
+        try {
+          final memberships = await _db
+              .from('class_students')
+              .select('class_id, joined_at')
+              .eq('student_id', userId)
+              .eq('is_active', true)
+              .order('joined_at', ascending: false)
+              .limit(1)
+              .timeout(const Duration(seconds: 3));
+          activeClassId = memberships.isEmpty ? null : memberships.first['class_id']?.toString();
+          await JsonCache.instance.write(activeClassKey, {'class_id': activeClassId ?? ''});
+        } catch (_) {
+          final pointer = await JsonCache.instance.read(activeClassKey);
+          if (pointer is Map) activeClassId = pointer['class_id']?.toString();
+        }
+      } else {
+        final pointer = await JsonCache.instance.read(activeClassKey);
+        if (pointer is Map) activeClassId = pointer['class_id']?.toString();
+      }
+      if (activeClassId != null && activeClassId!.isEmpty) activeClassId = null;
+
+      final cacheKey = 'student_evaluations_' + userId + '_' + (activeClassId ?? 'no-class');
+      final payload = await JsonCache.instance.cachedRead<Map<String, dynamic>>(
+        key: cacheKey,
+        fetch: () async {
+          final results = await Future.wait<dynamic>([
+            _db.from('assignments')
+                .select('id,title_fr,title_en,instructions_fr,instructions_en,class_id,subject_id,exam_id,starts_at,due_at,results_publish_at,evaluation_file_path,evaluation_file_name,status')
+                .not('exam_id', 'is', null)
+                .inFilter('status', ['published', 'closed'])
+                .order('starts_at'),
+            _db.from('exams').select('id,name_fr,name_en'),
+            _db.from('subjects').select('id,name_fr,name_en'),
+            _db.from('school_classes').select('id,display_name,name'),
+          ]).timeout(const Duration(seconds: 8));
+          return <String, dynamic>{
+            'rows': (results[0] as List).map((r) => Map<String, dynamic>.from(r)).toList(),
+            'exams': (results[1] as List).map((r) => Map<String, dynamic>.from(r)).toList(),
+            'subjects': (results[2] as List).map((r) => Map<String, dynamic>.from(r)).toList(),
+            'classes': (results[3] as List).map((r) => Map<String, dynamic>.from(r)).toList(),
+          };
+        },
+        decode: (raw) => Map<String, dynamic>.from(raw as Map),
+      );
+
       StudentEvaluationList? automated;
       try {
         automated = await _evaluationService.listMine(forceRefresh: true);
       } catch (_) {
-        // Keep the legacy calendar available even if the automated evaluation list is offline.
+        // Keep the cached official calendar available if automated results are offline.
       }
       if (!mounted) return;
       setState(() {
-        _rows = (results[0] as List).map((r) => Map<String, dynamic>.from(r)).toList();
-        _exams = {for (final r in results[1] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
-        _subjects = {for (final r in results[2] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
-        _classes = {for (final r in results[3] as List) r['id'].toString(): Map<String, dynamic>.from(r)};
+        _rows = (payload['rows'] as List? ?? const [])
+            .whereType<Map>()
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList(growable: false);
+        _exams = {
+          for (final r in (payload['exams'] as List? ?? const []).whereType<Map>())
+            r['id'].toString(): Map<String, dynamic>.from(r),
+        };
+        _subjects = {
+          for (final r in (payload['subjects'] as List? ?? const []).whereType<Map>())
+            r['id'].toString(): Map<String, dynamic>.from(r),
+        };
+        _classes = {
+          for (final r in (payload['classes'] as List? ?? const []).whereType<Map>())
+            r['id'].toString(): Map<String, dynamic>.from(r),
+        };
         _automatedEvaluations = automated?.items ?? [];
         _serverOffset = automated?.serverOffset ?? Duration.zero;
         _loading = false;
