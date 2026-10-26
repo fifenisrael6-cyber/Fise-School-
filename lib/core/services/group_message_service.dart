@@ -121,7 +121,8 @@ class GroupMessageService {
         }
       }
       final groups = fetchedGroups.map((group) {
-        if (group.ownerId != _userId || sharedTeacherCode == null) {
+        if ((group.ownerId != _userId || sharedTeacherCode == null) &&
+            (avatarPaths[group.id] == null || avatarPaths[group.id] == group.avatarPath)) {
           return group;
         }
         return MessageGroup(
@@ -131,7 +132,7 @@ class GroupMessageService {
           className: group.className,
           avatarPath: avatarPaths[group.id] ?? group.avatarPath,
           ownerId: group.ownerId,
-          inviteCode: sharedTeacherCode,
+          inviteCode: sharedTeacherCode ?? group.inviteCode,
           memberCount: group.memberCount,
           unreadCount: group.unreadCount,
           lastBody: group.lastBody,
