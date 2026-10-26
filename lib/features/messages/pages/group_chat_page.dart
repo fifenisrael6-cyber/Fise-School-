@@ -54,6 +54,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
   bool _announcementsOnly = false;
   bool _groupActionInProgress = false;
   int? _memberCount;
+  final Set<String> _selectedMessageIds = <String>{};
+  String? _groupAvatarPath;
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _isOwner => widget.group.ownerId == widget.profile.id;
@@ -63,6 +65,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
     super.initState();
     MessageQuotaEvents.denied.addListener(_onMessageDenied);
     _inviteCode = widget.group.inviteCode;
+    _groupAvatarPath = widget.group.avatarPath;
     _attachment = widget.initialAttachment;
     _load();
     _loadGroupSettings();
@@ -203,6 +206,37 @@ class _GroupChatPageState extends State<GroupChatPage> {
         _loadError = hadCache ? null : error.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _changeGroupAvatar() async {
+    if (!_isOwner || _groupActionInProgress) return;
+    final image = await _photoService.pickFile(allowedExtensions: ['jpg', 'jpeg', 'png', 'webp']);
+    if (image == null || !mounted) return;
+    final extension = image.name.contains('.') ? image.name.split('.').last.toLowerCase() : 'jpg';
+    final safeExtension = ['jpg', 'jpeg', 'png', 'webp'].contains(extension) ? extension : 'jpg';
+    final path = widget.profile.id + '/groups/' + widget.group.id + '/avatar-' + DateTime.now().millisecondsSinceEpoch.toString() + '.' + safeExtension;
+    try {
+      setState(() => _groupActionInProgress = true);
+      await Supabase.instance.client.storage.from('profile-photos').uploadBinary(
+        path, image.bytes,
+        fileOptions: FileOptions(upsert: false, contentType: image.mimeType),
+      );
+      final oldPath = await Supabase.instance.client.rpc('set_message_group_avatar', params: {
+        'p_group_id': widget.group.id, 'p_avatar_path': path,
+      });
+      if (oldPath is String && oldPath.isNotEmpty && oldPath != path) {
+        try { await Supabase.instance.client.storage.from('profile-photos').remove([oldPath]); } catch (_) {}
+      }
+      if (mounted) {
+        setState(() => _groupAvatarPath = path);
+        _snack(_fr ? 'Photo du groupe mise à jour.' : 'Group photo updated.');
+      }
+    } catch (error) {
+      try { await Supabase.instance.client.storage.from('profile-photos').remove([path]); } catch (_) {}
+      if (mounted) _snack((_fr ? 'Impossible de modifier la photo : ' : 'Could not update group photo: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _groupActionInProgress = false);
     }
   }
 
@@ -527,10 +561,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
               shrinkWrap: true,
               padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  widget.group.name,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
+                Center(child: UserAvatar(path: _groupAvatarPath, name: widget.group.name, radius: 38)),
+                const SizedBox(height: 8),
+                Center(child: Text(widget.group.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+                if (_isOwner)
+                  OutlinedButton.icon(
+                    onPressed: _groupActionInProgress ? null : _changeGroupAvatar,
+                    icon: const Icon(Icons.photo_camera_back_outlined),
+                    label: Text(_fr ? 'Changer la photo du groupe' : 'Change group photo'),
+                  ),
                 if (widget.group.className != null) Text(widget.group.className!),
                 const SizedBox(height: 10),
                 Container(
@@ -738,15 +777,21 @@ class _GroupChatPageState extends State<GroupChatPage> {
               )
             : InkWell(
                 onTap: _showInfo,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
+                    UserAvatar(path: _groupAvatarPath, name: widget.group.name, radius: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                     Text(widget.group.name, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
                     Text(
                       _fr ? '${_memberCount ?? widget.group.memberCount} membres · Touchez pour les infos' : '${_memberCount ?? widget.group.memberCount} members · Tap for info',
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
                     ),
+                      ],
+                    )),
                   ],
                 ),
               ),
