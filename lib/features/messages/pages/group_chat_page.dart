@@ -384,6 +384,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
               ),
             if (!message.isPending)
               ListTile(
+                leading: const Icon(Icons.checklist_rounded),
+                title: Text(_fr ? 'Sélectionner plusieurs messages' : 'Select multiple messages'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _selectedMessageIds.add(message.id));
+                },
+              ),
+            if (!message.isPending)
+              ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
                 title: Text(_fr ? 'Supprimer pour moi' : 'Delete for me'),
                 onTap: () {
@@ -407,6 +416,68 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
       ),
     );
+  }
+
+  void _toggleMessageSelection(String id) {
+    setState(() {
+      if (!_selectedMessageIds.add(id)) _selectedMessageIds.remove(id);
+    });
+  }
+
+  Future<void> _showBulkDeleteOptions() async {
+    final selected = _messages.where((m) => _selectedMessageIds.contains(m.id) && !m.isPending).toList();
+    if (selected.isEmpty) return;
+    final canDeleteEveryone = selected.every((m) => m.senderId == widget.profile.id || _isOwner);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: Wrap(children: [
+        ListTile(
+          leading: const Icon(Icons.delete_outline_rounded),
+          title: Text(_fr ? 'Supprimer pour moi' : 'Delete for me'),
+          onTap: () { Navigator.pop(sheetContext); _deleteSelectedMessages(forEveryone: false); },
+        ),
+        if (canDeleteEveryone)
+          ListTile(
+            leading: const Icon(Icons.delete_forever_rounded, color: Colors.red),
+            title: Text(_fr ? 'Supprimer pour tout le monde' : 'Delete for everyone'),
+            onTap: () { Navigator.pop(sheetContext); _deleteSelectedMessages(forEveryone: true); },
+          ),
+      ])),
+    );
+  }
+
+  Future<void> _deleteSelectedMessages({required bool forEveryone}) async {
+    final selected = _messages.where((m) => _selectedMessageIds.contains(m.id) && !m.isPending && (!forEveryone || m.deletedAt == null)).toList();
+    if (selected.isEmpty) return;
+    if (forEveryone && selected.any((m) => m.senderId != widget.profile.id && !_isOwner)) {
+      _snack(_fr ? 'Vous ne pouvez supprimer pour tous que vos messages.' : 'You can only delete your own messages for everyone.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(' ' + selected.length.toString() + (_fr ? ' message(s) à supprimer ?' : ' message(s) to delete?')),
+        content: Text(forEveryone
+          ? (_fr ? 'Ces messages seront supprimés pour tous les membres du groupe.' : 'These messages will be deleted for all group members.')
+          : (_fr ? 'Ces messages seront masqués uniquement pour vous.' : 'These messages will be hidden only for you.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Supprimer' : 'Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      for (final message in selected) {
+        await _service.deleteMessage(message.id, forEveryone: forEveryone);
+      }
+      if (mounted) setState(() => _selectedMessageIds.clear());
+      await _load(showLoader: false);
+      if (mounted) _snack(_fr ? 'Messages supprimés.' : 'Messages deleted.');
+    } catch (error) {
+      if (mounted) _snack((_fr ? 'Suppression impossible : ' : 'Delete failed: ') + error.toString());
+    }
   }
 
   Future<void> _deleteMessage(GroupMessage message, {required bool forEveryone}) async {
@@ -796,6 +867,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 ),
               ),
         actions: [
+          if (_selectedMessageIds.isNotEmpty) ...[
+            IconButton(
+              tooltip: _fr ? 'Supprimer les messages sélectionnés' : 'Delete selected messages',
+              icon: const Icon(Icons.delete_outline_rounded),
+              onPressed: _showBulkDeleteOptions,
+            ),
+            IconButton(
+              tooltip: _fr ? 'Annuler la sélection' : 'Cancel selection',
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => setState(() => _selectedMessageIds.clear()),
+            ),
+          ],
           IconButton(
             tooltip: _searching ? (_fr ? 'Fermer la recherche' : 'Close search') : (_fr ? 'Rechercher' : 'Search'),
             icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
@@ -944,7 +1027,15 @@ class _GroupChatPageState extends State<GroupChatPage> {
     final quoted = _findMessage(message.replyToId);
 
     return GestureDetector(
-      onLongPress: () => _showMessageActions(message),
+      onLongPress: () {
+        if (message.isPending) return;
+        if (_selectedMessageIds.isNotEmpty) {
+          _toggleMessageSelection(message.id);
+        } else {
+          _showMessageActions(message);
+        }
+      },
+      onTap: _selectedMessageIds.isEmpty || message.isPending ? null : () => _toggleMessageSelection(message.id),
       child: SwipeToReply(
       enabled: !message.isPending,
       onReply: () => _startReply(message),
@@ -952,6 +1043,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
       mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (_selectedMessageIds.contains(message.id))
+          const Padding(
+            padding: EdgeInsets.only(right: 6, bottom: 8),
+            child: Icon(Icons.check_circle_rounded, color: Color(0xFF166534)),
+          ),
         if (!mine)
           Padding(
             padding: const EdgeInsets.only(right: 6, bottom: 8),
