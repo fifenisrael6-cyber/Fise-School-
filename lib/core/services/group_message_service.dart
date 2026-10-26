@@ -37,6 +37,14 @@ class GroupMessageService {
     return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
   }
 
+  /// Returns saved groups without a Supabase round-trip.
+  Future<List<MessageGroup>> getCachedGroups() async {
+    final rows = await _db.getCachedMessageGroups(_userId);
+    return rows.map((row) => MessageGroup.fromMap(
+      Map<String, dynamic>.from(jsonDecode(row.read<String>('data_json')) as Map),
+    )).toList(growable: false);
+  }
+
   Future<List<MessageGroup>> listGroups() async {
     final byId = <String, MessageGroup>{};
 
@@ -232,6 +240,9 @@ class GroupMessageService {
       return _readCache(groupId);
     }
   }
+
+  /// Returns the last saved message snapshot immediately, including queued sends.
+  Future<List<GroupMessage>> getCachedMessages(String groupId) => _readCache(groupId);
 
   Future<List<GroupMessage>> _readCache(String groupId, {List<dynamic>? fallbackRows}) async {
     final rows = fallbackRows ?? await _db.getCachedMessages(_userId, 'group', groupId);
