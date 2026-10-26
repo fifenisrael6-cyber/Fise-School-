@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/smart_course_service.dart';
+import '../../../core/offline/json_cache.dart';
 import '../../../models/smart_learning.dart';
 import '../../../models/user_profile.dart';
 
@@ -48,6 +49,8 @@ class _ProgressPageState extends State<ProgressPage> {
       _error = null;
     });
 
+    String? activeClassId;
+    final cacheIdsKey = 'student_active_class_ids_' + widget.profile.id;
     try {
       final memberships = await _client
           .from('class_students')
@@ -60,6 +63,8 @@ class _ProgressPageState extends State<ProgressPage> {
           .whereType<String>()
           .where((id) => id.isNotEmpty)
           .toList();
+      activeClassId = classIds.isEmpty ? null : classIds.first;
+      await JsonCache.instance.write(cacheIdsKey, classIds);
 
       if (classIds.isEmpty) {
         if (!mounted) {
@@ -201,11 +206,58 @@ class _ProgressPageState extends State<ProgressPage> {
         _courses = courseResults;
         _loading = false;
       });
-    } catch (e) {
-      if (!mounted) {
-        return;
+      if (activeClassId != null) {
+        try {
+          await JsonCache.instance.write(
+            'student_progress_' + widget.profile.id + '_' + activeClassId!,
+            {
+              'total_lessons': totalLessons,
+              'completed_lessons': completedLessons,
+              'in_progress_lessons': inProgressLessons,
+              'overall_progress': overallProgress,
+              'courses': courseResults.map((course) => {
+                'id': course.id,
+                'title_fr': course.titleFr,
+                'title_en': course.titleEn,
+                'lesson_count': course.lessonCount,
+                'completed_lessons': course.completedLessons,
+                'in_progress_lessons': course.inProgressLessons,
+                'progress_percent': course.progressPercent,
+              }).toList(),
+            },
+          );
+        } catch (_) {}
       }
-
+    } catch (e) {
+      // Restore the last progress snapshot for the last known active classroom.
+      try {
+        final cachedIds = await JsonCache.instance.read(cacheIdsKey);
+        final ids = cachedIds is List ? cachedIds.map((v) => v.toString()).where((v) => v.isNotEmpty).toList() : <String>[];
+        final classId = activeClassId ?? (ids.isEmpty ? null : ids.first);
+        final snapshot = classId == null ? null : await JsonCache.instance.read('student_progress_' + widget.profile.id + '_' + classId);
+        if (snapshot is Map && mounted) {
+          final courses = (snapshot['courses'] as List? ?? const []).whereType<Map>().map((row) => _CourseProgressData(
+            id: row['id']?.toString() ?? '',
+            titleFr: row['title_fr']?.toString() ?? '',
+            titleEn: row['title_en']?.toString() ?? '',
+            lessonCount: (row['lesson_count'] as num?)?.toInt() ?? 0,
+            completedLessons: (row['completed_lessons'] as num?)?.toInt() ?? 0,
+            inProgressLessons: (row['in_progress_lessons'] as num?)?.toInt() ?? 0,
+            progressPercent: (row['progress_percent'] as num?)?.toDouble() ?? 0,
+          )).toList(growable: false);
+          setState(() {
+            _totalLessons = (snapshot['total_lessons'] as num?)?.toInt() ?? 0;
+            _completedLessons = (snapshot['completed_lessons'] as num?)?.toInt() ?? 0;
+            _inProgressLessons = (snapshot['in_progress_lessons'] as num?)?.toInt() ?? 0;
+            _overallProgress = (snapshot['overall_progress'] as num?)?.toDouble() ?? 0;
+            _courses = courses;
+            _loading = false;
+            _error = null;
+          });
+          return;
+        }
+      } catch (_) {}
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = _isFrench
