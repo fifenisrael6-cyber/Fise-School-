@@ -58,7 +58,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   void initState() {
     super.initState();
     _pendingSharedAttachment = widget.initialSharedAttachment;
-    _groupsFuture = _service.listGroups();
+    _groupsFuture = _loadGroupsInstant();
     _loadConversationPreferences();
     // Open the exact conversation identified by a message notification.
     final targetType = widget.initialTargetType;
@@ -227,10 +227,34 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     );
   }
 
-  void _refreshGroups() {
-    if (mounted) {
-      setState(() => _groupsFuture = _service.listGroups());
+  Future<List<MessageGroup>> _loadGroupsInstant() async {
+    // A notification deep-link needs a fresh list to resolve its exact target.
+    if (widget.initialTargetType == 'group' && widget.initialTargetId != null) {
+      return _service.listGroups();
     }
+    try {
+      final cached = await _service.getCachedGroups();
+      if (cached.isNotEmpty) {
+        unawaited(_refreshGroupsInBackground());
+        return cached;
+      }
+    } catch (_) {
+      // Use the server list if the local snapshot is unavailable.
+    }
+    return _service.listGroups();
+  }
+
+  Future<void> _refreshGroupsInBackground() async {
+    try {
+      final groups = await _service.listGroups();
+      if (mounted) setState(() => _groupsFuture = Future.value(groups));
+    } catch (_) {
+      // Keep local groups visible offline.
+    }
+  }
+
+  void _refreshGroups() {
+    unawaited(_refreshGroupsInBackground());
   }
 
   Future<void> _reload() async {
