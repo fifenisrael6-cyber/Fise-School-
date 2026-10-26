@@ -60,6 +60,7 @@ class _AuthPageState extends State<AuthPage> {
   List<ExamLevel> _levels = const [];
   List<ExamCatalogEntry> _tracks = const [];
   bool _loadingLevels = false;
+  bool _loadingTracks = false;
   bool _catalogError = false;
 
   bool get _isStudent => _role == 'student';
@@ -121,6 +122,7 @@ class _AuthPageState extends State<AuthPage> {
       _languageOption = null;
       _languageOption2 = null;
       _tracks = const [];
+      _loadingTracks = true;
     });
     try {
       final tracks = level.sector == ExamSector.general
@@ -131,12 +133,23 @@ class _AuthPageState extends State<AuthPage> {
       }
       setState(() => _tracks = tracks);
     } catch (_) {
-      // Série/spécialité facultative : une erreur ne bloque pas l'inscription.
+      // Le niveau reste visible, mais un niveau final sans série chargée
+      // ne pourra pas être inscrit avec une filière vide.
+    } finally {
+      if (mounted && _level?.id == level.id) {
+        setState(() => _loadingTracks = false);
+      }
     }
   }
 
   Future<void> _submit(AppTexts texts) async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    if (_isRegistering && _isStudent && _level?.levelOrder == 7 && _track == null) {
+      _showError(_lang == 'en'
+          ? 'Choose the official series or specialty for this final year.'
+          : 'Choisissez la série ou la spécialité officielle de cette classe terminale.');
       return;
     }
     setState(() => _isLoading = true);
@@ -355,7 +368,7 @@ class _AuthPageState extends State<AuthPage> {
                       ),
                     const SizedBox(height: 12),
                     FilledButton(
-                      onPressed: _isLoading ? null : () => _submit(texts),
+                      onPressed: (_isLoading || _loadingTracks) ? null : () => _submit(texts),
                       child: _isLoading
                           ? const SizedBox(
                               height: 20,
@@ -551,7 +564,11 @@ class _AuthPageState extends State<AuthPage> {
           key: ValueKey('track-${level?.id}'),
           initialValue: _track,
           isExpanded: true,
-          decoration: InputDecoration(labelText: texts.trackOptional),
+          decoration: InputDecoration(
+            labelText: level?.levelOrder == 7
+                ? (_lang == 'en' ? 'Series / specialty (required)' : 'Série / spécialité (obligatoire)')
+                : texts.trackOptional,
+          ),
           items: [
             for (final item in _tracks)
               DropdownMenuItem(
@@ -562,7 +579,9 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
           ],
-          validator: (value) => null,
+          validator: (value) => level?.levelOrder == 7 && value == null
+              ? texts.selectionRequired
+              : null,
           onChanged: (value) => setState(() {
             _track = value;
             _languageOption = null;
