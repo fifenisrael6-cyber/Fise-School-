@@ -234,25 +234,16 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     if (widget.initialTargetType == 'group' && widget.initialTargetId != null) {
       return _service.listGroups();
     }
+    // Students must receive a server-authorized group list for the current
+    // classroom. A local cache can contain groups from a room they just left,
+    // so it must not be displayed before Supabase validates the current scope.
+    if (!_isTeacher) return _service.listGroups();
+
     try {
       final cached = await _service.getCachedGroups();
       if (cached.isNotEmpty) {
-        // A student must never see cached groups from the classroom they just
-        // left while the server refresh is pending or unavailable. For students,
-        // only use a local snapshot explicitly tagged with the current room.
-        final visibleCached = _isTeacher
-            ? cached
-            : cached.where((group) {
-                final currentRoom = widget.profile.className?.trim();
-                final cachedRoom = group.className?.trim();
-                return currentRoom != null &&
-                    currentRoom.isNotEmpty &&
-                    cachedRoom != null &&
-                    cachedRoom.isNotEmpty &&
-                    cachedRoom == currentRoom;
-              }).toList(growable: false);
         unawaited(_refreshGroupsInBackground());
-        return visibleCached;
+        return cached;
       }
     } catch (_) {
       // Use the server list if the local snapshot is unavailable.
