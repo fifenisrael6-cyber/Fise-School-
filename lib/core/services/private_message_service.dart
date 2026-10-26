@@ -37,6 +37,14 @@ class PrivateMessageService {
     return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}-${h.substring(16,20)}-${h.substring(20)}';
   }
 
+  /// Local snapshot for instant conversation-list rendering without network access.
+  Future<List<MessageContact>> getCachedContacts() async {
+    final rows = await _db.getCachedMessageContacts(_userId);
+    return rows.map((row) => MessageContact.fromMap(
+      Map<String, dynamic>.from(jsonDecode(row.read<String>('data_json')) as Map),
+    )).toList(growable: false);
+  }
+
   Future<List<MessageContact>> listContacts() async {
     try {
       final result = await _client.rpc('list_private_message_contacts').timeout(const Duration(seconds: 8));
@@ -60,7 +68,7 @@ class PrivateMessageService {
 
   Future<List<PrivateMessage>> listConversation(String contactId) async {
     try {
-      await syncPending();
+      unawaited(syncPending().catchError((_) {}));
       await _client.rpc('mark_private_messages_delivered', params: {'p_sender_id': contactId}).timeout(const Duration(seconds: 8));
       final result = await _client.rpc(
         'list_private_messages',
@@ -88,6 +96,10 @@ class PrivateMessageService {
       return _readPrivateCache(contactId);
     }
   }
+
+  /// Read cached messages immediately; remote refresh can run after the chat is visible.
+  Future<List<PrivateMessage>> getCachedConversation(String contactId) =>
+      _readPrivateCache(contactId);
 
   Future<List<PrivateMessage>> _readPrivateCache(String contactId, {List<dynamic>? fallbackRows}) async {
     final rows = fallbackRows ?? await _db.getCachedMessages(_userId, 'private', contactId);
