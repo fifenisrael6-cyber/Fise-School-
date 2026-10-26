@@ -6,7 +6,6 @@
 
 insert into public.specialties (code, name_fr, name_en, verification_status, source_url, active)
 values
-  ('af sci','Affûteur-scieur','Saw Filer', 'verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('afsci','Affûteur-scieur','Saw Filer','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('ajus','Ajustage','Fitting and Machining','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('bpa','Boulangerie-pâtisserie','Bakery and Pastry','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
@@ -17,7 +16,6 @@ values
   ('sebu','Secrétariat et bureautique','Secretarial and Office Skills','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('seme','Secrétariat médical','Medical Secretarial Studies','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('ses','Sciences économiques et sociales','Economic and Social Studies','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
-  ('afsci','Affûteur-scieur','Saw Filer','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('reca','Réparation carrosserie automobile','Automotive Body Repair','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('bijo','Bijouterie','Jewellery','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
   ('cm','Construction mécanique','Mechanical Engineering','verified','https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone',true),
@@ -101,7 +99,7 @@ insert into fise_minesec_valid_technical_specialties (subsystem, cycle, code) va
 ('francophone',2,'bp_cf'),('francophone',2,'ih'),('francophone',2,'peint'),('francophone',2,'sculp'),
 -- Anglophone technical first cycle (cycle 1)
 ('anglophone',1,'capa'),('anglophone',1,'coom'),('anglophone',1,'mael'),('anglophone',1,'main'),('anglophone',1,'mare'),('anglophone',1,'mefa'),('anglophone',1,'mefe'),
-('anglophone',1,'aicb'),('anglophone',1,'aici'),('anglophone',1,'eleq'),('anglophone',1,'elme'),('anglophone',1,'elni'),('anglophone',1,'frcl'),
+('anglophone',1,'esf'),('anglophone',1,'aicb'),('anglophone',1,'aici'),('anglophone',1,'eleq'),('anglophone',1,'elme'),('anglophone',1,'elni'),('anglophone',1,'frcl'),
 ('anglophone',1,'carr'),('anglophone',1,'deba'),('anglophone',1,'maco'),('anglophone',1,'menu'),('anglophone',1,'come'),('anglophone',1,'decor'),('anglophone',1,'esco'),
 -- Anglophone technical second cycle (cycle 2)
 ('anglophone',2,'aca'),('anglophone',2,'acc'),('anglophone',2,'cg'),('anglophone',2,'esf'),
