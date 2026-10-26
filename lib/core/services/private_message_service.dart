@@ -122,6 +122,15 @@ class PrivateMessageService {
     })).toList();
   }
 
+  Future<bool> _hasNetworkConnection() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.any((result) => result != ConnectivityResult.none);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> send({
     required String recipientId,
     required String body,
@@ -152,7 +161,9 @@ class PrivateMessageService {
     // outbox item, but must still be reported as failure so the composer keeps
     // the draft instead of pretending the message was sent.
     _lastRejectedMessageId = null;
-    await syncPending();
+    // The message is already durable in Drift. Never wait for Supabase offline.
+    if (!await _hasNetworkConnection()) return;
+    await syncPending().timeout(const Duration(seconds: 12), onTimeout: () {});
     if (_lastRejectedMessageId == id) {
       throw StateError('La limite gratuite de messagerie est atteinte. Réessayez après le renouvellement du quota ou utilisez Premium.');
     }
