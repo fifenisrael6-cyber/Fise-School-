@@ -4,18 +4,6 @@
 -- https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-francophone
 -- https://minesec.gov.cm/web/index.php/fr/systeme-educatif/offre-de-formation/sous-systeme-anglophone
 
--- 1) The francophone general second cycle must not offer technical-only or duplicate series.
-update public.exam_level_series els
-set active = false
-from public.exam_levels el, public.series s
-where els.exam_level_id = el.id
-  and els.series_id = s.id
-  and el.subsystem = 'francophone'
-  and el.sector = 'general'
-  and el.active
-  and s.code in ('abi', 'e', 'sh')
-  and els.active;
-
 -- 2) Add the MINESEC anglophone GCE Advanced Level series as distinct catalog
 -- codes, because A1-A5 already mean different series in the francophone subsystem.
 insert into public.series (code, name_fr, name_en, verification_status, source_url, active)
@@ -42,15 +30,6 @@ set name_fr = excluded.name_fr,
 
 -- Retire les anciennes catégories trop larges Arts/Science du niveau terminal
 -- anglophone, puis associe les 12 séries MINESEC à Upper Sixth.
-update public.exam_level_series els
-set active = false
-from public.exam_levels el, public.series s
-where els.exam_level_id = el.id
-  and els.series_id = s.id
-  and el.code = 'en_general_upper_sixth'
-  and s.code in ('gce_arts', 'gce_science')
-  and els.active;
-
 insert into public.exam_level_series (exam_level_id, series_id, verification_status, active)
 select el.id, s.id, 'verified', true
 from public.exam_levels el
@@ -124,6 +103,18 @@ where ay.id = c.academic_year_id
       )
   );
 
+-- Retire unused generic francophone general Terminale only if no active student
+-- remains attached to it.
+update public.school_classes c
+set is_active = false, updated_at = now()
+from public.academic_years ay
+where ay.id = c.academic_year_id
+  and ay.is_current
+  and c.name = 'fr_general_terminale'
+  and c.is_active
+  and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
+  and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
+
 -- Retire old broad GCE Arts/Science terminal rooms and unused generic final rooms.
 -- An occupied legacy francophone Terminale is intentionally preserved until its
 -- student has an explicitly selected series; the room is hidden from future choices below.
@@ -140,6 +131,7 @@ where ay.id = c.academic_year_id
   and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
   and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
 
+
 -- Retire unused rooms tied to non-official francophone general series mappings.
 update public.school_classes c
 set is_active = false, updated_at = now()
@@ -154,17 +146,29 @@ where ay.id = c.academic_year_id
   and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
   and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
 
--- Retire unused generic francophone general Terminale only if no active student
--- remains attached to it.
-update public.school_classes c
-set is_active = false, updated_at = now()
-from public.academic_years ay
-where ay.id = c.academic_year_id
-  and ay.is_current
-  and c.name = 'fr_general_terminale'
-  and c.is_active
-  and not exists (select 1 from public.class_students cs where cs.class_id = c.id and cs.is_active)
-  and not exists (select 1 from public.teacher_followed_classes tfc where tfc.class_id = c.id);
+
+update public.exam_level_series els
+set active = false
+from public.exam_levels el, public.series s
+where els.exam_level_id = el.id
+  and els.series_id = s.id
+  and el.code = 'en_general_upper_sixth'
+  and s.code in ('gce_arts', 'gce_science')
+  and els.active;
+
+
+-- 1) The francophone general second cycle must not offer technical-only or duplicate series.
+update public.exam_level_series els
+set active = false
+from public.exam_levels el, public.series s
+where els.exam_level_id = el.id
+  and els.series_id = s.id
+  and el.subsystem = 'francophone'
+  and el.sector = 'general'
+  and el.active
+  and s.code in ('abi', 'e', 'sh')
+  and els.active;
+
 
 -- 4) The server is the source of truth for room-change choices. A student must
 -- have a known subsystem AND sector; never fall back to all four pathways.
