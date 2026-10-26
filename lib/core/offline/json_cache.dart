@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'connectivity_service.dart';
+
 /// Cache hors ligne générique : une réponse serveur = un fichier JSON.
 ///
 /// Utilisé pour tout ce qui n'a pas sa propre table Drift (profil, emploi du
@@ -84,6 +86,17 @@ class JsonCache {
     required Future<Object?> Function() fetch,
     required T Function(Object? raw) decode,
   }) async {
+    var online = true;
+    try {
+      online = await ConnectivityService().isOnline();
+    } catch (_) {
+      // If connectivity cannot be determined, keep the normal network attempt.
+    }
+    if (!online) {
+      final cached = await read(key);
+      if (cached != null) return decode(cached);
+      throw StateError('No offline copy is available for: $key');
+    }
     try {
       final raw = await fetch().timeout(networkTimeout);
       try {
