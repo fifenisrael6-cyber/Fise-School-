@@ -155,6 +155,12 @@ class _AiPageState extends State<AiPage> {
         ));
       });
       await _saveCachedAiMessage('user', savedUserText);
+      await _saveCachedAiMessage(
+        'model',
+        _isFrench
+            ? 'Question enregistrée sur cet appareil. La réponse de l’IA nécessite une connexion Internet. Si tu as joint une photo ou un document, il faudra le joindre à nouveau après reconnexion.'
+            : 'Question saved on this device. The AI needs an internet connection to answer. If you attached a photo or document, attach it again after reconnecting.',
+      );
       _scrollToBottom();
       return;
     }
