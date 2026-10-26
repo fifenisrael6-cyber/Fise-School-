@@ -3,6 +3,7 @@ class MessageGroup {
   final String name;
   final String? classId;
   final String? className;
+  final String? avatarPath;
   final String ownerId;
   final String? inviteCode;
   final int memberCount;
@@ -17,6 +18,7 @@ class MessageGroup {
     required this.ownerId,
     this.classId,
     this.className,
+    this.avatarPath,
     this.inviteCode,
     this.memberCount = 0,
     this.unreadCount = 0,
@@ -32,6 +34,7 @@ class MessageGroup {
       name: map['name'] as String? ?? '',
       classId: map['class_id'] as String?,
       className: map['class_name'] as String?,
+      avatarPath: map['avatar_path'] as String?,
       ownerId: map['owner_id'] as String,
       inviteCode: map['invite_code'] as String?,
       memberCount: (map['member_count'] as num?)?.toInt() ?? 0,
