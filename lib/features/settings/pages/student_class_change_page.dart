@@ -141,6 +141,16 @@ class _StudentClassChangePageState extends State<StudentClassChangePage> {
           // anglophone/francophone subsystem.
           final normalizedSubsystem = widget.profile.subsystem?.toLowerCase().trim();
           final normalizedSector = widget.profile.sector?.toLowerCase().trim();
+          if (normalizedSubsystem == null ||
+              normalizedSubsystem.isEmpty ||
+              normalizedSector == null ||
+              normalizedSector.isEmpty) {
+            return _message(
+              _fr
+                  ? 'Ton profil scolaire ne précise pas le sous-système et le secteur. Fais corriger ton profil avant de changer de salle.'
+                  : 'Your school profile is missing its subsystem or sector. Have your profile corrected before changing classrooms.',
+            );
+          }
           final scoped = loaded.where((row) {
             final roomSubsystem = row['subsystem']?.toString().toLowerCase().trim();
             final roomSector = row['sector']?.toString().toLowerCase().trim();
