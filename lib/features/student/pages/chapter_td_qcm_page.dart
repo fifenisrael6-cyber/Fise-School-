@@ -124,8 +124,9 @@ class _ChapterTdQcmPageState extends State<ChapterTdQcmPage> {
                   child: Text('$number'),
                 ),
                 const SizedBox(width: 10),
-                Expanded(child: Text(chapter.labelFor(widget.locale.languageCode,)
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+                Expanded(child: Text(
+                  chapter.labelFor(widget.locale.languageCode),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
               ],
             ),
             const SizedBox(height: 10),
