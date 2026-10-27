@@ -393,21 +393,10 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   }
 
   Future<void> _createGroup() async {
+    // Do not wait for Supabase before showing the group form.
     List<SchoolClass> classes = const [];
-    try {
-      // This RPC already applies the teacher's authorized system/subsystem
-      // in Supabase. Do not filter it a second time against profile display
-      // labels ("Général", "Technique", etc.), which can hide valid rooms.
-      classes = (await CourseService().listTeacherCompatibleClasses())
-          .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
-          .toList(growable: false);
-    } catch (_) {
-      classes = const [];
-    }
-    if (!mounted) {
-      return;
-    }
-
+    var classesLoading = true;
+    var classFetchStarted = false;
     final nameController = TextEditingController();
     final classSearchController = TextEditingController();
     String? classId;
@@ -415,7 +404,27 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     final created = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) {
+          if (!classFetchStarted) {
+            classFetchStarted = true;
+            unawaited(CourseService().listTeacherCompatibleClasses().then((loaded) {
+              final compatible = loaded
+                  .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
+                  .toList(growable: false);
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                classes = compatible;
+                classesLoading = false;
+              });
+            }).catchError((_) {
+              if (!dialogContext.mounted) return;
+              setDialogState(() {
+                classes = const <SchoolClass>[];
+                classesLoading = false;
+              });
+            }));
+          }
+          return AlertDialog(
           title: Text(_fr ? 'Créer un groupe' : 'Create a group'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -445,6 +454,9 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: _fr ? 'Salle (facultatif)' : 'Classroom (optional)',
+                  helperText: classesLoading
+                      ? (_fr ? 'Les salles se chargent en arrière-plan…' : 'Classrooms are loading in the background…')
+                      : null,
                   border: const OutlineInputBorder(),
                 ),
                 items: [
@@ -469,7 +481,8 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
               child: Text(_fr ? 'Créer' : 'Create'),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
 
