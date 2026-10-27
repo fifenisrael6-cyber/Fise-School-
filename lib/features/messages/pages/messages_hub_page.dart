@@ -235,11 +235,10 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
     if (widget.initialTargetType == 'group' && widget.initialTargetId != null) {
       return _service.listGroups();
     }
-    // Students must receive a server-authorized group list for the current
-    // classroom. A local cache can contain groups from a room they just left,
-    // so it must not be displayed before Supabase validates the current scope.
-    if (!_isTeacher) return _service.listGroups();
-
+    // Render the account's own Drift snapshot first for every role. Waiting
+    // for Supabase here made the whole Messages screen spin on slow connections,
+    // even when groups were already saved locally. Refresh the authorized server
+    // list in the background; it replaces this first frame when available.
     try {
       final cached = await _service.getCachedGroups();
       if (cached.isNotEmpty) {
