@@ -7,6 +7,7 @@ import '../../core/services/pedagogy_service.dart';
 import '../../core/services/assignment_service.dart';
 import '../../core/services/chapter_learning_service.dart';
 import '../../models/pedagogy.dart';
+import '../../models/chapter_learning_content.dart';
 import 'offline_repository.dart';
 import 'app_database.dart';
 import 'course_offline_service.dart';
