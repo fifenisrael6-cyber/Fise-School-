@@ -72,6 +72,34 @@ class SyncService {
         .where((id) => id.isNotEmpty)
         .toSet();
     final subjectIds = courses.map((course) => course.subjectId).where((id) => id.isNotEmpty).toSet();
+    try {
+      final memberships = await _client
+          .from('class_students')
+          .select('class_id, joined_at')
+          .eq('student_id', studentId)
+          .eq('is_active', true)
+          .order('joined_at', ascending: false)
+          .limit(1);
+      final classIds = memberships
+          .map((row) => row['class_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      if (classIds.isNotEmpty) {
+        final assigned = await _client
+            .from('class_subjects')
+            .select('subject_id')
+            .eq('is_active', true)
+            .inFilter('class_id', classIds.toList(growable: false));
+        subjectIds.addAll(assigned
+            .map((row) => row['subject_id']?.toString())
+            .whereType<String>()
+            .where((id) => id.isNotEmpty));
+      }
+    } catch (_) {
+      // Retain subjects discovered through published courses if membership
+      // metadata is unavailable.
+    }
     final catalog = CourseService(client: _client);
     for (final subjectId in subjectIds) {
       try {
