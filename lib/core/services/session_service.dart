@@ -69,6 +69,15 @@ class SupabaseSessionService implements SessionService {
         return const SessionState.signedOut();
       }
 
+      final userId = session.user.id;
+      final cachedProfile = await _profileService.getCachedProfile(userId);
+      if (cachedProfile != null) {
+        // Render the last known dashboard immediately. Refresh the profile in
+        // the background so the first frame does not wait on Supabase latency.
+        unawaited(_profileService.getCurrentProfile().then<void>((_) {}).catchError((Object _) {}));
+        return SessionState.authenticated(cachedProfile);
+      }
+
       final profile = await _fetchProfile();
       if (profile == null) {
         return const SessionState.profileMissing();
