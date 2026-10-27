@@ -48,7 +48,16 @@ set search_path = public
 as $$
 declare
   v_source public.school_classes%rowtype;
+  v_course public.courses%rowtype;
 begin
+  select * into v_course from public.courses
+  where id = new.course_id and status <> 'archived';
+  if not found or v_course.class_id is distinct from new.source_class_id
+     or v_course.subject_id is distinct from new.subject_id
+     or v_course.teacher_id is distinct from new.teacher_id then
+    raise exception 'TD must match the teacher, subject and source classroom of its course';
+  end if;
+
   select * into v_source from public.school_classes
   where id = new.source_class_id and is_active;
   if not found then raise exception 'TD source classroom is missing or inactive'; end if;
@@ -80,11 +89,7 @@ begin
              or candidate.series_id is null or v_source.series_id is null)
         and (candidate.specialty_id is not distinct from v_source.specialty_id
              or candidate.specialty_id is null or v_source.specialty_id is null)
-        and (
-          candidate.id = any(coalesce(new.target_class_ids, '{}'::uuid[]))
-          or candidate.id = new.source_class_id
-          or true
-        )
+
     ) into new.target_class_ids;
     new.published_at := coalesce(new.published_at, now());
   end if;
