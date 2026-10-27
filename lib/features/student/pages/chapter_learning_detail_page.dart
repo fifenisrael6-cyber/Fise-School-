@@ -20,6 +20,7 @@ import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
 import 'chapter_folder_page.dart';
+import '../../messages/widgets/message_media.dart';
 
 class ChapterLearningDetailPage extends StatefulWidget {
   const ChapterLearningDetailPage({
@@ -288,17 +289,15 @@ class _ChapterLearningDetailPageState
             .where((item) => item.folderKey == 'pdf')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.images:
-        return data.content
-            .where((item) => item.folderKey == 'images')
-            .map(_contentCard).toList(growable: false);
+        final entries = data.content.where((item) => item.folderKey == 'images').toList(growable: false);
+        return entries.map((item) => _contentCard(item, galleryItems: entries)).toList(growable: false);
       case _ChapterResourceFolder.audio:
         return data.content
             .where((item) => item.folderKey == 'audio')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.video:
-        return data.content
-            .where((item) => item.folderKey == 'video')
-            .map(_contentCard).toList(growable: false);
+        final entries = data.content.where((item) => item.folderKey == 'video').toList(growable: false);
+        return entries.map((item) => _contentCard(item, galleryItems: entries)).toList(growable: false);
       case _ChapterResourceFolder.exercises:
         return <Widget>[
           ...data.exercises.map(_exerciseFolderItem),
@@ -493,7 +492,21 @@ class _ChapterLearningDetailPageState
     );
   }
 
-  Widget _contentCard(ChapterLearningContentItem item) {
+  Future<String?> _resolveChapterGalleryUrl(String? path) async {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    const legacyPrefix = 'legacy-course-resource:';
+    if (path.startsWith(legacyPrefix)) {
+      return Supabase.instance.client.storage
+          .from('cours-fichiers')
+          .createSignedUrl(path.substring(legacyPrefix.length), 900);
+    }
+    return Supabase.instance.client.storage
+        .from('chapter-content')
+        .createSignedUrl(path, 900);
+  }
+
+  Widget _contentCard(ChapterLearningContentItem item, {List<ChapterLearningContentItem>? galleryItems}) {
     final title = item.titleFor(widget.locale.languageCode);
     final icon = switch (item.type) {
       ChapterLearningContentType.course => Icons.menu_book_outlined,
@@ -514,6 +527,32 @@ class _ChapterLearningDetailPageState
             ? const Icon(Icons.open_in_new)
             : null,
         onTap: () {
+          if ((item.folderKey == 'images' || item.folderKey == 'video') &&
+              galleryItems != null && galleryItems.isNotEmpty) {
+            final mediaItems = galleryItems
+                .where((entry) => (entry.storagePath ?? entry.externalUrl ?? '').trim().isNotEmpty)
+                .map((entry) => MessageMediaGalleryItem(
+                      name: entry.titleFor(widget.locale.languageCode),
+                      type: entry.folderKey == 'video' ? 'video/mp4' : 'image/jpeg',
+                      localPath: null,
+                      remotePath: entry.storagePath ?? entry.externalUrl,
+                      cacheScope: widget.profile.id,
+                    ))
+                .toList(growable: false);
+            final currentPath = item.storagePath ?? item.externalUrl;
+            final initialIndex = mediaItems.indexWhere((entry) =>
+                entry.remotePath == currentPath);
+            if (mediaItems.isNotEmpty && initialIndex >= 0) {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => MediaGalleryViewerPage(
+                  items: mediaItems,
+                  initialIndex: initialIndex,
+                  resolveUrl: _resolveChapterGalleryUrl,
+                ),
+              ));
+              return;
+            }
+          }
           if (body != null && body.trim().isNotEmpty) {
             showModalBottomSheet<void>(
               context: context,
