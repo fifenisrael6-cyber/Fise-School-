@@ -263,8 +263,8 @@ class _AuthGateState extends State<AuthGate> {
       if (_syncedStudentId == profile.id) {
         return;
       }
-      _syncedStudentId = profile.id;
       await sync.syncStudentCourses(profile.id);
+      _syncedStudentId = profile.id;
     } catch (_) {
       // The app remains usable with whatever cache is already available.
     }
