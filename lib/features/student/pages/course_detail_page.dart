@@ -11,6 +11,7 @@ import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
+import 'course_directed_studies_page.dart';
 import 'lesson_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
@@ -248,6 +249,38 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
                 _buildCourseHeader(isEnglish),
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+                  ),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFE4F2E9),
+                      child: Icon(Icons.assignment_outlined, color: Color(0xFF166534)),
+                    ),
+                    title: Text(
+                      isEnglish ? 'Directed studies' : 'Travaux dirigés',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text(isEnglish
+                        ? 'Published exercises for this course and compatible classrooms'
+                        : 'Exercices publiés pour ce cours et les salles compatibles'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CourseDirectedStudiesPage(
+                          locale: widget.locale,
+                          profile: widget.profile,
+                          course: widget.course,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 if (courseContent != null && courseContent.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   Card(
