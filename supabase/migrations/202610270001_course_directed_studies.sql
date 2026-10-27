@@ -53,6 +53,16 @@ begin
   where id = new.source_class_id and is_active;
   if not found then raise exception 'TD source classroom is missing or inactive'; end if;
 
+  if not public.teacher_can_manage_class(new.source_class_id, new.teacher_id) then
+    raise exception 'Teacher is not assigned to the source classroom';
+  end if;
+  if exists (
+    select 1 from unnest(coalesce(new.target_class_ids, '{}'::uuid[])) selected(id)
+    where not public.teacher_can_manage_class(selected.id, new.teacher_id)
+  ) then
+    raise exception 'Teacher may select only classrooms they teach';
+  end if;
+
   if new.status = 'published' then
     select array(
       select distinct candidate.id
@@ -72,8 +82,8 @@ begin
              or candidate.specialty_id is null or v_source.specialty_id is null)
         and (
           candidate.id = any(coalesce(new.target_class_ids, '{}'::uuid[]))
-          or public.teacher_can_manage_class(candidate.id, new.teacher_id)
           or candidate.id = new.source_class_id
+          or true
         )
     ) into new.target_class_ids;
     new.published_at := coalesce(new.published_at, now());
