@@ -71,28 +71,53 @@ class TimetableService {
     },
   );
 
+  List<TimetableEntry> _decodeEntries(Object? raw) {
+    if (raw is! List) return <TimetableEntry>[];
+    return raw.whereType<Map>()
+        .map((row) => TimetableEntry.fromMap(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+  }
+
   Future<List<TimetableEntry>> listForStudent(String studentId) async {
-    final classIds = await _studentClassIds(studentId);
+    const latestKeyPrefix = 'timetable_student_latest_';
+    final latestKey = latestKeyPrefix + studentId;
+    late final List<String> classIds;
+    try {
+      classIds = await _studentClassIds(studentId);
+    } catch (_) {
+      // The membership request can fail even when the timetable itself was
+      // cached earlier. Fall back to the last complete timetable snapshot.
+      final cached = await JsonCache.instance.read(latestKey);
+      if (cached is List) return _decodeEntries(cached);
+      rethrow;
+    }
+
     final sortedIds = classIds.toList()..sort();
     final scopeKey = classIds.isEmpty ? 'legacy' : sortedIds.join('_');
     return _cachedEntries(
       key: 'timetable_student_' + studentId + '_' + scopeKey,
       fetch: () async {
+        final Object? raw;
         if (classIds.isNotEmpty) {
-          return await _client
+          raw = await _client
               .from('class_timetable_entries')
               .select()
               .inFilter('class_id', classIds)
               .eq('is_active', true)
               .order('day_of_week')
-              .order('start_time') as Object?;
+              .order('start_time');
+        } else {
+          raw = await _client
+              .from('student_timetable_entries')
+              .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
+              .eq('student_id', studentId)
+              .order('day_of_week')
+              .order('start_time');
         }
-        return await _client
-            .from('student_timetable_entries')
-            .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
-            .eq('student_id', studentId)
-            .order('day_of_week')
-            .order('start_time') as Object?;
+        // Keep a stable fallback independent of the current membership lookup.
+        // This is additive: the scoped cache remains the primary cache.
+        await JsonCache.instance.write(latestKey, raw);
+        return raw;
       },
     );
   }
