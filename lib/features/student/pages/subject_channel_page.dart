@@ -14,7 +14,6 @@ import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
-import 'course_directed_studies_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
@@ -558,8 +557,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   _fr ? 'Aucun cours publié dans ce chapitre.' : 'No published lessons in this chapter.',
                 ),
               ),
-              _directedStudiesFolder(items),
-              ChapterFolderCard(
+                    ChapterFolderCard(
                 title: 'Photos',
                 count: photos.length,
                 icon: Icons.photo_library_outlined,
@@ -655,7 +653,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             ),
           )),
         ),
-        _directedStudiesFolder(items),
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 18),
           child: Center(child: CircularProgressIndicator(color: Color(0xFF166534))),
@@ -667,41 +664,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _directedStudiesFolder(List<_FeedItem> items) {
-    final seen = <String>{};
-    final chapterCourses = items
-        .map((item) => item.course)
-        .whereType<Course>()
-        .where((course) => seen.add(course.id))
-        .toList(growable: false);
-    final courseIds = chapterCourses.map((course) => course.id).toList()..sort();
-    final key = 'chapter_td_${widget.profile.id}_${widget.subject.id}_'
-        '${widget.chapterId ?? 'all'}_${courseIds.join('_')}';
-    final future = _chapterDirectedStudiesFutures.putIfAbsent(
-      key,
-      () => _loadChapterDirectedStudies(key, courseIds),
-    );
-
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: future,
-      builder: (context, snapshot) => ChapterFolderCard(
-        title: _fr ? 'Travaux dirigés (TD)' : 'Directed studies (TD)',
-        count: snapshot.data?.length ?? 0,
-        icon: Icons.assignment_outlined,
-        countLabel: 'TD',
-        onTap: () => Navigator.push(context, MaterialPageRoute<void>(
-          builder: (_) => CourseDirectedStudiesPage(
-            locale: widget.locale,
-            profile: widget.profile,
-            subjectId: widget.subject.id,
-            course: chapterCourses.isEmpty ? null : chapterCourses.first,
-            courseIds: courseIds.isEmpty ? null : courseIds,
-          ),
-        )),
-      ),
     );
   }
 
