@@ -395,11 +395,11 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   Future<void> _createGroup() async {
     List<SchoolClass> classes = const [];
     try {
+      // This RPC already applies the teacher's authorized system/subsystem
+      // in Supabase. Do not filter it a second time against profile display
+      // labels ("Général", "Technique", etc.), which can hide valid rooms.
       classes = (await CourseService().listTeacherCompatibleClasses())
           .where((schoolClass) => !_isCombinedLanguageRoom(schoolClass.displayName))
-          .where((schoolClass) =>
-              (widget.profile.subsystem != null && schoolClass.subsystem.name == widget.profile.subsystem!.toLowerCase().trim()) &&
-              (widget.profile.sector != null && schoolClass.sector.name == widget.profile.sector!.toLowerCase().trim()))
           .toList(growable: false);
     } catch (_) {
       classes = const [];
