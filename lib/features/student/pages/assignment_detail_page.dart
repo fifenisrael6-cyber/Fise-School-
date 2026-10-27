@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../models/assignment.dart';
@@ -122,31 +123,61 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
       await _ensureSubmission();
       final submission = _submission;
       if (submission == null || !mounted) return;
-      await _service.saveAnswer(
-        submissionId: submission.id,
-        questionId: question.id,
-        selectedOption: value,
-      );
-      if (!mounted) return;
-      // Lock the chosen option immediately after it is saved. The server then
-      // returns the correct/incorrect feedback for that exact stored choice.
-      setState(() => _selectedAnswers[question.id] = value);
-      final result = await Supabase.instance.client.rpc(
-        'check_assignment_qcm_answer',
-        params: {'p_question_id': question.id, 'p_selected_option': value},
-      );
-      if (result is! Map) throw StateError('Correction QCM indisponible.');
-      if (!mounted) return;
-      setState(() => _qcmFeedback[question.id] = Map<String, dynamic>.from(result));
-    } catch (_) {
-      if (mounted) {
-        // Let the student retry the same saved choice if the feedback request
-        // failed. If the server already locked it, only that same choice can pass.
-        setState(() => _selectedAnswers.remove(question.id));
+
+      try {
+        await _service.saveAnswer(
+          submissionId: submission.id,
+          questionId: question.id,
+          selectedOption: value,
+        );
+      } catch (_) {
+        // A QCM choice must not disappear just because the network is down.
+        await _offline.saveAnswer(AssignmentAnswer(
+          id: 'local-${submission.id}-${question.id}',
+          submissionId: submission.id,
+          questionId: question.id,
+          selectedOption: value,
+          createdAt: DateTime.now(),
+        ), widget.profile.id);
+        if (!mounted) return;
+        setState(() => _selectedAnswers[question.id] = value);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_isEnglish
-              ? 'Unable to validate this answer. Please select the same answer again to retry.'
-              : 'Impossible de valider cette réponse. Cochez de nouveau la même réponse pour réessayer.')),
+              ? 'Answer saved on this device. It will sync when you reconnect.'
+              : 'Réponse enregistrée sur cet appareil. Elle sera synchronisée à la reconnexion.')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      // Keep the selected answer locked even if the feedback endpoint is
+      // temporarily unavailable; the answer itself has already been saved.
+      setState(() => _selectedAnswers[question.id] = value);
+      try {
+        final result = await Supabase.instance.client.rpc(
+          'check_assignment_qcm_answer',
+          params: {'p_question_id': question.id, 'p_selected_option': value},
+        );
+        if (result is Map && mounted) {
+          setState(() => _qcmFeedback[question.id] = Map<String, dynamic>.from(result));
+        } else if (mounted) {
+          throw StateError('Correction QCM indisponible.');
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_isEnglish
+                ? 'Answer saved. Correction will be available when the connection returns.'
+                : 'Réponse enregistrée. La correction sera disponible au retour de la connexion.')),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_isEnglish
+              ? 'Unable to save this answer on this device.'
+              : 'Impossible d’enregistrer cette réponse sur cet appareil.')),
         );
       }
     } finally {
@@ -181,23 +212,35 @@ class _AssignmentDetailPageState extends State<AssignmentDetailPage> {
     if (_submission != null) {
       return;
     }
-    try {
-      final submission = await _service.createOrGetStudentSubmission(assignmentId: widget.assignment.id, studentId: widget.profile.id);
-      if (!mounted) {
-        return;
-      }
-      setState(() => _submission = submission);
-    } catch (_) {
+
+    Future<void> createLocalSubmission() async {
       final now = DateTime.now();
       final submission = AssignmentSubmission(
         id: 'local-${widget.assignment.id}-${widget.profile.id}',
-        assignmentId: widget.assignment.id, studentId: widget.profile.id, status: 'draft',
-        createdAt: now, updatedAt: now,
+        assignmentId: widget.assignment.id,
+        studentId: widget.profile.id,
+        status: 'draft',
+        createdAt: now,
+        updatedAt: now,
       );
       await _offline.saveSubmission(submission, widget.profile.id);
-      if (mounted) {
-        setState(() => _submission = submission);
-      }
+      if (mounted) setState(() => _submission = submission);
+    }
+
+    if (!await ConnectivityService().isOnline()) {
+      await createLocalSubmission();
+      return;
+    }
+
+    try {
+      final submission = await _service.createOrGetStudentSubmission(
+        assignmentId: widget.assignment.id,
+        studentId: widget.profile.id,
+      );
+      if (!mounted) return;
+      setState(() => _submission = submission);
+    } catch (_) {
+      await createLocalSubmission();
     }
   }
 
