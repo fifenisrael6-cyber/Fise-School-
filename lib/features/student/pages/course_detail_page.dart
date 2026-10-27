@@ -77,43 +77,56 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   Future<List<CourseResource>> _loadResources() async {
     try {
+      // Do not spend the network timeout on every course open when offline.
+      if (!await _connectivity.isOnline()) {
+        return _loadCachedResources();
+      }
+    } catch (_) {
+      // Continue to the cached fallback if connectivity detection is unavailable.
+    }
+    try {
       return await ResourceService()
           .listForCourse(widget.course.id)
           .timeout(const Duration(seconds: 8));
     } catch (_) {
-      // En cas de réseau lent/absent, ne lire que les fichiers déjà enregistrés.
-      try {
-        final files = await _offline.filesForCourse(
-          widget.profile.id,
-          widget.course.id,
+      return _loadCachedResources();
+    }
+  }
+
+  Future<List<CourseResource>> _loadCachedResources() async {
+    // In offline mode expose only resources whose metadata/files were already
+    // saved locally; opening the course must not wait for a failed HTTP request.
+    try {
+      final files = await _offline.filesForCourse(
+        widget.profile.id,
+        widget.course.id,
+      );
+      return files.map((file) {
+        final mime = (file.mimeType ?? '').toLowerCase();
+        final name = file.fileName.toLowerCase();
+        final type = mime.contains('pdf') || name.endsWith('.pdf')
+            ? 'pdf'
+            : mime.startsWith('image/')
+                ? 'image'
+                : mime.startsWith('audio/')
+                    ? 'audio'
+                    : mime.startsWith('video/')
+                        ? 'video'
+                        : 'document';
+        return CourseResource(
+          id: file.resourceId,
+          courseId: widget.course.id,
+          resourceType: type,
+          storagePath: '',
+          fileName: file.fileName,
+          mimeType: file.mimeType,
+          fileSize: file.sizeBytes,
+          titleFr: file.fileName,
+          titleEn: file.fileName,
         );
-        return files.map((file) {
-          final mime = (file.mimeType ?? '').toLowerCase();
-          final name = file.fileName.toLowerCase();
-          final type = mime.contains('pdf') || name.endsWith('.pdf')
-              ? 'pdf'
-              : mime.startsWith('image/')
-                  ? 'image'
-                  : mime.startsWith('audio/')
-                      ? 'audio'
-                      : mime.startsWith('video/')
-                          ? 'video'
-                          : 'document';
-          return CourseResource(
-            id: file.resourceId,
-            courseId: widget.course.id,
-            resourceType: type,
-            storagePath: '',
-            fileName: file.fileName,
-            mimeType: file.mimeType,
-            fileSize: file.sizeBytes,
-            titleFr: file.fileName,
-            titleEn: file.fileName,
-          );
-        }).toList(growable: false);
-      } catch (_) {
-        return const <CourseResource>[];
-      }
+      }).toList(growable: false);
+    } catch (_) {
+      return const <CourseResource>[];
     }
   }
 
