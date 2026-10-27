@@ -202,7 +202,23 @@ class _GroupChatPageState extends State<GroupChatPage> {
       if (cached.isNotEmpty || !showLoader) _loading = false;
       if (cached.isNotEmpty) _loadError = null;
     });
+    unawaited(_prefetchGroupAvatars(cached));
     unawaited(_refreshMessages(generation, hadCache: cached.isNotEmpty));
+  }
+
+  Future<void> _prefetchGroupAvatars(List<GroupMessage> messages) async {
+    final paths = <String>{
+      if ((_groupAvatarPath ?? '').isNotEmpty) _groupAvatarPath!,
+      ...messages.map((message) => message.senderAvatarPath ?? '')
+          .where((path) => path.isNotEmpty),
+    };
+    await Future.wait(paths.map((path) async {
+      try {
+        await _photoService.cachedAvatarFile(path);
+      } catch (_) {
+        // Avatar caching is opportunistic and never blocks the message list.
+      }
+    }));
   }
 
   Future<void> _refreshMessages(int generation, {required bool hadCache}) async {
@@ -211,6 +227,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
           .listMessages(widget.group.id)
           .timeout(const Duration(seconds: 20));
       if (!mounted || generation != _loadGeneration) return;
+      unawaited(_prefetchGroupAvatars(messages));
       setState(() {
         _messages = messages;
         _loadError = null;
