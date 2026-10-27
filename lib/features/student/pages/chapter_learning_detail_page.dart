@@ -546,10 +546,14 @@ class _ChapterLearningDetailPageState
                 })
                 .map((entry) {
                   final storagePath = (entry.storagePath ?? '').trim();
+                  final external = (entry.externalUrl ?? '').trim().toLowerCase();
+                  final source = storagePath.isNotEmpty ? storagePath : external;
+                  final embedded = entry.folderKey == 'video' &&
+                      (source.contains('youtube.com') ||
+                          source.contains('youtu.be') ||
+                          source.contains('vimeo.com'));
                   final safeId = entry.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-                  final localPath = storagePath.isNotEmpty &&
-                          !storagePath.startsWith('http://') &&
-                          !storagePath.startsWith('https://')
+                  final localPath = source.isNotEmpty && !embedded
                       ? p.join(supportDirectory.path, 'offline', 'chapter_media', userId, '$safeId.bin')
                       : null;
                   return MessageMediaGalleryItem(
