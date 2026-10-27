@@ -64,6 +64,19 @@ class SyncService {
         .whereType<String>()
         .where((id) => id.isNotEmpty)
         .toSet();
+    final subjectIds = courses.map((course) => course.subjectId).where((id) => id.isNotEmpty).toSet();
+    final catalog = CourseService(client: _client);
+    for (final subjectId in subjectIds) {
+      try {
+        final catalogChapters = await catalog.listStudentCatalogChapters(
+          _client.auth.currentUser?.id ?? '',
+          subjectId: subjectId,
+        );
+        chapterIds.addAll(catalogChapters.map((chapter) => chapter.id).where((id) => id.isNotEmpty));
+      } catch (_) {
+        // Keep chapter IDs from published courses if the catalog is unavailable.
+      }
+    }
     if (chapterIds.isEmpty) return;
     final chapters = ChapterLearningService(client: _client);
     for (final chapterId in chapterIds) {
