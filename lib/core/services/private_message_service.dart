@@ -46,6 +46,9 @@ class PrivateMessageService {
   }
 
   Future<List<MessageContact>> listContacts() async {
+    if (!await _hasNetworkConnection()) {
+      return getCachedContacts();
+    }
     try {
       final result = await _client.rpc('list_private_message_contacts').timeout(const Duration(seconds: 8));
       final contacts = (result as List)
@@ -67,6 +70,9 @@ class PrivateMessageService {
   }
 
   Future<List<PrivateMessage>> listConversation(String contactId) async {
+    if (!await _hasNetworkConnection()) {
+      return _readPrivateCache(contactId);
+    }
     try {
       unawaited(syncPending().catchError((_) {}));
       await _client.rpc('mark_private_messages_delivered', params: {'p_sender_id': contactId}).timeout(const Duration(seconds: 8));
