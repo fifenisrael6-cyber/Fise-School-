@@ -11,28 +11,50 @@ class TimetableService {
 
   Future<List<String>> _studentClassIds(String studentId) async {
     final key = 'student_active_class_ids_' + studentId;
-    try {
-      final memberships = await _client
-          .from('class_students')
-          .select('class_id, joined_at')
-          .eq('student_id', studentId)
-          .eq('is_active', true)
-          .order('joined_at', ascending: false);
-      final ids = memberships
-          .map((row) => row['class_id']?.toString())
-          .whereType<String>()
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false);
-      await JsonCache.instance.write(key, ids);
+    final cached = await JsonCache.instance.read(key);
+    if (cached is List) {
+      final ids = cached.map((value) => value.toString())
+          .where((id) => id.isNotEmpty).toList(growable: false);
+      // Refresh membership quietly; never block the timetable on the network.
+      _refreshStudentClassIds(studentId, key);
       return ids;
-    } catch (_) {
-      final cached = await JsonCache.instance.read(key);
-      if (cached is List) {
-        return cached.map((value) => value.toString()).where((id) => id.isNotEmpty).toList(growable: false);
-      }
-      rethrow;
     }
+    final memberships = await _client
+        .from('class_students')
+        .select('class_id, joined_at')
+        .eq('student_id', studentId)
+        .eq('is_active', true)
+        .order('joined_at', ascending: false)
+        .timeout(JsonCache.networkTimeout);
+    final ids = memberships
+        .map((row) => row['class_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    await JsonCache.instance.write(key, ids);
+    return ids;
+  }
+
+  void _refreshStudentClassIds(String studentId, String key) {
+    _client
+        .from('class_students')
+        .select('class_id, joined_at')
+        .eq('student_id', studentId)
+        .eq('is_active', true)
+        .order('joined_at', ascending: false)
+        .timeout(JsonCache.networkTimeout)
+        .then((memberships) async {
+          final ids = memberships
+              .map((row) => row['class_id']?.toString())
+              .whereType<String>()
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+          await JsonCache.instance.write(key, ids);
+        }).catchError((Object _) {
+          // Keep the last known class membership when offline.
+        });
   }
 
   Future<List<TimetableEntry>> _cachedEntries({
