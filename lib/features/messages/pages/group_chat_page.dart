@@ -1114,6 +1114,18 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 remotePath: message.attachmentPath,
                 resolveUrl: _service.signedAttachmentUrl,
                 galleryItems: _mediaGalleryItems,
+                galleryItems: _messages.where((candidate) {
+                  final type = (candidate.attachmentType ?? '').toLowerCase();
+                  final name = (candidate.attachmentName ?? '').toLowerCase();
+                  return type.startsWith('image/') || type.startsWith('video/') ||
+                      ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.mp4', '.mov', '.webm', '.m4v'].any(name.endsWith);
+                }).map((candidate) => MessageMediaGalleryItem(
+                  name: candidate.attachmentName ?? '',
+                  type: candidate.attachmentType,
+                  localPath: candidate.localAttachmentPath,
+                  remotePath: candidate.attachmentPath,
+                  cacheScope: widget.profile.id,
+                )).toList(growable: false),
                 french: _fr,
               ),
             const SizedBox(height: 2),
