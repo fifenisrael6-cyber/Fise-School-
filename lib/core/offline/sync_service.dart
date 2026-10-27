@@ -74,6 +74,7 @@ class SyncService {
           chapters.listQuizzes(chapterId),
           chapters.getCounts(chapterId),
         ]);
+        await chapters.prefetchChapterMedia(chapterId);
       } catch (_) {
         // Keep each successfully cached chapter available if another fails.
       }
