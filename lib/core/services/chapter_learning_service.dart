@@ -352,19 +352,28 @@ class ChapterLearningService {
       for (final item in items) {
         if (!const {'pdf', 'images', 'video', 'audio'}.contains(item.folderKey)) continue;
         final path = (item.storagePath ?? '').trim();
-        if (path.isEmpty || path.startsWith('http://') || path.startsWith('https://')) continue;
+        final external = (item.externalUrl ?? '').trim();
+        final source = path.isNotEmpty ? path : external;
+        if (source.isEmpty) continue;
+        final sourceLower = source.toLowerCase();
+        if (item.folderKey == 'video' &&
+            (sourceLower.contains('youtube.com') ||
+                sourceLower.contains('youtu.be') ||
+                sourceLower.contains('vimeo.com'))) continue;
         final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
         final local = File(p.join(directory.path, 'offline', 'chapter_media', safeUser, '$safeId.bin'));
         try {
           if (await local.exists() && await local.length() > 0) continue;
           String url;
           const legacyPrefix = 'legacy-course-resource:';
-          if (path.startsWith(legacyPrefix)) {
+          if (sourceLower.startsWith('http://') || sourceLower.startsWith('https://')) {
+            url = source;
+          } else if (source.startsWith(legacyPrefix)) {
             url = await _client.storage.from('cours-fichiers').createSignedUrl(
-              path.substring(legacyPrefix.length), 900,
+              source.substring(legacyPrefix.length), 900,
             );
           } else {
-            url = await _client.storage.from('chapter-content').createSignedUrl(path, 900);
+            url = await _client.storage.from('chapter-content').createSignedUrl(source, 900);
           }
           final response = await client.send(http.Request('GET', Uri.parse(url))
             ..followRedirects = true).timeout(const Duration(seconds: 30));
