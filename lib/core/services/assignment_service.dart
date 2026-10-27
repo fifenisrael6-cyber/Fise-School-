@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +18,22 @@ class AssignmentService {
     String? lessonId,
     String? subjectId,
   }) async {
+    final offline = OfflineRepository();
+    final cachedAssignments = await offline.getAssignments(studentId);
+    final cachedFiltered = cachedAssignments.where((assignment) =>
+        (courseId == null || assignment.courseId == courseId) &&
+        (lessonId == null || assignment.lessonId == lessonId) &&
+        (subjectId == null || assignment.subjectId == subjectId)).toList(growable: false);
+    if (cachedFiltered.isNotEmpty) {
+      // Render saved QCM immediately; update the offline copy in the background.
+      unawaited(_refreshStudentAssignments(
+        studentId: studentId,
+        courseId: courseId,
+        lessonId: lessonId,
+        subjectId: subjectId,
+      ));
+      return cachedFiltered;
+    }
     try {
       // Row-level security restricts results to this student; a client-side
       // class_id filter hides assignments for compatible classroom targets.
@@ -55,6 +72,47 @@ class AssignmentService {
               (lessonId == null || assignment.lessonId == lessonId) &&
               (subjectId == null || assignment.subjectId == subjectId))
           .toList(growable: false);
+    }
+  }
+
+  Future<void> _refreshStudentAssignments({
+    required String studentId,
+    String? courseId,
+    String? lessonId,
+    String? subjectId,
+  }) async {
+    try {
+      dynamic request = _client
+          .from('assignments')
+          .select()
+          .inFilter('status', ['published', 'closed'])
+          .isFilter('exam_id', null);
+      if (courseId != null) request = request.eq('course_id', courseId);
+      if (lessonId != null) request = request.eq('lesson_id', lessonId);
+      if (subjectId != null) request = request.eq('subject_id', subjectId);
+      final rows = await request.order('due_at', ascending: true)
+          .timeout(JsonCache.networkTimeout);
+      final offline = OfflineRepository();
+      for (final row in rows) {
+        final assignment = Assignment.fromMap(Map<String, dynamic>.from(row));
+        await offline.saveAssignment(assignment, studentId);
+        try {
+          final questionRows = await _client
+              .from('assignment_questions')
+              .select()
+              .eq('assignment_id', assignment.id)
+              .order('position', ascending: true)
+              .timeout(JsonCache.networkTimeout);
+          final questions = questionRows
+              .map((q) => AssignmentQuestion.fromMap(Map<String, dynamic>.from(q)))
+              .toList(growable: false);
+          await offline.saveAssignmentQuestions(questions, studentId);
+        } catch (_) {
+          // Keep the previous locally saved questions if refresh fails.
+        }
+      }
+    } catch (_) {
+      // Refresh is opportunistic; the cached QCM remains available.
     }
   }
 
