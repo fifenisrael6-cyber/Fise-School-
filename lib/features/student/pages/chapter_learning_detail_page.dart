@@ -560,12 +560,16 @@ class _ChapterLearningDetailPageState
                     name: entry.titleFor(widget.locale.languageCode),
                     type: entry.folderKey == 'video' ? 'video/mp4' : 'image/jpeg',
                     localPath: localPath,
-                    remotePath: entry.storagePath ?? entry.externalUrl,
+                    remotePath: entry.storagePath?.trim().isNotEmpty == true
+                        ? entry.storagePath
+                        : entry.externalUrl,
                     cacheScope: widget.profile.id,
                   );
                 })
                 .toList(growable: false);
-            final currentPath = item.storagePath ?? item.externalUrl;
+            final currentPath = item.storagePath?.trim().isNotEmpty == true
+                ? item.storagePath
+                : item.externalUrl;
             final initialIndex = mediaItems.indexWhere((entry) =>
                 entry.remotePath == currentPath);
             if (mediaItems.isNotEmpty && initialIndex >= 0) {
