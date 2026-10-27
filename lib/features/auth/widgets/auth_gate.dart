@@ -44,6 +44,7 @@ class _AuthGateState extends State<AuthGate> {
   int _eventCount = 0;
   StreamSubscription<bool>? _connectivitySubscription;
   String? _syncedStudentId;
+  String? _syncingStudentId;
   StreamSubscription<List<SharedMediaFile>>? _shareSubscription;
   List<SharedMediaFile> _pendingSharedFiles = const [];
   bool _shareRouteOpen = false;
@@ -253,10 +254,10 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _syncStudentOfflineCache(UserProfile profile) async {
+    if (_syncingStudentId == profile.id) return;
     try {
-      if (!await ConnectivityService().isOnline()) {
-        return;
-      }
+      if (!await ConnectivityService().isOnline()) return;
+      _syncingStudentId = profile.id;
       final sync = SyncService();
       await sync.syncPendingAssignments(profile.id);
       await sync.syncPendingSmartExercises(profile.id);
@@ -268,6 +269,8 @@ class _AuthGateState extends State<AuthGate> {
       _syncedStudentId = profile.id;
     } catch (_) {
       // The app remains usable with whatever cache is already available.
+    } finally {
+      if (_syncingStudentId == profile.id) _syncingStudentId = null;
     }
   }
 
