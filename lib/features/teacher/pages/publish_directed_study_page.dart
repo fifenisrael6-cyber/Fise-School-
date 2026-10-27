@@ -98,7 +98,7 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
         'description': _description.text.trim().isEmpty ? null : _description.text.trim(),
         'storage_path': uploadedPath,
         'file_name': file.name,
-        'target_class_ids': _selectedClassIds.toList(growable: false),
+        'requested_class_ids': _selectedClassIds.toList(growable: false),
         'status': 'published',
         'published_at': DateTime.now().toUtc().toIso8601String(),
       });
