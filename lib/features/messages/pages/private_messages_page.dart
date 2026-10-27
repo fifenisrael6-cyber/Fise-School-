@@ -124,9 +124,12 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   Future<void> _prefetchContactAvatars(List<MessageContact> contacts) async {
-    await Future.wait(contacts.map((contact) async {
-      final path = contact.avatarPath;
-      if (path == null || path.isEmpty) return;
+    final paths = <String>{
+      if ((widget.profile.avatarPath ?? '').isNotEmpty) widget.profile.avatarPath!,
+      ...contacts.map((contact) => contact.avatarPath ?? '')
+          .where((path) => path.isNotEmpty),
+    };
+    await Future.wait(paths.map((path) async {
       try {
         await _photoService.cachedAvatarFile(path);
       } catch (_) {
