@@ -327,7 +327,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               children: [
                 _buildCourseHeader(isEnglish),
                 const SizedBox(height: 12),
-                _buildDirectedStudiesTile(isEnglish),
                 if (courseContent != null && courseContent.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _buildCourseContentCard(courseContent, isEnglish),
