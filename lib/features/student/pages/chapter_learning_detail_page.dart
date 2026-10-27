@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter/material.dart';
@@ -646,6 +647,13 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   PdfControllerPinch? _pdf;
   VideoPlayerController? _video;
   WebViewController? _webView;
+  AudioPlayer? _audioPlayer;
+  PlayerState _audioState = PlayerState.stopped;
+  Duration _audioPosition = Duration.zero;
+  Duration _audioDuration = Duration.zero;
+  StreamSubscription<PlayerState>? _audioStateSubscription;
+  StreamSubscription<Duration>? _audioPositionSubscription;
+  StreamSubscription<Duration>? _audioDurationSubscription;
   Uint8List? _bytes;
   File? _mediaFile;
   String? _mediaUrl;
@@ -714,6 +722,7 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
     try {
       final cacheable = widget.item.folderKey == 'pdf' ||
           widget.item.folderKey == 'images' ||
+          widget.item.folderKey == 'audio' ||
           (widget.item.folderKey == 'video' &&
               (widget.item.storagePath ?? '').isNotEmpty &&
               !(widget.item.storagePath ?? '').startsWith('http'));
@@ -726,6 +735,8 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
             _pdf = PdfControllerPinch(document: PdfDocument.openData(_bytes!));
           } else if (widget.item.folderKey == 'images') {
             _bytes = await local.readAsBytes();
+          } else if (widget.item.folderKey == 'audio') {
+            await _prepareAudio(DeviceFileSource(local.path));
           } else if (widget.item.folderKey == 'video') {
             _video = VideoPlayerController.file(local);
             await _video!.initialize();
@@ -757,11 +768,8 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
             _pdf = PdfControllerPinch(document: PdfDocument.openData(_bytes!));
           }
         } else if (widget.item.folderKey == 'audio') {
-          final safeUrl = url.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
-          _webView = WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..setBackgroundColor(const Color(0xFFF5F8F6))
-            ..loadHtmlString('<html><body style="font-family:sans-serif;padding:24px"><audio controls autoplay style="width:100%" src="$safeUrl"></audio></body></html>');
+          await _prepareAudio(UrlSource(url));
+          if (cacheable) unawaited(_cacheVideoInBackground(url));
         } else if (widget.item.folderKey == 'video') {
           final uri = Uri.parse(url);
           final host = uri.host.toLowerCase();
@@ -790,6 +798,27 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _prepareAudio(Source source) async {
+    final player = AudioPlayer();
+    _audioPlayer = player;
+    _audioStateSubscription = player.onPlayerStateChanged.listen((state) {
+      if (mounted) setState(() => _audioState = state);
+    });
+    _audioPositionSubscription = player.onPositionChanged.listen((position) {
+      if (mounted) setState(() => _audioPosition = position);
+    });
+    _audioDurationSubscription = player.onDurationChanged.listen((duration) {
+      if (mounted) setState(() => _audioDuration = duration);
+    });
+    await player.setSource(source);
+  }
+
+  String _formatAudioDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '${duration.inHours > 0 ? '${duration.inHours}:' : ''}$minutes:$seconds';
+  }
+
   Future<void> _cacheVideoInBackground(String url) async {
     try {
       final local = await _localMediaFile();
@@ -810,6 +839,10 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   void dispose() {
     _pdf?.dispose();
     _video?.dispose();
+    _audioStateSubscription?.cancel();
+    _audioPositionSubscription?.cancel();
+    _audioDurationSubscription?.cancel();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 
@@ -837,6 +870,43 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => Text(_en ? 'Image could not be opened.' : 'Impossible d’ouvrir l’image.'),
                 ),
+        ),
+      );
+    } else if (widget.item.folderKey == 'audio' && _audioPlayer != null) {
+      final durationMs = _audioDuration.inMilliseconds;
+      final positionMs = _audioPosition.inMilliseconds.clamp(0, durationMs > 0 ? durationMs : 0);
+      body = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.audio_file_rounded, size: 88),
+              const SizedBox(height: 20),
+              Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Slider(
+                value: positionMs.toDouble(),
+                max: durationMs > 0 ? durationMs.toDouble() : 1,
+                onChanged: durationMs <= 0 ? null : (value) => _audioPlayer!.seek(Duration(milliseconds: value.round())),
+              ),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text(_formatAudioDuration(_audioPosition)),
+                Text(_formatAudioDuration(_audioDuration)),
+              ]),
+              IconButton(
+                iconSize: 64,
+                onPressed: () async {
+                  if (_audioState == PlayerState.playing) {
+                    await _audioPlayer!.pause();
+                  } else {
+                    await _audioPlayer!.resume();
+                  }
+                },
+                icon: Icon(_audioState == PlayerState.playing ? Icons.pause_circle_filled : Icons.play_circle_fill),
+              ),
+            ],
+          ),
         ),
       );
     } else if ((widget.item.folderKey == 'video' || widget.item.folderKey == 'audio') && _webView != null) {
