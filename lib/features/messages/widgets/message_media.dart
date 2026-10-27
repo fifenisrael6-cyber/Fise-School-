@@ -135,6 +135,8 @@ class MessageAttachmentView extends StatelessWidget {
         builder: (context, cacheSnapshot) {
           final cachedPath = cacheSnapshot.data;
           if (!_hasLocal && cacheSnapshot.connectionState != ConnectionState.done) {
+            if (_isImage) return _imageThumb(context, null, null);
+            if (_isVideo) return _videoCard(context, null, null);
             return _DocumentCard(
               name: name,
               type: type,
@@ -143,13 +145,22 @@ class MessageAttachmentView extends StatelessWidget {
               subtitle: french ? 'Préparation du fichier…' : 'Preparing file…',
             );
           }
+          final cachedLocal = (cachedPath != null && File(cachedPath).existsSync())
+              ? cachedPath
+              : (_hasLocal ? localPath : null);
+          // Do not fetch full-resolution media just to draw the conversation.
+          // Show the saved local copy or a stable preview; opening it triggers
+          // the in-app viewer's automatic download on demand.
+          if (_isImage) return _imageThumb(context, null, cachedLocal);
+          if (_isVideo) return _videoCard(context, null, cachedLocal);
+
           return FutureBuilder<String?>(
-            future: (cachedPath != null && File(cachedPath).existsSync())
+            future: (cachedLocal != null && File(cachedLocal).existsSync())
                 ? Future.value(null)
                 : resolveUrl(remotePath),
             builder: (context, snapshot) {
-              final effectiveLocal = (cachedPath != null && File(cachedPath).existsSync())
-                  ? cachedPath
+              final effectiveLocal = (cachedLocal != null && File(cachedLocal).existsSync())
+                  ? cachedLocal
                   : (_hasLocal ? localPath : null);
               final url = snapshot.data;
               final waiting = effectiveLocal == null && snapshot.connectionState != ConnectionState.done;
@@ -192,11 +203,39 @@ class MessageAttachmentView extends StatelessWidget {
 
   Widget _imageThumb(BuildContext context, String? url, String? effectiveLocal) {
     final image = effectiveLocal != null && File(effectiveLocal).existsSync()
-        ? Image.file(File(effectiveLocal), width: 220, height: 180, fit: BoxFit.cover)
+        ? Image.file(
+            File(effectiveLocal),
+            width: 220,
+            height: 180,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox(
+              width: 220,
+              height: 180,
+              child: Icon(Icons.broken_image_outlined, size: 42),
+            ),
+          )
         : (url == null
-            ? const SizedBox(width: 220, height: 180, child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+            ? Container(
+                width: 220,
+                height: 180,
+                color: const Color(0xFFF1F5F9),
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.image_outlined, size: 42, color: Color(0xFF64748B)),
+                    const SizedBox(height: 6),
+                    Text(french ? 'Photo • toucher pour ouvrir' : 'Photo • tap to open',
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF475569))),
+                  ],
+                ),
+              )
             : Image.network(url, width: 220, height: 180, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 220, height: 180, child: Icon(Icons.broken_image_outlined))));
+                errorBuilder: (_, __, ___) => const SizedBox(
+                  width: 220,
+                  height: 180,
+                  child: Icon(Icons.broken_image_outlined),
+                )));
     return GestureDetector(
       onTap: () {
         final current = MessageMediaGalleryItem(
