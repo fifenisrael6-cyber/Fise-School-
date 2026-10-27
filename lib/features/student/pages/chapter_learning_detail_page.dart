@@ -289,15 +289,15 @@ class _ChapterLearningDetailPageState
             .where((item) => item.folderKey == 'pdf')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.images:
-        final entries = data.content.where((item) => item.folderKey == 'images').toList(growable: false);
-        return entries.map((item) => _contentCard(item, galleryItems: entries)).toList(growable: false);
+        final imageEntries = data.content.where((item) => item.folderKey == 'images').toList(growable: false);
+        return imageEntries.map((item) => _contentCard(item, galleryItems: imageEntries)).toList(growable: false);
       case _ChapterResourceFolder.audio:
         return data.content
             .where((item) => item.folderKey == 'audio')
             .map(_contentCard).toList(growable: false);
       case _ChapterResourceFolder.video:
-        final entries = data.content.where((item) => item.folderKey == 'video').toList(growable: false);
-        return entries.map((item) => _contentCard(item, galleryItems: entries)).toList(growable: false);
+        final videoEntries = data.content.where((item) => item.folderKey == 'video').toList(growable: false);
+        return videoEntries.map((item) => _contentCard(item, galleryItems: videoEntries)).toList(growable: false);
       case _ChapterResourceFolder.exercises:
         return <Widget>[
           ...data.exercises.map(_exerciseFolderItem),
