@@ -919,16 +919,29 @@ class _GalleryMediaPageState extends State<_GalleryMediaPage> {
   VideoPlayerController? _video;
   bool _loading = true;
   bool _failed = false;
+  bool _loadStarted = false;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    // Ne récupérer le fichier qu'à l'ouverture de la page active. Les médias
+    // voisins restent représentés dans la galerie sans être téléchargés en avance.
+    if (widget.isActive) {
+      _loadStarted = true;
+      unawaited(_load());
+    } else {
+      _loading = false;
+    }
   }
 
   @override
   void didUpdateWidget(covariant _GalleryMediaPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive && !_loadStarted) {
+      _loadStarted = true;
+      _loading = true;
+      unawaited(_load());
+    }
     final controller = _video;
     if (controller != null && controller.value.isInitialized) {
       if (widget.isActive && !oldWidget.isActive) {
