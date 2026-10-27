@@ -527,9 +527,11 @@ class _ChapterLearningDetailPageState
         trailing: item.type != ChapterLearningContentType.course
             ? const Icon(Icons.open_in_new)
             : null,
-        onTap: () {
+        onTap: () async {
           if ((item.folderKey == 'images' || item.folderKey == 'video') &&
               galleryItems != null && galleryItems.isNotEmpty) {
+            final supportDirectory = await getApplicationSupportDirectory();
+            final userId = widget.profile.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
             final mediaItems = galleryItems
                 .where((entry) {
                   final storagePath = (entry.storagePath ?? '').trim();
@@ -542,13 +544,22 @@ class _ChapterLearningDetailPageState
                           external.contains('vimeo.com'))) return false;
                   return true;
                 })
-                .map((entry) => MessageMediaGalleryItem(
-                      name: entry.titleFor(widget.locale.languageCode),
-                      type: entry.folderKey == 'video' ? 'video/mp4' : 'image/jpeg',
-                      localPath: null,
-                      remotePath: entry.storagePath ?? entry.externalUrl,
-                      cacheScope: widget.profile.id,
-                    ))
+                .map((entry) {
+                  final storagePath = (entry.storagePath ?? '').trim();
+                  final safeId = entry.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+                  final localPath = storagePath.isNotEmpty &&
+                          !storagePath.startsWith('http://') &&
+                          !storagePath.startsWith('https://')
+                      ? p.join(supportDirectory.path, 'offline', 'chapter_media', userId, '$safeId.bin')
+                      : null;
+                  return MessageMediaGalleryItem(
+                    name: entry.titleFor(widget.locale.languageCode),
+                    type: entry.folderKey == 'video' ? 'video/mp4' : 'image/jpeg',
+                    localPath: localPath,
+                    remotePath: entry.storagePath ?? entry.externalUrl,
+                    cacheScope: widget.profile.id,
+                  );
+                })
                 .toList(growable: false);
             final currentPath = item.storagePath ?? item.externalUrl;
             final initialIndex = mediaItems.indexWhere((entry) =>
