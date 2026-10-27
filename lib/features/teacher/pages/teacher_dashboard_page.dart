@@ -10,6 +10,7 @@ import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/settings_page.dart';
 import 'create_assignment_page.dart';
 import 'teacher_courses_page.dart';
+import 'publish_directed_study_page.dart';
 import 'teacher_payment_code_page.dart';
 import 'teacher_smart_progress_page.dart';
 
@@ -152,6 +153,19 @@ class TeacherDashboardPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => CreateAssignmentPage(
+                            locale: locale,
+                            profile: profile,
+                          ),
+                        ),
+                      ),
+                    ),
+                    _Tile(
+                      Icons.picture_as_pdf_rounded,
+                      locale.languageCode == 'fr' ? 'Travaux dirigés' : 'Directed studies',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PublishDirectedStudyPage(
                             locale: locale,
                             profile: profile,
                           ),
