@@ -86,6 +86,13 @@ class JsonCache {
     required Future<Object?> Function() fetch,
     required T Function(Object? raw) decode,
   }) async {
+    // Cache-first: show saved data immediately; refresh for the next open.
+    final cached = await read(key);
+    if (cached != null) {
+      _refreshInBackground(key: key, fetch: fetch);
+      return decode(cached);
+    }
+
     var online = true;
     try {
       online = await ConnectivityService().isOnline();
@@ -93,22 +100,29 @@ class JsonCache {
       // If connectivity cannot be determined, keep the normal network attempt.
     }
     if (!online) {
-      final cached = await read(key);
-      if (cached != null) return decode(cached);
       throw StateError('No offline copy is available for: $key');
     }
+    final raw = await fetch().timeout(networkTimeout);
     try {
-      final raw = await fetch().timeout(networkTimeout);
+      await write(key, raw);
+    } catch (_) {
+      // A cache impossible to write must never break the screen.
+    }
+    return decode(raw);
+  }
+
+  void _refreshInBackground({
+    required String key,
+    required Future<Object?> Function() fetch,
+  }) {
+    fetch().timeout(networkTimeout).then((raw) async {
       try {
         await write(key, raw);
       } catch (_) {
-        // Un cache impossible à écrire ne doit jamais casser l'écran.
+        // Keep the current snapshot if refreshing the cache fails.
       }
-      return decode(raw);
-    } catch (_) {
-      final cached = await read(key);
-      if (cached == null) rethrow;
-      return decode(cached);
-    }
+    }).catchError((Object _) {
+      // Offline or slow network: keep showing the cached snapshot.
+    });
   }
 }
