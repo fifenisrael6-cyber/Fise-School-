@@ -83,7 +83,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     _inviteCode = widget.group.inviteCode;
     _groupAvatarPath = widget.group.avatarPath;
     _attachment = widget.initialAttachment;
-    _load();
+    // Paint the room immediately; the local Drift snapshot is filled first and
+    // Supabase refresh remains in the background.
+    _load(showLoader: false);
     _loadGroupSettings();
     _channel = Supabase.instance.client
         .channel('group-chat-${widget.group.id}')
@@ -199,7 +201,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
     if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _messages = cached;
-      if (cached.isNotEmpty || !showLoader) _loading = false;
+      // Even a first-time empty cache should show the chat and composer
+      // immediately rather than a blocking full-screen spinner.
+      _loading = false;
       if (cached.isNotEmpty) _loadError = null;
     });
     unawaited(_prefetchGroupAvatars(cached));
