@@ -314,7 +314,6 @@ class _ChapterLearningDetailPageState
       _ChapterResourceFolder.images,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
-      _ChapterResourceFolder.exercises,
     ];
 
     return Column(
