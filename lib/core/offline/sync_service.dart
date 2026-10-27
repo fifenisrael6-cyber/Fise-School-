@@ -81,12 +81,20 @@ class SyncService {
     final chapters = ChapterLearningService(client: _client);
     for (final chapterId in chapterIds) {
       try {
-        await Future.wait<dynamic>([
+        final results = await Future.wait<dynamic>([
           chapters.listContent(chapterId),
           chapters.listExercises(chapterId),
           chapters.listQuizzes(chapterId),
           chapters.getCounts(chapterId),
         ]);
+        final quizzes = results[2] as List<ChapterLearningQuiz>;
+        await Future.wait<void>(quizzes.map((quiz) async {
+          try {
+            await chapters.listQuizQuestions(quiz.id);
+          } catch (_) {
+            // Keep the chapter available even if one quiz question set fails.
+          }
+        }));
         await chapters.prefetchChapterMedia(chapterId);
       } catch (_) {
         // Keep each successfully cached chapter available if another fails.
