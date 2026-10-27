@@ -723,10 +723,20 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
 }
 
 class MediaPdfViewerPage extends StatefulWidget {
-  const MediaPdfViewerPage({super.key, this.localPath, this.url, this.remotePath, required this.title});
+  const MediaPdfViewerPage({
+    super.key,
+    this.localPath,
+    this.url,
+    this.remotePath,
+    this.storagePath,
+    this.resolveUrl,
+    required this.title,
+  });
   final String? localPath;
   final String? url;
   final String? remotePath;
+  final String? storagePath;
+  final Future<String?> Function(String? path)? resolveUrl;
   final String title;
 
   @override
@@ -759,10 +769,15 @@ class _MediaPdfViewerPageState extends State<MediaPdfViewerPage> {
         setState(() => _controller = PdfControllerPinch(document: doc));
         return;
       }
-      if (widget.url == null) throw Exception('no source');
-      final res = await http.get(Uri.parse(widget.url!)).timeout(const Duration(seconds: 60));
+      var url = widget.url;
+      if ((url == null || url.isEmpty) && widget.resolveUrl != null) {
+        url = await widget.resolveUrl!(widget.storagePath)
+            .timeout(const Duration(seconds: 8));
+      }
+      if (url == null || url.isEmpty) throw Exception('no source');
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 60));
       if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('http ${res.statusCode}');
-      final key = (widget.remotePath?.isNotEmpty == true) ? widget.remotePath! : widget.url!;
+      final key = (widget.remotePath?.isNotEmpty == true) ? widget.remotePath! : url;
       final savedPath = await _MessageMediaCache.saveBytes(
         remotePath: key,
         fileName: widget.title,
@@ -802,6 +817,8 @@ class MediaDocumentViewerPage extends StatefulWidget {
     this.localPath,
     this.url,
     this.remotePath,
+    this.storagePath,
+    this.resolveUrl,
     required this.title,
     this.mimeType,
     this.french = true,
@@ -810,6 +827,8 @@ class MediaDocumentViewerPage extends StatefulWidget {
   final String? localPath;
   final String? url;
   final String? remotePath;
+  final String? storagePath;
+  final Future<String?> Function(String? path)? resolveUrl;
   final String title;
   final String? mimeType;
   final bool french;
@@ -851,7 +870,7 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
         _localPath = local;
         if (_isTextFile) {
           _textContent = await File(local).readAsString();
-        } else if (widget.url == null) {
+        } else if (widget.url == null && widget.resolveUrl == null) {
           if (mounted) setState(() { _loading = false; });
           return;
         }
@@ -863,14 +882,18 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
         await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
         await controller.loadFile(local);
         _webController = controller;
-      } else if (local == null && widget.url != null) {
+      } else if (local == null) {
+        var url = widget.url;
+        if ((url == null || url.isEmpty) && widget.resolveUrl != null) {
+          url = await widget.resolveUrl!(widget.storagePath)
+              .timeout(const Duration(seconds: 8));
+        }
+        if (url == null || url.isEmpty) throw Exception('no source');
         final controller = WebViewController();
         await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-        await controller.loadRequest(Uri.parse(widget.url!));
+        await controller.loadRequest(Uri.parse(url));
         _webController = controller;
-        unawaited(_cacheInBackground());
-      } else if (local == null) {
-        throw Exception('no source');
+        unawaited(_cacheInBackground(url));
       }
       if (mounted) setState(() => _loading = false);
     } catch (_) {
@@ -878,11 +901,11 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
     }
   }
 
-  Future<void> _cacheInBackground() async {
+  Future<void> _cacheInBackground(String url) async {
     final saved = await _MessageMediaCache.download(
       remotePath: widget.remotePath,
       fileName: widget.title,
-      url: widget.url,
+      url: url,
     );
     if (mounted && saved != null) setState(() => _localPath = saved);
   }
