@@ -71,15 +71,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
         if (mounted) _openPrivateMessages(initialContactId: targetId);
       });
     } else if (targetType == 'group' && targetId != null) {
-      _groupsFuture.then((groups) {
-        if (!mounted) return;
-        for (final group in groups) {
-          if (group.id == targetId) {
-            _openGroup(group);
-            break;
-          }
-        }
-      }).catchError((_) {});
+      _groupsFuture.then(_openInitialTargetGroup).catchError((_) {});
     }
     // Keep the Messages navigation widget while restoring live updates in its
     // conversation list, so new group messages refresh the preview and time.
@@ -231,32 +223,43 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
   }
 
   Future<List<MessageGroup>> _loadGroupsInstant() async {
-    // A notification deep-link needs a fresh list to resolve its exact target.
-    if (widget.initialTargetType == 'group' && widget.initialTargetId != null) {
-      return _service.listGroups();
-    }
-    // Render the account's own Drift snapshot first for every role. Waiting
-    // for Supabase here made the whole Messages screen spin on slow connections,
-    // even when groups were already saved locally. Refresh the authorized server
-    // list in the background; it replaces this first frame when available.
+    // Return the local snapshot first even when it is empty. The page should
+    // render its controls and empty state immediately; Supabase refresh runs
+    // separately and fills in groups when the server responds.
+    List<MessageGroup> cached = const <MessageGroup>[];
     try {
-      final cached = await _service.getCachedGroups();
-      if (cached.isNotEmpty) {
-        unawaited(_refreshGroupsInBackground());
-        return cached;
-      }
+      cached = await _service.getCachedGroups();
     } catch (_) {
-      // Use the server list if the local snapshot is unavailable.
+      // The screen still renders; remote loading is attempted below.
     }
-    return _service.listGroups();
+    unawaited(_refreshGroupsInBackground());
+    return cached;
+  }
+
+  bool _initialTargetOpened = false;
+
+  void _openInitialTargetGroup(List<MessageGroup> groups) {
+    if (_initialTargetOpened ||
+        widget.initialTargetType != 'group' ||
+        widget.initialTargetId == null ||
+        !mounted) return;
+    for (final group in groups) {
+      if (group.id == widget.initialTargetId) {
+        _initialTargetOpened = true;
+        unawaited(_openGroup(group));
+        return;
+      }
+    }
   }
 
   Future<void> _refreshGroupsInBackground() async {
     try {
       final groups = await _service.listGroups();
-      if (mounted) setState(() => _groupsFuture = Future.value(groups));
+      if (!mounted) return;
+      setState(() => _groupsFuture = Future.value(groups));
+      _openInitialTargetGroup(groups);
     } catch (_) {
-      // Keep local groups visible offline.
+      // Keep the local snapshot visible when Supabase is unavailable.
     }
   }
 
@@ -719,12 +722,7 @@ class _MessagesHubPageState extends State<MessagesHubPage> {
                   onTap: _openPrivateMessages,
                 ),
                 if (_filter == 'all') const Divider(height: 1),
-                if (snapshot.connectionState == ConnectionState.waiting)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (snapshot.hasError)
+                if (snapshot.hasError)
                   Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text('${snapshot.error}', textAlign: TextAlign.center),
