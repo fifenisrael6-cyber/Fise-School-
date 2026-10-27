@@ -12,13 +12,17 @@ import '../../../models/user_profile.dart';
 class CourseDirectedStudiesPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
-  final Course course;
+  final Course? course;
+  final String subjectId;
+  final List<String>? courseIds;
 
   const CourseDirectedStudiesPage({
     super.key,
     required this.locale,
     required this.profile,
-    required this.course,
+    required this.subjectId,
+    this.course,
+    this.courseIds,
   });
 
   @override
@@ -29,7 +33,19 @@ class _CourseDirectedStudiesPageState extends State<CourseDirectedStudiesPage> {
   late Future<List<Map<String, dynamic>>> _future;
   final CourseOfflineService _offline = CourseOfflineService();
   bool get _fr => widget.locale.languageCode == 'fr';
-  String get _cacheKey => 'directed_studies_${widget.profile.id}_${widget.course.id}';
+  List<String> get _effectiveCourseIds {
+    final ids = widget.courseIds ??
+        (widget.course == null ? const <String>[] : <String>[widget.course!.id]);
+    return ids.toSet().toList(growable: false);
+  }
+
+  String get _cacheKey {
+    final ids = _effectiveCourseIds.toList()..sort();
+    if (widget.courseIds == null && widget.course != null) {
+      return 'directed_studies_${widget.profile.id}_${widget.course!.id}';
+    }
+    return 'directed_studies_${widget.profile.id}_${widget.subjectId}_${ids.join('_')}';
+  }
 
   @override
   void initState() {
@@ -68,39 +84,40 @@ class _CourseDirectedStudiesPageState extends State<CourseDirectedStudiesPage> {
   }
 
   Future<List<Map<String, dynamic>>> _fetchAndCache() async {
-    final db = Supabase.instance.client;
-    final memberships = await db.from('class_students')
-        .select('class_id')
-        .eq('student_id', widget.profile.id)
-        .eq('is_active', true)
-        .timeout(const Duration(seconds: 8));
-    final classIds = memberships.map((row) => row['class_id'].toString()).toSet();
-    if (classIds.isEmpty) {
+    final courseIds = _effectiveCourseIds;
+    if (widget.courseIds != null && courseIds.isEmpty) {
       await JsonCache.instance.write(_cacheKey, const []);
       return const [];
     }
-    final rows = await db.from('directed_studies')
+
+    // RLS filtre côté serveur les TD publiés visibles pour l'élève.
+    // Une seule requête évite d'attendre deux allers-retours successifs.
+    dynamic query = Supabase.instance.client
+        .from('directed_studies')
         .select('id,course_id,source_class_id,subject_id,title,description,storage_path,file_name,target_class_ids,created_at')
-        .eq('subject_id', widget.course.subjectId)
-        .eq('status', 'published')
+        .eq('subject_id', widget.subjectId)
+        .eq('status', 'published');
+    if (widget.courseIds != null && courseIds.isNotEmpty) {
+      query = query.inFilter('course_id', courseIds);
+    }
+    final rows = await query
         .order('created_at', ascending: false)
         .timeout(const Duration(seconds: 8));
-    final result = rows.map((row) => Map<String, dynamic>.from(row)).where((row) {
-      final targets = (row['target_class_ids'] as List? ?? const [])
-          .map((id) => id.toString()).toSet();
-      return targets.intersection(classIds).isNotEmpty;
-    }).toList(growable: false);
+    final result = rows
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
     await JsonCache.instance.write(_cacheKey, result);
     return result;
   }
 
   Future<void> _openFile(Map<String, dynamic> td) async {
     final id = td['id']?.toString() ?? '';
+    final courseId = td['course_id']?.toString() ?? widget.course?.id ?? '';
     final storagePath = td['storage_path']?.toString() ?? '';
     final fileName = td['file_name']?.toString().trim().isNotEmpty == true
         ? td['file_name'].toString()
         : 'travaux_diriges.pdf';
-    if (id.isEmpty || storagePath.isEmpty) {
+    if (id.isEmpty || courseId.isEmpty || storagePath.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(_fr ? 'Le chemin du fichier est invalide.' : 'The file path is invalid.'),
@@ -112,7 +129,7 @@ class _CourseDirectedStudiesPageState extends State<CourseDirectedStudiesPage> {
       final localPath = await _offline.openExternalFile(
         userId: widget.profile.id,
         resourceId: 'directed-study-$id',
-        courseId: widget.course.id,
+        courseId: courseId,
         fileName: fileName,
         mimeType: 'application/pdf',
         signedUrlProvider: () => Supabase.instance.client.storage

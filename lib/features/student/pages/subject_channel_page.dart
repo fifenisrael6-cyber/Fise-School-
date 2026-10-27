@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/json_cache.dart';
+import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -11,6 +14,7 @@ import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
+import 'course_directed_studies_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
@@ -61,6 +65,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   late Future<List<_FeedItem>> _feedFuture;
   late Future<List<CourseChapter>> _catalogChaptersFuture;
   final Map<String, Future<List<_ChapterMediaEntry>>> _chapterMediaFutures = {};
+  final Map<String, Future<List<Map<String, dynamic>>>> _chapterDirectedStudiesFutures = {};
 
   bool get _fr => widget.locale.languageCode == 'fr';
   bool get _chapterFocused => widget.chapterId != null;
@@ -86,14 +91,42 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     super.dispose();
   }
 
-  Future<List<_FeedItem>> _load() async {
+  Future<List<_FeedItem>> _load({bool forceRefresh = false}) async {
+    final contentCacheKey =
+        'student_chapter_content_${widget.profile.id}_${widget.subject.id}';
+
+    if (!forceRefresh) {
+      try {
+        final cachedCourses = (await OfflineRepository()
+                .getCoursesForStudent(widget.profile.id))
+            .where((course) => course.subjectId == widget.subject.id)
+            .toList(growable: false);
+        final cachedContent = await JsonCache.instance.read(contentCacheKey);
+        if (cachedCourses.isNotEmpty || cachedContent is List) {
+          final chapterContent = cachedContent is List
+              ? cachedContent
+                  .whereType<Map>()
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(growable: false)
+              : <Map<String, dynamic>>[];
+          final cachedItems = _buildFeedItems(cachedCourses, chapterContent);
+          unawaited(_offline.enqueueSubject(
+            userId: widget.profile.id,
+            courses: cachedCourses,
+          ));
+          unawaited(_refreshFeedInBackground());
+          return cachedItems;
+        }
+      } catch (_) {
+        // Absence de cache au premier lancement : continuer avec Supabase.
+      }
+    }
+
     final courses = await _courses.listStudentCourses(
       widget.profile.id,
       subjectId: widget.subject.id,
     );
 
-    // Official chapter content is an independent source. If its query fails,
-    // keep already-loaded teacher media and QCM visible instead of hiding the feed.
     var chapterContent = <Map<String, dynamic>>[];
     try {
       chapterContent = await _courses.listStudentChapterContent(
@@ -106,27 +139,47 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
     // Opening a subject is the automatic offline-download trigger.
     unawaited(_offline.enqueueSubject(userId: widget.profile.id, courses: courses));
+    return _buildFeedItems(courses, chapterContent);
+  }
 
+  List<_FeedItem> _buildFeedItems(
+    List<Course> courses,
+    List<Map<String, dynamic>> chapterContent,
+  ) {
     final items = <_FeedItem>[
       for (final course in courses)
-        _FeedItem(date: course.publishedAt ?? DateTime.fromMillisecondsSinceEpoch(0), course: course),
+        _FeedItem(
+          date: course.publishedAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+          course: course,
+        ),
       for (final content in chapterContent)
         _FeedItem(
-          date: DateTime.tryParse(content['created_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+          date: DateTime.tryParse(content['created_at']?.toString() ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0),
           chapterContent: content,
         ),
     ];
-
-    // Du plus récent au plus ancien : la liste est affichée à l'envers
-    // pour que le plus récent soit en bas, comme dans une conversation.
     items.sort((a, b) => b.date.compareTo(a.date));
     return items;
+  }
+
+  Future<void> _refreshFeedInBackground() async {
+    try {
+      final freshItems = await _load(forceRefresh: true);
+      if (!mounted) return;
+      setState(() {
+        _feedFuture = Future<List<_FeedItem>>.value(freshItems);
+      });
+    } catch (_) {
+      // La copie locale reste visible si Supabase est indisponible.
+    }
   }
 
   Future<void> _refresh() async {
     setState(() {
       _chapterMediaFutures.clear();
-      _feedFuture = _load();
+      _chapterDirectedStudiesFutures.clear();
+      _feedFuture = _load(forceRefresh: true);
       _catalogChaptersFuture = _courses.listStudentCatalogChapters(
         widget.profile.id,
         subjectId: widget.subject.id,
@@ -292,7 +345,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         future: _feedFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return _loadingChapterFolders(
+              const <_FeedItem>[],
+              const <_FeedItem>[],
+            );
           }
           if (snapshot.hasError) {
             return Center(
@@ -337,6 +393,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final cacheKey = items
         .map((item) => item.course?.id ?? item.chapterContent?['id']?.toString() ?? '')
         .join('|');
+    final coursePosts = items.where((item) =>
+        item.chapterContent != null ||
+        (item.course != null &&
+            (((item.course!.contentFr ?? '').trim().isNotEmpty) ||
+             ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
+             ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
+             ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
     final mediaFuture = _chapterMediaFutures.putIfAbsent(
       cacheKey,
       () => _loadChapterMedia(items),
@@ -348,16 +411,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         future: mediaFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return _loadingChapterFolders(items, coursePosts);
           }
           final media = snapshot.data ?? const <_ChapterMediaEntry>[];
-          final coursePosts = items.where((item) =>
-              item.chapterContent != null ||
-              (item.course != null &&
-                  (((item.course!.contentFr ?? '').trim().isNotEmpty) ||
-                   ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
-                   ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
-                   ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
 
           bool hasExtension(String name, List<String> extensions) =>
               extensions.any(name.endsWith);
@@ -502,6 +558,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   _fr ? 'Aucun cours publié dans ce chapitre.' : 'No published lessons in this chapter.',
                 ),
               ),
+              _directedStudiesFolder(items),
               ChapterFolderCard(
                 title: 'Photos',
                 count: photos.length,
@@ -558,6 +615,154 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         },
       ),
     );
+  }
+
+  Widget _loadingChapterFolders(
+    List<_FeedItem> items,
+    List<_FeedItem> coursePosts,
+  ) {
+    final lessonItems = coursePosts.map((item) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: item.chapterContent != null
+          ? _chapterContentPost(item.chapterContent!)
+          : _coursePost(item.course!, showResources: false),
+    )).toList(growable: false);
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      children: [
+        if (_offlineMode) _offlineBanner(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+          child: Text(
+            _fr ? 'Dossiers du chapitre' : 'Chapter folders',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+        ),
+        ChapterFolderCard(
+          title: _fr ? 'Cours' : 'Lessons',
+          count: lessonItems.length,
+          icon: Icons.menu_book_rounded,
+          countLabel: _fr ? 'élément(s)' : 'item(s)',
+          onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+            builder: (_) => ChapterFolderPage(
+              title: _fr ? 'Cours' : 'Lessons',
+              items: lessonItems,
+              emptyMessage: _fr
+                  ? 'Aucun cours publié dans ce chapitre.'
+                  : 'No published lessons in this chapter.',
+            ),
+          )),
+        ),
+        _directedStudiesFolder(items),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 18),
+          child: Center(child: CircularProgressIndicator(color: Color(0xFF166534))),
+        ),
+        Center(
+          child: Text(
+            _fr ? 'Chargement des fichiers du chapitre…' : 'Loading chapter files…',
+            style: const TextStyle(color: Colors.black54),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _directedStudiesFolder(List<_FeedItem> items) {
+    final seen = <String>{};
+    final chapterCourses = items
+        .map((item) => item.course)
+        .whereType<Course>()
+        .where((course) => seen.add(course.id))
+        .toList(growable: false);
+    final courseIds = chapterCourses.map((course) => course.id).toList()..sort();
+    final key = 'chapter_td_${widget.profile.id}_${widget.subject.id}_'
+        '${widget.chapterId ?? 'all'}_${courseIds.join('_')}';
+    final future = _chapterDirectedStudiesFutures.putIfAbsent(
+      key,
+      () => _loadChapterDirectedStudies(key, courseIds),
+    );
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: future,
+      builder: (context, snapshot) => ChapterFolderCard(
+        title: _fr ? 'Travaux dirigés (TD)' : 'Directed studies (TD)',
+        count: snapshot.data?.length ?? 0,
+        icon: Icons.assignment_outlined,
+        countLabel: 'TD',
+        onTap: () => Navigator.push(context, MaterialPageRoute<void>(
+          builder: (_) => CourseDirectedStudiesPage(
+            locale: widget.locale,
+            profile: widget.profile,
+            subjectId: widget.subject.id,
+            course: chapterCourses.isEmpty ? null : chapterCourses.first,
+            courseIds: courseIds.isEmpty ? null : courseIds,
+          ),
+        )),
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadChapterDirectedStudies(
+    String cacheKey,
+    List<String> courseIds,
+  ) async {
+    if (courseIds.isEmpty) {
+      return _fetchChapterDirectedStudies(cacheKey, courseIds);
+    }
+    try {
+      final cached = await JsonCache.instance.read(cacheKey);
+      if (cached is List) {
+        unawaited(_refreshChapterDirectedStudies(cacheKey, courseIds));
+        return cached
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+      }
+    } catch (_) {
+      // A missing or invalid cache should not block the live query.
+    }
+    return _fetchChapterDirectedStudies(cacheKey, courseIds);
+  }
+
+  Future<void> _refreshChapterDirectedStudies(
+    String cacheKey,
+    List<String> courseIds,
+  ) async {
+    try {
+      final rows = await _fetchChapterDirectedStudies(cacheKey, courseIds);
+      if (!mounted) return;
+      setState(() {
+        _chapterDirectedStudiesFutures[cacheKey] =
+            Future<List<Map<String, dynamic>>>.value(rows);
+      });
+    } catch (_) {
+      // Keep the last local TD list visible.
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchChapterDirectedStudies(
+    String cacheKey,
+    List<String> courseIds,
+  ) async {
+    dynamic query = Supabase.instance.client
+        .from('directed_studies')
+        .select('id,course_id,source_class_id,subject_id,title,description,storage_path,file_name,target_class_ids,created_at')
+        .eq('subject_id', widget.subject.id)
+        .eq('status', 'published');
+    if (courseIds.isNotEmpty) {
+      query = query.inFilter('course_id', courseIds);
+    }
+    final raw = await query
+        .order('created_at', ascending: false)
+        .timeout(const Duration(seconds: 8));
+    final rows = raw
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+    await JsonCache.instance.write(cacheKey, rows);
+    return rows;
   }
 
   Future<List<_ChapterMediaEntry>> _loadChapterMedia(List<_FeedItem> items) async {

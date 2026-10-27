@@ -9,12 +9,14 @@ import '../../../models/user_profile.dart';
 
 class PublishDirectedStudyPage extends StatefulWidget {
   final Locale locale;
-  final UserProfile profile;
+  final UserProfile? profile;
+  final bool adminMode;
 
   const PublishDirectedStudyPage({
     super.key,
     required this.locale,
-    required this.profile,
+    this.profile,
+    this.adminMode = false,
   });
 
   @override
@@ -38,8 +40,37 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
   @override
   void initState() {
     super.initState();
-    _coursesFuture = _coursesService.listTeacherCourses(widget.profile.id);
-    _classesFuture = _coursesService.listTeacherClasses(widget.profile.id);
+    _coursesFuture = _loadCourses();
+    _classesFuture = _loadClasses();
+  }
+
+  Future<List<Course>> _loadCourses() async {
+    if (!widget.adminMode) {
+      final profile = widget.profile;
+      if (profile == null) {
+        throw StateError('Teacher profile is required.');
+      }
+      return _coursesService.listTeacherCourses(profile.id);
+    }
+
+    final rows = await _db
+        .from('courses')
+        .select()
+        .order('updated_at', ascending: false);
+    return rows
+        .whereType<Map>()
+        .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
+        .where((course) => course.status != 'archived' && course.classId != null)
+        .toList(growable: false);
+  }
+
+  Future<List<SchoolClass>> _loadClasses() async {
+    if (widget.adminMode) return const <SchoolClass>[];
+    final profile = widget.profile;
+    if (profile == null) {
+      throw StateError('Teacher profile is required.');
+    }
+    return _coursesService.listTeacherClasses(profile.id);
   }
 
   @override
@@ -71,33 +102,41 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
       return;
     }
     if (_selectedClassIds.isEmpty) {
-      _message(_fr ? 'Sélectionnez au moins une salle que vous suivez.' : 'Select at least one classroom you teach.');
+      _message(_fr
+          ? 'Choisissez le cours et sa salle avant de publier.'
+          : 'Choose the course and its classroom before publishing.');
       return;
     }
 
     setState(() => _saving = true);
     String? uploadedPath;
     try {
-      final compatibleSelections = await _db
-          .from('class_subjects')
-          .select('class_id')
-          .eq('subject_id', course.subjectId)
-          .eq('is_active', true)
-          .inFilter('class_id', _selectedClassIds.toList(growable: false));
-      final validIds = compatibleSelections
-          .map((row) => row['class_id'].toString())
-          .toSet();
-      if (!validIds.containsAll(_selectedClassIds)) {
-        throw StateError(_fr
-            ? 'Chaque salle choisie doit proposer la matière de ce cours.'
-            : 'Every selected classroom must offer this course subject.');
+      if (!widget.adminMode) {
+        final compatibleSelections = await _db
+            .from('class_subjects')
+            .select('class_id')
+            .eq('subject_id', course.subjectId)
+            .eq('is_active', true)
+            .inFilter('class_id', _selectedClassIds.toList(growable: false));
+        final validIds = compatibleSelections
+            .map((row) => row['class_id'].toString())
+            .toSet();
+        if (!validIds.containsAll(_selectedClassIds)) {
+          throw StateError(_fr
+              ? 'Chaque salle choisie doit proposer la matière de ce cours.'
+              : 'Every selected classroom must offer this course subject.');
+        }
       }
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
         throw StateError(_fr ? 'Le fichier PDF est vide ou illisible.' : 'The PDF is empty or unreadable.');
       }
       final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      uploadedPath = '${widget.profile.id}/${DateTime.now().microsecondsSinceEpoch}-$safeName';
+      final uploaderId = _db.auth.currentUser?.id;
+      if (uploaderId == null) {
+        throw StateError('Session introuvable.');
+      }
+      uploadedPath = '${uploaderId}/${DateTime.now().microsecondsSinceEpoch}-$safeName';
       await _db.storage.from('directed-study-files').uploadBinary(
         uploadedPath,
         bytes,
@@ -107,7 +146,7 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
         'course_id': course.id,
         'source_class_id': course.classId,
         'subject_id': course.subjectId,
-        'teacher_id': widget.profile.id,
+        'teacher_id': course.teacherId,
         'title': _title.text.trim(),
         'description': _description.text.trim().isEmpty ? null : _description.text.trim(),
         'storage_path': uploadedPath,
@@ -138,7 +177,17 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_fr ? 'Publier un travail dirigé' : 'Publish a directed study')),
+      appBar: AppBar(
+        title: Text(
+          _fr
+              ? (widget.adminMode
+                  ? 'Publier un TD — administration'
+                  : 'Publier un travail dirigé')
+              : (widget.adminMode
+                  ? 'Publish TD — administration'
+                  : 'Publish a directed study'),
+        ),
+      ),
       body: FutureBuilder<List<Course>>(
         future: _coursesFuture,
         builder: (context, courseSnapshot) {
@@ -203,27 +252,46 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
                     label: Text(_file?.name ?? (_fr ? 'Choisir le PDF du TD' : 'Choose TD PDF')),
                   ),
                   const SizedBox(height: 20),
-                  Text(_fr ? 'Salles que vous suivez' : 'Classrooms you teach',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-                  const SizedBox(height: 4),
-                  Text(_fr
-                      ? 'Choisissez une ou plusieurs salles. Les salles compatibles seront ajoutées automatiquement après publication.'
-                      : 'Choose one or more classrooms. Compatible classrooms will be added automatically after publishing.'),
-                  ...rooms.where((room) => _course == null
-                      ? true
-                      : room.id == _course!.classId || eligibleRooms.any((candidate) => candidate.id == room.id))
-                    .map((room) => CheckboxListTile(
-                      value: _selectedClassIds.contains(room.id),
-                      title: Text(room.displayName),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (checked) => setState(() {
-                        if (checked == true) {
-                          _selectedClassIds.add(room.id);
-                        } else {
-                          _selectedClassIds.remove(room.id);
-                        }
-                      }),
-                    )),
+                  if (widget.adminMode)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F2E9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _fr
+                            ? 'Le TD sera publié au nom de l’enseignant du cours sélectionné et diffusé automatiquement aux salles compatibles.'
+                            : 'The TD will be published under the selected course teacher and automatically shared with compatible classrooms.',
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      _fr ? 'Salles que vous suivez' : 'Classrooms you teach',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _fr
+                          ? 'Choisissez une ou plusieurs salles. Les salles compatibles seront ajoutées automatiquement après publication.'
+                          : 'Choose one or more classrooms. Compatible classrooms will be added automatically after publishing.',
+                    ),
+                    ...rooms.where((room) => _course == null
+                        ? true
+                        : room.id == _course!.classId || eligibleRooms.any((candidate) => candidate.id == room.id))
+                      .map((room) => CheckboxListTile(
+                        value: _selectedClassIds.contains(room.id),
+                        title: Text(room.displayName),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (checked) => setState(() {
+                          if (checked == true) {
+                            _selectedClassIds.add(room.id);
+                          } else {
+                            _selectedClassIds.remove(room.id);
+                          }
+                        }),
+                      )),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton.icon(
                     onPressed: _saving ? null : _publish,

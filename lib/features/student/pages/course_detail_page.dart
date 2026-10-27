@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/offline/course_offline_service.dart';
+import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../models/assignment.dart';
@@ -39,6 +40,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   bool _offlineMode = false;
 
   late Future<List<Lesson>> _lessonsFuture;
+  late Future<List<CourseResource>> _resourcesFuture;
   late Future<List<Assignment>> _qcmsFuture;
   late Future<List<Assignment>> _evaluationsFuture;
 
@@ -64,9 +66,9 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   void initState() {
     super.initState();
     _loadLessons();
+    _resourcesFuture = _loadResources();
     _qcmsFuture = _loadQcms();
     _evaluationsFuture = _loadEvaluations();
-    _prepareOffline();
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
         setState(() => _offlineMode = !online);
@@ -74,28 +76,92 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     });
   }
 
-  Future<void> _prepareOffline() async {
-    await _offline.enqueueCourse(userId: widget.profile.id, course: widget.course);
-  }
-
-  @override
-  void dispose() {
-    _connectionSubscription?.cancel();
-    super.dispose();
-  }
-
   Future<List<CourseResource>> _loadResources() async {
     try {
-      final resources = await ResourceService().listForCourse(widget.course.id);
-      unawaited(_offline.enqueueCourse(userId: widget.profile.id, course: widget.course));
-      return resources;
+      return await ResourceService()
+          .listForCourse(widget.course.id)
+          .timeout(const Duration(seconds: 8));
     } catch (_) {
-      return _offline.resourcesForCourse(widget.profile.id, widget.course.id);
+      // En cas de réseau lent/absent, ne lire que les fichiers déjà enregistrés.
+      try {
+        final files = await _offline.filesForCourse(
+          widget.profile.id,
+          widget.course.id,
+        );
+        return files.map((file) {
+          final mime = (file.mimeType ?? '').toLowerCase();
+          final name = file.fileName.toLowerCase();
+          final type = mime.contains('pdf') || name.endsWith('.pdf')
+              ? 'pdf'
+              : mime.startsWith('image/')
+                  ? 'image'
+                  : mime.startsWith('audio/')
+                      ? 'audio'
+                      : mime.startsWith('video/')
+                          ? 'video'
+                          : 'document';
+          return CourseResource(
+            id: file.resourceId,
+            courseId: widget.course.id,
+            resourceType: type,
+            storagePath: '',
+            fileName: file.fileName,
+            mimeType: file.mimeType,
+            fileSize: file.sizeBytes,
+            titleFr: file.fileName,
+            titleEn: file.fileName,
+          );
+        }).toList(growable: false);
+      } catch (_) {
+        return const <CourseResource>[];
+      }
     }
   }
 
-  void _loadLessons() {
-    _lessonsFuture = _lessonService.listCourseLessons(widget.course.id);
+  void _loadLessons({bool forceRefresh = false}) {
+    _lessonsFuture = forceRefresh ? _fetchLessons() : _loadCachedLessonsFirst();
+  }
+
+  Future<List<Lesson>> _loadCachedLessonsFirst() async {
+    try {
+      final cached = await OfflineRepository().getLessonsForCourse(widget.course.id);
+      if (cached.isNotEmpty) {
+        // La page utilise immédiatement les leçons locales, puis actualise en arrière-plan.
+        unawaited(_refreshLessonsInBackground());
+        return cached;
+      }
+    } catch (_) {
+      // Le cache peut ne pas exister sur un nouvel appareil.
+    }
+    return _fetchLessons();
+  }
+
+  Future<List<Lesson>> _fetchLessons() async {
+    try {
+      return await _lessonService
+          .listCourseLessons(widget.course.id)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      try {
+        return await OfflineRepository().getLessonsForCourse(widget.course.id);
+      } catch (_) {
+        return const <Lesson>[];
+      }
+    }
+  }
+
+  Future<void> _refreshLessonsInBackground() async {
+    try {
+      final lessons = await _lessonService
+          .listCourseLessons(widget.course.id)
+          .timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      setState(() {
+        _lessonsFuture = Future<List<Lesson>>.value(lessons);
+      });
+    } catch (_) {
+      // Le cache reste affiché si le réseau est indisponible.
+    }
   }
 
   Future<List<Assignment>> _loadQcms() async {
@@ -151,7 +217,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
 
   Future<void> _refresh() async {
     setState(() {
-      _loadLessons();
+      _loadLessons(forceRefresh: true);
+      _resourcesFuture = _loadResources();
       _qcmsFuture = _loadQcms();
       _evaluationsFuture = _loadEvaluations();
     });
@@ -197,40 +264,53 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
           future: _lessonsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(color: Color(0xFF166534)),
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  _buildCourseHeader(isEnglish),
+                  const SizedBox(height: 12),
+                  _buildDirectedStudiesTile(isEnglish),
+                  if (courseContent != null && courseContent.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildCourseContentCard(courseContent, isEnglish),
+                  ],
+                  const SizedBox(height: 18),
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(color: Color(0xFF166534)),
+                    ),
+                  ),
+                  Center(
+                    child: Text(
+                      isEnglish ? 'Loading lessons…' : 'Chargement des leçons…',
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                  ),
+                ],
               );
             }
 
             if (snapshot.hasError) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
-                  const SizedBox(height: 100),
-                  const Icon(
-                    Icons.error_outline_rounded,
-                    size: 64,
-                    color: Colors.redAccent,
-                  ),
+                  _buildCourseHeader(isEnglish),
+                  const SizedBox(height: 12),
+                  _buildDirectedStudiesTile(isEnglish),
                   const SizedBox(height: 16),
+                  const Icon(Icons.error_outline_rounded, size: 56, color: Colors.redAccent),
+                  const SizedBox(height: 12),
                   Text(
-                    isEnglish
-                        ? 'Unable to load lessons.'
-                        : 'Impossible de charger les leçons.',
+                    isEnglish ? 'Unable to load lessons.' : 'Impossible de charger les leçons.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    snapshot.error.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 8),
+                  Text(snapshot.error.toString(), textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
                   Center(
                     child: FilledButton.icon(
                       onPressed: _refresh,
@@ -250,78 +330,10 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               children: [
                 _buildCourseHeader(isEnglish),
                 const SizedBox(height: 12),
-                Card(
-                  elevation: 0,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
-                  ),
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: Color(0xFFE4F2E9),
-                      child: Icon(Icons.assignment_outlined, color: Color(0xFF166534)),
-                    ),
-                    title: Text(
-                      isEnglish ? 'Directed studies' : 'Travaux dirigés',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    subtitle: Text(isEnglish
-                        ? 'Published exercises for this course and compatible classrooms'
-                        : 'Exercices publiés pour ce cours et les salles compatibles'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => CourseDirectedStudiesPage(
-                          locale: widget.locale,
-                          profile: widget.profile,
-                          course: widget.course,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _buildDirectedStudiesTile(isEnglish),
                 if (courseContent != null && courseContent.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Card(
-                    elevation: 0,
-                    color: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      side: BorderSide(
-                        color: Colors.grey.withValues(alpha: 0.14),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.article_outlined,
-                                color: Color(0xFF166534),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                isEnglish ? 'Course content' : 'Contenu du cours',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          SelectableText(
-                            courseContent,
-                            style: const TextStyle(fontSize: 15, height: 1.55),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  _buildCourseContentCard(courseContent, isEnglish),
                 ],
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
@@ -337,7 +349,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 ],
                 const SizedBox(height: 18),
                 FutureBuilder<List<CourseResource>>(
-                  future: _loadResources(),
+                  future: _resourcesFuture,
                   builder: (context, resourceSnapshot) {
                     final resources = resourceSnapshot.data ?? const <CourseResource>[];
                     if (resources.isEmpty) {
@@ -621,6 +633,77 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDirectedStudiesTile(bool isEnglish) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+      ),
+      child: ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: Color(0xFFE4F2E9),
+          child: Icon(Icons.assignment_outlined, color: Color(0xFF166534)),
+        ),
+        title: Text(
+          isEnglish ? 'Directed studies (TD)' : 'Travaux dirigés (TD)',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          isEnglish
+              ? 'Open the exercises published for this course'
+              : 'Ouvrir les exercices publiés pour ce cours',
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => CourseDirectedStudiesPage(
+              locale: widget.locale,
+              profile: widget.profile,
+              subjectId: widget.course.subjectId,
+              course: widget.course,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCourseContentCard(String courseContent, bool isEnglish) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.14)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.article_outlined, color: Color(0xFF166534)),
+                const SizedBox(width: 8),
+                Text(
+                  isEnglish ? 'Course content' : 'Contenu du cours',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              courseContent,
+              style: const TextStyle(fontSize: 15, height: 1.55),
+            ),
+          ],
         ),
       ),
     );

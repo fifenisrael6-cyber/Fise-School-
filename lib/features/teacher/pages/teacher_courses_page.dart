@@ -10,6 +10,7 @@ import '../../../core/services/photo_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'create_course_page.dart';
+import 'publish_directed_study_page.dart';
 import 'teacher_resource_page.dart';
 
 class TeacherCoursesPage extends StatefulWidget {
@@ -115,6 +116,27 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
       }
     } catch (error) {
       debugPrint('[Mes médias de classe] Background refresh skipped: $error');
+    }
+  }
+
+  Future<void> _publishDirectedStudy() async {
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PublishDirectedStudyPage(
+          locale: widget.locale,
+          profile: widget.profile,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFrench ? 'TD publié.' : 'Directed study published.',
+          ),
+        ),
+      );
     }
   }
 
@@ -284,7 +306,35 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
         icon: const Icon(Icons.perm_media_rounded),
         label: Text(_isFrench ? 'Partager des médias' : 'Share media'),
       ),
-      body: FutureBuilder<List<Course>>(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE4F2E9),
+                  child: Icon(
+                    Icons.assignment_outlined,
+                    color: Color(0xFF166534),
+                  ),
+                ),
+                title: Text(
+                  _isFrench ? 'Travaux dirigés (TD)' : 'Directed studies (TD)',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  _isFrench
+                      ? 'Publier un PDF de TD dans un cours et le diffuser aux salles compatibles.'
+                      : 'Publish a course-linked TD PDF and share it with compatible classrooms.',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _publishDirectedStudy,
+              ),
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<Course>>(
         future: _coursesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -344,6 +394,9 @@ class _TeacherCoursesPageState extends State<TeacherCoursesPage> {
             ),
           );
         },
+            ),
+          ),
+        ],
       ),
     );
   }
