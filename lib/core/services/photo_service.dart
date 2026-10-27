@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PickedAttachment {
@@ -119,6 +123,7 @@ class PhotoService {
       ),
     );
     await _client.from('profiles').update({'avatar_path': path}).eq('id', userId);
+    await _saveAvatarBytes(path, bytes);
     ownAvatar.value = (userId: userId, path: path);
     return path;
   }
@@ -126,9 +131,34 @@ class PhotoService {
   Future<void> deleteProfilePhoto(String userId, String? path) async {
     if (path != null && path.isNotEmpty) {
       await _client.storage.from('profile-photos').remove([path]);
+      try {
+        final cached = await _avatarFile(path);
+        if (await cached.exists()) await cached.delete();
+      } catch (_) {}
     }
     await _client.from('profiles').update({'avatar_path': null}).eq('id', userId);
     ownAvatar.value = (userId: userId, path: null);
+  }
+
+  /// Renvoie d'abord la copie locale d'un avatar. Si elle n'existe pas encore,
+  /// télécharge l'image et la conserve pour les prochains affichages hors ligne.
+  Future<String?> cachedAvatarFile(String? path) async {
+    if (path == null || path.isEmpty) return null;
+    try {
+      final file = await _avatarFile(path);
+      if (await file.exists() && await file.length() > 0) return file.path;
+    } catch (_) {}
+    try {
+      final url = await signedUrl(path);
+      if (url == null || url.isEmpty) return null;
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+      if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) {
+        return null;
+      }
+      return await _saveAvatarBytes(path, response.bodyBytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> signedUrl(String? path) async {
@@ -136,5 +166,22 @@ class PhotoService {
       return null;
     }
     return _client.storage.from('profile-photos').createSignedUrl(path, 3600);
+  }
+
+  Future<File> _avatarFile(String path) async {
+    final base = await getApplicationSupportDirectory();
+    var hash = 0x811c9dc5;
+    for (final unit in path.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return File(p.join(base.path, 'avatar_cache', '${hash.toRadixString(16)}.avatar'));
+  }
+
+  Future<String> _saveAvatarBytes(String path, List<int> bytes) async {
+    final file = await _avatarFile(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
   }
 }
