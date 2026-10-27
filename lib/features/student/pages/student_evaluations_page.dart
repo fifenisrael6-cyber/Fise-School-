@@ -56,28 +56,15 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
       final userId = widget.profile.id;
       final activeClassKey = 'student_active_class_id_' + userId;
       String? activeClassId;
-      var online = true;
-      try { online = await ConnectivityService().isOnline(); } catch (_) {}
-      if (online) {
-        try {
-          final memberships = await _db
-              .from('class_students')
-              .select('class_id, joined_at')
-              .eq('student_id', userId)
-              .eq('is_active', true)
-              .order('joined_at', ascending: false)
-              .limit(1)
-              .timeout(const Duration(seconds: 3));
-          activeClassId = memberships.isEmpty ? null : memberships.first['class_id']?.toString();
-          await JsonCache.instance.write(activeClassKey, {'class_id': activeClassId ?? ''});
-        } catch (_) {
-          final pointer = await JsonCache.instance.read(activeClassKey);
-          if (pointer is Map) activeClassId = pointer['class_id']?.toString();
-        }
-      } else {
-        final pointer = await JsonCache.instance.read(activeClassKey);
-        if (pointer is Map) activeClassId = pointer['class_id']?.toString();
+      final pointer = await JsonCache.instance.read(activeClassKey);
+      if (pointer is Map) {
+        activeClassId = pointer['class_id']?.toString();
+        if (activeClassId?.isEmpty == true) activeClassId = null;
       }
+
+      // A known class is enough to open the saved calendar; refresh membership
+      // quietly rather than waiting on a slow connection.
+      unawaited(_refreshActiveClassPointer(userId, activeClassKey));
       if (activeClassId != null && activeClassId!.isEmpty) activeClassId = null;
 
       final cacheKey = 'student_evaluations_' + userId + '_' + (activeClassId ?? 'no-class');
@@ -106,7 +93,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
 
       StudentEvaluationList? automated;
       try {
-        automated = await _evaluationService.listMine(forceRefresh: true);
+        automated = await _evaluationService.listMine();
       } catch (_) {
         // Keep the cached official calendar available if automated results are offline.
       }
@@ -134,6 +121,23 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
       });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _refreshActiveClassPointer(String userId, String cacheKey) async {
+    try {
+      final memberships = await _db
+          .from('class_students')
+          .select('class_id, joined_at')
+          .eq('student_id', userId)
+          .eq('is_active', true)
+          .order('joined_at', ascending: false)
+          .limit(1)
+          .timeout(const Duration(seconds: 3));
+      final id = memberships.isEmpty ? '' : memberships.first['class_id']?.toString() ?? '';
+      await JsonCache.instance.write(cacheKey, {'class_id': id});
+    } catch (_) {
+      // Retain the last known classroom pointer while offline.
     }
   }
 
