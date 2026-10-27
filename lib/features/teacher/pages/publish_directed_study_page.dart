@@ -78,6 +78,20 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
     setState(() => _saving = true);
     String? uploadedPath;
     try {
+      final compatibleSelections = await _db
+          .from('class_subjects')
+          .select('class_id')
+          .eq('subject_id', course.subjectId)
+          .eq('is_active', true)
+          .inFilter('class_id', _selectedClassIds.toList(growable: false));
+      final validIds = compatibleSelections
+          .map((row) => row['class_id'].toString())
+          .toSet();
+      if (!validIds.containsAll(_selectedClassIds)) {
+        throw StateError(_fr
+            ? 'Chaque salle choisie doit proposer la matière de ce cours.'
+            : 'Every selected classroom must offer this course subject.');
+      }
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
         throw StateError(_fr ? 'Le fichier PDF est vide ou illisible.' : 'The PDF is empty or unreadable.');
