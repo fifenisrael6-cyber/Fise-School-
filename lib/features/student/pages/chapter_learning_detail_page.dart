@@ -69,23 +69,20 @@ class _ChapterLearningDetailPageState
   }) async {
     final results = await Future.wait<dynamic>([
       _service.listContent(widget.chapter.id, forceRefresh: forceRefresh),
-      _service.listExercises(widget.chapter.id, forceRefresh: forceRefresh),
-      _service.listQuizzes(
-        widget.chapter.id,
-        forceRefresh: forceRefresh || forceRefreshQuizzes,
-      ),
       _service.getCounts(widget.chapter.id, forceRefresh: forceRefresh),
       _service.getProgress(
         studentId: widget.profile.id,
         chapterId: widget.chapter.id,
       ),
     ]);
+    // TD and AI quiz requests now live on the subject-level exercises page;
+    // do not delay chapter content while fetching them.
     return _ChapterData(
       content: results[0] as List<ChapterLearningContentItem>,
-      exercises: results[1] as List<ChapterLearningExercise>,
-      quizzes: results[2] as List<ChapterLearningQuiz>,
-      counts: results[3] as ChapterLearningCounts,
-      progress: results[4] as ChapterLearningProgress?,
+      exercises: const <ChapterLearningExercise>[],
+      quizzes: const <ChapterLearningQuiz>[],
+      counts: results[1] as ChapterLearningCounts,
+      progress: results[2] as ChapterLearningProgress?,
     );
   }
 
