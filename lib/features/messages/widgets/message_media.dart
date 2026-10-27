@@ -883,6 +883,7 @@ class _MediaGalleryViewerPageState extends State<MediaGalleryViewerPage> {
             key: ValueKey('${widget.items[index].cacheKey ?? widget.items[index].localPath ?? widget.items[index].name}-$index'),
             item: widget.items[index],
             resolveUrl: widget.resolveUrl,
+            isActive: index == _index,
           ),
         ),
         Positioned(left: 0, right: 0, top: 0, child: SafeArea(
@@ -904,9 +905,10 @@ class _MediaGalleryViewerPageState extends State<MediaGalleryViewerPage> {
 }
 
 class _GalleryMediaPage extends StatefulWidget {
-  const _GalleryMediaPage({super.key, required this.item, required this.resolveUrl});
+  const _GalleryMediaPage({super.key, required this.item, required this.resolveUrl, required this.isActive});
   final MessageMediaGalleryItem item;
   final Future<String?> Function(String? path) resolveUrl;
+  final bool isActive;
   @override
   State<_GalleryMediaPage> createState() => _GalleryMediaPageState();
 }
@@ -922,6 +924,19 @@ class _GalleryMediaPageState extends State<_GalleryMediaPage> {
   void initState() {
     super.initState();
     unawaited(_load());
+  }
+
+  @override
+  void didUpdateWidget(covariant _GalleryMediaPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final controller = _video;
+    if (controller != null && controller.value.isInitialized) {
+      if (widget.isActive && !oldWidget.isActive) {
+        controller.play();
+      } else if (!widget.isActive && oldWidget.isActive) {
+        controller.pause();
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -942,7 +957,7 @@ class _GalleryMediaPageState extends State<_GalleryMediaPage> {
         _video = controller;
         await controller.initialize();
         if (!mounted) return;
-        await controller.play();
+        if (widget.isActive) await controller.play();
       }
       if (mounted) setState(() { _local = local; _url = url; _loading = false; });
     } catch (_) {
