@@ -110,47 +110,45 @@ class _LessonPageState extends State<LessonPage> {
   }
 
   Future<void> _loadLessonData() async {
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-    });
+    // The lesson text is already supplied by the course page/cache.
+    // Never block opening the chapter while progress or resource requests wait on the network.
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _errorMessage = null;
+      });
+    }
 
+    unawaited(_loadProgressInBackground());
+    unawaited(_loadResourcesInBackground());
+  }
+
+  Future<void> _loadProgressInBackground() async {
     try {
-      final results = await Future.wait([
-        _progressService.get(widget.profile.id, widget.lesson.id),
-        _resourceService.listForLesson(widget.lesson.id),
-      ]);
-
-      final progress = results[0] as LessonProgress?;
-      final resources = results[1] as List<CourseResource>;
-
-      LessonProgress? openedProgress = progress;
-
+      var progress = await _progressService
+          .get(widget.profile.id, widget.lesson.id)
+          .timeout(const Duration(seconds: 4));
       if (progress == null || progress.status != 'completed') {
-        openedProgress = await _progressService.open(
-          studentId: widget.profile.id,
-          lessonId: widget.lesson.id,
-        );
+        progress = await _progressService
+            .open(studentId: widget.profile.id, lessonId: widget.lesson.id)
+            .timeout(const Duration(seconds: 4));
       }
+      if (!mounted) return;
+      setState(() => _progress = progress);
+    } catch (_) {
+      // Progress syncing is non-blocking; lesson content remains readable offline.
+    }
+  }
 
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _progress = openedProgress;
-        _resources = resources;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _loading = false;
-        _errorMessage = error.toString();
-      });
+  Future<void> _loadResourcesInBackground() async {
+    try {
+      final resources = await _resourceService
+          .listForLesson(widget.lesson.id)
+          .timeout(const Duration(seconds: 4));
+      if (!mounted) return;
+      setState(() => _resources = resources);
+    } catch (_) {
+      // Resource metadata is optional for displaying the lesson text.
     }
   }
 
