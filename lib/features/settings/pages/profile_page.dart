@@ -152,7 +152,7 @@ class _ProfilePageState extends State<ProfilePage> {
             final hasLocal = localPath != null && File(localPath).existsSync();
             return CircleAvatar(
               radius: 48,
-              backgroundImage: hasLocal ? FileImage(File(localPath)) : null,
+              backgroundImage: hasLocal ? FileImage(File(localPath!)) : null,
               child: hasLocal ? null : const Icon(Icons.person_rounded, size: 48),
             );
           },
