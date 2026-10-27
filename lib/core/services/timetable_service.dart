@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/timetable_entry.dart';
+import '../offline/connectivity_service.dart';
 import '../offline/json_cache.dart';
 
 class TimetableService {
@@ -19,13 +20,18 @@ class TimetableService {
       _refreshStudentClassIds(studentId, key);
       return ids;
     }
+    // Do not spend the network timeout waiting for a request when the device
+    // is already offline. listForStudent will use its last timetable snapshot.
+    if (!await ConnectivityService().isOnline()) {
+      throw StateError('No cached class membership is available offline.');
+    }
     final memberships = await _client
         .from('class_students')
         .select('class_id, joined_at')
         .eq('student_id', studentId)
         .eq('is_active', true)
         .order('joined_at', ascending: false)
-        .timeout(JsonCache.networkTimeout);
+        .timeout(const Duration(seconds: 3));
     final ids = memberships
         .map((row) => row['class_id']?.toString())
         .whereType<String>()
