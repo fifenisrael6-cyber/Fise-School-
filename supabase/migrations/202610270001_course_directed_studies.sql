@@ -10,6 +10,7 @@ create table if not exists public.directed_studies (
   description text,
   storage_path text not null,
   file_name text not null,
+  requested_class_ids uuid[] not null default '{}',
   target_class_ids uuid[] not null default '{}',
   status text not null default 'published' check (status in ('draft','published')),
   created_at timestamptz not null default now(),
@@ -66,7 +67,7 @@ begin
     raise exception 'Teacher is not assigned to the source classroom';
   end if;
   if exists (
-    select 1 from unnest(coalesce(new.target_class_ids, '{}'::uuid[])) selected(id)
+    select 1 from unnest(coalesce(new.requested_class_ids, '{}'::uuid[])) selected(id)
     where not public.teacher_can_manage_class(selected.id, new.teacher_id)
   ) then
     raise exception 'Teacher may select only classrooms they teach';
