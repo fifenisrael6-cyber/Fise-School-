@@ -438,15 +438,42 @@ class _MediaImageViewerPageState extends State<MediaImageViewerPage> {
   Widget build(BuildContext context) {
     final local = _cachedPath ??
         ((widget.localPath != null && File(widget.localPath!).existsSync()) ? widget.localPath : null);
+    final size = MediaQuery.sizeOf(context);
     final Widget image = local != null
-        ? Image.file(File(local))
+        ? Image.file(
+            File(local),
+            width: size.width,
+            height: size.height,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64),
+          )
         : (widget.url != null
-            ? Image.network(widget.url!)
+            ? Image.network(
+                widget.url!,
+                width: size.width,
+                height: size.height,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64),
+              )
             : const Icon(Icons.broken_image_outlined, color: Colors.white, size: 64));
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.title, overflow: TextOverflow.ellipsis)),
-      body: Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: image)),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(widget.title, overflow: TextOverflow.ellipsis),
+      ),
+      body: SizedBox.expand(
+        child: Center(
+          child: InteractiveViewer(
+            minScale: 0.8,
+            maxScale: 5,
+            child: image,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -518,25 +545,62 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> {
     final c = _controller;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.title, overflow: TextOverflow.ellipsis)),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text(widget.title, overflow: TextOverflow.ellipsis),
+      ),
       body: _failed || c == null
           ? const Center(child: Icon(Icons.error_outline, color: Colors.white, size: 56))
           : !c.value.isInitialized
               ? const Center(child: CircularProgressIndicator())
-              : Column(children: [
-                  Expanded(child: Center(child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)))),
-                  VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.all(12)),
-                  ValueListenableBuilder<VideoPlayerValue>(
-                    valueListenable: c,
-                    builder: (_, value, __) => IconButton(
-                      iconSize: 46,
-                      color: Colors.white,
-                      onPressed: () => value.isPlaying ? c.pause() : c.play(),
-                      icon: Icon(value.isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: c.value.size.width,
+                          height: c.value.size.height,
+                          child: VideoPlayer(c),
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ]),
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 20,
+                      child: SafeArea(
+                        top: false,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              VideoProgressIndicator(c, allowScrubbing: true, padding: const EdgeInsets.symmetric(vertical: 8)),
+                              ValueListenableBuilder<VideoPlayerValue>(
+                                valueListenable: c,
+                                builder: (_, value, __) => IconButton(
+                                  iconSize: 46,
+                                  color: Colors.white,
+                                  onPressed: () => value.isPlaying ? c.pause() : c.play(),
+                                  icon: Icon(value.isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
     );
   }
 }
