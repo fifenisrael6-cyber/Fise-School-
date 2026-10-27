@@ -98,34 +98,48 @@ class TimetableService {
       rethrow;
     }
 
+    final online = await ConnectivityService().isOnline();
+    if (!online) {
+      final latest = await JsonCache.instance.read(latestKey);
+      if (latest is List) return _decodeEntries(latest);
+    }
+
     final sortedIds = classIds.toList()..sort();
     final scopeKey = classIds.isEmpty ? 'legacy' : sortedIds.join('_');
-    return _cachedEntries(
-      key: 'timetable_student_' + studentId + '_' + scopeKey,
-      fetch: () async {
-        final Object? raw;
-        if (classIds.isNotEmpty) {
-          raw = await _client
-              .from('class_timetable_entries')
-              .select()
-              .inFilter('class_id', classIds)
-              .eq('is_active', true)
-              .order('day_of_week')
-              .order('start_time');
-        } else {
-          raw = await _client
-              .from('student_timetable_entries')
-              .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
-              .eq('student_id', studentId)
-              .order('day_of_week')
-              .order('start_time');
-        }
-        // Keep a stable fallback independent of the current membership lookup.
-        // This is additive: the scoped cache remains the primary cache.
-        await JsonCache.instance.write(latestKey, raw);
-        return raw;
-      },
-    );
+    try {
+      return await _cachedEntries(
+        key: 'timetable_student_' + studentId + '_' + scopeKey,
+        fetch: () async {
+          final Object? raw;
+          if (classIds.isNotEmpty) {
+            raw = await _client
+                .from('class_timetable_entries')
+                .select()
+                .inFilter('class_id', classIds)
+                .eq('is_active', true)
+                .order('day_of_week')
+                .order('start_time');
+          } else {
+            raw = await _client
+                .from('student_timetable_entries')
+                .select('id, day_of_week, start_time, end_time, subject, teacher_name, room, notes')
+                .eq('student_id', studentId)
+                .order('day_of_week')
+                .order('start_time');
+          }
+          // Keep a stable fallback independent of the current membership lookup.
+          // This is additive: the scoped cache remains the primary cache.
+          await JsonCache.instance.write(latestKey, raw);
+          return raw;
+        },
+      );
+    } catch (_) {
+      // A membership change may produce a new scoped key with no cache yet.
+      // If the network is down, the last saved timetable is still useful.
+      final latest = await JsonCache.instance.read(latestKey);
+      if (latest is List) return _decodeEntries(latest);
+      rethrow;
+    }
   }
 
   /// Emploi du temps de la salle de l'élève (lecture seule). Vide si l'élève n'a pas de salle.
