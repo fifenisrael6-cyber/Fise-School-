@@ -362,37 +362,46 @@ class ChapterLearningService {
                 sourceLower.contains('vimeo.com'))) continue;
         final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
         final local = File(p.join(directory.path, 'offline', 'chapter_media', safeUser, '$safeId.bin'));
-        try {
-          if (await local.exists() && await local.length() > 0) continue;
-          String url;
-          const legacyPrefix = 'legacy-course-resource:';
-          if (sourceLower.startsWith('http://') || sourceLower.startsWith('https://')) {
-            url = source;
-          } else if (source.startsWith(legacyPrefix)) {
-            url = await _client.storage.from('cours-fichiers').createSignedUrl(
-              source.substring(legacyPrefix.length), 900,
-            );
-          } else {
-            url = await _client.storage.from('chapter-content').createSignedUrl(source, 900);
-          }
-          final response = await client.send(http.Request('GET', Uri.parse(url))
-            ..followRedirects = true).timeout(const Duration(seconds: 30));
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            await response.stream.drain<void>();
-            continue;
-          }
-          await local.parent.create(recursive: true);
+        if (await local.exists() && await local.length() > 0) continue;
+
+        for (var attempt = 1; attempt <= 3; attempt++) {
           final temporary = File('${local.path}.part');
-          if (await temporary.exists()) await temporary.delete();
-          await response.stream.pipe(temporary.openWrite());
-          if (await temporary.exists() && await temporary.length() > 0) {
+          try {
+            String url;
+            const legacyPrefix = 'legacy-course-resource:';
+            if (sourceLower.startsWith('http://') || sourceLower.startsWith('https://')) {
+              url = source;
+            } else if (source.startsWith(legacyPrefix)) {
+              url = await _client.storage.from('cours-fichiers').createSignedUrl(
+                source.substring(legacyPrefix.length), 900,
+              );
+            } else {
+              url = await _client.storage.from('chapter-content').createSignedUrl(source, 900);
+            }
+            final response = await client
+                .send(http.Request('GET', Uri.parse(url))..followRedirects = true)
+                .timeout(const Duration(seconds: 30));
+            if (response.statusCode < 200 || response.statusCode >= 300) {
+              await response.stream.drain<void>();
+              throw HttpException('HTTP ${response.statusCode}');
+            }
+            await local.parent.create(recursive: true);
+            if (await temporary.exists()) await temporary.delete();
+            await response.stream.pipe(temporary.openWrite());
+            if (!await temporary.exists() || await temporary.length() == 0) {
+              throw const HttpException('Empty chapter media download');
+            }
             if (await local.exists()) await local.delete();
             await temporary.rename(local.path);
-          } else if (await temporary.exists()) {
-            await temporary.delete();
+            break;
+          } catch (_) {
+            if (await temporary.exists()) {
+              try { await temporary.delete(); } catch (_) {}
+            }
+            if (attempt < 3) {
+              await Future<void>.delayed(Duration(seconds: attempt * 2));
+            }
           }
-        } catch (_) {
-          // Un seul fichier inaccessible ne doit pas bloquer les autres.
         }
       }
     } finally {
