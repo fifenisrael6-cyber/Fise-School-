@@ -58,6 +58,13 @@ class SyncService {
     }
   }
 
+  /// Reprend les téléchargements de médias de chapitres manquants sans
+  /// refaire toute la synchronisation des cours.
+  Future<void> retryChapterMediaPrefetch(String studentId) async {
+    final cachedCourses = await _offline.getCoursesForStudent(studentId);
+    await _prefetchChapterLearning(studentId, cachedCourses);
+  }
+
   Future<void> _prefetchChapterLearning(String studentId, List<Course> courses) async {
     final chapterIds = courses
         .map((course) => course.chapterId)
