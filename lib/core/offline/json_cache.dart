@@ -43,9 +43,24 @@ class JsonCache {
     return File(p.join(dir.path, _fileName(key)));
   }
 
+  /// Écrit une nouvelle copie temporaire, puis la remplace en une seule
+  /// opération. Si l'application est interrompue pendant l'écriture, la
+  /// dernière copie valide reste donc disponible hors ligne.
   Future<void> write(String key, Object? value) async {
     final file = await _file(key);
-    await file.writeAsString(jsonEncode(value), flush: true);
+    final temp = File(
+      '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await temp.writeAsString(jsonEncode(value), flush: true);
+      await temp.rename(file.path);
+    } finally {
+      // Nettoie uniquement le fichier temporaire de cette écriture.
+      // Ne touche jamais à la dernière copie valide.
+      try {
+        if (await temp.exists()) await temp.delete();
+      } catch (_) {}
+    }
   }
 
   /// Retourne la valeur décodée, ou null si absente / illisible.
