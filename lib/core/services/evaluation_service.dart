@@ -32,6 +32,11 @@ class EvaluationService {
           ? 'La date limite est dépassée : la remise n\'est plus acceptée.'
           : 'The deadline has passed: submissions are closed.';
     }
+    if (message.contains('publication_not_confirmed')) {
+      return fr
+          ? 'La publication n’a pas pu être confirmée. Vérifiez les informations et réessayez.'
+          : 'Publication could not be confirmed. Check the details and try again.';
+    }
     if (error is AuthException ||
         message.contains('jwt expired') ||
         message.contains('session expired') ||
@@ -351,7 +356,15 @@ class EvaluationService {
       await _client.from('evaluation_classes').insert(
             classIds.map((c) => {'evaluation_id': id, 'class_id': c}).toList(),
           );
-      await _client.from('evaluations').update({'status': 'published'}).eq('id', id);
+      final published = await _client
+          .from('evaluations')
+          .update({'status': 'published'})
+          .eq('id', id)
+          .select('id,status')
+          .maybeSingle();
+      if (published == null || published['status'] != 'published') {
+        throw StateError('PUBLICATION_NOT_CONFIRMED');
+      }
       return id;
     } catch (_) {
       try {
