@@ -141,8 +141,10 @@ class MessageAttachmentView extends StatelessWidget {
               name: name,
               type: type,
               french: french,
-              onTap: null,
-              subtitle: french ? 'Préparation du fichier…' : 'Preparing file…',
+              onTap: () => _openDocument(context, null, null),
+              subtitle: _isPdf
+                  ? (french ? 'PDF • toucher pour lire' : 'PDF • tap to read')
+                  : (french ? 'Toucher pour ouvrir dans Fise School' : 'Tap to open in Fise School'),
             );
           }
           final cachedLocal = (cachedPath != null && File(cachedPath).existsSync())
@@ -154,47 +156,17 @@ class MessageAttachmentView extends StatelessWidget {
           if (_isImage) return _imageThumb(context, null, cachedLocal);
           if (_isVideo) return _videoCard(context, null, cachedLocal);
 
-          return FutureBuilder<String?>(
-            future: (cachedLocal != null && File(cachedLocal).existsSync())
-                ? Future.value(null)
-                : resolveUrl(remotePath),
-            builder: (context, snapshot) {
-              final effectiveLocal = (cachedLocal != null && File(cachedLocal).existsSync())
-                  ? cachedLocal
-                  : (_hasLocal ? localPath : null);
-              final url = snapshot.data;
-              final waiting = effectiveLocal == null && snapshot.connectionState != ConnectionState.done;
-              final unavailable = effectiveLocal == null && !waiting && url == null;
-              if (unavailable) {
-                return _DocumentCard(
-                  name: name,
-                  type: type,
-                  french: french,
-                  onTap: null,
-                  subtitle: french ? 'Indisponible hors ligne' : 'Unavailable offline',
-                );
-              }
-              if (_isImage) return _imageThumb(context, url, effectiveLocal);
-              if (_isAudio) {
-                return AudioMessagePlayer(
-                  localPath: effectiveLocal,
-                  url: url,
-                  remotePath: _cacheKey,
-                  fileName: name,
-                  loading: waiting,
-                );
-              }
-              if (_isVideo) return _videoCard(context, url, effectiveLocal);
-              return _DocumentCard(
-                name: name,
-                type: type,
-                french: french,
-                onTap: waiting ? null : () => _openDocument(context, url, effectiveLocal),
-                subtitle: _isPdf
-                    ? (french ? 'PDF • Appuyer pour lire' : 'PDF • Tap to read')
-                    : (french ? 'Appuyer pour ouvrir dans Fise School' : 'Tap to open in Fise School'),
-              );
-            },
+          // Document cards are also tappable immediately. Resolve their
+          // signed Storage URL inside the viewer, after navigation, not while
+          // building the message list.
+          return _DocumentCard(
+            name: name,
+            type: type,
+            french: french,
+            onTap: () => _openDocument(context, null, cachedLocal),
+            subtitle: _isPdf
+                ? (french ? 'PDF • appuyer pour lire' : 'PDF • tap to read')
+                : (french ? 'Appuyer pour ouvrir dans Fise School' : 'Tap to open in Fise School'),
           );
         },
       ),
@@ -307,6 +279,8 @@ class MessageAttachmentView extends StatelessWidget {
           localPath: effectiveLocal,
           url: url,
           remotePath: _cacheKey,
+          storagePath: remotePath,
+          resolveUrl: resolveUrl,
           title: name ?? 'PDF',
         ),
       ));
@@ -317,6 +291,8 @@ class MessageAttachmentView extends StatelessWidget {
         localPath: effectiveLocal,
         url: url,
         remotePath: _cacheKey,
+        storagePath: remotePath,
+        resolveUrl: resolveUrl,
         title: name ?? (french ? 'Fichier' : 'File'),
         mimeType: type,
         french: french,
