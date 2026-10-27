@@ -839,18 +839,31 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   }
 
   Future<void> _cacheVideoInBackground(String url) async {
+    final client = http.Client();
     try {
       final local = await _localMediaFile();
       if (await local.exists() && await local.length() > 0) return;
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 90));
-      if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) return;
+      final response = await client
+          .send(http.Request('GET', Uri.parse(url)))
+          .timeout(const Duration(seconds: 90));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await response.stream.drain<void>();
+        return;
+      }
       await local.parent.create(recursive: true);
       final temporary = File('${local.path}.part');
-      await temporary.writeAsBytes(response.bodyBytes, flush: true);
-      if (await local.exists()) await local.delete();
-      await temporary.rename(local.path);
+      if (await temporary.exists()) await temporary.delete();
+      await response.stream.pipe(temporary.openWrite());
+      if (await temporary.exists() && await temporary.length() > 0) {
+        if (await local.exists()) await local.delete();
+        await temporary.rename(local.path);
+      } else if (await temporary.exists()) {
+        await temporary.delete();
+      }
     } catch (_) {
       // Streaming playback continues even when the offline copy cannot be saved.
+    } finally {
+      client.close();
     }
   }
 
