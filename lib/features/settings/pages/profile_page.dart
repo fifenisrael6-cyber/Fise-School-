@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -144,16 +146,16 @@ class _ProfilePageState extends State<ProfilePage> {
             PopupMenuItem(value: 'delete', child: Text(texts.deletePhoto)),
         ],
         child: FutureBuilder<String?>(
-          future: _photos.signedUrl(_profile.avatarPath),
-          builder: (context, snapshot) => CircleAvatar(
-            radius: 48,
-            backgroundImage: snapshot.data == null
-                ? null
-                : NetworkImage(snapshot.data!),
-            child: snapshot.data == null
-                ? const Icon(Icons.person_rounded, size: 48)
-                : null,
-          ),
+          future: _photos.cachedAvatarFile(_profile.avatarPath),
+          builder: (context, snapshot) {
+            final localPath = snapshot.data;
+            final hasLocal = localPath != null && File(localPath).existsSync();
+            return CircleAvatar(
+              radius: 48,
+              backgroundImage: hasLocal ? FileImage(File(localPath)) : null,
+              child: hasLocal ? null : const Icon(Icons.person_rounded, size: 48),
+            );
+          },
         ),
       ),
     );
