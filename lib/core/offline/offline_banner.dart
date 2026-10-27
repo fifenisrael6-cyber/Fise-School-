@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'connectivity_service.dart';
 import 'pending_progress.dart';
@@ -41,12 +42,40 @@ class _OfflineAwareShellState extends State<OfflineAwareShell> {
   }
 
   Future<void> _setOnline(bool online) async {
-    final pending = online ? 0 : await PendingProgress.instance.count();
+    if (online) {
+      if (mounted) {
+        setState(() {
+          _offline = false;
+          _pending = 0;
+        });
+      }
+      // Connectivity returning must actually flush queued lesson progress;
+      // previously the queue was only sent during local cleanup/sign-out.
+      unawaited(_flushPendingProgress());
+      return;
+    }
+
+    final pending = await PendingProgress.instance.count();
     if (!mounted) return;
     setState(() {
-      _offline = !online;
+      _offline = true;
       _pending = pending;
     });
+  }
+
+  Future<void> _flushPendingProgress() async {
+    try {
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser == null) return;
+      await PendingProgress.instance.flush(client);
+    } catch (_) {
+      // Keep unsent progress in the queue; a later connectivity event retries.
+    } finally {
+      if (mounted) {
+        final pending = await PendingProgress.instance.count();
+        if (mounted) setState(() => _pending = pending);
+      }
+    }
   }
 
   @override
