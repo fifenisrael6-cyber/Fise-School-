@@ -78,7 +78,9 @@ class CourseOfflineService {
     }
     try {
       final rows = await _db.getDownloadedFiles(userId: userId);
-      for (final row in rows.where((item) => item.status == 'queued' && item.lastOpenedAt != null)) {
+      // Reprendre tous les téléchargements en attente, y compris ceux qui
+      // n'ont pas encore été ouverts manuellement.
+      for (final row in rows.where((item) => item.status == 'queued')) {
         if (_queuedIds.contains(row.resourceId)) {
           continue;
         }
@@ -167,6 +169,23 @@ class CourseOfflineService {
     } catch (_) {
       // Resource downloads and course caching must continue even if one QCM fails.
     }
+    // Précharger les pièces jointes dès qu'un cours est synchronisé, afin que
+    // les prochaines ouvertures soient locales. Les vidéos volumineuses restent
+    // soumises à la limite existante dans _enqueueResource.
+    for (final resource in resources) {
+      try {
+        await _enqueueResource(userId: userId, resource: resource);
+      } catch (error) {
+        // Une ressource indisponible ne doit pas empêcher le cours de s'ouvrir.
+        _progress.add(OfflineDownloadProgress(
+          resourceId: resource.id,
+          received: 0,
+          total: resource.fileSize ?? 0,
+          status: 'failed',
+        ));
+      }
+    }
+
     final remoteIds = resources.map((r) => r.id).toSet();
     for (final old in await _db.getDownloadedFiles(userId: userId, courseId: course.id)) {
       if (!remoteIds.contains(old.resourceId)) {
@@ -174,9 +193,8 @@ class CourseOfflineService {
         await _db.deleteDownloadedFile(old.resourceId, userId);
       }
     }
-    // Les cours et leurs métadonnées peuvent être mis en cache, mais les
-    // fichiers joints ne sont jamais pré-téléchargés en masse. Un fichier est
-    // stocké durablement lorsqu'un utilisateur l'ouvre pour la première fois.
+    // Les fichiers sont mis en file automatiquement ; le téléchargement se
+    // poursuit en arrière-plan avec deux tâches simultanées au maximum.
   }
 
   /// Télécharge un fichier à sa première ouverture et renvoie toujours sa copie
