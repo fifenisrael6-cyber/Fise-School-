@@ -109,6 +109,23 @@ class MessageAttachmentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Voice notes are visible immediately. Resolve a signed URL only after the
+    // user presses Play; otherwise a slow Storage request turns every voice
+    // bubble into a spinner even though the conversation itself is ready.
+    if (_isAudio) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: AudioMessagePlayer(
+          localPath: _hasLocal ? localPath : null,
+          remotePath: _cacheKey,
+          storagePath: remotePath,
+          fileName: name,
+          resolveUrl: resolveUrl,
+          french: french,
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: FutureBuilder<String?>(
@@ -312,13 +329,28 @@ class _DocumentCard extends StatelessWidget {
   }
 }
 
-/// Lecteur de note vocale / audio : lecture-pause, barre de progression, durée.
+/// Lecteur de note vocale / audio : commandes visibles tout de suite,
+/// lecture-pause, barre de progression et durée.
 class AudioMessagePlayer extends StatefulWidget {
-  const AudioMessagePlayer({super.key, this.localPath, this.url, this.remotePath, this.fileName, this.loading = false});
+  const AudioMessagePlayer({
+    super.key,
+    this.localPath,
+    this.url,
+    this.remotePath,
+    this.storagePath,
+    this.fileName,
+    this.resolveUrl,
+    this.french = true,
+    this.loading = false,
+  });
+
   final String? localPath;
   final String? url;
   final String? remotePath;
+  final String? storagePath;
   final String? fileName;
+  final Future<String?> Function(String? path)? resolveUrl;
+  final bool french;
   final bool loading;
 
   @override
@@ -331,6 +363,8 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
   PlayerState _state = PlayerState.stopped;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _preparing = false;
+  String? _error;
 
   @override
   void initState() {
@@ -357,24 +391,50 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
       await _player.resume();
       return;
     }
-    var local = widget.localPath;
-    if (local == null || !File(local).existsSync()) {
-      local = await _MessageMediaCache.find(
-        remotePath: widget.remotePath,
-        fileName: widget.fileName,
-        url: widget.url,
-      );
-    }
-    if (local != null && File(local).existsSync()) {
-      await _player.play(DeviceFileSource(local));
-    } else if (widget.url != null) {
-      // Start playback immediately; persist the full audio for later offline use.
+    if (_preparing) return;
+
+    setState(() {
+      _preparing = true;
+      _error = null;
+    });
+    try {
+      var local = widget.localPath;
+      if (local == null || !File(local).existsSync()) {
+        local = await _MessageMediaCache.find(
+          remotePath: widget.remotePath,
+          fileName: widget.fileName,
+          url: widget.url,
+        );
+      }
+      if (local != null && File(local).existsSync()) {
+        await _player.play(DeviceFileSource(local));
+        return;
+      }
+
+      var playbackUrl = widget.url;
+      if ((playbackUrl == null || playbackUrl.isEmpty) && widget.resolveUrl != null) {
+        playbackUrl = await widget.resolveUrl!(widget.storagePath)
+            .timeout(const Duration(seconds: 8));
+      }
+      if (playbackUrl == null || playbackUrl.isEmpty) {
+        throw StateError('Audio URL unavailable');
+      }
+
+      // Begin playback immediately; save a local copy for later offline opens.
       unawaited(_MessageMediaCache.download(
         remotePath: widget.remotePath,
         fileName: widget.fileName,
-        url: widget.url,
+        url: playbackUrl,
       ).then<void>((_) {}));
-      await _player.play(UrlSource(widget.url!));
+      await _player.play(UrlSource(playbackUrl));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = widget.french
+            ? 'Audio indisponible. Vérifiez la connexion.'
+            : 'Audio unavailable. Check your connection.');
+      }
+    } finally {
+      if (mounted) setState(() => _preparing = false);
     }
   }
 
@@ -392,20 +452,33 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
     return SizedBox(
       width: 230,
       child: Row(children: [
-        widget.loading
-            ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-            : IconButton(
-                onPressed: _toggle,
-                icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded, size: 36, color: const Color(0xFF166534)),
-              ),
+        IconButton(
+          tooltip: widget.french ? 'Lire le message vocal' : 'Play voice message',
+          onPressed: _preparing ? null : _toggle,
+          icon: Icon(
+            _preparing
+                ? Icons.downloading_rounded
+                : (playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+            size: 36,
+            color: _preparing ? Colors.blueGrey : const Color(0xFF166534),
+          ),
+        ),
         Expanded(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              widget.french ? 'Message vocal' : 'Voice message',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black87),
+            ),
             SliderTheme(
               data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
               child: Slider(
                 value: posMs.toDouble(),
                 max: maxMs.toDouble(),
-                onChanged: _duration.inMilliseconds <= 0 ? null : (v) => _player.seek(Duration(milliseconds: v.toInt())),
+                onChanged: _duration.inMilliseconds <= 0 || _preparing
+                    ? null
+                    : (v) => _player.seek(Duration(milliseconds: v.toInt())),
               ),
             ),
             Row(
@@ -415,6 +488,8 @@ class _AudioMessagePlayerState extends State<AudioMessagePlayer> {
                 Text(_fmt(_duration), style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600)),
               ],
             ),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(fontSize: 10, color: Colors.redAccent)),
           ]),
         ),
       ]),
