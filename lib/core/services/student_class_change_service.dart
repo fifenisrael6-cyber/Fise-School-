@@ -55,6 +55,7 @@ class StudentClassChangeService {
       'change_student_class',
       params: {'target_class_id': destinationClassId},
     );
+    await JsonCache.instance.remove('student_available_classes_${user.id}');
 
     // Remove old-class downloads and cached lesson state only after the server
     // commits the new membership. Historical grades, payments and messages stay.
