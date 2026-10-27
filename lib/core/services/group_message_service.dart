@@ -46,6 +46,17 @@ class GroupMessageService {
   }
 
   Future<List<MessageGroup>> listGroups() async {
+    // Offline-first: never spend several RPC timeouts before showing groups
+    // already persisted in Drift. Online refresh continues through the normal
+    // membership/RLS-protected RPCs below.
+    if (!await _hasNetworkConnection()) {
+      try {
+        return await getCachedGroups();
+      } catch (_) {
+        return const <MessageGroup>[];
+      }
+    }
+
     final byId = <String, MessageGroup>{};
 
     // Primary list includes groups the current account belongs to.
