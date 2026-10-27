@@ -530,7 +530,17 @@ class _ChapterLearningDetailPageState
           if ((item.folderKey == 'images' || item.folderKey == 'video') &&
               galleryItems != null && galleryItems.isNotEmpty) {
             final mediaItems = galleryItems
-                .where((entry) => (entry.storagePath ?? entry.externalUrl ?? '').trim().isNotEmpty)
+                .where((entry) {
+                  final storagePath = (entry.storagePath ?? '').trim();
+                  final external = (entry.externalUrl ?? '').toLowerCase();
+                  if (storagePath.isNotEmpty) return true;
+                  if (external.isEmpty) return false;
+                  if (entry.folderKey == 'video' &&
+                      (external.contains('youtube.com') ||
+                          external.contains('youtu.be') ||
+                          external.contains('vimeo.com'))) return false;
+                  return true;
+                })
                 .map((entry) => MessageMediaGalleryItem(
                       name: entry.titleFor(widget.locale.languageCode),
                       type: entry.folderKey == 'video' ? 'video/mp4' : 'image/jpeg',
