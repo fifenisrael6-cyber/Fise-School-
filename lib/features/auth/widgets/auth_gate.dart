@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/session_service.dart';
 import '../../../core/offline/connectivity_service.dart';
+import '../../../core/offline/pending_progress.dart';
 import '../../../core/offline/sync_service.dart';
 import '../../admin/pages/admin_dashboard_page.dart';
 import '../../public/pages/public_home_page.dart';
@@ -258,6 +260,9 @@ class _AuthGateState extends State<AuthGate> {
     try {
       if (!await ConnectivityService().isOnline()) return;
       _syncingStudentId = profile.id;
+      // Also flush progress queued before the session finished restoring.
+      // Connectivity events can arrive before authentication is ready.
+      await PendingProgress.instance.flush(Supabase.instance.client);
       final sync = SyncService();
       await sync.syncPendingAssignments(profile.id);
       await sync.syncPendingSmartExercises(profile.id);
