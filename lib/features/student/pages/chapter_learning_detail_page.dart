@@ -69,11 +69,20 @@ class _ChapterLearningDetailPageState
   }) async {
     final results = await Future.wait<dynamic>([
       _service.listContent(widget.chapter.id, forceRefresh: forceRefresh),
-      _service.getCounts(widget.chapter.id, forceRefresh: forceRefresh),
-      _service.getProgress(
-        studentId: widget.profile.id,
-        chapterId: widget.chapter.id,
-      ),
+      // Counts and progress are supplementary: never let a slow progress query
+      // keep already-cached lesson content behind a loading spinner.
+      _service
+          .getCounts(widget.chapter.id, forceRefresh: forceRefresh)
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => const ChapterLearningCounts(),
+          ),
+      _service
+          .getProgress(
+            studentId: widget.profile.id,
+            chapterId: widget.chapter.id,
+          )
+          .timeout(const Duration(seconds: 2), onTimeout: () => null),
     ]);
     // TD and AI quiz requests now live on the subject-level exercises page;
     // do not delay chapter content while fetching them.
