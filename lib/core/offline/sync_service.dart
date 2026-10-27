@@ -59,8 +59,8 @@ class SyncService {
     }
   }
 
-  /// Reprend les téléchargements de médias de chapitres manquants sans
-  /// refaire toute la synchronisation des cours.
+  /// Rafraîchit les métadonnées hors ligne des chapitres sans télécharger
+  /// les pièces jointes multimédias avant que l'utilisateur ne les ouvre.
   Future<void> retryChapterMediaPrefetch(String studentId) async {
     final cachedCourses = await _offline.getCoursesForStudent(studentId);
     await _prefetchChapterLearning(studentId, cachedCourses);
@@ -131,7 +131,8 @@ class SyncService {
             // Keep the chapter available even if one quiz question set fails.
           }
         }));
-        await chapters.prefetchChapterMedia(chapterId);
+        // Les listes de médias et le contenu textuel sont mis en cache, mais
+        // les fichiers eux-mêmes restent à la demande jusqu'au premier clic.
       } catch (_) {
         // Keep each successfully cached chapter available if another fails.
       }
