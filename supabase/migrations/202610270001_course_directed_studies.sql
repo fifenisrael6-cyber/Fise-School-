@@ -100,7 +100,7 @@ $$;
 
 drop trigger if exists directed_studies_expand_compatible_classes on public.directed_studies;
 create trigger directed_studies_expand_compatible_classes
-before insert or update of status, target_class_ids, source_class_id, subject_id
+before insert or update of status, requested_class_ids, source_class_id, subject_id
 on public.directed_studies
 for each row execute function public.expand_directed_study_compatible_classes();
 
