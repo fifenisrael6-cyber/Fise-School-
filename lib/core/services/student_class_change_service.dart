@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/user_profile.dart';
 import '../offline/course_offline_service.dart';
+import '../offline/json_cache.dart';
 import '../offline/offline_repository.dart';
 import 'profile_service.dart';
 
@@ -12,24 +13,35 @@ class StudentClassChangeService {
   final SupabaseClient _client;
   final ProfileService _profiles = ProfileService();
 
-  /// Toutes les salles compatibles (recommandées en premier). Si la nouvelle
-  /// fonction n'est pas encore déployée, on retombe sur le niveau suivant.
+  /// Toutes les salles compatibles (recommandées en premier).
+  /// Le cache est propre à chaque compte et permet d'ouvrir l'écran sans attendre
+  /// le réseau après une première consultation.
   Future<List<Map<String, dynamic>>> listNextClasses() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw const AuthException('No active user session.');
+    }
+
+    return JsonCache.instance.cachedRead<List<Map<String, dynamic>>>(
+      key: 'student_available_classes_$userId',
+      fetch: _fetchAvailableClasses,
+      decode: (raw) => List<Map<String, dynamic>>.from(
+        (raw as List).map((row) => Map<String, dynamic>.from(row as Map)),
+      ),
+    );
+  }
+
+  Future<Object?> _fetchAvailableClasses() async {
     try {
-      final response = await _client.rpc('list_student_available_classes');
-      return List<Map<String, dynamic>>.from(
-        (response as List).map((e) => Map<String, dynamic>.from(e as Map)),
-      );
+      return await _client.rpc('list_student_available_classes') as Object?;
     } on PostgrestException catch (error) {
       if (error.code != 'PGRST202' && error.code != '42883') rethrow;
       final response = await _client.rpc('list_student_next_classes');
-      return List<Map<String, dynamic>>.from(
-        (response as List).map((e) => <String, dynamic>{
-              ...Map<String, dynamic>.from(e as Map),
-              'relation': 'next',
-              'recommended': true,
-            }),
-      );
+      return (response as List).map((row) => <String, dynamic>{
+        ...Map<String, dynamic>.from(row as Map),
+        'relation': 'next',
+        'recommended': true,
+      }).toList(growable: false);
     }
   }
 
