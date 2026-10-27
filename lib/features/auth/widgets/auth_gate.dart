@@ -261,6 +261,7 @@ class _AuthGateState extends State<AuthGate> {
       await sync.syncPendingAssignments(profile.id);
       await sync.syncPendingSmartExercises(profile.id);
       if (_syncedStudentId == profile.id) {
+        await sync.retryChapterMediaPrefetch(profile.id);
         return;
       }
       await sync.syncStudentCourses(profile.id);
