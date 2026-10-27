@@ -5,6 +5,7 @@ import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import 'teacher_courses_page.dart';
+import 'publish_directed_study_page.dart';
 import 'teacher_qcm_hub_page.dart';
 import 'teacher_evaluations_page.dart';
 import 'teacher_timetable_page.dart';
@@ -59,6 +60,7 @@ class _TeacherHome extends StatelessWidget {
         Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.school_rounded, color: Color(0xFF166534)), const SizedBox(width: 10), Text(fr ? 'Mes salles' : 'My classrooms', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))]), const SizedBox(height: 8), Text(fr ? 'Choisissez une salle pour publier vos contenus, échanger avec les élèves et organiser les évaluations.' : 'Choose a classroom to publish content, message students and organize evaluations.'), const SizedBox(height: 12),]))),
         const SizedBox(height: 12),
         _TeacherAction(icon: Icons.menu_book_rounded, title: fr ? 'Cours et contenus' : 'Courses and content', subtitle: fr ? 'Publier un cours (PDF, photo, images) dans vos classes.' : 'Publish a course (PDF, photo, images) in your classes.', onTap: onCourses),
+        _TeacherAction(icon: Icons.assignment_outlined, title: fr ? 'Publier un travail dirigé' : 'Publish a directed study', subtitle: fr ? 'Publier un PDF par cours et le diffuser aux salles compatibles.' : 'Publish a course PDF and distribute it to compatible classrooms.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PublishDirectedStudyPage(locale: locale, profile: profile)))),
         _TeacherAction(icon: Icons.history_edu_rounded, title: fr ? 'Annales d’examens' : 'Past exam papers', subtitle: fr ? 'Consulter et ouvrir les sujets et corrigés publiés.' : 'View and open published exam papers and corrections.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PastPapersPage(locale: locale)))),
         _TeacherAction(icon: Icons.quiz_rounded, title: fr ? 'QCM manuels' : 'Manual quizzes', subtitle: fr ? 'Créer vos propres questions, publier les QCM et consulter les résultats.' : 'Create your own questions, publish quizzes and review results.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherQcmHubPage(locale: locale, profile: profile)))),
         _TeacherAction(icon: Icons.fact_check_rounded, title: fr ? 'Évaluations' : 'Evaluations', subtitle: fr ? 'Choisir la salle, la matière, les heures, publier les épreuves et corriger les copies.' : 'Choose classrooms, subject and exam times, publish assessments and grade submissions.', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeacherEvaluationsPage(locale: locale, profile: profile)))),
