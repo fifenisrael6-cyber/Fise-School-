@@ -736,7 +736,9 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
 
   Future<void> _open() async {
     try {
-      final rawMediaSource = (widget.item.storagePath ?? widget.item.externalUrl ?? '').toLowerCase();
+      final rawMediaSource = ((widget.item.storagePath?.trim().isNotEmpty == true)
+          ? widget.item.storagePath!
+          : widget.item.externalUrl ?? '').toLowerCase();
       final isEmbeddedVideo = rawMediaSource.contains('youtube.com') ||
           rawMediaSource.contains('youtu.be') ||
           rawMediaSource.contains('vimeo.com');
