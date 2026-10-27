@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/services/pedagogy_service.dart';
 import '../../core/services/assignment_service.dart';
+import '../../core/services/chapter_learning_service.dart';
 import '../../models/pedagogy.dart';
 import 'offline_repository.dart';
 import 'app_database.dart';
@@ -42,6 +43,7 @@ class SyncService {
       userId: studentId,
       courses: courses,
     ));
+    unawaited(_prefetchChapterLearning(courses));
 
     await syncPendingAssignments(studentId);
     await syncPendingSmartExercises(studentId);
@@ -52,6 +54,28 @@ class SyncService {
         await _offline.saveLessons(lessons);
       } catch (_) {
         // Keep the rest of the offline cache usable if one course fails.
+      }
+    }
+  }
+
+  Future<void> _prefetchChapterLearning(List<Course> courses) async {
+    final chapterIds = courses
+        .map((course) => course.chapterId)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (chapterIds.isEmpty) return;
+    final chapters = ChapterLearningService(client: _client);
+    for (final chapterId in chapterIds) {
+      try {
+        await Future.wait<dynamic>([
+          chapters.listContent(chapterId),
+          chapters.listExercises(chapterId),
+          chapters.listQuizzes(chapterId),
+          chapters.getCounts(chapterId),
+        ]);
+      } catch (_) {
+        // Keep each successfully cached chapter available if another fails.
       }
     }
   }
