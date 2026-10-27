@@ -12,7 +12,6 @@ import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
-import 'course_directed_studies_page.dart';
 import 'lesson_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
@@ -270,7 +269,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: [
                   _buildCourseHeader(isEnglish),
                   const SizedBox(height: 12),
-                  _buildDirectedStudiesTile(isEnglish),
                   if (courseContent != null && courseContent.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildCourseContentCard(courseContent, isEnglish),
@@ -299,7 +297,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: [
                   _buildCourseHeader(isEnglish),
                   const SizedBox(height: 12),
-                  _buildDirectedStudiesTile(isEnglish),
                   const SizedBox(height: 16),
                   const Icon(Icons.error_outline_rounded, size: 56, color: Colors.redAccent),
                   const SizedBox(height: 12),
@@ -633,43 +630,6 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               ],
             );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDirectedStudiesTile(bool isEnglish) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
-      ),
-      child: ListTile(
-        leading: const CircleAvatar(
-          backgroundColor: Color(0xFFE4F2E9),
-          child: Icon(Icons.assignment_outlined, color: Color(0xFF166534)),
-        ),
-        title: Text(
-          isEnglish ? 'Directed studies (TD)' : 'Travaux dirigés (TD)',
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Text(
-          isEnglish
-              ? 'Open the exercises published for this course'
-              : 'Ouvrir les exercices publiés pour ce cours',
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => CourseDirectedStudiesPage(
-              locale: widget.locale,
-              profile: widget.profile,
-              subjectId: widget.course.subjectId,
-              course: widget.course,
-            ),
-          ),
         ),
       ),
     );
