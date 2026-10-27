@@ -17,20 +17,70 @@ class EvaluationService {
   static const _papers = 'evaluation-papers';
   static const _photos = 'evaluation-photos';
 
-  /// Message lisible pour l'utilisateur à partir d'une erreur Supabase.
+  /// Convertit les erreurs techniques en messages compréhensibles.
+  /// Le détail brut reste dans les journaux de développement, pas dans l'interface.
   static String friendlyError(Object error, {bool fr = true}) {
-    var message = error is PostgrestException
-        ? error.message
+    final raw = error is PostgrestException
+        ? '${error.code} ${error.message} ${error.details ?? ''} ${error.hint ?? ''}'
         : error is StorageException
             ? error.message
             : error.toString();
-    if (message.contains('DEADLINE_PASSED')) {
+    final message = raw.toLowerCase();
+
+    if (raw.contains('DEADLINE_PASSED') || message.contains('deadline_passed')) {
       return fr
           ? 'La date limite est dépassée : la remise n\'est plus acceptée.'
           : 'The deadline has passed: submissions are closed.';
     }
-    message = message.replaceFirst('Exception: ', '');
-    return message;
+    if (error is AuthException ||
+        message.contains('jwt expired') ||
+        message.contains('session expired') ||
+        message.contains('no active user session')) {
+      return fr
+          ? 'Votre session a expiré. Reconnectez-vous puis réessayez.'
+          : 'Your session has expired. Sign in again and retry.';
+    }
+    if (message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('network is unreachable') ||
+        message.contains('connection refused') ||
+        message.contains('timed out') ||
+        message.contains('timeout')) {
+      return fr
+          ? 'Connexion impossible. Vérifiez Internet puis réessayez.'
+          : 'Connection failed. Check your internet connection and try again.';
+    }
+    if (message.contains('42501') ||
+        message.contains('row-level security') ||
+        message.contains('permission denied') ||
+        message.contains('not authorized') ||
+        message.contains('unauthorized')) {
+      return fr
+          ? 'Vous n’avez pas l’autorisation d’effectuer cette action.'
+          : 'You are not allowed to perform this action.';
+    }
+    if (message.contains('pgrst202') ||
+        message.contains('42883') ||
+        message.contains('function') && message.contains('does not exist')) {
+      return fr
+          ? 'Ce service est temporairement indisponible. Réessayez plus tard.'
+          : 'This service is temporarily unavailable. Please try again later.';
+    }
+    if (message.contains('23505') || message.contains('duplicate key')) {
+      return fr
+          ? 'Cette opération a déjà été enregistrée.'
+          : 'This operation has already been recorded.';
+    }
+    if (message.contains('bucket not found') ||
+        message.contains('object not found') ||
+        message.contains('file not found')) {
+      return fr
+          ? 'Le document demandé est introuvable ou n’est plus disponible.'
+          : 'The requested document could not be found or is no longer available.';
+    }
+    return fr
+        ? 'L’opération n’a pas abouti. Réessayez dans quelques instants.'
+        : 'The operation could not be completed. Please try again shortly.';
   }
 
   // ---------------------------------------------------------------- Élève --
