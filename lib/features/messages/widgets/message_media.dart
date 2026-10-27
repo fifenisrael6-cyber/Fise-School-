@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
@@ -80,6 +81,7 @@ class MessageAttachmentView extends StatelessWidget {
     required this.remotePath,
     required this.resolveUrl,
     this.cacheScope,
+    this.galleryItems = const [],
     this.french = true,
   });
 
@@ -89,6 +91,7 @@ class MessageAttachmentView extends StatelessWidget {
   final String? remotePath;
   final Future<String?> Function(String? path) resolveUrl;
   final String? cacheScope;
+  final List<MessageMediaGalleryItem> galleryItems;
   final bool french;
 
   String? get _cacheKey => remotePath == null
@@ -178,28 +181,52 @@ class MessageAttachmentView extends StatelessWidget {
             : Image.network(url, width: 220, height: 180, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox(width: 220, height: 180, child: Icon(Icons.broken_image_outlined))));
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaImageViewerPage(
+      onTap: () {
+        final current = MessageMediaGalleryItem(
+          name: name ?? '',
+          type: type,
           localPath: effectiveLocal,
-          url: url,
-          remotePath: _cacheKey,
-          title: name ?? '',
-        ),
-      )),
+          remotePath: remotePath,
+          cacheScope: cacheScope,
+        );
+        final items = List<MessageMediaGalleryItem>.from(galleryItems);
+        var index = items.indexWhere((item) =>
+            item.cacheKey == current.cacheKey &&
+            (current.cacheKey != null || item.localPath == current.localPath));
+        if (index < 0) {
+          items.add(current);
+          index = items.length - 1;
+        }
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => MediaGalleryViewerPage(items: items, initialIndex: index, resolveUrl: resolveUrl),
+        ));
+      },
       child: ClipRRect(borderRadius: BorderRadius.circular(10), child: image),
     );
   }
 
   Widget _videoCard(BuildContext context, String? url, String? effectiveLocal) {
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => MediaVideoViewerPage(
+      onTap: () {
+        final current = MessageMediaGalleryItem(
+          name: name ?? '',
+          type: type,
           localPath: effectiveLocal,
-          url: url,
-          remotePath: _cacheKey,
-          title: name ?? '',
-        ),
-      )),
+          remotePath: remotePath,
+          cacheScope: cacheScope,
+        );
+        final items = List<MessageMediaGalleryItem>.from(galleryItems);
+        var index = items.indexWhere((item) =>
+            item.cacheKey == current.cacheKey &&
+            (current.cacheKey != null || item.localPath == current.localPath));
+        if (index < 0) {
+          items.add(current);
+          index = items.length - 1;
+        }
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => MediaGalleryViewerPage(items: items, initialIndex: index, resolveUrl: resolveUrl),
+        ));
+      },
       child: Container(
         width: 220,
         height: 140,
@@ -802,4 +829,154 @@ class _MediaDocumentViewerPageState extends State<MediaDocumentViewerPage> {
                             ),
                           ),
       );
+}
+
+
+class MessageMediaGalleryItem {
+  const MessageMediaGalleryItem({required this.name, required this.type, required this.localPath, required this.remotePath, this.cacheScope});
+  final String name;
+  final String? type;
+  final String? localPath;
+  final String? remotePath;
+  final String? cacheScope;
+  String? get cacheKey => remotePath == null ? null : (cacheScope == null ? remotePath : '$cacheScope::$remotePath');
+  bool get isVideo => (type ?? '').toLowerCase().startsWith('video/') || name.toLowerCase().endsWith('.mp4');
+}
+
+class MediaGalleryViewerPage extends StatefulWidget {
+  const MediaGalleryViewerPage({super.key, required this.items, required this.initialIndex, required this.resolveUrl});
+  final List<MessageMediaGalleryItem> items;
+  final int initialIndex;
+  final Future<String?> Function(String? path) resolveUrl;
+  @override
+  State<MediaGalleryViewerPage> createState() => _MediaGalleryViewerPageState();
+}
+
+class _MediaGalleryViewerPageState extends State<MediaGalleryViewerPage> {
+  late final PageController _pages = PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.items[_index];
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(fit: StackFit.expand, children: [
+        PageView.builder(
+          controller: _pages,
+          itemCount: widget.items.length,
+          onPageChanged: (value) => setState(() => _index = value),
+          itemBuilder: (_, index) => _GalleryMediaPage(
+            key: ValueKey('${widget.items[index].cacheKey ?? widget.items[index].localPath ?? widget.items[index].name}-$index'),
+            item: widget.items[index],
+            resolveUrl: widget.resolveUrl,
+          ),
+        ),
+        Positioned(left: 0, right: 0, top: 0, child: SafeArea(
+          bottom: false,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x99000000), Color(0x00000000)])),
+            child: Row(children: [
+              IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+              Expanded(child: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+              Text('${_index + 1}/${widget.items.length}', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(width: 12),
+            ]),
+          ),
+        )),
+      ]),
+    );
+  }
+}
+
+class _GalleryMediaPage extends StatefulWidget {
+  const _GalleryMediaPage({super.key, required this.item, required this.resolveUrl});
+  final MessageMediaGalleryItem item;
+  final Future<String?> Function(String? path) resolveUrl;
+  @override
+  State<_GalleryMediaPage> createState() => _GalleryMediaPageState();
+}
+
+class _GalleryMediaPageState extends State<_GalleryMediaPage> {
+  String? _local;
+  String? _url;
+  VideoPlayerController? _video;
+  bool _loading = true;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      var local = widget.item.localPath;
+      if (local == null || !await File(local).exists()) {
+        local = await _MessageMediaCache.find(remotePath: widget.item.cacheKey, fileName: widget.item.name);
+      }
+      final url = local == null ? await widget.resolveUrl(widget.item.remotePath) : null;
+      if (local == null && url != null) {
+        unawaited(_MessageMediaCache.download(remotePath: widget.item.cacheKey, fileName: widget.item.name, url: url).then<void>((_) {}));
+      }
+      if (widget.item.isVideo) {
+        final controller = local != null && await File(local).exists()
+            ? VideoPlayerController.file(File(local))
+            : (url == null ? null : VideoPlayerController.networkUrl(Uri.parse(url)));
+        if (controller == null) throw StateError('media-source-unavailable');
+        _video = controller;
+        await controller.initialize();
+        if (!mounted) return;
+        await controller.play();
+      }
+      if (mounted) setState(() { _local = local; _url = url; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _failed = true; _loading = false; });
+    }
+  }
+
+  @override
+  void dispose() {
+    _video?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator(color: Colors.white));
+    if (_failed) return const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white, size: 58));
+    if (widget.item.isVideo) {
+      final controller = _video;
+      if (controller == null || !controller.value.isInitialized) return const Center(child: CircularProgressIndicator(color: Colors.white));
+      return GestureDetector(
+        onTap: () => controller.value.isPlaying ? controller.pause() : controller.play(),
+        child: Center(child: Stack(alignment: Alignment.center, children: [
+          AspectRatio(aspectRatio: controller.value.aspectRatio, child: VideoPlayer(controller)),
+          ValueListenableBuilder<VideoPlayerValue>(valueListenable: controller, builder: (_, value, __) => value.isPlaying ? const SizedBox.shrink() : const Icon(Icons.play_circle_fill_rounded, size: 72, color: Colors.white)),
+          Positioned(left: 12, right: 12, bottom: 28, child: VideoProgressIndicator(controller, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Color(0xFF22C55E)))),
+        ])),
+      );
+    }
+    final local = _local;
+    final url = _url;
+    final image = local != null && File(local).existsSync()
+        ? Image.file(File(local), fit: BoxFit.contain, width: double.infinity, height: double.infinity)
+        : (url == null ? const Icon(Icons.broken_image_outlined, color: Colors.white, size: 58) : Image.network(url, fit: BoxFit.contain, width: double.infinity, height: double.infinity, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white, size: 58)));
+    return Center(child: InteractiveViewer(minScale: 0.8, maxScale: 5, child: SizedBox.expand(child: Center(child: image))));
+  }
 }
