@@ -109,18 +109,36 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
     try {
       final cached = await _service.getCachedContacts();
       if (cached.isNotEmpty) {
+        // Keep the saved conversation list visible immediately; hydrate avatar
+        // files in the background so they remain available on later offline opens.
+        unawaited(_prefetchContactAvatars(cached));
         unawaited(_refreshContactsInBackground());
         return cached;
       }
     } catch (_) {
       // Continue with the remote list if the local cache is unavailable.
     }
-    return _service.listContacts();
+    final contacts = await _service.listContacts();
+    unawaited(_prefetchContactAvatars(contacts));
+    return contacts;
+  }
+
+  Future<void> _prefetchContactAvatars(List<MessageContact> contacts) async {
+    await Future.wait(contacts.map((contact) async {
+      final path = contact.avatarPath;
+      if (path == null || path.isEmpty) return;
+      try {
+        await _photoService.cachedAvatarFile(path);
+      } catch (_) {
+        // Avatar loading must never delay or block access to a conversation.
+      }
+    }));
   }
 
   Future<void> _refreshContactsInBackground() async {
     try {
       final contacts = await _service.listContacts();
+      unawaited(_prefetchContactAvatars(contacts));
       if (mounted) setState(() => _contactsFuture = Future.value(contacts));
     } catch (_) {
       // Keep the saved list visible when offline.
