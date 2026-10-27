@@ -68,6 +68,7 @@ class ChapterExerciseCorrection {
 /// appliqués par les politiques RLS Supabase, pas seulement par l'interface.
 class ChapterLearningService {
   static final Map<String, DateTime> _lastCacheRefresh = <String, DateTime>{};
+  static final Map<String, Future<void>> _mediaPrefetches = <String, Future<void>>{};
 
   final SupabaseClient _client;
   final AppDatabase _database;
@@ -330,7 +331,18 @@ class ChapterLearningService {
   /// Précharge sur disque les fichiers du chapitre pour les rendre
   /// accessibles hors connexion. Les chemins correspondent à ceux utilisés
   /// par ChapterContentViewerPage.
-  Future<void> prefetchChapterMedia(String chapterId) async {
+  Future<void> prefetchChapterMedia(String chapterId) {
+    final key = '$_cacheUserId:$chapterId';
+    return _mediaPrefetches.putIfAbsent(key, () async {
+      try {
+        await _prefetchChapterMediaImpl(chapterId);
+      } finally {
+        _mediaPrefetches.remove(key);
+      }
+    });
+  }
+
+  Future<void> _prefetchChapterMediaImpl(String chapterId) async {
     final userId = _cacheUserId;
     final safeUser = userId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     final directory = await getApplicationSupportDirectory();
