@@ -264,13 +264,17 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   }
 
   Future<void> _select(MessageContact contact) async {
+    final changedContact = _selected?.id != contact.id;
     setState(() {
-      if (_selected?.id != contact.id) {
+      if (changedContact) {
         _replyTo = null;
         _selectedMessageIds.clear();
+        _messages = const <PrivateMessage>[];
       }
       _selected = contact;
-      _loadingMessages = true;
+      // Keep the conversation surface open while its local snapshot is read.
+      // Supabase is refreshed separately and never blocks message display.
+      _loadingMessages = false;
     });
 
     // Show the local Drift snapshot before waiting for Supabase.
