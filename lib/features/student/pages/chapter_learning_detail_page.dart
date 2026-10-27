@@ -675,6 +675,7 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   Future<String?> _url() async {
     final path = widget.item.storagePath;
     if (path != null && path.isNotEmpty) {
+      if (path.startsWith('http://') || path.startsWith('https://')) return path;
       const legacyPrefix = 'legacy-course-resource:';
       if (path.startsWith(legacyPrefix)) {
         final legacyPath = path.substring(legacyPrefix.length);
@@ -731,12 +732,16 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
 
   Future<void> _open() async {
     try {
+      final rawMediaSource = (widget.item.storagePath ?? widget.item.externalUrl ?? '').toLowerCase();
+      final isEmbeddedVideo = rawMediaSource.contains('youtube.com') ||
+          rawMediaSource.contains('youtu.be') ||
+          rawMediaSource.contains('vimeo.com');
       final cacheable = widget.item.folderKey == 'pdf' ||
           widget.item.folderKey == 'images' ||
           widget.item.folderKey == 'audio' ||
           (widget.item.folderKey == 'video' &&
-              (widget.item.storagePath ?? '').isNotEmpty &&
-              !(widget.item.storagePath ?? '').startsWith('http'));
+              rawMediaSource.isNotEmpty &&
+              !isEmbeddedVideo);
       if (cacheable) {
         final local = await _localMediaFile();
         if (await local.exists() && await local.length() > 0) {
@@ -796,10 +801,7 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
           } else {
             _video = VideoPlayerController.networkUrl(uri);
             await _video!.initialize();
-            if ((widget.item.storagePath ?? '').isNotEmpty &&
-                !(widget.item.storagePath ?? '').startsWith('http')) {
-              unawaited(_cacheVideoInBackground(url));
-            }
+            if (cacheable) unawaited(_cacheVideoInBackground(url));
           }
         }
       }
