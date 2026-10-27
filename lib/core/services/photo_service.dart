@@ -33,47 +33,6 @@ class PhotoService {
   /// sans attendre un redémarrage de l'application.
   static final ValueNotifier<({String userId, String? path})?> ownAvatar =
       ValueNotifier(null);
-  static final Map<String, Future<String?>> _avatarLoads = {};
-
-  Future<File> _avatarCacheFile(String path) async {
-    final directory = await getApplicationSupportDirectory();
-    var hash = 0x811c9dc5;
-    for (final unit in path.codeUnits) {
-      hash ^= unit;
-      hash = (hash * 0x01000193) & 0xffffffff;
-    }
-    return File('${directory.path}/profile_avatar_cache/${hash.toRadixString(16)}.jpg');
-  }
-
-  Future<String?> cachedAvatarPath(String? path) {
-    if (path == null || path.isEmpty) return Future.value(null);
-    return _avatarLoads.putIfAbsent(path, () async {
-      try {
-        final file = await _avatarCacheFile(path);
-        if (await file.exists() && await file.length() > 0) return file.path;
-        final url = await signedUrl(path);
-        if (url == null || url.isEmpty) return null;
-        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
-        if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) {
-          return null;
-        }
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(response.bodyBytes, flush: true);
-        return file.path;
-      } catch (_) {
-        _avatarLoads.remove(path);
-        return null;
-      }
-    });
-  }
-
-  Future<void> _cacheAvatarBytes(String path, List<int> bytes) async {
-    final file = await _avatarCacheFile(path);
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(bytes, flush: true);
-    _avatarLoads[path] = Future.value(file.path);
-  }
-
   Future<XFile?> takePhoto({double? maxWidth}) {
     return _picker.pickImage(
       source: ImageSource.camera,
