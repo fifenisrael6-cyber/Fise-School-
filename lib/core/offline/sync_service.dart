@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -34,6 +35,13 @@ class SyncService {
       }
     }
     await _offline.saveCourses(courses);
+
+    // Dès la synchronisation des cours, lancer le préchargement local des
+    // ressources de tous les cours publiés. L'interface n'attend pas les fichiers.
+    unawaited(CourseOfflineService.shared.enqueueSubject(
+      userId: studentId,
+      courses: courses,
+    ));
 
     await syncPendingAssignments(studentId);
     await syncPendingSmartExercises(studentId);
