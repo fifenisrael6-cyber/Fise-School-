@@ -49,6 +49,44 @@ class _ProgressPageState extends State<ProgressPage> {
       _error = null;
     });
 
+    // Restore the last complete snapshot before any Supabase request.
+    try {
+      final cacheIdsKey = 'student_active_class_ids_' + widget.profile.id;
+      final cachedIds = await JsonCache.instance.read(cacheIdsKey);
+      final ids = cachedIds is List
+          ? cachedIds.map((v) => v.toString()).where((v) => v.isNotEmpty).toList()
+          : <String>[];
+      final cachedClassId = ids.isEmpty ? null : ids.first;
+      final snapshot = cachedClassId == null
+          ? null
+          : await JsonCache.instance.read('student_progress_' + widget.profile.id + '_' + cachedClassId);
+      if (snapshot is Map && mounted) {
+        final courses = (snapshot['courses'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) => _CourseProgressData(
+                  id: row['id']?.toString() ?? '',
+                  titleFr: row['title_fr']?.toString() ?? '',
+                  titleEn: row['title_en']?.toString() ?? '',
+                  lessonCount: (row['lesson_count'] as num?)?.toInt() ?? 0,
+                  completedLessons: (row['completed_lessons'] as num?)?.toInt() ?? 0,
+                  inProgressLessons: (row['in_progress_lessons'] as num?)?.toInt() ?? 0,
+                  progressPercent: (row['progress_percent'] as num?)?.toDouble() ?? 0,
+                ))
+            .toList(growable: false);
+        setState(() {
+          _totalLessons = (snapshot['total_lessons'] as num?)?.toInt() ?? 0;
+          _completedLessons = (snapshot['completed_lessons'] as num?)?.toInt() ?? 0;
+          _inProgressLessons = (snapshot['in_progress_lessons'] as num?)?.toInt() ?? 0;
+          _overallProgress = (snapshot['overall_progress'] as num?)?.toDouble() ?? 0;
+          _courses = courses;
+          _loading = false;
+          _error = null;
+        });
+      }
+    } catch (_) {
+      // The network path below can still populate the first snapshot.
+    }
+
     String? activeClassId;
     final cacheIdsKey = 'student_active_class_ids_' + widget.profile.id;
     try {
