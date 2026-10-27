@@ -256,6 +256,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _syncStudentOfflineCache(UserProfile profile) async {
+    if (profile.role.toLowerCase() != 'student') return;
     if (_syncingStudentId == profile.id) return;
     try {
       if (!await ConnectivityService().isOnline()) return;
