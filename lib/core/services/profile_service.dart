@@ -43,6 +43,8 @@ class ProfileService {
     }
   }
 
+  Future<UserProfile?> getCachedProfile(String userId) => _readCachedProfile(userId);
+
   Future<UserProfile?> _readCachedProfile(String userId) async {
     final raw = await JsonCache.instance.read(_cacheKey(userId));
     if (raw is! Map) return null;
