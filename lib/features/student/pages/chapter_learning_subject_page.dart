@@ -4,6 +4,7 @@ import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'chapter_learning_detail_page.dart';
+import 'chapter_td_qcm_page.dart';
 import 'subject_channel_page.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
@@ -231,6 +232,41 @@ class _ChapterLearningSubjectPageState
                   ),
                 ),
                 const SizedBox(height: 10),
+                Card(
+                  elevation: 0,
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.14)),
+                  ),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFE4F2E9),
+                      child: Icon(Icons.assignment_turned_in_rounded, color: Color(0xFF166534)),
+                    ),
+                    title: Text(
+                      _en ? 'All exercises & AI QCM' : 'Tous les TD et QCM IA',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text(
+                      _en
+                          ? 'Exercises from every chapter, with a chapter-specific AI quiz.'
+                          : 'Les TD de tous les chapitres et un QCM IA adapté à chaque chapitre.',
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChapterTdQcmPage(
+                          locale: widget.locale,
+                          profile: widget.profile,
+                          subject: widget.subject,
+                          chapters: chapters,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 for (final group in groups) ...[
                   if (groups.length > 1)
                     Padding(
