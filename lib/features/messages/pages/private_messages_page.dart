@@ -106,21 +106,18 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
 
 
   Future<List<MessageContact>> _loadContactsInstant() async {
+    // Always let the screen render from Drift first, even when the saved list
+    // is empty. A first launch must not keep the whole page spinning while
+    // Supabase is slow; the server list is hydrated after the first frame.
     try {
       final cached = await _service.getCachedContacts();
-      if (cached.isNotEmpty) {
-        // Keep the saved conversation list visible immediately; hydrate avatar
-        // files in the background so they remain available on later offline opens.
-        unawaited(_prefetchContactAvatars(cached));
-        unawaited(_refreshContactsInBackground());
-        return cached;
-      }
+      unawaited(_prefetchContactAvatars(cached));
+      unawaited(_refreshContactsInBackground());
+      return cached;
     } catch (_) {
-      // Continue with the remote list if the local cache is unavailable.
+      unawaited(_refreshContactsInBackground());
+      return const <MessageContact>[];
     }
-    final contacts = await _service.listContacts();
-    unawaited(_prefetchContactAvatars(contacts));
-    return contacts;
   }
 
   Future<void> _prefetchContactAvatars(List<MessageContact> contacts) async {
@@ -637,9 +634,8 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
       body: FutureBuilder<List<MessageContact>>(
         future: _contactsFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          // During first-time cache reads, render the contact layout rather
+          // than blocking this page with a full-screen spinner.
           if (snapshot.hasError) {
             return Center(child: Text('${snapshot.error}'));
           }
