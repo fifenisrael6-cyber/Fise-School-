@@ -59,7 +59,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         remotePath: message.attachmentPath,
         cacheScope: widget.profile.id,
       )).toList(growable: false);
-  bool _loading = true;
+  bool _loading = false;
   String? _loadError;
   int _loadGeneration = 0;
   bool _sending = false;
