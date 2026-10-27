@@ -121,7 +121,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         _loading = false;
       });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) setState(() { _error = EvaluationService.friendlyError(e, fr: _fr); _loading = false; });
     }
   }
 
@@ -211,7 +211,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
       ));
     } catch (e) {
-      _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + e.toString());
+      _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + EvaluationService.friendlyError(e, fr: _fr));
     } finally {
       if (mounted) setState(() => _openingId = null);
     }
@@ -248,7 +248,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
       ));
     } catch (e) {
-      _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + e.toString());
+      _show((_fr ? 'Sujet inaccessible : ' : 'Paper unavailable: ') + EvaluationService.friendlyError(e, fr: _fr));
     } finally {
       if (mounted) setState(() => _openingId = null);
     }
@@ -276,7 +276,7 @@ class _StudentEvaluationsPageState extends State<StudentEvaluationsPage> {
         builder: (_) => MediaPdfViewerPage(localPath: localPath, title: fileName),
       ));
     } catch (e) {
-      _show((_fr ? 'Correction PDF indisponible : ' : 'Correction PDF unavailable: ') + e.toString());
+      _show((_fr ? 'Correction PDF indisponible : ' : 'Correction PDF unavailable: ') + EvaluationService.friendlyError(e, fr: _fr));
     } finally {
       if (mounted) setState(() => _openingId = null);
     }
