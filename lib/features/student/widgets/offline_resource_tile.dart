@@ -146,7 +146,19 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: const Color(0xFFF1F5F2), borderRadius: BorderRadius.circular(10)),
       child: Row(children: [
-        if (resource.resourceType == 'image' && _signedUrl != null)
+        if (resource.resourceType == 'image' && done)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(_local!.localPath),
+              width: 58,
+              height: 58,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  Icon(icon, color: const Color(0xFF166534), size: 28),
+            ),
+          )
+        else if (resource.resourceType == 'image' && _signedUrl != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: Image.network(
