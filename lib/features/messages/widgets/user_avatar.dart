@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/photo_service.dart';
 import '../../../models/user_profile.dart';
 
-/// Photo de profil ronde (comme WhatsApp) ; initiales si aucune photo ou hors ligne.
+/// Avatar persistant : la copie locale est prioritaire pour un affichage rapide
+/// et reste disponible hors connexion après le premier chargement.
 class UserAvatar extends StatelessWidget {
   const UserAvatar({super.key, required this.path, required this.name, this.radius = 18});
 
@@ -12,15 +15,12 @@ class UserAvatar extends StatelessWidget {
   final double radius;
 
   static final PhotoService _photos = PhotoService();
-  static final Map<String, Future<String?>> _urls = {};
+  static final Map<String, Future<String?>> _avatarFiles = {};
 
-  Future<String?> _url(String p) => _urls.putIfAbsent(p, () async {
-        try {
-          return await _photos.signedUrl(p);
-        } catch (_) {
-          _urls.remove(p);
-          return null;
-        }
+  Future<String?> _localAvatar(String value) => _avatarFiles.putIfAbsent(value, () async {
+        final result = await _photos.cachedAvatarFile(value);
+        if (result == null) _avatarFiles.remove(value);
+        return result;
       });
 
   Widget _initials() {
@@ -37,17 +37,17 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = path;
-    if (p == null || p.isEmpty) return _initials();
+    final avatarPath = path;
+    if (avatarPath == null || avatarPath.isEmpty) return _initials();
     return FutureBuilder<String?>(
-      future: _url(p),
+      future: _localAvatar(avatarPath),
       builder: (context, snapshot) {
-        final url = snapshot.data;
-        if (url == null) return _initials();
+        final local = snapshot.data;
+        if (local == null || !File(local).existsSync()) return _initials();
         return CircleAvatar(
           radius: radius,
           backgroundColor: const Color(0xFFDCFCE7),
-          backgroundImage: NetworkImage(url),
+          backgroundImage: FileImage(File(local)),
           onBackgroundImageError: (_, __) {},
         );
       },
