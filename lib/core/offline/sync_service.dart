@@ -43,7 +43,7 @@ class SyncService {
       userId: studentId,
       courses: courses,
     ));
-    unawaited(_prefetchChapterLearning(courses));
+    unawaited(_prefetchChapterLearning(studentId, courses));
 
     await syncPendingAssignments(studentId);
     await syncPendingSmartExercises(studentId);
@@ -58,7 +58,7 @@ class SyncService {
     }
   }
 
-  Future<void> _prefetchChapterLearning(List<Course> courses) async {
+  Future<void> _prefetchChapterLearning(String studentId, List<Course> courses) async {
     final chapterIds = courses
         .map((course) => course.chapterId)
         .whereType<String>()
@@ -69,7 +69,7 @@ class SyncService {
     for (final subjectId in subjectIds) {
       try {
         final catalogChapters = await catalog.listStudentCatalogChapters(
-          _client.auth.currentUser?.id ?? '',
+          studentId,
           subjectId: subjectId,
         );
         chapterIds.addAll(catalogChapters.map((chapter) => chapter.id).where((id) => id.isNotEmpty));
