@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/user_profile.dart';
+import '../../../core/widgets/swipe_tabs_shell.dart';
 import '../../messages/pages/messages_hub_page.dart';
 import '../../settings/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
@@ -21,27 +22,22 @@ class TeacherMainPage extends StatefulWidget {
 }
 
 class _TeacherMainPageState extends State<TeacherMainPage> {
-  int _index = 0;
   @override Widget build(BuildContext context) {
     final fr = widget.locale.languageCode == 'fr';
-    final pages = [
-      _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => setState(() => _index = 1)),
-      TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
-      MessagesHubPage(locale: widget.locale, profile: widget.profile),
-      ProfilePage(locale: widget.locale, profile: widget.profile),
-    ];
-    return Scaffold(
-      body: IndexedStack(index: _index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (v) => setState(() => _index = v),
-        destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
-          NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
-          NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messages' : 'Messages'),
-          NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
-        ],
-      ),
+    return SwipeTabsShell(
+      initialIndex: 0,
+      pagesBuilder: (goToTab) => [
+        _TeacherHome(locale: widget.locale, profile: widget.profile, onCourses: () => goToTab(1)),
+        TeacherCoursesPage(locale: widget.locale, profile: widget.profile),
+        MessagesHubPage(locale: widget.locale, profile: widget.profile),
+        ProfilePage(locale: widget.locale, profile: widget.profile),
+      ],
+      destinations: [
+        NavigationDestination(icon: const Icon(Icons.home_outlined), selectedIcon: const Icon(Icons.home), label: fr ? 'Accueil' : 'Home'),
+        NavigationDestination(icon: const Icon(Icons.menu_book_outlined), selectedIcon: const Icon(Icons.menu_book), label: fr ? 'Cours' : 'Courses'),
+        NavigationDestination(icon: const Icon(Icons.chat_bubble_outline), selectedIcon: const Icon(Icons.chat_bubble), label: fr ? 'Messages' : 'Messages'),
+        NavigationDestination(icon: const Icon(Icons.person_outline), selectedIcon: const Icon(Icons.person), label: fr ? 'Profil' : 'Profile'),
+      ],
     );
   }
 }
