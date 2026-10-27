@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../offline/app_database.dart';
+import '../offline/connectivity_service.dart';
 
 import '../../models/chapter_learning_content.dart';
 import '../../models/pedagogy.dart';
@@ -130,11 +131,19 @@ class ChapterLearningService {
           }
           return cached;
         }
-        // Fall through to a synchronous network fetch below for empty cache.
+        // An empty cache is not authoritative while online, but do not wait
+        // for a network timeout when the device is offline. This keeps chapter
+        // navigation responsive even when no catalogue snapshot exists yet.
+        if (!await ConnectivityService().isOnline()) {
+          return const <Map<String, dynamic>>[];
+        }
 
       } catch (_) {
         // Ignore a malformed cache and rebuild it from the server.
       }
+    }
+    if (!await ConnectivityService().isOnline()) {
+      return const <Map<String, dynamic>>[];
     }
     try {
       final rows = await fetch().timeout(const Duration(seconds: 5));
