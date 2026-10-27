@@ -80,7 +80,10 @@ class CourseOfflineService {
       final rows = await _db.getDownloadedFiles(userId: userId);
       // Reprendre tous les téléchargements en attente, y compris ceux qui
       // n'ont pas encore été ouverts manuellement.
-      for (final row in rows.where((item) => item.status == 'queued')) {
+      // Ne pas reprendre les préchargements historiques jamais demandés par
+      // l'utilisateur : seuls les fichiers explicitement ouverts sont conservés
+      // dans le flux normal d'ouverture à la demande.
+      for (final row in rows.where((item) => item.status == 'queued' && item.lastOpenedAt != null)) {
         if (_queuedIds.contains(row.resourceId)) {
           continue;
         }
@@ -169,22 +172,9 @@ class CourseOfflineService {
     } catch (_) {
       // Resource downloads and course caching must continue even if one QCM fails.
     }
-    // Précharger les pièces jointes dès qu'un cours est synchronisé, afin que
-    // les prochaines ouvertures soient locales. Les vidéos volumineuses restent
-    // soumises à la limite existante dans _enqueueResource.
-    for (final resource in resources) {
-      try {
-        await _enqueueResource(userId: userId, resource: resource);
-      } catch (error) {
-        // Une ressource indisponible ne doit pas empêcher le cours de s'ouvrir.
-        _progress.add(OfflineDownloadProgress(
-          resourceId: resource.id,
-          received: 0,
-          total: resource.fileSize ?? 0,
-          status: 'failed',
-        ));
-      }
-    }
+    // Les métadonnées des ressources restent disponibles localement, mais les
+    // fichiers multimédias ne sont pas téléchargés en masse. Ils sont récupérés
+    // automatiquement à la première ouverture via openResource/openExternalFile.
 
     final remoteIds = resources.map((r) => r.id).toSet();
     for (final old in await _db.getDownloadedFiles(userId: userId, courseId: course.id)) {
@@ -193,8 +183,7 @@ class CourseOfflineService {
         await _db.deleteDownloadedFile(old.resourceId, userId);
       }
     }
-    // Les fichiers sont mis en file automatiquement ; le téléchargement se
-    // poursuit en arrière-plan avec deux tâches simultanées au maximum.
+    // Les pièces jointes ne sont téléchargées qu'à la demande d'ouverture.
   }
 
   /// Télécharge un fichier à sa première ouverture et renvoie toujours sa copie
