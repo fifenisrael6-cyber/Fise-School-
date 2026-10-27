@@ -56,7 +56,7 @@ class _PublishDirectedStudyPageState extends State<PublishDirectedStudyPage> {
     final rows = await _db
         .from('courses')
         .select()
-        .order('updated_at', ascending: false);
+        .order('created_at', ascending: false);
     return rows
         .whereType<Map>()
         .map((row) => Course.fromMap(Map<String, dynamic>.from(row)))
