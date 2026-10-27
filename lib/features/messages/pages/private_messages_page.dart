@@ -654,16 +654,21 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
             });
           final initialId = widget.initialContactId;
           if (!_initialContactHandled && initialId != null) {
-            _initialContactHandled = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              for (final contact in contacts) {
-                if (contact.id == initialId) {
-                  _select(contact);
-                  break;
-                }
+            MessageContact? initialContact;
+            for (final contact in contacts) {
+              if (contact.id == initialId) {
+                initialContact = contact;
+                break;
               }
-            });
+            }
+            // The first local snapshot may be empty. Keep the notification
+            // target pending so the background Supabase refresh can resolve it.
+            if (initialContact != null) {
+              _initialContactHandled = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _select(initialContact!);
+              });
+            }
           }
           if (contacts.isEmpty) {
             return Center(
