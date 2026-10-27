@@ -207,6 +207,9 @@ class GroupMessageService {
   }
 
   Future<List<GroupMessage>> listMessages(String groupId) async {
+    if (!await _hasNetworkConnection()) {
+      return getCachedMessages(groupId);
+    }
     // A receipt failure must not prevent the actual conversation from refreshing.
     // Previously, any failure in syncPending/delivered/read jumped straight to the
     // offline cache, leaving the screen stale while the group preview showed newer data.
