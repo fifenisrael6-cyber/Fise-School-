@@ -46,6 +46,22 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
   late Future<List<MessageContact>> _contactsFuture;
   MessageContact? _selected;
   List<PrivateMessage> _messages = const [];
+
+  List<MessageMediaGalleryItem> get _mediaGalleryItems => _messages.where((message) {
+        if (message.deletedAt != null ||
+            (message.attachmentPath == null && message.localAttachmentPath == null)) return false;
+        final type = (message.attachmentType ?? '').toLowerCase();
+        final name = (message.attachmentName ?? '').toLowerCase();
+        return type.startsWith('image/') || type.startsWith('video/') ||
+            name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') ||
+            name.endsWith('.webp') || name.endsWith('.gif') || name.endsWith('.mp4');
+      }).map((message) => MessageMediaGalleryItem(
+        name: message.attachmentName ?? 'Média',
+        type: message.attachmentType,
+        localPath: message.localAttachmentPath,
+        remotePath: message.attachmentPath,
+        cacheScope: widget.profile.id,
+      )).toList(growable: false);
   bool _loadingMessages = false;
   bool _sending = false;
   PickedAttachment? _attachment;
@@ -829,6 +845,7 @@ class _PrivateMessagesPageState extends State<PrivateMessagesPage> {
                                   cacheScope: widget.profile.id,
                                   remotePath: message.attachmentPath,
                                   resolveUrl: _service.signedAttachmentUrl,
+                                  galleryItems: _mediaGalleryItems,
                                   french: _isFrench,
                                 ),
                               const SizedBox(height: 4),
