@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../offline/app_database.dart';
@@ -321,6 +325,58 @@ class ChapterLearningService {
     return rows
         .map(ChapterLearningContentItem.fromMap)
         .toList(growable: false);
+  }
+
+  /// Précharge sur disque les fichiers du chapitre pour les rendre
+  /// accessibles hors connexion. Les chemins correspondent à ceux utilisés
+  /// par ChapterContentViewerPage.
+  Future<void> prefetchChapterMedia(String chapterId) async {
+    final userId = _cacheUserId;
+    final safeUser = userId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final directory = await getApplicationSupportDirectory();
+    final client = http.Client();
+    try {
+      final items = await listContent(chapterId);
+      for (final item in items) {
+        if (!const {'pdf', 'images', 'video', 'audio'}.contains(item.folderKey)) continue;
+        final path = (item.storagePath ?? '').trim();
+        if (path.isEmpty || path.startsWith('http://') || path.startsWith('https://')) continue;
+        final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        final local = File(p.join(directory.path, 'offline', 'chapter_media', safeUser, '$safeId.bin'));
+        try {
+          if (await local.exists() && await local.length() > 0) continue;
+          String url;
+          const legacyPrefix = 'legacy-course-resource:';
+          if (path.startsWith(legacyPrefix)) {
+            url = await _client.storage.from('cours-fichiers').createSignedUrl(
+              path.substring(legacyPrefix.length), 900,
+            );
+          } else {
+            url = await _client.storage.from('chapter-content').createSignedUrl(path, 900);
+          }
+          final response = await client.send(http.Request('GET', Uri.parse(url))
+            ..followRedirects = true).timeout(const Duration(seconds: 30));
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            await response.stream.drain<void>();
+            continue;
+          }
+          await local.parent.create(recursive: true);
+          final temporary = File('${local.path}.part');
+          if (await temporary.exists()) await temporary.delete();
+          await response.stream.pipe(temporary.openWrite());
+          if (await temporary.exists() && await temporary.length() > 0) {
+            if (await local.exists()) await local.delete();
+            await temporary.rename(local.path);
+          } else if (await temporary.exists()) {
+            await temporary.delete();
+          }
+        } catch (_) {
+          // Un seul fichier inaccessible ne doit pas bloquer les autres.
+        }
+      }
+    } finally {
+      client.close();
+    }
   }
 
   Future<List<ChapterLearningExercise>> listExercises(
