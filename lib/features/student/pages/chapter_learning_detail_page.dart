@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -663,14 +664,22 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
   Future<void> _open() async {
     try {
       final cacheable = widget.item.folderKey == 'pdf' ||
-          widget.item.folderKey == 'images';
+          widget.item.folderKey == 'images' ||
+          (widget.item.folderKey == 'video' &&
+              (widget.item.storagePath ?? '').isNotEmpty &&
+              !(widget.item.storagePath ?? '').startsWith('http'));
       if (cacheable) {
         final local = await _localMediaFile();
         if (await local.exists() && await local.length() > 0) {
           _mediaFile = local;
-          _bytes = await local.readAsBytes();
           if (widget.item.folderKey == 'pdf') {
+            _bytes = await local.readAsBytes();
             _pdf = PdfControllerPinch(document: PdfDocument.openData(_bytes!));
+          } else if (widget.item.folderKey == 'images') {
+            _bytes = await local.readAsBytes();
+          } else if (widget.item.folderKey == 'video') {
+            _video = VideoPlayerController.file(local);
+            await _video!.initialize();
           }
           _mediaUrl = local.uri.toString();
         }
@@ -719,6 +728,10 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
           } else {
             _video = VideoPlayerController.networkUrl(uri);
             await _video!.initialize();
+            if ((widget.item.storagePath ?? '').isNotEmpty &&
+                !(widget.item.storagePath ?? '').startsWith('http')) {
+              unawaited(_cacheVideoInBackground(url));
+            }
           }
         }
       }
@@ -726,6 +739,22 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
       _error = e.toString();
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _cacheVideoInBackground(String url) async {
+    try {
+      final local = await _localMediaFile();
+      if (await local.exists() && await local.length() > 0) return;
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 90));
+      if (response.statusCode < 200 || response.statusCode >= 300 || response.bodyBytes.isEmpty) return;
+      await local.parent.create(recursive: true);
+      final temporary = File('${local.path}.part');
+      await temporary.writeAsBytes(response.bodyBytes, flush: true);
+      if (await local.exists()) await local.delete();
+      await temporary.rename(local.path);
+    } catch (_) {
+      // Streaming playback continues even when the offline copy cannot be saved.
+    }
   }
 
   @override
