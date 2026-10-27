@@ -144,19 +144,44 @@ class TimetableService {
 
   /// Emploi du temps de la salle de l'élève (lecture seule). Vide si l'élève n'a pas de salle.
   Future<List<TimetableEntry>> listClassTimetableForStudent(String studentId) async {
-    final classIds = await _studentClassIds(studentId);
-    if (classIds.isEmpty) return const [];
+    final latestKey = 'class_timetable_student_latest_' + studentId;
+    late final List<String> classIds;
+    try {
+      classIds = await _studentClassIds(studentId);
+    } catch (_) {
+      final cached = await JsonCache.instance.read(latestKey);
+      if (cached is List) return _decodeEntries(cached);
+      rethrow;
+    }
+
+    if (classIds.isEmpty) {
+      final online = await ConnectivityService().isOnline();
+      final cached = await JsonCache.instance.read(latestKey);
+      if (!online && cached is List) return _decodeEntries(cached);
+      return const [];
+    }
+
     final sortedIds = classIds.toList()..sort();
-    return _cachedEntries(
-      key: 'class_timetable_student_' + studentId + '_' + sortedIds.join('_'),
-      fetch: () async => await _client
-          .from('class_timetable_entries')
-          .select()
-          .inFilter('class_id', classIds)
-          .eq('is_active', true)
-          .order('day_of_week')
-          .order('start_time') as Object?,
-    );
+    try {
+      return await _cachedEntries(
+        key: 'class_timetable_student_' + studentId + '_' + sortedIds.join('_'),
+        fetch: () async {
+          final raw = await _client
+              .from('class_timetable_entries')
+              .select()
+              .inFilter('class_id', classIds)
+              .eq('is_active', true)
+              .order('day_of_week')
+              .order('start_time');
+          await JsonCache.instance.write(latestKey, raw);
+          return raw;
+        },
+      );
+    } catch (_) {
+      final cached = await JsonCache.instance.read(latestKey);
+      if (cached is List) return _decodeEntries(cached);
+      rethrow;
+    }
   }
 
   /// Emploi du temps que l'élève construit lui-même.
