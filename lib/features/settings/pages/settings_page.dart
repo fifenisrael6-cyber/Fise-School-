@@ -96,7 +96,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   int _compareVersions(String a, String b) {
     List<int> parts(String value) => value.split('+').first.split('.').map((part) {
-      final match = RegExp(r'^\\d+').firstMatch(part);
+      final match = RegExp(r'^[0-9]+').firstMatch(part);
       return int.tryParse(match?.group(0) ?? '') ?? 0;
     }).toList(growable: false);
     final left = parts(a);
