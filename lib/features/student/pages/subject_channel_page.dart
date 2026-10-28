@@ -806,489 +806,54 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     return resources;
   }
 
-  /// Affiche le texte extrait des cours avec une mise en page pédagogique.
-  /// Les grands espaces proviennent souvent de colonnes de PDF : ils sont
-  /// transformés en cellules lisibles au lieu d'être affichés comme du texte décalé.
+  /// Mise en page pédagogique des cours extraits de documents.
   Widget _formattedCourseBody(String body) {
-    final lines = body.replaceAll('\r\n', '\n').split('\n');
     final widgets = <Widget>[];
-    final headingPattern = RegExp(
-      r'^(?:CHAPITRE\s+\d+\s*[:：-]?.*|[IVX]+\s*[−–-]\s*.{2,}|\d+\.\s+[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ].{2,})
-    final code = widget.locale.languageCode;
-    final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
-            item['title_fr'] ?? item['title_en'] ?? '')
-        .toString()
-        .trim();
-    final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
-            item['body_text_fr'] ?? item['body_text_en'] ?? '')
-        .toString()
-        .trim();
-    final chapter = ((code == 'en' ? item['chapter_title_en'] : item['chapter_title_fr']) ??
-            item['chapter_title_fr'] ?? item['chapter_title_en'] ?? '')
-        .toString()
-        .trim();
-
-    return _bubble(
-      date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  title.isEmpty ? (_fr ? 'Cours officiel' : 'Official lesson') : title,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-          if (chapter.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Text(chapter, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF166534))),
-          ],
-          if (body.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _formattedCourseBody(body),
-          ],
-          if ((item['chapter_id']?.toString() ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChapterQuizPage(
-                      locale: widget.locale,
-                      chapterId: item['chapter_id'].toString(),
-                      chapterTitle: chapter.isNotEmpty ? chapter : title,
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.auto_awesome_rounded),
-                label: Text(_fr ? 'Quiz intelligent' : 'Smart quiz'),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _coursePost(Course course, {bool showResources = true}) {
-    final code = widget.locale.languageCode;
-    final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
-    final description = (code == 'en' ? course.descriptionEn : course.descriptionFr)?.trim();
-
-    return _bubble(
-      date: course.publishedAt ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  course.labelFor(code),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-          if (description != null && description.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(description),
-          ],
-          if (content != null && content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(content),
-          ],
-          if (showResources) FutureBuilder<List<CourseResource>>(
-            future: _loadResources(course.id),
-            builder: (context, snapshot) {
-              final resources = snapshot.data ?? const <CourseResource>[];
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: LinearProgressIndicator(minHeight: 2),
-                );
-              }
-              if (resources.isEmpty) return const SizedBox.shrink();
-
-              // File-manager style folders: students can find course photos,
-              // audio, videos and PDFs without scrolling through a mixed list.
-              const categories = <String, List<String>>{
-                'image': ['image'],
-                'audio': ['audio'],
-                'video': ['video'],
-                'pdf': ['pdf'],
-                'documents': ['document', 'other'],
-              };
-              final labels = <String, String>{
-                'image': _fr ? 'Photos et images' : 'Photos and images',
-                'audio': _fr ? 'Audios' : 'Audio',
-                'video': _fr ? 'Vidéos' : 'Videos',
-                'pdf': 'PDF',
-                'documents': _fr ? 'Autres fichiers' : 'Other files',
-              };
-              final icons = <String, IconData>{
-                'image': Icons.photo_library_outlined,
-                'audio': Icons.audiotrack_rounded,
-                'video': Icons.video_library_outlined,
-                'pdf': Icons.picture_as_pdf_outlined,
-                'documents': Icons.folder_open_rounded,
-              };
-              final available = categories.entries.where((entry) =>
-                  resources.any((resource) => entry.value.contains(resource.resourceType)));
-              if (available.isEmpty) return const SizedBox.shrink();
-
-              return Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_fr ? 'Dossiers du cours' : 'Course folders',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    ...available.map((entry) {
-                      final files = resources.where((resource) =>
-                          entry.value.contains(resource.resourceType)).toList();
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        child: ExpansionTile(
-                          leading: Icon(icons[entry.key], color: const Color(0xFF166534)),
-                          title: Text(labels[entry.key]!,
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text('${files.length} ${_fr ? 'fichier(s)' : 'file(s)'}'),
-                          children: files.map((resource) => OfflineResourceTile(
-                            locale: widget.locale,
-                            profile: widget.profile,
-                            resource: resource,
-                          )).toList(),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            },
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CourseDetailPage(
-                    locale: widget.locale,
-                    profile: widget.profile,
-                    course: course,
-                  ),
-                ),
-              ),
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: Text(_fr ? 'Ouvrir le cours' : 'Open course'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-}
-,
-      caseSensitive: false,
-    );
-    final labelPattern = RegExp(r'^(Définition(?:s)?|Remarque(?:s)?|Méthode|Propriété|Théorème|Exemple|Solution|Attention|À retenir)\s*:?(.*)
-    final code = widget.locale.languageCode;
-    final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
-            item['title_fr'] ?? item['title_en'] ?? '')
-        .toString()
-        .trim();
-    final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
-            item['body_text_fr'] ?? item['body_text_en'] ?? '')
-        .toString()
-        .trim();
-    final chapter = ((code == 'en' ? item['chapter_title_en'] : item['chapter_title_fr']) ??
-            item['chapter_title_fr'] ?? item['chapter_title_en'] ?? '')
-        .toString()
-        .trim();
-
-    return _bubble(
-      date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  title.isEmpty ? (_fr ? 'Cours officiel' : 'Official lesson') : title,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-          if (chapter.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Text(chapter, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF166534))),
-          ],
-          if (body.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _formattedCourseBody(body),
-          ],
-          if ((item['chapter_id']?.toString() ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChapterQuizPage(
-                      locale: widget.locale,
-                      chapterId: item['chapter_id'].toString(),
-                      chapterTitle: chapter.isNotEmpty ? chapter : title,
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.auto_awesome_rounded),
-                label: Text(_fr ? 'Quiz intelligent' : 'Smart quiz'),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _coursePost(Course course, {bool showResources = true}) {
-    final code = widget.locale.languageCode;
-    final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
-    final description = (code == 'en' ? course.descriptionEn : course.descriptionFr)?.trim();
-
-    return _bubble(
-      date: course.publishedAt ?? DateTime.now(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  course.labelFor(code),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-          if (description != null && description.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(description),
-          ],
-          if (content != null && content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(content),
-          ],
-          if (showResources) FutureBuilder<List<CourseResource>>(
-            future: _loadResources(course.id),
-            builder: (context, snapshot) {
-              final resources = snapshot.data ?? const <CourseResource>[];
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: LinearProgressIndicator(minHeight: 2),
-                );
-              }
-              if (resources.isEmpty) return const SizedBox.shrink();
-
-              // File-manager style folders: students can find course photos,
-              // audio, videos and PDFs without scrolling through a mixed list.
-              const categories = <String, List<String>>{
-                'image': ['image'],
-                'audio': ['audio'],
-                'video': ['video'],
-                'pdf': ['pdf'],
-                'documents': ['document', 'other'],
-              };
-              final labels = <String, String>{
-                'image': _fr ? 'Photos et images' : 'Photos and images',
-                'audio': _fr ? 'Audios' : 'Audio',
-                'video': _fr ? 'Vidéos' : 'Videos',
-                'pdf': 'PDF',
-                'documents': _fr ? 'Autres fichiers' : 'Other files',
-              };
-              final icons = <String, IconData>{
-                'image': Icons.photo_library_outlined,
-                'audio': Icons.audiotrack_rounded,
-                'video': Icons.video_library_outlined,
-                'pdf': Icons.picture_as_pdf_outlined,
-                'documents': Icons.folder_open_rounded,
-              };
-              final available = categories.entries.where((entry) =>
-                  resources.any((resource) => entry.value.contains(resource.resourceType)));
-              if (available.isEmpty) return const SizedBox.shrink();
-
-              return Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_fr ? 'Dossiers du cours' : 'Course folders',
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    ...available.map((entry) {
-                      final files = resources.where((resource) =>
-                          entry.value.contains(resource.resourceType)).toList();
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        child: ExpansionTile(
-                          leading: Icon(icons[entry.key], color: const Color(0xFF166534)),
-                          title: Text(labels[entry.key]!,
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text('${files.length} ${_fr ? 'fichier(s)' : 'file(s)'}'),
-                          children: files.map((resource) => OfflineResourceTile(
-                            locale: widget.locale,
-                            profile: widget.profile,
-                            resource: resource,
-                          )).toList(),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
-              );
-            },
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CourseDetailPage(
-                    locale: widget.locale,
-                    profile: widget.profile,
-                    course: course,
-                  ),
-                ),
-              ),
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: Text(_fr ? 'Ouvrir le cours' : 'Open course'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-}
-, caseSensitive: false);
-    var blankRun = 0;
-
-    for (final rawLine in lines) {
-      final line = rawLine.trim();
+    for (final raw in body.replaceAll('\r\n', '\n').split('\n')) {
+      final line = raw.trim();
       if (line.isEmpty) {
-        blankRun++;
-        if (blankRun == 1 && widgets.isNotEmpty) {
-          widgets.add(const SizedBox(height: 5));
-        }
+        if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 5));
         continue;
       }
-      blankRun = 0;
-
-      // Les colonnes des tableaux extraits du PDF sont séparées par plusieurs espaces.
-      final cells = rawLine.trim().split(RegExp(r'\s{3,}')).where((s) => s.trim().isNotEmpty).toList();
-      final isTableRow = cells.length >= 2 && cells.length <= 6 &&
-          cells.every((cell) => cell.trim().length < 90);
-
-      if (headingPattern.hasMatch(line) ||
-          (line == line.toUpperCase() && line.length >= 4 && line.length <= 90 && RegExp(r'[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ]').hasMatch(line))) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 7),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFF166534), width: 2)),
-              color: Color(0xFFF0F7F1),
-            ),
-            child: Text(line,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
-          ),
-        ));
-      } else if (labelPattern.hasMatch(line)) {
-        final match = labelPattern.firstMatch(line)!;
-        final label = match.group(1) ?? '';
-        final rest = (match.group(2) ?? '').trim();
+      final cells = line.split(RegExp(r'\s{3,}')).where((s) => s.trim().isNotEmpty).toList();
+      final isTable = cells.length >= 2 && cells.length <= 6 && cells.every((s) => s.trim().length < 90);
+      final isUpperHeading = line.length <= 90 && line.length >= 4 && line == line.toUpperCase() && RegExp(r'[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ]').hasMatch(line);
+      final isSection = RegExp(r'^(?:CHAPITRE\s+\d+|[IVX]+\s*[−–-])', caseSensitive: false).hasMatch(line);
+      final label = RegExp(r'^(Définition(?:s)?|Remarque(?:s)?|Méthode|Propriété|Théorème|Exemple|Solution|Attention|À retenir)\s*:?(.*)$', caseSensitive: false).firstMatch(line);
+      if (isUpperHeading || isSection) {
         widgets.add(Container(
           width: double.infinity,
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF7F0),
-            border: const Border(left: BorderSide(color: Color(0xFF166534), width: 4)),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: RichText(text: TextSpan(
-            style: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5),
-            children: [
-              TextSpan(text: '$label : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF14532D))),
-              if (rest.isNotEmpty) TextSpan(text: rest),
-            ],
-          )),
+          margin: const EdgeInsets.only(top: 12, bottom: 7),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: const BoxDecoration(color: Color(0xFFF0F7F1), border: Border(bottom: BorderSide(color: Color(0xFF166534), width: 2))),
+          child: Text(line, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
         ));
-      } else if (isTableRow) {
+      } else if (label != null) {
         widgets.add(Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFD1D5DB)),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Wrap(
-            children: [
-              for (var i = 0; i < cells.length; i++)
-                Container(
-                  constraints: const BoxConstraints(minWidth: 42, maxWidth: 220),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: i == 0 ? const Color(0xFFF3F4F6) : Colors.white,
-                    border: Border(right: BorderSide(color: const Color(0xFFD1D5DB), width: i == cells.length - 1 ? 0 : 1)),
-                  ),
-                  child: Text(cells[i].trim(), style: TextStyle(
-                    fontSize: 14, height: 1.35,
-                    fontWeight: i == 0 ? FontWeight.w700 : FontWeight.normal,
-                  )),
-                ),
-            ],
-          ),
+          width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 5), padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: const Color(0xFFEFF7F0), border: const Border(left: BorderSide(color: Color(0xFF166534), width: 4)), borderRadius: BorderRadius.circular(6)),
+          child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5), children: [
+            TextSpan(text: '${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF14532D))),
+            if ((label.group(2) ?? '').trim().isNotEmpty) TextSpan(text: (label.group(2) ?? '').trim()),
+          ])),
+        ));
+      } else if (isTable) {
+        widgets.add(Container(
+          width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 2),
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFD1D5DB)), borderRadius: BorderRadius.circular(4)),
+          child: Wrap(children: [for (var i = 0; i < cells.length; i++) Container(
+            constraints: const BoxConstraints(minWidth: 42, maxWidth: 220),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(color: i == 0 ? const Color(0xFFF3F4F6) : Colors.white, border: Border(right: BorderSide(color: const Color(0xFFD1D5DB), width: i == cells.length - 1 ? 0 : 1))),
+            child: Text(cells[i].trim(), style: TextStyle(fontSize: 14, height: 1.35, fontWeight: i == 0 ? FontWeight.w700 : FontWeight.normal)),
+          )]),
         ));
       } else {
-        // Nettoie les espaces de mise en page du PDF sans supprimer les mots.
-        final readable = line.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 5),
-          child: SelectableText(readable,
-            style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87)),
-        ));
+        widgets.add(Padding(padding: const EdgeInsets.only(bottom: 5), child: SelectableText(line.replaceAll(RegExp(r'[ \t]{2,}'), ' '), style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87))));
       }
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: widgets);
   }
-
   Widget _chapterContentPost(Map<String, dynamic> item) {
     final code = widget.locale.languageCode;
     final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
