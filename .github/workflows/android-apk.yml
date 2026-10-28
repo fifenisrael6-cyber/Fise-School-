@@ -68,6 +68,13 @@ jobs:
             echo "::warning::Android release keystore secrets are missing; this APK will use the CI debug key and cannot serve as a stable production update."
           fi
 
+      - name: Read app version
+        id: version
+        run: |
+          VERSION="$(sed -n 's/^version: *//p' pubspec.yaml | cut -d '+' -f 1 | tr -d '\r')"
+          test -n "$VERSION"
+          echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Flutter pub get
         run: flutter pub get
 
@@ -84,6 +91,7 @@ jobs:
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           --dart-define=NOTCHPAY_PUBLIC_KEY=${{ secrets.NOTCHPAY_PUBLIC_KEY }}
+          --dart-define=APP_VERSION=${{ steps.version.outputs.app_version }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
