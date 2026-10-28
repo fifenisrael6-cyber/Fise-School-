@@ -52,6 +52,7 @@ class _ChapterLearningDetailPageState
   late Future<_ChapterData> _future;
   bool _savingRead = false;
   bool _generatingQuiz = false;
+  int _loadGeneration = 0;
 
   bool get _en => widget.locale.languageCode == 'en';
   String get _chapterTitle =>
@@ -67,10 +68,38 @@ class _ChapterLearningDetailPageState
     bool forceRefresh = false,
     bool forceRefreshQuizzes = false,
   }) async {
+    final generation = ++_loadGeneration;
+
+    // The lesson body is the critical path. Cached chapter content is returned
+    // first; counts and reading progress are refreshed in the background.
+    final content = await _service
+        .listContent(widget.chapter.id, forceRefresh: forceRefresh)
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => const <ChapterLearningContentItem>[],
+        );
+
+    unawaited(_refreshChapterMetadata(
+      generation: generation,
+      content: content,
+      forceRefresh: forceRefresh,
+    ));
+
+    return _ChapterData(
+      content: content,
+      exercises: const <ChapterLearningExercise>[],
+      quizzes: const <ChapterLearningQuiz>[],
+      counts: const ChapterLearningCounts(),
+      progress: null,
+    );
+  }
+
+  Future<void> _refreshChapterMetadata({
+    required int generation,
+    required List<ChapterLearningContentItem> content,
+    required bool forceRefresh,
+  }) async {
     final results = await Future.wait<dynamic>([
-      _service.listContent(widget.chapter.id, forceRefresh: forceRefresh),
-      // Counts and progress are supplementary: never let a slow progress query
-      // keep already-cached lesson content behind a loading spinner.
       _service
           .getCounts(widget.chapter.id, forceRefresh: forceRefresh)
           .timeout(
@@ -84,15 +113,16 @@ class _ChapterLearningDetailPageState
           )
           .timeout(const Duration(seconds: 2), onTimeout: () => null),
     ]);
-    // TD and AI quiz requests now live on the subject-level exercises page;
-    // do not delay chapter content while fetching them.
-    return _ChapterData(
-      content: results[0] as List<ChapterLearningContentItem>,
-      exercises: const <ChapterLearningExercise>[],
-      quizzes: const <ChapterLearningQuiz>[],
-      counts: results[1] as ChapterLearningCounts,
-      progress: results[2] as ChapterLearningProgress?,
-    );
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {
+      _future = Future<_ChapterData>.value(_ChapterData(
+        content: content,
+        exercises: const <ChapterLearningExercise>[],
+        quizzes: const <ChapterLearningQuiz>[],
+        counts: results[0] as ChapterLearningCounts,
+        progress: results[1] as ChapterLearningProgress?,
+      ));
+    });
   }
 
   Future<void> _refresh() async {
