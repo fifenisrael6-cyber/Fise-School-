@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/course_offline_service.dart';
@@ -20,6 +24,90 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool get isFrench => widget.locale.languageCode == 'fr';
+
+  Future<void> _checkForUpdates() async {
+    const currentVersion = '1.0.0';
+    final releasesUri = Uri.parse('https://github.com/fifenisrael6-cyber/Fise-School-/releases');
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.github.com/repos/fifenisrael6-cyber/Fise-School-/releases/latest'),
+        headers: const {'Accept': 'application/vnd.github+json'},
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (response.statusCode == 404) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(isFrench ? 'Mises à jour' : 'Updates'),
+            content: Text(isFrench
+                ? 'Aucune version officielle n’est encore publiée. Réessaie après la publication de la prochaine version.'
+                : 'No official release has been published yet. Check again after the next release.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(isFrench ? 'Fermer' : 'Close')),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await launchUrl(releasesUri, mode: LaunchMode.externalApplication);
+                },
+                child: Text(isFrench ? 'Page des versions' : 'Release page'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      if (response.statusCode != 200) throw StateError('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) throw const FormatException('Invalid release response');
+      final tag = (decoded['tag_name'] ?? '').toString().replaceFirst(RegExp(r'^[vV]'), '');
+      final url = Uri.tryParse((decoded['html_url'] ?? releasesUri.toString()).toString()) ?? releasesUri;
+      final newer = _compareVersions(tag, currentVersion) > 0;
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(newer
+              ? (isFrench ? 'Mise à jour disponible' : 'Update available')
+              : (isFrench ? 'Application à jour' : 'App is up to date')),
+          content: Text(newer
+              ? (isFrench ? 'Version $tag disponible (version installée : $currentVersion).' : 'Version $tag is available (installed version: $currentVersion).')
+              : (isFrench ? 'Version installée : $currentVersion. Dernière version : $tag.' : 'Installed version: $currentVersion. Latest version: $tag.')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(isFrench ? 'Fermer' : 'Close')),
+            if (newer) FilledButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              },
+              child: Text(isFrench ? 'Télécharger' : 'Download'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(isFrench
+            ? 'Vérification impossible. Vérifie ta connexion et réessaie.'
+            : 'Could not check for updates. Check your connection and try again.'),
+      ));
+    }
+  }
+
+  int _compareVersions(String a, String b) {
+    List<int> parts(String value) => value.split('+').first.split('.').map((part) {
+      final match = RegExp(r'^\\d+').firstMatch(part);
+      return int.tryParse(match?.group(0) ?? '') ?? 0;
+    }).toList(growable: false);
+    final left = parts(a);
+    final right = parts(b);
+    for (var i = 0; i < (left.length > right.length ? left.length : right.length); i++) {
+      final x = i < left.length ? left[i] : 0;
+      final y = i < right.length ? right[i] : 0;
+      if (x != y) return x.compareTo(y);
+    }
+    return 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -192,6 +280,14 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingsSection(
             title: isFrench ? 'Application' : 'Application',
             children: [
+              _SettingsTile(
+                icon: Icons.system_update_alt_rounded,
+                title: isFrench ? 'Vérifier les mises à jour' : 'Check for updates',
+                subtitle: isFrench
+                    ? 'Rechercher une nouvelle version de Fise School'
+                    : 'Look for a newer version of Fise School',
+                onTap: _checkForUpdates,
+              ),
               _SettingsTile(
                 icon: Icons.info_outline_rounded,
                 title: isFrench
