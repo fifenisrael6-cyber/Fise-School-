@@ -556,7 +556,28 @@ class _ChapterLearningDetailPageState
                         ? image.storagePath
                         : image.externalUrl;
                     return InkWell(
-                      onTap: () => _contentCard(image, galleryItems: usableImages).let((_) {}),
+                      onTap: () async {
+                        final url = await _resolveChapterGalleryUrl(source);
+                        if (url == null || !mounted) return;
+                        await showDialog<void>(
+                          context: context,
+                          builder: (dialogContext) => Dialog(
+                            insetPadding: const EdgeInsets.all(12),
+                            child: InteractiveViewer(
+                              minScale: 0.5,
+                              maxScale: 5,
+                              child: Image.network(
+                                url,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, _, _) => Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(_en ? 'Image unavailable' : 'Image indisponible'),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                       child: FutureBuilder<String?>(
                         future: _resolveChapterGalleryUrl(source),
                         builder: (context, snapshot) {
