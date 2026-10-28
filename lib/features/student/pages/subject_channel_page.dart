@@ -809,16 +809,19 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   /// Mise en page pédagogique des cours extraits de documents.
   Widget _formattedCourseBody(String body) {
     final widgets = <Widget>[];
+    var previousWasBlank = false;
     for (final raw in body.replaceAll('\r\n', '\n').split('\n')) {
       final line = raw.trim();
       if (line.isEmpty) {
-        if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 5));
+        if (widgets.isNotEmpty && !previousWasBlank) widgets.add(const SizedBox(height: 5));
+        previousWasBlank = true;
         continue;
       }
+      previousWasBlank = false;
       final cells = line.split(RegExp(r'\s{3,}')).where((s) => s.trim().isNotEmpty).toList();
       final isTable = cells.length >= 2 && cells.length <= 6 && cells.every((s) => s.trim().length < 90);
       final isUpperHeading = line.length <= 90 && line.length >= 4 && line == line.toUpperCase() && RegExp(r'[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ]').hasMatch(line);
-      final isSection = RegExp(r'^(?:CHAPITRE\s+\d+|[IVX]+\s*[−–-])', caseSensitive: false).hasMatch(line);
+      final isSection = RegExp(r'^(?:CHAPITRE\s+\d+|[IVX]+\s*[−–-]|\d+(?:\.\d+)*\s*[.)-]\s+[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ])', caseSensitive: false).hasMatch(line) || RegExp(r'^(?:EXERCICES?|EXERCICES? DE BASE|QUESTIONS FLASH|À LA MAISON|CORRECTION|APPLICATIONS?|CONCLUSION|RÉSULTAT|SOLUTION)\s*:?', caseSensitive: false).hasMatch(line);
       final label = RegExp(r'^(Définition(?:s)?|Remarque(?:s)?|Méthode|Propriété|Théorème|Exemple|Solution|Attention|À retenir)\s*:?(.*)$', caseSensitive: false).firstMatch(line);
       if (isUpperHeading || isSection) {
         widgets.add(Container(
@@ -943,11 +946,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           ),
           if (description != null && description.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(description),
+            _formattedCourseBody(description),
           ],
           if (content != null && content.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(content),
+            _formattedCourseBody(content),
           ],
           if (showResources) FutureBuilder<List<CourseResource>>(
             future: _loadResources(course.id),
