@@ -190,15 +190,37 @@ class ChapterLearningService {
         .limit(1);
     if (currentRows.isEmpty) return const <Map<String, dynamic>>[];
 
-    // First load only this chapter's own published content. Never merge files
-    // from another chapter merely because the titles or positions match.
+    // Load the source row once, then include publications explicitly linked
+    // to this chapter. The database controls which chapters are equivalent and
+    // RLS independently checks whether the student may read each linked item.
     final rows = await _client
         .from('chapter_content_items')
         .select()
         .eq('chapter_id', chapterId)
         .eq('is_published', true)
         .order('position');
-    final content = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+    final contentById = <String, Map<String, dynamic>>{
+      for (final row in rows)
+        row['id'].toString(): Map<String, dynamic>.from(row),
+    };
+
+    try {
+      final linkedRows = await _client
+          .from('chapter_content_item_chapters')
+          .select('chapter_content_items(*)')
+          .eq('chapter_id', chapterId);
+      for (final link in linkedRows) {
+        final rawItem = link['chapter_content_items'];
+        if (rawItem is! Map) continue;
+        final item = Map<String, dynamic>.from(rawItem);
+        if (item['is_published'] != true || item['id'] == null) continue;
+        contentById[item['id'].toString()] = item;
+      }
+    } catch (_) {
+      // Keep own chapter content visible if the linking table is temporarily
+      // unavailable on an older deployment; no content is copied or deleted.
+    }
+    final content = contentById.values.toList();
 
     // Restore legacy courses and lessons that were already linked to this
     // chapter before the chapter-folder catalogue was introduced.
