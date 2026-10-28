@@ -26,7 +26,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool get isFrench => widget.locale.languageCode == 'fr';
 
   Future<void> _checkForUpdates() async {
-    const currentVersion = '1.0.0';
+    const currentVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.0');
     final releasesUri = Uri.parse('https://github.com/fifenisrael6-cyber/Fise-School-/releases');
     try {
       final response = await http.get(
