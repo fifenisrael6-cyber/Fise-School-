@@ -727,13 +727,37 @@ class ChapterLearningService {
     if (chapters.isEmpty) return 0;
 
     final chapterIds = chapters.map((row) => row['id'] as String).toList();
-    final content = await _client
+    final contentIds = <String>{};
+
+    final ownContent = await _client
         .from('chapter_content_items')
         .select('id')
         .inFilter('chapter_id', chapterIds)
         .eq('content_type', 'course')
         .eq('is_published', true);
-    return content.length;
+    contentIds.addAll(ownContent.map((row) => row['id'].toString()));
+
+    try {
+      final linkedContent = await _client
+          .from('chapter_content_item_chapters')
+          .select('content_item_id')
+          .inFilter('chapter_id', chapterIds);
+      contentIds.addAll(
+        linkedContent.map((row) => row['content_item_id'].toString()),
+      );
+    } catch (_) {
+      // Keep counts functional on deployments where shared-content links
+      // have not yet been applied.
+    }
+
+    if (contentIds.isEmpty) return 0;
+    final publishedContent = await _client
+        .from('chapter_content_items')
+        .select('id')
+        .inFilter('id', contentIds.toList(growable: false))
+        .eq('content_type', 'course')
+        .eq('is_published', true);
+    return publishedContent.length;
   }
 
   Future<List<Curriculum>> listCurricula(
