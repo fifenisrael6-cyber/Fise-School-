@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
-import '../../teacher/pages/publish_directed_study_page.dart';
 import 'school_classes_page.dart';
 
 class AdminCoursesPage extends StatefulWidget {
@@ -33,23 +32,6 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   void initState() {
     super.initState();
     _load();
-  }
-
-  Future<void> _publishDirectedStudy() async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => PublishDirectedStudyPage(
-          locale: widget.locale,
-          adminMode: true,
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (result == true) {
-      await _load();
-      if (!mounted) return;
-      _snack(_fr ? 'TD publié.' : 'Directed study published.');
-    }
   }
 
   Future<void> _load() async {
@@ -390,31 +372,6 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       floatingActionButton: FloatingActionButton.extended(onPressed: _createCourse, icon: const Icon(Icons.add), label: Text(_fr ? 'Créer un cours' : 'Create course')),
       body: Column(children: [
         Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Card(child: ListTile(leading: const Icon(Icons.menu_book_rounded, color: Color(0xFF166534)), title: Text(_fr ? 'Catalogue des salles' : 'Classroom catalogue', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(_fr ? 'Appliquer le catalogue de base, puis ajuster chaque salle selon son programme et ses options.' : 'Apply the base catalogue, then adjust each classroom for its programme and options.'), trailing: _catalogLoading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : IconButton(onPressed: _applyCatalog, icon: const Icon(Icons.auto_fix_high))))),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Card(
-            child: ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE4F2E9),
-                child: Icon(
-                  Icons.assignment_outlined,
-                  color: Color(0xFF166534),
-                ),
-              ),
-              title: Text(
-                _fr ? 'Travaux dirigés (TD)' : 'Directed studies (TD)',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-              subtitle: Text(
-                _fr
-                    ? 'Publier un TD sur un cours et le diffuser aux salles compatibles.'
-                    : 'Publish a course-linked TD and share it with compatible classrooms.',
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: _publishDirectedStudy,
-            ),
-          ),
-        ),
         Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!))) : _items.isEmpty ? Center(child: Text(_fr ? 'Aucun cours.' : 'No courses.')) : RefreshIndicator(onRefresh: _load, child: ListView.separated(padding: const EdgeInsets.fromLTRB(16, 8, 16, 100), itemCount: _items.length, separatorBuilder: (_, _) => const SizedBox(height: 10), itemBuilder: (_, i) {
           final c = _items[i];
           final room = (c['school_classes'] is Map) ? Map<String, dynamic>.from(c['school_classes'] as Map) : <String, dynamic>{};
