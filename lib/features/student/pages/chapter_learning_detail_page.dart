@@ -288,9 +288,9 @@ class _ChapterLearningDetailPageState
   List<Widget> _folderItems(_ChapterData data, _ChapterResourceFolder folder) {
     switch (folder) {
       case _ChapterResourceFolder.course:
-        return data.content
-            .where((item) => item.folderKey == 'course')
-            .map(_contentCard).toList(growable: false);
+        final lessonItems = data.content.where((item) => item.folderKey == 'course').toList(growable: false);
+        final imageItems = data.content.where((item) => item.folderKey == 'images').toList(growable: false);
+        return lessonItems.map((item) => _courseLessonCard(item, imageItems)).toList(growable: false);
       case _ChapterResourceFolder.pdf:
         return data.content
             .where((item) => item.folderKey == 'pdf')
@@ -510,6 +510,82 @@ class _ChapterLearningDetailPageState
     return Supabase.instance.client.storage
         .from('chapter-content')
         .createSignedUrl(path, 900);
+  }
+
+  /// Affiche la leçon et ses schémas/images directement dans la même page.
+  Widget _courseLessonCard(ChapterLearningContentItem item, List<ChapterLearningContentItem> images) {
+    final title = item.titleFor(widget.locale.languageCode);
+    final body = item.bodyFor(widget.locale.languageCode)?.trim() ?? '';
+    final usableImages = images.where((image) =>
+      (image.storagePath?.trim().isNotEmpty ?? false) ||
+      (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(bottom: 8),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFF166534), width: 2)),
+              ),
+              child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+            ),
+            if (body.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SelectableText(body, style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87)),
+            ],
+            if (usableImages.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text(_en ? 'Diagrams and illustrations' : 'Schémas et illustrations',
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 150,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: usableImages.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final image = usableImages[index];
+                    final source = (image.storagePath?.trim().isNotEmpty ?? false)
+                        ? image.storagePath
+                        : image.externalUrl;
+                    return InkWell(
+                      onTap: () => _contentCard(image, galleryItems: usableImages).let((_) {}),
+                      child: FutureBuilder<String?>(
+                        future: _resolveChapterGalleryUrl(source),
+                        builder: (context, snapshot) {
+                          return Container(
+                            width: 190,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              border: Border.all(color: const Color(0xFFD1D5DB)),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: snapshot.connectionState == ConnectionState.waiting
+                                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                                : snapshot.data == null
+                                    ? Center(child: Text(_en ? 'Image unavailable' : 'Image indisponible'))
+                                    : Image.network(snapshot.data!, fit: BoxFit.contain,
+                                        errorBuilder: (_, _, _) => Center(child: Text(_en ? 'Image unavailable' : 'Image indisponible'))),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _contentCard(ChapterLearningContentItem item, {List<ChapterLearningContentItem>? galleryItems}) {
