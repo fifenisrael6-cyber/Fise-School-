@@ -11,7 +11,7 @@ import '../student/pages/pages/payment_page.dart';
 /// Premium si besoin. Retourne true si l'action demandée peut continuer.
 class PremiumGate {
   // Premium checks are enforced in the app; server-side Supabase checks remain authoritative.
-  static const bool testingMode = false;
+  static const bool testingMode = true;
 
   static Future<bool> ensure(
     BuildContext context, {
