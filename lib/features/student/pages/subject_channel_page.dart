@@ -872,7 +872,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         continue;
       }
       previousWasBlank = false;
-      final diagramMatch = RegExp(r'^\\[\\[diagram:(gravity_pair|gravity_altitude|weight)\\]\\]
+      final diagramMatch = RegExp(r'^\[\[diagram:(gravity_pair|gravity_altitude|weight)\]\]$').firstMatch(line);
+      if (diagramMatch != null) {
+        widgets.add(_gravityDiagramCard(diagramMatch.group(1)!));
+        continue;
+      }
+      final markdownImage = imagePattern.firstMatch(line);
       final customImage = customImagePattern.firstMatch(line);
       if (markdownImage != null || customImage != null) {
         final match = markdownImage ?? customImage!;
