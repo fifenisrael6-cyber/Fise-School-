@@ -11,6 +11,7 @@ import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/course_inline_images.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
@@ -696,6 +697,22 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               height: 1.75,
               color: Color(0xFF263238),
             ),
+          ),
+          FutureBuilder<List<CourseResource>>(
+            future: _resourcesFuture,
+            builder: (context, snapshot) {
+              final images = (snapshot.data ?? const <CourseResource>[])
+                  .where((resource) =>
+                      resource.resourceType == 'image' &&
+                      (resource.lessonId == null || resource.lessonId!.isEmpty))
+                  .toList(growable: false);
+              if (images.isEmpty) return const SizedBox.shrink();
+              return CourseInlineImages(
+                locale: widget.locale,
+                userId: widget.profile.id,
+                resources: images,
+              );
+            },
           ),
           const SizedBox(height: 18),
           const Divider(color: Color(0xFFE7DFC9)),
