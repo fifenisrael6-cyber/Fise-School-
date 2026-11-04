@@ -897,7 +897,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
           width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 5), padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: const Color(0xFFEFF7F0), border: const Border(left: BorderSide(color: Color(0xFF16A34A), width: 4)), borderRadius: BorderRadius.circular(6)),
           child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5), children: [
-            TextSpan(text: '\${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF166534))),
+            TextSpan(text: '${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF166534))),
             if ((label.group(2) ?? '').trim().isNotEmpty) TextSpan(text: (label.group(2) ?? '').trim()),
           ])),
         ));
