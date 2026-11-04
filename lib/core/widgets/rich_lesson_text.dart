@@ -226,7 +226,106 @@ class RichLessonText extends StatelessWidget {
   List<InlineSpan> _inlineSpans(String rawInput, TextStyle base) {
     final spans = <InlineSpan>[];
     final input = rawInput.replaceAllMapped(
-      RegExp(r'\$\$(.+?)\$\$'), (match) => '\$\{match.group(1)}\$');
+      RegExp(r'\$\$(.+?)\$\
+    final pattern = RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
+    var cursor = 0;
+    for (final match in pattern.allMatches(input)) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: input.substring(cursor, match.start), style: base));
+      }
+      final tex = match.group(1);
+      final bold = match.group(2);
+      if (tex != null) {
+        spans.add(WidgetSpan(alignment: PlaceholderAlignment.middle,
+          child: Math.tex(tex, mathStyle: MathStyle.text, textStyle: base,
+            onErrorFallback: (_) => Text(tex, style: base))));
+      } else if (bold != null) {
+        spans.add(TextSpan(text: bold,
+          style: base.copyWith(fontWeight: FontWeight.w800)));
+      }
+      cursor = match.end;
+    }
+    if (cursor < input.length) {
+      spans.add(TextSpan(text: input.substring(cursor), style: base));
+    }
+    return spans;
+  }
+}
+
+enum _BlockKind { paragraph, heading, bullet, numbered, displayMath, table }
+
+class _Block {
+  final _BlockKind kind;
+  final String text;
+  final String marker;
+  const _Block(this.kind, this.text, {this.marker = ''});
+}), (match) => r'
+    final pattern = RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
+    var cursor = 0;
+    for (final match in pattern.allMatches(input)) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: input.substring(cursor, match.start), style: base));
+      }
+      final tex = match.group(1);
+      final bold = match.group(2);
+      if (tex != null) {
+        spans.add(WidgetSpan(alignment: PlaceholderAlignment.middle,
+          child: Math.tex(tex, mathStyle: MathStyle.text, textStyle: base,
+            onErrorFallback: (_) => Text(tex, style: base))));
+      } else if (bold != null) {
+        spans.add(TextSpan(text: bold,
+          style: base.copyWith(fontWeight: FontWeight.w800)));
+      }
+      cursor = match.end;
+    }
+    if (cursor < input.length) {
+      spans.add(TextSpan(text: input.substring(cursor), style: base));
+    }
+    return spans;
+  }
+}
+
+enum _BlockKind { paragraph, heading, bullet, numbered, displayMath, table }
+
+class _Block {
+  final _BlockKind kind;
+  final String text;
+  final String marker;
+  const _Block(this.kind, this.text, {this.marker = ''});
+} + match.group(1)! + r'
+    final pattern = RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
+    var cursor = 0;
+    for (final match in pattern.allMatches(input)) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: input.substring(cursor, match.start), style: base));
+      }
+      final tex = match.group(1);
+      final bold = match.group(2);
+      if (tex != null) {
+        spans.add(WidgetSpan(alignment: PlaceholderAlignment.middle,
+          child: Math.tex(tex, mathStyle: MathStyle.text, textStyle: base,
+            onErrorFallback: (_) => Text(tex, style: base))));
+      } else if (bold != null) {
+        spans.add(TextSpan(text: bold,
+          style: base.copyWith(fontWeight: FontWeight.w800)));
+      }
+      cursor = match.end;
+    }
+    if (cursor < input.length) {
+      spans.add(TextSpan(text: input.substring(cursor), style: base));
+    }
+    return spans;
+  }
+}
+
+enum _BlockKind { paragraph, heading, bullet, numbered, displayMath, table }
+
+class _Block {
+  final _BlockKind kind;
+  final String text;
+  final String marker;
+  const _Block(this.kind, this.text, {this.marker = ''});
+});
     final pattern = RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
     var cursor = 0;
     for (final match in pattern.allMatches(input)) {
