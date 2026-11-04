@@ -136,8 +136,14 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
               runSpacing: 8,
               children: [
                 _editorAction(_isFrench ? 'Sous-titre' : 'Heading', Icons.title, '## ${_isFrench ? 'Nouveau titre' : 'New heading'}'),
-                _editorAction(_isFrench ? 'Formule' : 'Formula', Icons.functions, r'$\n\frac{a}{b}\n$'),
-                _editorAction(_isFrench ? 'Calcul détaillé' : 'Worked calculation', Icons.calculate_outlined, _isFrench ? '**Exemple corrigé**\n\nÉnoncé :\n\n**Solution :**\n\n' + r'$x = \frac{10}{2} = 5),
+                _editorAction(_isFrench ? 'Formule' : 'Formula', Icons.functions, r'$\frac{a}{b}$'),
+                _editorAction(
+                  _isFrench ? 'Calcul détaillé' : 'Worked calculation',
+                  Icons.calculate_outlined,
+                  _isFrench
+                      ? '**Exemple corrigé**\n\nÉnoncé :\n\n**Solution :**\n\n' + r'$x = \frac{10}{2} = 5$'
+                      : '**Worked example**\n\nQuestion:\n\n**Solution:**\n\n' + r'$x = \frac{10}{2} = 5$',
+                ),
                 _editorAction(_isFrench ? 'Liste' : 'List', Icons.format_list_bulleted, '- ${_isFrench ? 'Élément' : 'Item'}'),
                 _editorAction(_isFrench ? 'Tableau' : 'Table', Icons.table_chart_outlined, _isFrench ? 'Grandeur | Valeur\n--- | ---\nA | 1\nB | 2' : 'Quantity | Value\n--- | ---\nA | 1\nB | 2'),
               ],
