@@ -872,7 +872,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         continue;
       }
       previousWasBlank = false;
-      final diagramMatch = RegExp(r'^\[\[diagram:([a-z0-9_]+)\]\]
+      final diagramMatch = RegExp(r'^\[\[diagram:([a-z0-9_]+)\]\]$').firstMatch(line);
       if (diagramMatch != null) {
         widgets.add(_courseDiagramCard(diagramMatch.group(1)!));
         continue;
