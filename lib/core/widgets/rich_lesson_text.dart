@@ -156,7 +156,7 @@ class RichLessonText extends StatelessWidget {
           tableLines.add(lines[index].trim());
           index++;
         }
-        blocks.add(_Block(_BlockKind.table, tableLines.join('\\n')));
+        blocks.add(_Block(_BlockKind.table, tableLines.join('\n')));
         continue;
       }
 
@@ -306,7 +306,7 @@ class _Block {
       line.startsWith('|') && line.endsWith('|') && line.split('|').length >= 3;
 
   Widget _buildTable(String rawTable) {
-    final rows = rawTable.split('\\n').map((line) => line
+    final rows = rawTable.split('\n').map((line) => line
         .split('|').skip(1).take(line.split('|').length - 2)
         .map((cell) => cell.trim()).toList()).toList();
     if (rows.isEmpty) return const SizedBox.shrink();
