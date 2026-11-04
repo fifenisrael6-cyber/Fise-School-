@@ -580,41 +580,66 @@ class _LessonPageState extends State<LessonPage> {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: const Color(0xFFFFFEFA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE7DFC9)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: const Color(0xFF166534)),
-              ),
-              const SizedBox(width: 12),
+              Icon(icon, color: const Color(0xFF166534), size: 24),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  title,
+                  title.toUpperCase(),
                   style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                    color: Color(0xFF166534),
                   ),
                 ),
               ),
+              const Icon(Icons.auto_stories_rounded,
+                  color: Color(0xFFB08A43), size: 20),
             ],
           ),
+          const SizedBox(height: 12),
+          Container(height: 2, color: const Color(0xFFD9B66F)),
+          const SizedBox(height: 18),
+          RichLessonText(
+            text: content,
+            style: const TextStyle(
+              fontSize: 16,
+              height: 1.75,
+              color: Color(0xFF263238),
+            ),
+          ),
           const SizedBox(height: 16),
-          RichLessonText(text: content),
+          const Divider(color: Color(0xFFE7DFC9)),
+          const Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'FISE SCHOOL • SUPPORT DE COURS',
+              style: TextStyle(
+                color: Color(0xFF78909C),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.7,
+              ),
+            ),
+          ),
         ],
       ),
     );
