@@ -944,6 +944,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       'geom_prism': 'Prisme droit',
       'graph_line': 'Représentation graphique d’une droite',
       'stats_bar': 'Diagramme en bâtons',
+      'svt_cell': 'Échanges à travers la membrane cellulaire',
+      'svt_neuron': 'Structure d’un neurone',
+      'svt_synapse': 'Transmission au niveau d’une synapse',
     };
     const formulas = <String, String>{
       'gravity_pair': 'F = G × m₁ × m₂ / r²',
@@ -961,6 +964,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       'geom_prism': 'V = A base × hauteur',
       'graph_line': 'y = ax + b',
       'stats_bar': 'Hauteur des barres proportionnelle aux effectifs',
+      'svt_cell': 'Entrées : eau, ions, nutriments, O₂  •  Sorties : CO₂ et déchets',
+      'svt_neuron': 'Dendrites → corps cellulaire → axone → terminaisons',
+      'svt_synapse': 'Message électrique → neurotransmetteurs → récepteurs',
     };
     final title = titles[kind];
     if (title == null) return const SizedBox.shrink();
@@ -1346,7 +1352,57 @@ class _GravityDiagramPainter extends CustomPainter {
       canvas.drawArc(Rect.fromLTRB(left,bottom-ry,right,bottom+ry),math.pi,math.pi,false,Paint()..color=grey..style=PaintingStyle.stroke..strokeWidth=1.5);
       _line(canvas,center,Offset(w*.72,h*.42),red,width:2.5);
       _text(canvas,'r',Offset(w*.61,h*.40),color:red,bold:true); _text(canvas,'h',Offset(right+7,h*.47),color:green,bold:true);
-    } else if (kind == 'stats_bar') {
+    } else if (kind == 'svt_cell') {
+      final cell=Rect.fromCenter(center:center,width:w*.48,height:h*.68);
+      canvas.drawOval(cell,Paint()..color=const Color(0x3322C55E)..style=PaintingStyle.fill);
+      canvas.drawOval(cell,Paint()..color=green..style=PaintingStyle.stroke..strokeWidth=3);
+      canvas.drawCircle(center,24,Paint()..color=const Color(0xFF93C5FD));
+      canvas.drawCircle(center,24,Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=2);
+      _text(canvas,'Noyau',center+const Offset(28,-8),size:10,color:blue,bold:true);
+      _text(canvas,'Membrane',Offset(w*.34,h*.12),size:10,color:green,bold:true);
+      _arrow(canvas,Offset(5,h*.40),Offset(w*.25,h*.40),blue);
+      _arrow(canvas,Offset(5,h*.58),Offset(w*.25,h*.58),orange);
+      _arrow(canvas,Offset(w*.75,h*.47),Offset(w-5,h*.47),red);
+      _text(canvas,'Entrées',Offset(3,h*.24),size:10,color:blue,bold:true);
+      _text(canvas,'Sorties',Offset(w*.78,h*.27),size:10,color:red,bold:true);
+    } else if (kind == 'svt_neuron') {
+      final soma=Offset(w*.28,h*.50);
+      canvas.drawCircle(soma,27,Paint()..color=const Color(0xFFFDE68A));
+      canvas.drawCircle(soma,27,Paint()..color=orange..style=PaintingStyle.stroke..strokeWidth=2);
+      canvas.drawCircle(soma,9,Paint()..color=blue);
+      for(final end in [Offset(w*.08,h*.20),Offset(w*.07,h*.48),Offset(w*.10,h*.82),Offset(w*.25,h*.12),Offset(w*.34,h*.10)]) {
+        _line(canvas,soma,end,green,width:2.5);
+      }
+      final axonStart=Offset(w*.43,h*.50), axonEnd=Offset(w*.88,h*.50);
+      _line(canvas,axonStart,axonEnd,blue,width:4);
+      for(int i=0;i<4;i++) {
+        final x=w*(.48+i*.095);
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,h*.43,w*.065,h*.14),const Radius.circular(8)),Paint()..color=const Color(0xFFBFDBFE));
+        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,h*.43,w*.065,h*.14),const Radius.circular(8)),Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=1.5);
+      }
+      _line(canvas,axonEnd,Offset(w*.94,h*.34),red,width:2);
+      _line(canvas,axonEnd,Offset(w*.95,h*.50),red,width:2);
+      _line(canvas,axonEnd,Offset(w*.94,h*.66),red,width:2);
+      _text(canvas,'Dendrites',Offset(2,h*.04),size:10,color:green,bold:true);
+      _text(canvas,'Corps cellulaire',Offset(w*.18,h*.78),size:10,bold:true);
+      _text(canvas,'Axone + myéline',Offset(w*.48,h*.23),size:10,color:blue,bold:true);
+      _text(canvas,'Terminaisons',Offset(w*.72,h*.78),size:10,color:red,bold:true);
+    } else if (kind == 'svt_synapse') {
+      final pre=Rect.fromLTWH(w*.12,h*.20,w*.30,h*.30);
+      final post=Rect.fromLTWH(w*.58,h*.58,w*.30,h*.22);
+      canvas.drawRRect(RRect.fromRectAndRadius(pre,const Radius.circular(25)),Paint()..color=const Color(0xFFBFDBFE));
+      canvas.drawRRect(RRect.fromRectAndRadius(pre,const Radius.circular(25)),Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=2);
+      canvas.drawRRect(RRect.fromRectAndRadius(post,const Radius.circular(18)),Paint()..color=const Color(0xFFDCFCE7));
+      canvas.drawRRect(RRect.fromRectAndRadius(post,const Radius.circular(18)),Paint()..color=green..style=PaintingStyle.stroke..strokeWidth=2);
+      for(int i=0;i<5;i++) {
+        canvas.drawCircle(Offset(w*(.20+i*.045),h*.38),4,Paint()..color=orange);
+        canvas.drawCircle(Offset(w*(.48+i*.035),h*(.48+(i%2)*.05)),3,Paint()..color=orange);
+      }
+      _arrow(canvas,Offset(w*.43,h*.42),Offset(w*.58,h*.62),red);
+      _text(canvas,'Bouton présynaptique',Offset(w*.08,h*.06),size:10,color:blue,bold:true);
+      _text(canvas,'Fente synaptique',Offset(w*.39,h*.80),size:10,color:orange,bold:true);
+      _text(canvas,'Récepteurs',Offset(w*.62,h*.84),size:10,color:green,bold:true);
+else if (kind == 'stats_bar') {
       final base=h*.82;
       _line(canvas,Offset(w*.12,base),Offset(w*.92,base),ink);
       final vals=[.28,.52,.40,.72,.60];
