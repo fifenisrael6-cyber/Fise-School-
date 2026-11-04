@@ -1402,7 +1402,7 @@ class _GravityDiagramPainter extends CustomPainter {
       _text(canvas,'Bouton présynaptique',Offset(w*.08,h*.06),size:10,color:blue,bold:true);
       _text(canvas,'Fente synaptique',Offset(w*.39,h*.80),size:10,color:orange,bold:true);
       _text(canvas,'Récepteurs',Offset(w*.62,h*.84),size:10,color:green,bold:true);
-else if (kind == 'stats_bar') {
+    } else if (kind == 'stats_bar') {
       final base=h*.82;
       _line(canvas,Offset(w*.12,base),Offset(w*.92,base),ink);
       final vals=[.28,.52,.40,.72,.60];
