@@ -85,9 +85,7 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
     _contentEnController.addListener(_refreshPreview);
   }
 
-  void _refreshPreview() {
-    if (mounted) setState(() {});
-  }
+  void _refreshPreview() { if (mounted) setState(() {}); }
 
   void _insertSnippet(String snippet) {
     final controller = _activeContentController;
@@ -96,160 +94,31 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
     final end = selection.isValid ? selection.end : controller.text.length;
     final before = controller.text.substring(0, start);
     final after = controller.text.substring(end);
-    final needsLeadingNewline = before.isNotEmpty && !before.endsWith('\n');
-    final insertion = '${needsLeadingNewline ? '\n' : ''}$snippet';
-    final updated = '$before$insertion$after';
+    final prefix = before.isNotEmpty && !before.endsWith('\\n') ? '\\n' : '';
+    final insertion = '$prefix$snippet';
     final cursor = before.length + insertion.length;
-    controller.value = TextEditingValue(
-      text: updated,
-      selection: TextSelection.collapsed(offset: cursor),
-    );
-    controller.selection = TextSelection.collapsed(offset: cursor);
+    controller.value = TextEditingValue(text: '$before$insertion$after', selection: TextSelection.collapsed(offset: cursor));
   }
 
-  Widget _editorAction(String label, IconData icon, String snippet) {
-    return OutlinedButton.icon(
-      onPressed: (_saving || _deleting) ? null : () => _insertSnippet(snippet),
-      icon: Icon(icon, size: 17),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        visualDensity: VisualDensity.compact,
-      ),
-    );
-  }
+  Widget _editorAction(String label, IconData icon, String snippet) => OutlinedButton.icon(
+    onPressed: (_saving || _deleting) ? null : () => _insertSnippet(snippet),
+    icon: Icon(icon, size: 17), label: Text(label));
 
-  Widget _buildEditorToolbar() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _isFrench ? 'Outils de rédaction' : 'Writing tools',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _editorAction(_isFrench ? 'Sous-titre' : 'Heading', Icons.title, '## ${_isFrench ? 'Nouveau titre' : 'New heading'}'),
-                _editorAction(_isFrench ? 'Formule' : 'Formula', Icons.functions, r'$\frac{a}{b}$'),
-                _editorAction(
-                  _isFrench ? 'Calcul détaillé' : 'Worked calculation',
-                  Icons.calculate_outlined,
-                  _isFrench
-                      ? '**Exemple corrigé**\n\nÉnoncé :\n\n**Solution :**\n\n' + r'$x = \frac{10}{2} = 5$'
-                      : '**Worked example**\n\nQuestion:\n\n**Solution:**\n\n' + r'$x = \frac{10}{2} = 5$',
-                ),
-                _editorAction(_isFrench ? 'Liste' : 'List', Icons.format_list_bulleted, '- ${_isFrench ? 'Élément' : 'Item'}'),
-                _editorAction(_isFrench ? 'Tableau' : 'Table', Icons.table_chart_outlined, _isFrench ? 'Grandeur | Valeur\n--- | ---\nA | 1\nB | 2' : 'Quantity | Value\n--- | ---\nA | 1\nB | 2'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isFrench
-                  ? 'Touchez d’abord le champ français ou anglais à modifier, puis choisissez un outil. Les images et schémas se joignent à la leçon après son premier enregistrement.'
-                  : 'Tap the French or English field first, then choose a tool. Images and diagrams can be attached after the lesson is first saved.',
-              style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _buildEditorToolbar() => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(_isFrench ? 'Outils de rédaction' : 'Writing tools', style: const TextStyle(fontWeight: FontWeight.bold)),
+    const SizedBox(height: 8),
+    Wrap(spacing: 8, runSpacing: 8, children: [
+      _editorAction(_isFrench ? 'Sous-titre' : 'Heading', Icons.title, _isFrench ? '## Nouveau titre' : '## New heading'),
+      _editorAction(_isFrench ? 'Formule' : 'Formula', Icons.functions, r'$\\frac{a}{b}$'),
+      _editorAction(_isFrench ? 'Calcul détaillé' : 'Worked calculation', Icons.calculate_outlined, _isFrench ? '**Exemple corrigé**\\n\\nÉnoncé :\\n\\n**Solution :**\\n\\n' + r'$x = \\frac{10}{2} = 5$' : '**Worked example**\\n\\nQuestion:\\n\\n**Solution:**\\n\\n' + r'$x = \\frac{10}{2} = 5$'),
+      _editorAction(_isFrench ? 'Liste' : 'List', Icons.format_list_bulleted, _isFrench ? '- Élément' : '- Item'),
+      _editorAction(_isFrench ? 'Tableau' : 'Table', Icons.table_chart_outlined, _isFrench ? 'Grandeur | Valeur\\n--- | ---\\nA | 1\\nB | 2' : 'Quantity | Value\\n--- | ---\\nA | 1\\nB | 2'),
+    ]),
+  ])));
 
   Widget _buildContentPreview() {
     final previewText = _activeContentController.text.trim();
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.menu_book_outlined),
-        title: Text(_isFrench ? 'Aperçu du manuel' : 'Textbook preview'),
-        subtitle: Text(_isFrench ? 'Vérifier les formules et la mise en forme' : 'Check formulas and formatting'),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: previewText.isEmpty
-                ? Text(_isFrench ? 'Le contenu apparaîtra ici.' : 'Your lesson content will appear here.')
-                : RichLessonText(text: previewText),
-          ),
-        ],
-      ),
-    );
-  }
- : '**Worked example**\n\nQuestion:\n\n**Solution:**\n\n' + r'$x = \frac{10}{2} = 5),
-                _editorAction(_isFrench ? 'Liste' : 'List', Icons.format_list_bulleted, '- ${_isFrench ? 'Élément' : 'Item'}'),
-                _editorAction(_isFrench ? 'Tableau' : 'Table', Icons.table_chart_outlined, _isFrench ? 'Grandeur | Valeur\n--- | ---\nA | 1\nB | 2' : 'Quantity | Value\n--- | ---\nA | 1\nB | 2'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isFrench
-                  ? 'Touchez d’abord le champ français ou anglais à modifier, puis choisissez un outil. Les images et schémas se joignent à la leçon après son premier enregistrement.'
-                  : 'Tap the French or English field first, then choose a tool. Images and diagrams can be attached after the lesson is first saved.',
-              style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContentPreview() {
-    final previewText = _activeContentController.text.trim();
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.menu_book_outlined),
-        title: Text(_isFrench ? 'Aperçu du manuel' : 'Textbook preview'),
-        subtitle: Text(_isFrench ? 'Vérifier les formules et la mise en forme' : 'Check formulas and formatting'),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: previewText.isEmpty
-                ? Text(_isFrench ? 'Le contenu apparaîtra ici.' : 'Your lesson content will appear here.')
-                : RichLessonText(text: previewText),
-          ),
-        ],
-      ),
-    );
-  }
-),
-                _editorAction(_isFrench ? 'Liste' : 'List', Icons.format_list_bulleted, '- ${_isFrench ? 'Élément' : 'Item'}'),
-                _editorAction(_isFrench ? 'Tableau' : 'Table', Icons.table_chart_outlined, _isFrench ? 'Grandeur | Valeur\n--- | ---\nA | 1\nB | 2' : 'Quantity | Value\n--- | ---\nA | 1\nB | 2'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _isFrench
-                  ? 'Touchez d’abord le champ français ou anglais à modifier, puis choisissez un outil. Les images et schémas se joignent à la leçon après son premier enregistrement.'
-                  : 'Tap the French or English field first, then choose a tool. Images and diagrams can be attached after the lesson is first saved.',
-              style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildContentPreview() {
-    final previewText = _activeContentController.text.trim();
-    return Card(
-      child: ExpansionTile(
-        leading: const Icon(Icons.menu_book_outlined),
-        title: Text(_isFrench ? 'Aperçu du manuel' : 'Textbook preview'),
-        subtitle: Text(_isFrench ? 'Vérifier les formules et la mise en forme' : 'Check formulas and formatting'),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: previewText.isEmpty
-                ? Text(_isFrench ? 'Le contenu apparaîtra ici.' : 'Your lesson content will appear here.')
-                : RichLessonText(text: previewText),
-          ),
-        ],
-      ),
-    );
+    return Card(child: ExpansionTile(leading: const Icon(Icons.menu_book_outlined), title: Text(_isFrench ? 'Aperçu du manuel' : 'Textbook preview'), children: [Padding(padding: const EdgeInsets.all(16), child: previewText.isEmpty ? Text(_isFrench ? 'Le contenu apparaîtra ici.' : 'Your lesson content will appear here.') : RichLessonText(text: previewText))]));
   }
 
   @override
@@ -514,18 +383,8 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
             const SizedBox(height: 16),
             _field(controller: _titleFrController, label: 'Titre français'),
             _field(controller: _titleEnController, label: 'English title'),
-            _field(
-              controller: _contentFrController,
-              label: 'Contenu français',
-              maxLines: 12,
-              onTap: () => setState(() => _activeContentController = _contentFrController),
-            ),
-            _field(
-              controller: _contentEnController,
-              label: 'English content',
-              maxLines: 12,
-              onTap: () => setState(() => _activeContentController = _contentEnController),
-            ),
+            _field(controller: _contentFrController, label: 'Contenu français', maxLines: 12, onTap: () => setState(() => _activeContentController = _contentFrController)),
+            _field(controller: _contentEnController, label: 'English content', maxLines: 12, onTap: () => setState(() => _activeContentController = _contentEnController)),
             _buildEditorToolbar(),
             _buildContentPreview(),
             _field(
