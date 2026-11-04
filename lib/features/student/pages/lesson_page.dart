@@ -5,6 +5,7 @@ import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../widgets/course_inline_images.dart';
 import '../../ai/pages/ai_page.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -576,6 +577,7 @@ class _LessonPageState extends State<LessonPage> {
     required String title,
     required String content,
     required IconData icon,
+    List<CourseResource> inlineImages = const <CourseResource>[],
   }) {
     return Container(
       width: double.infinity,
@@ -626,6 +628,12 @@ class _LessonPageState extends State<LessonPage> {
               color: Color(0xFF263238),
             ),
           ),
+          if (inlineImages.isNotEmpty)
+            CourseInlineImages(
+              locale: widget.locale,
+              userId: widget.profile.id,
+              resources: inlineImages,
+            ),
           const SizedBox(height: 16),
           const Divider(color: Color(0xFFE7DFC9)),
           const Align(
@@ -797,6 +805,9 @@ class _LessonPageState extends State<LessonPage> {
               title: isEnglish ? 'Course content' : 'Contenu du cours',
               content: value,
               icon: Icons.menu_book_rounded,
+              inlineImages: _resources
+                  .where((resource) => resource.resourceType == 'image')
+                  .toList(growable: false),
             ),
           if (examples case final value?)
             _buildContentSection(
