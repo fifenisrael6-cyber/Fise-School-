@@ -512,7 +512,8 @@ class CourseService {
           .inFilter('content_type', ['course', 'lesson', 'text'])
           .eq('is_published', true)
           .order('position');
-      final items = itemRows.map((raw) {
+      final itemsByKey = <String, Map<String, dynamic>>{};
+      for (final raw in itemRows) {
         final item = Map<String, dynamic>.from(raw);
         final sourceChapterId = item['chapter_id']?.toString();
         final linkedChapterId =
@@ -524,8 +525,40 @@ class CourseService {
         item['chapter_id'] = linkedChapterId;
         item['chapter_title_fr'] = chapter?['title_fr'];
         item['chapter_title_en'] = chapter?['title_en'];
-        return item;
-      }).toList(growable: false);
+
+        // A generic and a series-specific publication can point to the same
+        // chapter. Keep the newest copy of the same titled course, without
+        // hiding distinct lessons or supplementary documents.
+        final rawTitle =
+            (item['title_fr'] ?? item['title_en'] ?? '').toString();
+        final normalizedTitle = rawTitle
+            .toLowerCase()
+            .replaceAll(RegExp(r'\\s*\\([^)]*\\)'), '')
+            .replaceAll(RegExp(r'\\s+'), ' ')
+            .trim();
+        final key = '${linkedChapterId ?? ''}|${item['content_type']}|'
+            '${normalizedTitle.isEmpty ? item['id'] : normalizedTitle}';
+        final previous = itemsByKey[key];
+        final currentDate =
+            DateTime.tryParse(item['created_at']?.toString() ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0);
+        final previousDate = DateTime.tryParse(
+              previous?['created_at']?.toString() ?? '',
+            ) ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        if (previous == null || currentDate.isAfter(previousDate)) {
+          itemsByKey[key] = item;
+        }
+      }
+      final items = itemsByKey.values.toList(growable: false)
+        ..sort((left, right) {
+          final byPosition = (left['position'] as num? ?? 0)
+              .compareTo(right['position'] as num? ?? 0);
+          if (byPosition != 0) return byPosition;
+          return (left['title_fr'] ?? '').toString().compareTo(
+                (right['title_fr'] ?? '').toString(),
+              );
+        });
       await JsonCache.instance.write(cacheKey, items);
       return items;
     } catch (_) {
