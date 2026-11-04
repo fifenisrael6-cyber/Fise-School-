@@ -486,7 +486,6 @@ class CourseService {
       }
 
       // Keep compatibility with older rows that predate the sharing table.
-      final linkedItemIds = chapterByItemId.keys.toSet();
       final legacyRows = await _client
           .from('chapter_content_items')
           .select('id, chapter_id')
