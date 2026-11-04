@@ -806,10 +806,62 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     return resources;
   }
 
-  /// Mise en page pédagogique des cours extraits de documents.
+  /// Affiche une illustration intégrée au texte du cours.
+  /// Syntaxe : ![Légende](chemin-dans-chapter-content.webp)
+  Widget _courseInlineImage(String source, String caption) {
+    final cleanSource = source.trim();
+    final cleanCaption = caption.trim();
+    Future<String> resolveUrl() async {
+      if (cleanSource.startsWith('https://') || cleanSource.startsWith('http://')) return cleanSource;
+      var storagePath = cleanSource;
+      const bucketPrefix = 'chapter-content/';
+      if (storagePath.startsWith(bucketPrefix)) storagePath = storagePath.substring(bucketPrefix.length);
+      storagePath = storagePath.replaceFirst(RegExp(r'^/+'), '');
+      if (storagePath.isEmpty || storagePath.contains('..')) throw const FormatException('Chemin d’illustration invalide.');
+      return Supabase.instance.client.storage.from('chapter-content').createSignedUrl(storagePath, 3600);
+    }
+
+    return FutureBuilder<String>(
+      future: resolveUrl(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Container(
+            width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 8), padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: const Color(0xFFFFF7ED), border: Border.all(color: const Color(0xFFF59E0B)), borderRadius: BorderRadius.circular(8)),
+            child: const Text('Illustration momentanément indisponible. Vérifiez le fichier dans le stockage du cours.', style: TextStyle(color: Color(0xFF9A3412), fontSize: 13)),
+          );
+        }
+        return Container(
+          width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 10), padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(10)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.network(
+                snapshot.data!, width: double.infinity, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Padding(padding: EdgeInsets.all(16), child: Text('Impossible de charger cette illustration.')),
+              ),
+            ),
+            if (cleanCaption.isNotEmpty) ...[
+              const SizedBox(height: 7),
+              Text(cleanCaption, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, height: 1.35, color: Color(0xFF475569), fontStyle: FontStyle.italic)),
+            ],
+          ]),
+        );
+      },
+    );
+  }
+
+  /// Mise en page pédagogique : titres, définitions, tableaux et images en ligne.
   Widget _formattedCourseBody(String body) {
     final widgets = <Widget>[];
     var previousWasBlank = false;
+    final imagePattern = RegExp(r'^!\[([^\]]*)\]\(([^)]+)\)$');
+    final customImagePattern = RegExp(r'^\[\[image:([^|\]]+)(?:\|([^\]]*))?\]\]$');
+
     for (final raw in body.replaceAll('\r\n', '\n').split('\n')) {
       final line = raw.trim();
       if (line.isEmpty) {
@@ -818,25 +870,34 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         continue;
       }
       previousWasBlank = false;
+      final markdownImage = imagePattern.firstMatch(line);
+      final customImage = customImagePattern.firstMatch(line);
+      if (markdownImage != null || customImage != null) {
+        final match = markdownImage ?? customImage!;
+        final caption = markdownImage != null ? match.group(1) ?? '' : match.group(2) ?? '';
+        final source = markdownImage != null ? match.group(2) ?? '' : match.group(1) ?? '';
+        widgets.add(_courseInlineImage(source, caption));
+        continue;
+      }
+
       final cells = line.split(RegExp(r'\s{3,}')).where((s) => s.trim().isNotEmpty).toList();
       final isTable = cells.length >= 2 && cells.length <= 6 && cells.every((s) => s.trim().length < 90);
       final isUpperHeading = line.length <= 90 && line.length >= 4 && line == line.toUpperCase() && RegExp(r'[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ]').hasMatch(line);
       final isSection = RegExp(r'^(?:CHAPITRE\s+\d+|[IVX]+\s*[−–-]|\d+(?:\.\d+)*\s*[.)-]\s+[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ])', caseSensitive: false).hasMatch(line) || RegExp(r'^(?:EXERCICES?|EXERCICES? DE BASE|QUESTIONS FLASH|À LA MAISON|CORRECTION|APPLICATIONS?|CONCLUSION|RÉSULTAT|SOLUTION)\s*:?', caseSensitive: false).hasMatch(line);
       final label = RegExp(r'^(Définition(?:s)?|Remarque(?:s)?|Méthode|Propriété|Théorème|Exemple|Solution|Attention|À retenir)\s*:?(.*)$', caseSensitive: false).firstMatch(line);
+
       if (isUpperHeading || isSection) {
         widgets.add(Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 12, bottom: 7),
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-          decoration: const BoxDecoration(color: Color(0xFFF0F7F1), border: Border(bottom: BorderSide(color: Color(0xFF166534), width: 2))),
-          child: Text(line, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+          width: double.infinity, margin: const EdgeInsets.only(top: 12, bottom: 7), padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: const BoxDecoration(color: Color(0xFFEFF6FF), border: Border(bottom: BorderSide(color: Color(0xFF2563EB), width: 2))),
+          child: Text(line, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8))),
         ));
       } else if (label != null) {
         widgets.add(Container(
           width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 5), padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: const Color(0xFFEFF7F0), border: const Border(left: BorderSide(color: Color(0xFF166534), width: 4)), borderRadius: BorderRadius.circular(6)),
+          decoration: BoxDecoration(color: const Color(0xFFEFF7F0), border: const Border(left: BorderSide(color: Color(0xFF16A34A), width: 4)), borderRadius: BorderRadius.circular(6)),
           child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5), children: [
-            TextSpan(text: '${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF14532D))),
+            TextSpan(text: '\${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF166534))),
             if ((label.group(2) ?? '').trim().isNotEmpty) TextSpan(text: (label.group(2) ?? '').trim()),
           ])),
         ));
@@ -844,12 +905,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         widgets.add(Container(
           width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 2),
           decoration: BoxDecoration(border: Border.all(color: const Color(0xFFD1D5DB)), borderRadius: BorderRadius.circular(4)),
-          child: Wrap(children: [for (var i = 0; i < cells.length; i++) Container(
-            constraints: const BoxConstraints(minWidth: 42, maxWidth: 220),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(color: i == 0 ? const Color(0xFFF3F4F6) : Colors.white, border: Border(right: BorderSide(color: const Color(0xFFD1D5DB), width: i == cells.length - 1 ? 0 : 1))),
-            child: Text(cells[i].trim(), style: TextStyle(fontSize: 14, height: 1.35, fontWeight: i == 0 ? FontWeight.w700 : FontWeight.normal)),
-          )]),
+          child: Wrap(children: [
+            for (var i = 0; i < cells.length; i++) Container(
+              constraints: const BoxConstraints(minWidth: 42, maxWidth: 220), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(color: i == 0 ? const Color(0xFFF3F4F6) : Colors.white, border: Border(right: BorderSide(color: const Color(0xFFD1D5DB), width: i == cells.length - 1 ? 0 : 1))),
+              child: Text(cells[i].trim(), style: TextStyle(fontSize: 14, height: 1.35, fontWeight: i == 0 ? FontWeight.w700 : FontWeight.normal)),
+            ),
+          ]),
         ));
       } else {
         widgets.add(Padding(padding: const EdgeInsets.only(bottom: 5), child: SelectableText(line.replaceAll(RegExp(r'[ \t]{2,}'), ' '), style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87))));
@@ -857,6 +919,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: widgets);
   }
+
   Widget _chapterContentPost(Map<String, dynamic> item) {
     final code = widget.locale.languageCode;
     final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
