@@ -531,10 +531,10 @@ class CourseService {
         // hiding distinct lessons or supplementary documents.
         final rawTitle =
             (item['title_fr'] ?? item['title_en'] ?? '').toString();
+        final suffixStart = rawTitle.indexOf(' (');
         final normalizedTitle = rawTitle
+            .substring(0, suffixStart < 0 ? rawTitle.length : suffixStart)
             .toLowerCase()
-            .replaceAll(RegExp(r'\\s*\\([^)]*\\)'), '')
-            .replaceAll(RegExp(r'\\s+'), ' ')
             .trim();
         final key = '${linkedChapterId ?? ''}|${item['content_type']}|'
             '${normalizedTitle.isEmpty ? item['id'] : normalizedTitle}';
