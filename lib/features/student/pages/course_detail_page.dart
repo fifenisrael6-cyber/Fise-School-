@@ -7,6 +7,7 @@ import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../models/assignment.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -648,35 +649,79 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   }
 
   Widget _buildCourseContentCard(String courseContent, bool isEnglish) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.14)),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFEFA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE7DFC9)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F172A),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.article_outlined, color: Color(0xFF166534)),
-                const SizedBox(width: 8),
-                Text(
-                  isEnglish ? 'Course content' : 'Contenu du cours',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.menu_book_rounded, color: Color(0xFF166534)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isEnglish ? 'COURSE NOTES' : 'SUPPORT DE COURS',
+                  style: const TextStyle(
+                    color: Color(0xFF166534),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.1,
+                  ),
                 ),
-              ],
+              ),
+              const Icon(Icons.auto_stories_rounded,
+                  color: Color(0xFFB08A43), size: 20),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(height: 2, color: const Color(0xFFD9B66F)),
+          const SizedBox(height: 18),
+          RichLessonText(
+            text: courseContent,
+            style: const TextStyle(
+              fontSize: 16,
+              height: 1.75,
+              color: Color(0xFF263238),
             ),
-            const SizedBox(height: 12),
-            SelectableText(
-              courseContent,
-              style: const TextStyle(fontSize: 15, height: 1.55),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 18),
+          const Divider(color: Color(0xFFE7DFC9)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'FISE SCHOOL',
+                style: TextStyle(
+                  color: Color(0xFF78909C),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                ),
+              ),
+              Text(
+                isEnglish ? 'COURSE MATERIAL' : 'DOCUMENT PÉDAGOGIQUE',
+                style: const TextStyle(
+                  color: Color(0xFF78909C),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
