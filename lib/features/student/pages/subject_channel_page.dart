@@ -1230,7 +1230,7 @@ class _GravityDiagramPainter extends CustomPainter {
     if (length == 0) return;
     final unit = delta / length;
     for (double d = 0; d < length; d += 10) {
-      c.drawLine(a + unit * d, a + unit * math.min(d + 5, length), paint);
+      c.drawLine(a + unit * d, a + unit * math.min(d + 5, length).toDouble(), paint);
     }
   }
 
@@ -1303,7 +1303,7 @@ class _GravityDiagramPainter extends CustomPainter {
         _text(canvas,'hauteur',Offset(c.dx+5,h*.48),size:10,color:green);
       }
     } else if (kind == 'geom_circle') {
-      final r = math.min(w,h)*.31;
+      final r = math.min(w,h).toDouble()*.31;
       canvas.drawCircle(center,r,Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=3);
       canvas.drawCircle(center,4,Paint()..color=red);
       final edge=center+Offset(r*.78,-r*.63);
@@ -1311,7 +1311,8 @@ class _GravityDiagramPainter extends CustomPainter {
       _text(canvas,'O',center+const Offset(-17,7),bold:true);
       _text(canvas,'r',center+Offset(r*.35,-r*.42),color:red,bold:true);
     } else if (kind == 'geom_square') {
-      final rect=Rect.fromCenter(center:center,width:math.min(w,h)*.62,height:math.min(w,h)*.62);
+      final side=math.min(w,h).toDouble()*.62;
+      final rect=Rect.fromCenter(center:center,width:side,height:side);
       canvas.drawRect(rect,Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=3);
       _line(canvas,rect.topLeft,rect.bottomRight,red,width:2.5);
       _line(canvas,rect.topRight,rect.bottomLeft,green,width:2.5);
