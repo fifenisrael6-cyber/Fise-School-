@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
@@ -870,6 +872,271 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         continue;
       }
       previousWasBlank = false;
+      final diagramMatch = RegExp(r'^\\[\\[diagram:(gravity_pair|gravity_altitude|weight)\\]\\]
+      final customImage = customImagePattern.firstMatch(line);
+      if (markdownImage != null || customImage != null) {
+        final match = markdownImage ?? customImage!;
+        final caption = markdownImage != null ? match.group(1) ?? '' : match.group(2) ?? '';
+        final source = markdownImage != null ? match.group(2) ?? '' : match.group(1) ?? '';
+        widgets.add(_courseInlineImage(source, caption));
+        continue;
+      }
+
+      final cells = line.split(RegExp(r'\s{3,}')).where((s) => s.trim().isNotEmpty).toList();
+      final isTable = cells.length >= 2 && cells.length <= 6 && cells.every((s) => s.trim().length < 90);
+      final isUpperHeading = line.length <= 90 && line.length >= 4 && line == line.toUpperCase() && RegExp(r'[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ]').hasMatch(line);
+      final isSection = RegExp(r'^(?:CHAPITRE\s+\d+|[IVX]+\s*[−–-]|\d+(?:\.\d+)*\s*[.)-]\s+[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ])', caseSensitive: false).hasMatch(line) || RegExp(r'^(?:EXERCICES?|EXERCICES? DE BASE|QUESTIONS FLASH|À LA MAISON|CORRECTION|APPLICATIONS?|CONCLUSION|RÉSULTAT|SOLUTION)\s*:?', caseSensitive: false).hasMatch(line);
+      final label = RegExp(r'^(Définition(?:s)?|Remarque(?:s)?|Méthode|Propriété|Théorème|Exemple|Solution|Attention|À retenir)\s*:?(.*)$', caseSensitive: false).firstMatch(line);
+
+      if (isUpperHeading || isSection) {
+        widgets.add(Container(
+          width: double.infinity, margin: const EdgeInsets.only(top: 12, bottom: 7), padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: const BoxDecoration(color: Color(0xFFEFF6FF), border: Border(bottom: BorderSide(color: Color(0xFF2563EB), width: 2))),
+          child: Text(line, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8))),
+        ));
+      } else if (label != null) {
+        widgets.add(Container(
+          width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 5), padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: const Color(0xFFEFF7F0), border: const Border(left: BorderSide(color: Color(0xFF16A34A), width: 4)), borderRadius: BorderRadius.circular(6)),
+          child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 15, height: 1.5), children: [
+            TextSpan(text: '${label.group(1)} : ', style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.underline, color: Color(0xFF166534))),
+            if ((label.group(2) ?? '').trim().isNotEmpty) TextSpan(text: (label.group(2) ?? '').trim()),
+          ])),
+        ));
+      } else if (isTable) {
+        widgets.add(Container(
+          width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 2),
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFD1D5DB)), borderRadius: BorderRadius.circular(4)),
+          child: Wrap(children: [
+            for (var i = 0; i < cells.length; i++) Container(
+              constraints: const BoxConstraints(minWidth: 42, maxWidth: 220), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(color: i == 0 ? const Color(0xFFF3F4F6) : Colors.white, border: Border(right: BorderSide(color: const Color(0xFFD1D5DB), width: i == cells.length - 1 ? 0 : 1))),
+              child: Text(cells[i].trim(), style: TextStyle(fontSize: 14, height: 1.35, fontWeight: i == 0 ? FontWeight.w700 : FontWeight.normal)),
+            ),
+          ]),
+        ));
+      } else {
+        widgets.add(Padding(padding: const EdgeInsets.only(bottom: 5), child: SelectableText(line.replaceAll(RegExp(r'[ \t]{2,}'), ' '), style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87))));
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: widgets);
+  }
+
+  Widget _gravityDiagramCard(String kind) {
+    final titles = {
+      'gravity_pair': _fr ? 'Attraction gravitationnelle entre deux corps' : 'Gravitational attraction between two bodies',
+      'gravity_altitude': _fr ? 'Champ gravitationnel autour de la Terre' : 'Gravitational field around Earth',
+      'weight': _fr ? 'Poids d’un corps à la surface de la Terre' : 'Weight of a body at Earth surface',
+    };
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), border: Border.all(color: const Color(0xFFCBD5E1)), borderRadius: BorderRadius.circular(14)),
+      child: Column(children: [
+        Text(titles[kind]!, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF164E63), fontSize: 14)),
+        const SizedBox(height: 8),
+        SizedBox(width: double.infinity, height: 190, child: CustomPaint(painter: _GravityDiagramPainter(kind))),
+        const SizedBox(height: 6),
+        Text(kind == 'gravity_pair' ? 'F₁₂ = F₂₁ = G × m₁ × m₂ / r²' : kind == 'gravity_altitude' ? 'g(h) = G × Mₜ / (Rₜ + h)²' : 'P = m × g',
+          textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8), fontSize: 15)),
+      ]),
+    );
+  }
+
+  Widget _chapterContentPost(Map<String, dynamic> item) {
+    final code = widget.locale.languageCode;
+    final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
+            item['title_fr'] ?? item['title_en'] ?? '')
+        .toString()
+        .trim();
+    final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
+            item['body_text_fr'] ?? item['body_text_en'] ?? '')
+        .toString()
+        .trim();
+    final chapter = ((code == 'en' ? item['chapter_title_en'] : item['chapter_title_fr']) ??
+            item['chapter_title_fr'] ?? item['chapter_title_en'] ?? '')
+        .toString()
+        .trim();
+
+    return _bubble(
+      date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title.isEmpty ? (_fr ? 'Cours officiel' : 'Official lesson') : title,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          if (chapter.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(chapter, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF166534))),
+          ],
+          if (body.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _formattedCourseBody(body),
+          ],
+          if ((item['chapter_id']?.toString() ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChapterQuizPage(
+                      locale: widget.locale,
+                      chapterId: item['chapter_id'].toString(),
+                      chapterTitle: chapter.isNotEmpty ? chapter : title,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text(_fr ? 'Quiz intelligent' : 'Smart quiz'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _coursePost(Course course, {bool showResources = true}) {
+    final code = widget.locale.languageCode;
+    final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
+    final description = (code == 'en' ? course.descriptionEn : course.descriptionFr)?.trim();
+
+    return _bubble(
+      date: course.publishedAt ?? DateTime.now(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.menu_book_rounded, size: 18, color: Color(0xFF166534)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  course.labelFor(code),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          if (description != null && description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _formattedCourseBody(description),
+          ],
+          if (content != null && content.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _formattedCourseBody(content),
+          ],
+          if (showResources) FutureBuilder<List<CourseResource>>(
+            future: _loadResources(course.id),
+            builder: (context, snapshot) {
+              final resources = snapshot.data ?? const <CourseResource>[];
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: LinearProgressIndicator(minHeight: 2),
+                );
+              }
+              if (resources.isEmpty) return const SizedBox.shrink();
+
+              // File-manager style folders: students can find course photos,
+              // audio, videos and PDFs without scrolling through a mixed list.
+              const categories = <String, List<String>>{
+                'image': ['image'],
+                'audio': ['audio'],
+                'video': ['video'],
+                'pdf': ['pdf'],
+                'documents': ['document', 'other'],
+              };
+              final labels = <String, String>{
+                'image': _fr ? 'Photos et images' : 'Photos and images',
+                'audio': _fr ? 'Audios' : 'Audio',
+                'video': _fr ? 'Vidéos' : 'Videos',
+                'pdf': 'PDF',
+                'documents': _fr ? 'Autres fichiers' : 'Other files',
+              };
+              final icons = <String, IconData>{
+                'image': Icons.photo_library_outlined,
+                'audio': Icons.audiotrack_rounded,
+                'video': Icons.video_library_outlined,
+                'pdf': Icons.picture_as_pdf_outlined,
+                'documents': Icons.folder_open_rounded,
+              };
+              final available = categories.entries.where((entry) =>
+                  resources.any((resource) => entry.value.contains(resource.resourceType)));
+              if (available.isEmpty) return const SizedBox.shrink();
+
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_fr ? 'Dossiers du cours' : 'Course folders',
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    ...available.map((entry) {
+                      final files = resources.where((resource) =>
+                          entry.value.contains(resource.resourceType)).toList();
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ExpansionTile(
+                          leading: Icon(icons[entry.key], color: const Color(0xFF166534)),
+                          title: Text(labels[entry.key]!,
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('${files.length} ${_fr ? 'fichier(s)' : 'file(s)'}'),
+                          children: files.map((resource) => OfflineResourceTile(
+                            locale: widget.locale,
+                            profile: widget.profile,
+                            resource: resource,
+                          )).toList(),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            },
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CourseDetailPage(
+                    locale: widget.locale,
+                    profile: widget.profile,
+                    course: course,
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: Text(_fr ? 'Ouvrir le cours' : 'Open course'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+}
+).firstMatch(line);
+      if (diagramMatch != null) {
+        widgets.add(_gravityDiagramCard(diagramMatch.group(1)!));
+        continue;
+      }
       final markdownImage = imagePattern.firstMatch(line);
       final customImage = customImagePattern.firstMatch(line);
       if (markdownImage != null || customImage != null) {
@@ -1107,4 +1374,77 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
+}
+
+/// Vector drawings generated by Flutter: no remote image or storage dependency.
+class _GravityDiagramPainter extends CustomPainter {
+  final String kind;
+  _GravityDiagramPainter(this.kind);
+
+  void _text(Canvas c, String value, Offset at, {double size = 12, Color color = const Color(0xFF0F172A), bool bold = false}) {
+    final p = TextPainter(text: TextSpan(text: value, style: TextStyle(fontSize: size, color: color, fontWeight: bold ? FontWeight.w700 : FontWeight.w500)), textDirection: TextDirection.ltr)..layout();
+    p.paint(c, at);
+  }
+
+  void _arrow(Canvas c, Offset a, Offset b, Color color) {
+    final paint = Paint()..color = color..strokeWidth = 2.5;
+    c.drawLine(a, b, paint);
+    final angle = (b - a).direction;
+    const head = 9.0;
+    c.drawLine(b, b - Offset(head * math.cos(angle - .5), head * math.sin(angle - .5)), paint);
+    c.drawLine(b, b - Offset(head * math.cos(angle + .5), head * math.sin(angle + .5)), paint);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final blue = Paint()..color = const Color(0xFF2563EB);
+    final orange = Paint()..color = const Color(0xFFF97316);
+    if (kind == 'gravity_pair') {
+      final y = h * .48;
+      canvas.drawCircle(Offset(w * .22, y), 27, blue);
+      canvas.drawCircle(Offset(w * .78, y), 35, orange);
+      _text(canvas, 'm₁', Offset(w * .22 - 9, y - 7), color: Colors.white, bold: true);
+      _text(canvas, 'm₂', Offset(w * .78 - 10, y - 7), color: Colors.white, bold: true);
+      _arrow(canvas, Offset(w * .43, y - 13), Offset(w * .30, y - 13), const Color(0xFFDC2626));
+      _arrow(canvas, Offset(w * .57, y + 13), Offset(w * .69, y + 13), const Color(0xFFDC2626));
+      _text(canvas, 'F₂₁', Offset(w * .33, y - 36), color: const Color(0xFFDC2626), bold: true);
+      _text(canvas, 'F₁₂', Offset(w * .61, y + 20), color: const Color(0xFFDC2626), bold: true);
+      final dash = Paint()..color = const Color(0xFF64748B)..strokeWidth = 1.5;
+      canvas.drawLine(Offset(w * .22, y + 49), Offset(w * .78, y + 49), dash);
+      canvas.drawLine(Offset(w * .22, y + 43), Offset(w * .22, y + 55), dash);
+      canvas.drawLine(Offset(w * .78, y + 43), Offset(w * .78, y + 55), dash);
+      _text(canvas, 'distance r', Offset(w * .43, y + 56), size: 11);
+      _text(canvas, 'Forces attractives', Offset(w * .36, 7), size: 11, color: const Color(0xFF475569));
+    } else if (kind == 'gravity_altitude') {
+      final center = Offset(w * .34, h * .56);
+      canvas.drawCircle(center, 53, blue);
+      _text(canvas, 'Terre', Offset(center.dx - 17, center.dy - 7), size: 11, color: Colors.white, bold: true);
+      final orbit = Paint()..color = const Color(0xFF94A3B8)..style = PaintingStyle.stroke..strokeWidth = 1.5;
+      canvas.drawCircle(center, 82, orbit);
+      final sat = Offset(center.dx + 82, center.dy - 8);
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: sat, width: 22, height: 14), const Radius.circular(3)), orange);
+      _arrow(canvas, center, Offset(center.dx + 82, center.dy), const Color(0xFF16A34A));
+      _text(canvas, 'Rₜ', Offset(center.dx - 43, center.dy + 25), color: Colors.white, bold: true);
+      _text(canvas, 'h', Offset(center.dx + 43, center.dy - 37), color: const Color(0xFF16A34A), bold: true);
+      _text(canvas, 'Satellite', Offset(sat.dx - 26, sat.dy - 29), size: 11, bold: true);
+      _text(canvas, 'r = Rₜ + h', Offset(w * .58, h * .46), size: 14, color: const Color(0xFF1D4ED8), bold: true);
+      _text(canvas, 'g diminue quand h augmente', Offset(w * .53, h * .65), size: 10);
+    } else {
+      final groundY = h * .75;
+      final ground = Paint()..color = const Color(0xFF16A34A)..strokeWidth = 4;
+      canvas.drawLine(Offset(8, groundY), Offset(w - 8, groundY), ground);
+      canvas.drawCircle(Offset(w * .5, groundY - 48), 18, orange);
+      _arrow(canvas, Offset(w * .5, groundY - 25), Offset(w * .5, groundY - 2), const Color(0xFFDC2626));
+      _text(canvas, 'm', Offset(w * .5 + 24, groundY - 56), bold: true);
+      _text(canvas, 'P = m × g', Offset(w * .5 + 13, groundY - 25), color: const Color(0xFFDC2626), bold: true);
+      _arrow(canvas, Offset(w * .5 - 65, groundY - 5), Offset(w * .5 - 65, groundY - 58), const Color(0xFF16A34A));
+      _text(canvas, 'g', Offset(w * .5 - 57, groundY - 60), color: const Color(0xFF16A34A), bold: true);
+      _text(canvas, 'Sol', Offset(w * .5 - 12, groundY + 7), size: 11, color: const Color(0xFF166534), bold: true);
+      _text(canvas, 'Le poids est dirigé vers le centre de la Terre', Offset(8, 8), size: 11);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GravityDiagramPainter oldDelegate) => oldDelegate.kind != kind;
 }
