@@ -376,56 +376,86 @@ class CourseService {
   }) async {
     final cacheKey = 'student_chapter_content_${studentId}_$subjectId';
     try {
+      // Use the latest active classroom, just like the chapter catalogue.
+      // This prevents an old active-class record from mixing two programmes.
       final memberships = await _client
           .from('class_students')
-          .select('class_id')
+          .select('class_id, joined_at')
           .eq('student_id', studentId)
-          .eq('is_active', true);
-      final classIds = memberships
-          .map((row) => row['class_id']?.toString())
-          .whereType<String>()
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList(growable: false);
-      if (classIds.isEmpty) return const <Map<String, dynamic>>[];
+          .eq('is_active', true)
+          .order('joined_at', ascending: false)
+          .limit(1);
+      final classId = memberships.isEmpty
+          ? null
+          : memberships.first['class_id']?.toString();
+      if (classId == null || classId.isEmpty) {
+        return const <Map<String, dynamic>>[];
+      }
 
       final classRows = await _client
           .from('school_classes')
           .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
-          .inFilter('id', classIds)
-          .eq('is_active', true);
-      final classes = classRows.map((row) => Map<String, dynamic>.from(row)).toList();
+          .eq('id', classId)
+          .eq('is_active', true)
+          .limit(1);
+      if (classRows.isEmpty) return const <Map<String, dynamic>>[];
+      final schoolClass = Map<String, dynamic>.from(classRows.first);
 
       final curriculumRows = await _client
           .from('curricula')
-          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id')
+          .select('id, subsystem, sector, exam_level_id, series_id, specialty_id, is_catalog_container')
           .eq('subject_id', subjectId)
           .eq('is_active', true);
-      final curriculumIds = <String>{};
-      for (final raw in curriculumRows) {
-        final curriculum = Map<String, dynamic>.from(raw);
-        final matches = classes.any((schoolClass) {
-          if (curriculum['subsystem'] != null &&
-              curriculum['subsystem'] != schoolClass['subsystem']) return false;
-          if (curriculum['sector'] != null &&
-              curriculum['sector'] != schoolClass['sector']) return false;
-          if (curriculum['exam_level_id'] != null &&
-              curriculum['exam_level_id'] != schoolClass['exam_level_id']) return false;
-          if (curriculum['series_id'] != null &&
-              curriculum['series_id'] != schoolClass['series_id']) return false;
-          if (curriculum['specialty_id'] != null &&
-              curriculum['specialty_id'] != schoolClass['specialty_id']) return false;
-          return true;
-        });
-        final id = curriculum['id']?.toString();
-        if (matches && id != null && id.isNotEmpty) curriculumIds.add(id);
-      }
+      bool matchesDimension(Object? curriculumValue, Object? classValue) =>
+          curriculumValue == null ||
+          curriculumValue.toString() == classValue?.toString();
+      final matches = curriculumRows
+          .map((row) => Map<String, dynamic>.from(row))
+          .where((curriculum) =>
+              curriculum['subsystem']?.toString() ==
+                  schoolClass['subsystem']?.toString() &&
+              curriculum['sector']?.toString() ==
+                  schoolClass['sector']?.toString() &&
+              matchesDimension(
+                  curriculum['exam_level_id'], schoolClass['exam_level_id']) &&
+              matchesDimension(
+                  curriculum['series_id'], schoolClass['series_id']) &&
+              matchesDimension(
+                  curriculum['specialty_id'], schoolClass['specialty_id']))
+          .toList(growable: false);
+      if (matches.isEmpty) return const <Map<String, dynamic>>[];
+
+      // Prefer the canonical catalogue and the most specific matching
+      // syllabus, rather than loading both generic and series-specific copies.
+      final catalogues = matches
+          .where((item) => item['is_catalog_container'] == true)
+          .toList(growable: false);
+      final usable = catalogues.isNotEmpty
+          ? catalogues
+          : matches
+              .where((item) => item['is_catalog_container'] != true)
+              .toList(growable: false);
+      if (usable.isEmpty) return const <Map<String, dynamic>>[];
+      int specificity(Map<String, dynamic> curriculum) =>
+          (curriculum['exam_level_id'] == null ? 0 : 8) +
+          (curriculum['specialty_id'] == null ? 0 : 4) +
+          (curriculum['series_id'] == null ? 0 : 2);
+      final bestScore = usable.map(specificity).reduce(
+            (left, right) => left > right ? left : right,
+          );
+      final curriculumIds = usable
+          .where((item) => specificity(item) == bestScore)
+          .map((item) => item['id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
       if (curriculumIds.isEmpty) return const <Map<String, dynamic>>[];
 
       final chapterRows = await _client
           .from('course_chapters')
           .select('id, curriculum_id, title_fr, title_en, position')
-          .inFilter('curriculum_id', curriculumIds.toList(growable: false))
+          .inFilter('curriculum_id', curriculumIds)
           .eq('is_active', true)
           .order('position');
       final chapterById = <String, Map<String, dynamic>>{};
@@ -436,16 +466,63 @@ class CourseService {
       }
       if (chapterById.isEmpty) return const <Map<String, dynamic>>[];
 
+      // Shared official content is attached through the chapter-link table.
+      // RLS on that table exposes only links the current student can access.
+      final links = await _client
+          .from('chapter_content_item_chapters')
+          .select('content_item_id, chapter_id')
+          .inFilter('chapter_id', chapterById.keys.toList(growable: false));
+      final chapterByItemId = <String, String>{};
+      for (final raw in links) {
+        final link = Map<String, dynamic>.from(raw);
+        final itemId = link['content_item_id']?.toString();
+        final linkedChapterId = link['chapter_id']?.toString();
+        if (itemId != null &&
+            itemId.isNotEmpty &&
+            linkedChapterId != null &&
+            chapterById.containsKey(linkedChapterId)) {
+          chapterByItemId.putIfAbsent(itemId, () => linkedChapterId);
+        }
+      }
+
+      // Keep compatibility with older rows that predate the sharing table.
+      final linkedItemIds = chapterByItemId.keys.toSet();
+      final legacyRows = await _client
+          .from('chapter_content_items')
+          .select('id, chapter_id')
+          .inFilter('chapter_id', chapterById.keys.toList(growable: false))
+          .eq('is_published', true);
+      for (final raw in legacyRows) {
+        final row = Map<String, dynamic>.from(raw);
+        final itemId = row['id']?.toString();
+        final chapterId = row['chapter_id']?.toString();
+        if (itemId != null &&
+            itemId.isNotEmpty &&
+            chapterId != null &&
+            chapterById.containsKey(chapterId)) {
+          chapterByItemId.putIfAbsent(itemId, () => chapterId);
+        }
+      }
+      final itemIds = chapterByItemId.keys.toList(growable: false);
+      if (itemIds.isEmpty) return const <Map<String, dynamic>>[];
+
       final itemRows = await _client
           .from('chapter_content_items')
           .select('id, chapter_id, content_type, title_fr, title_en, body_text_fr, body_text_en, position, created_at')
-          .inFilter('chapter_id', chapterById.keys.toList(growable: false))
+          .inFilter('id', itemIds)
           .inFilter('content_type', ['course', 'lesson', 'text'])
           .eq('is_published', true)
           .order('position');
       final items = itemRows.map((raw) {
         final item = Map<String, dynamic>.from(raw);
-        final chapter = chapterById[item['chapter_id']?.toString()];
+        final sourceChapterId = item['chapter_id']?.toString();
+        final linkedChapterId =
+            chapterByItemId[item['id']?.toString()] ?? sourceChapterId;
+        final chapter = chapterById[linkedChapterId];
+        if (sourceChapterId != null && sourceChapterId != linkedChapterId) {
+          item['source_chapter_id'] = sourceChapterId;
+        }
+        item['chapter_id'] = linkedChapterId;
         item['chapter_title_fr'] = chapter?['title_fr'];
         item['chapter_title_en'] = chapter?['title_en'];
         return item;
