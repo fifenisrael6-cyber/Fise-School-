@@ -948,6 +948,26 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       'svt_neuron': 'Structure d’un neurone',
       'svt_synapse': 'Transmission au niveau d’une synapse',
     };
+    const englishTitles = <String, String>{
+      'gravity_pair': 'Gravitational attraction between two bodies',
+      'gravity_altitude': 'Gravitational field around Earth',
+      'weight': 'Weight of a body',
+      'geom_triangle': 'Triangle and its elements',
+      'geom_right_triangle': 'Right-angled triangle',
+      'geom_circle': 'Circle and radius',
+      'geom_square': 'Square and diagonals',
+      'geom_parallel': 'Thales configuration',
+      'geom_coordinate': 'Cartesian coordinate plane',
+      'geom_cube': 'Cube in perspective',
+      'geom_pyramid': 'Square-based pyramid',
+      'geom_cylinder': 'Cylinder',
+      'geom_prism': 'Right prism',
+      'graph_line': 'Graph of a straight line',
+      'stats_bar': 'Bar chart',
+      'svt_cell': 'Cell membrane exchanges',
+      'svt_neuron': 'Structure of a neuron',
+      'svt_synapse': 'Synaptic transmission',
+    };
     const formulas = <String, String>{
       'gravity_pair': 'F = G × m₁ × m₂ / r²',
       'gravity_altitude': 'g(h) = G × Mₜ / (Rₜ + h)²',
@@ -968,7 +988,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       'svt_neuron': 'Dendrites → corps cellulaire → axone → terminaisons',
       'svt_synapse': 'Message électrique → neurotransmetteurs → récepteurs',
     };
-    final title = titles[kind];
+    final title = _fr ? titles[kind] : (englishTitles[kind] ?? titles[kind]);
     if (title == null) return const SizedBox.shrink();
     final formula = formulas[kind] ?? '';
     return Container(
@@ -981,7 +1001,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(children: [
-        Text(_fr ? title : title, textAlign: TextAlign.center,
+        Text(title, textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF164E63), fontSize: 14)),
         const SizedBox(height: 8),
         SizedBox(width: double.infinity, height: 190,
