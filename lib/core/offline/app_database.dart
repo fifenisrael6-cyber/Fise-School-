@@ -613,6 +613,41 @@ class AppDatabase extends _$AppDatabase {
         [userId, kind, threadId],
       );
 
+  /// Atomically replaces one conversation snapshot after every remote message
+  /// has been saved. The previous readable cache remains intact if the network
+  /// refresh or the app is interrupted halfway through.
+  Future<void> replaceMessageCacheSnapshot({
+    required String userId,
+    required String kind,
+    required String threadId,
+    required List<Map<String, Object?>> messages,
+  }) async {
+    await transaction(() async {
+      for (final message in messages) {
+        await cacheMessage(message);
+      }
+
+      final ids = messages
+          .map((message) => message['id'])
+          .whereType<String>()
+          .toSet()
+          .toList(growable: false);
+      if (ids.isEmpty) {
+        await customStatement(
+          "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending'",
+          [userId, kind, threadId],
+        );
+        return;
+      }
+
+      final placeholders = List<String>.filled(ids.length, '?').join(',');
+      await customStatement(
+        "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending' AND id NOT IN ($placeholders)",
+        [userId, kind, threadId, ...ids],
+      );
+    });
+  }
+
   Future<List<QueryRow>> getCachedMessages(String userId, String kind, String threadId) =>
       customSelect(
         'SELECT * FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? ORDER BY created_at ASC',
