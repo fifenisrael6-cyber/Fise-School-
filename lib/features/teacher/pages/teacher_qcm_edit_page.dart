@@ -135,6 +135,7 @@ class _TeacherQcmEditPageState extends State<TeacherQcmEditPage> {
         dueAt: widget.assignment.dueAt,
         status: widget.assignment.status,
         maxScore: _questions.length.toDouble(),
+        isManualQcm: widget.assignment.isManualQcm,
       );
 
       final keptIds = <String>{};
