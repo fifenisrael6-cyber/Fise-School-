@@ -271,6 +271,14 @@ class PrivateMessageService {
       'p_message_id': messageId,
       'p_for_everyone': forEveryone,
     });
+    // The server confirms first; then update the local snapshot so a chat
+    // reload never briefly resurrects a message hidden or deleted by this user.
+    await _db.applyMessageDeletion(
+      userId: _userId,
+      kind: 'private',
+      messageId: messageId,
+      forEveryone: forEveryone,
+    );
     if (forEveryone && path is String && path.isNotEmpty) {
       try {
         await _client.storage.from('private-message-attachments').remove([path]);
