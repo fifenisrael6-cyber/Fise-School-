@@ -206,6 +206,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           builder: (_) => TeacherEvaluationsPage(
             locale: widget.locale,
             profile: profile,
+            initialEvaluationId: targetId,
           ),
         ));
       } else {
@@ -303,6 +304,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           studentId: profile.id,
           studentName: '${profile.firstName} ${profile.lastName}'.trim(),
           className: profile.className,
+          initialPeriodId: targetId,
         ),
       ));
       return;
