@@ -83,20 +83,29 @@ class PrivateMessageService {
       final messages = (result as List)
           .map((item) => PrivateMessage.fromMap(Map<String, dynamic>.from(item)))
           .toList();
-      await _db.beginMessageCacheRefresh(_userId, 'private', contactId);
-      for (final message in messages) {
-        await _db.cacheMessage({
-          'id': message.id, 'user_id': _userId, 'kind': 'private', 'thread_id': contactId,
-          'sender_id': message.senderId, 'recipient_id': message.recipientId, 'body': message.body,
+      await _db.replaceMessageCacheSnapshot(
+        userId: _userId,
+        kind: 'private',
+        threadId: contactId,
+        messages: messages.map((message) => <String, Object?>{
+          'id': message.id,
+          'user_id': _userId,
+          'kind': 'private',
+          'thread_id': contactId,
+          'sender_id': message.senderId,
+          'recipient_id': message.recipientId,
+          'body': message.body,
           'created_at': message.createdAt.toUtc().toIso8601String(),
-          'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'delivered_at': message.deliveredAt?.toUtc().toIso8601String(),
           'read_at': message.readAt?.toUtc().toIso8601String(),
           'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
-          'attachment_path': message.attachmentPath, 'attachment_name': message.attachmentName,
-          'attachment_type': message.attachmentType, 'reply_to_id': message.replyToId, 'sync_status': 'sent',
-        });
-      }
+          'attachment_path': message.attachmentPath,
+          'attachment_name': message.attachmentName,
+          'attachment_type': message.attachmentType,
+          'reply_to_id': message.replyToId,
+          'sync_status': 'sent',
+        }).toList(growable: false),
+      );
       return messages;
     } catch (_) {
       return _readPrivateCache(contactId);
