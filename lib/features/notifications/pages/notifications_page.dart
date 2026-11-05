@@ -107,11 +107,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 break;
               }
             }
+            final selectedNotification = match;
             _initialNotificationHandled = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              if (match != null) {
-                _openNotification(match);
+              if (selectedNotification != null) {
+                _openNotification(selectedNotification);
               } else {
                 _openTarget(
                   type: widget.initialType ?? 'info',
