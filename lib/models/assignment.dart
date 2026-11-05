@@ -21,6 +21,8 @@ class Assignment {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? publishedAt;
+  final bool isManualQcm;
+  final DateTime? expiresAt;
 
   const Assignment({
     required this.id,
@@ -43,6 +45,8 @@ class Assignment {
     this.createdAt,
     this.updatedAt,
     this.publishedAt,
+    this.isManualQcm = false,
+    this.expiresAt,
   });
 
   factory Assignment.fromMap(Map<String, dynamic> map) {
@@ -67,6 +71,8 @@ class Assignment {
       createdAt: _parseDate(map['created_at']),
       updatedAt: _parseDate(map['updated_at']),
       publishedAt: _parseDate(map['published_at']),
+      isManualQcm: map['is_manual_qcm'] as bool? ?? false,
+      expiresAt: _parseDate(map['expires_at']),
     );
   }
 
@@ -92,6 +98,8 @@ class Assignment {
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
       'published_at': publishedAt?.toIso8601String(),
+      'is_manual_qcm': isManualQcm,
+      'expires_at': expiresAt?.toIso8601String(),
     };
   }
 
@@ -124,6 +132,8 @@ class Assignment {
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? publishedAt,
+    bool? isManualQcm,
+    DateTime? expiresAt,
   }) {
     return Assignment(
       id: id ?? this.id,
@@ -146,6 +156,8 @@ class Assignment {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       publishedAt: publishedAt ?? this.publishedAt,
+      isManualQcm: isManualQcm ?? this.isManualQcm,
+      expiresAt: expiresAt ?? this.expiresAt,
     );
   }
 
