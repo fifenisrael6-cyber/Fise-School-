@@ -116,6 +116,10 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
         _selectedIds.remove(schoolClass.id);
       }
     });
+    if (widget.manualSubjectEntry) {
+      _notify();
+      return;
+    }
     await _reloadSubjects();
   }
 
