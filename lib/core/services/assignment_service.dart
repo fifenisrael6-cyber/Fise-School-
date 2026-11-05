@@ -272,7 +272,7 @@ class AssignmentService {
     String? classId,
     String? status,
   }) async {
-    final cacheKey = 'teacher_assignments_' + teacherId +
+    final cacheKey = 'teacher_assignments_v2_' + teacherId +
         '_' + (courseId ?? 'all-courses') +
         '_' + (classId ?? 'all-classes') +
         '_' + (status ?? 'all-statuses');
