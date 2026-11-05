@@ -143,9 +143,23 @@ class CourseService {
   Future<List<CourseChapter>> listStudentCatalogChapters(
     String studentId, {
     required String subjectId,
+    bool forceRefresh = false,
   }) async {
     final cacheKey = 'student_catalog_chapters_v2_' + studentId + '_' + subjectId;
     final previousCacheKey = 'student_catalog_chapters_' + studentId + '_' + subjectId;
+
+    // Return the saved chapter catalogue before making any network request.
+    // The page refreshes this future separately in the background.
+    if (!forceRefresh) {
+      dynamic cached = await JsonCache.instance.read(cacheKey);
+      cached ??= await JsonCache.instance.read(previousCacheKey);
+      if (cached is List) {
+        return cached
+            .whereType<Map>()
+            .map((row) => CourseChapter.fromMap(Map<String, dynamic>.from(row)))
+            .toList(growable: false);
+      }
+    }
 
     try {
       // Class switching can leave older memberships in history. The latest
