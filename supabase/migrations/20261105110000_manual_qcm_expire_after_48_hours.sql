@@ -15,9 +15,14 @@ language plpgsql
 set search_path = public, pg_temp
 as $$
 begin
-  if new.is_manual_qcm and new.status = 'published' and new.expires_at is null then
-    new.published_at := coalesce(new.published_at, now());
-    new.expires_at := new.published_at + interval '48 hours';
+  if new.is_manual_qcm and new.status = 'published' then
+    if tg_op = 'UPDATE' and old.is_manual_qcm and old.expires_at is not null then
+      -- Editing or re-publishing an already published manual QCM never restarts its timer.
+      new.expires_at := old.expires_at;
+    else
+      new.published_at := coalesce(new.published_at, now());
+      new.expires_at := new.published_at + interval '48 hours';
+    end if;
   elsif not new.is_manual_qcm then
     new.expires_at := null;
   end if;
