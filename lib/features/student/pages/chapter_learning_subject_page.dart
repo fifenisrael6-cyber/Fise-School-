@@ -149,7 +149,18 @@ class _ChapterLearningSubjectPageState
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.menu_book_rounded, size: 34, color: Color(0xFF166534)),
+                  const SizedBox(height: 8),
+                  Text(widget.locale.languageCode == 'en'
+                      ? 'Opening programme…'
+                      : 'Ouverture du programme…'),
+                ],
+              ),
+            );
           }
           if (snapshot.hasError) return _error(snapshot.error.toString());
 
