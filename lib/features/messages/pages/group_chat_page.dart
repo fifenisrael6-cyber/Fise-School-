@@ -609,29 +609,128 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _takePhoto() async {
     final file = await _photoService.takePhoto();
-    if (file == null) {
-      return;
-    }
+    if (file == null) return;
     final bytes = await file.readAsBytes();
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() {
       _attachment = PickedAttachment(
         bytes: bytes,
-        name: 'photo-${DateTime.now().millisecondsSinceEpoch}.jpg',
-        mimeType: 'image/jpeg',
+        name: file.name.isEmpty
+            ? 'camera-${DateTime.now().millisecondsSinceEpoch}.jpg'
+            : file.name,
+        mimeType: _imageMimeType(file.name),
       );
     });
   }
 
-  Future<void> _pickAttachment() async {
+  Future<void> _pickGalleryPhoto() async {
+    final file = await _photoService.pickFromGallery();
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _attachment = PickedAttachment(
+        bytes: bytes,
+        name: file.name.isEmpty
+            ? 'gallery-${DateTime.now().millisecondsSinceEpoch}.jpg'
+            : file.name,
+        mimeType: _imageMimeType(file.name),
+      );
+    });
+  }
+
+  String _imageMimeType(String name) {
+    switch (name.toLowerCase().split('.').last) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  Future<void> _pickVideo() async {
     final attachment = await _photoService.pickFile(
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mp3', 'm4a'],
+      allowedExtensions: const ['mp4', 'mov', 'm4v', 'webm'],
     );
     if (attachment != null && mounted) {
       setState(() => _attachment = attachment);
     }
+  }
+
+  Future<void> _pickPdf() async {
+    final attachment = await _photoService.pickFile(
+      allowedExtensions: const ['pdf'],
+    );
+    if (attachment != null && mounted) {
+      setState(() => _attachment = attachment);
+    }
+  }
+
+  Future<void> _pickAttachment() async {
+    final attachment = await _photoService.pickFile(
+      allowedExtensions: const [
+        'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip',
+      ],
+    );
+    if (attachment != null && mounted) {
+      setState(() => _attachment = attachment);
+    }
+  }
+
+  Future<void> _showAttachmentOptions() async {
+    if (_sending || (!_isOwner && _announcementsOnly)) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: Text(_fr ? 'Prendre une photo' : 'Take a photo'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _takePhoto();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text(_fr ? 'Choisir dans la galerie' : 'Choose from gallery'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickGalleryPhoto();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library_outlined),
+              title: Text(_fr ? 'Vidéo' : 'Video'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickVideo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_rounded),
+              title: const Text('PDF'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickPdf();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file_outlined),
+              title: Text(_fr ? 'Autres fichiers' : 'Other files'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _pickAttachment();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _formatTime(DateTime value) {
@@ -997,14 +1096,11 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
-                    tooltip: _fr ? 'Prendre une photo' : 'Take a photo',
-                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _takePhoto,
-                    icon: const Icon(Icons.camera_alt_rounded),
-                  ),
-                  IconButton(
-                    tooltip: _fr ? 'Joindre un fichier' : 'Attach a file',
-                    onPressed: _sending || (!_isOwner && _announcementsOnly) ? null : _pickAttachment,
-                    icon: const Icon(Icons.attach_file_rounded),
+                    tooltip: _fr ? 'Ajouter une pièce jointe' : 'Add an attachment',
+                    onPressed: _sending || (!_isOwner && _announcementsOnly)
+                        ? null
+                        : _showAttachmentOptions,
+                    icon: const Icon(Icons.add_circle_outline_rounded),
                   ),
                   VoiceRecorderButton(
                     french: _fr,
