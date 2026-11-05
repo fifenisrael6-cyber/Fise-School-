@@ -39,7 +39,7 @@ begin
   if p_class_ids is null
      or cardinality(p_class_ids) < 1
      or cardinality(p_class_ids) > 20
-     or (select count(distinct x) from unnest(p_class_ids) as x) <> cardinality(p_class_ids) then
+     or (select count(distinct u.class_id) from unnest(p_class_ids) as u(class_id)) <> cardinality(p_class_ids) then
     raise exception 'Sélection de salles invalide.';
   end if;
 
