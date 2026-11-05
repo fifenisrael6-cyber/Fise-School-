@@ -340,6 +340,14 @@ class GroupMessageService {
       'p_message_id': messageId,
       'p_for_everyone': forEveryone,
     });
+    // Update Drift only after Supabase confirms the deletion. This keeps the
+    // UI immediate while preserving the server as the source of truth.
+    await _db.applyMessageDeletion(
+      userId: _userId,
+      kind: 'group',
+      messageId: messageId,
+      forEveryone: forEveryone,
+    );
     if (forEveryone && path is String && path.isNotEmpty) {
       try {
         await _client.storage.from(bucket).remove([path]);

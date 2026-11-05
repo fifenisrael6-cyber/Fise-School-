@@ -652,6 +652,27 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Applies a confirmed server-side deletion to this user's local conversation cache.
+  /// Pending outbox messages are never touched.
+  Future<void> applyMessageDeletion({
+    required String userId,
+    required String kind,
+    required String messageId,
+    required bool forEveryone,
+  }) async {
+    if (forEveryone) {
+      await customStatement(
+        "UPDATE message_cache SET body='[deleted]', deleted_at=?, attachment_path=NULL, attachment_name=NULL, attachment_type=NULL WHERE user_id=? AND kind=? AND id=? AND sync_status<>'pending'",
+        [DateTime.now().toUtc().toIso8601String(), userId, kind, messageId],
+      );
+    } else {
+      await customStatement(
+        "DELETE FROM message_cache WHERE user_id=? AND kind=? AND id=? AND sync_status<>'pending'",
+        [userId, kind, messageId],
+      );
+    }
+  }
+
   Future<List<QueryRow>> getCachedMessages(String userId, String kind, String threadId) =>
       customSelect(
         'SELECT * FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? ORDER BY created_at ASC',

@@ -9,7 +9,6 @@ import '../core/services/push_service.dart';
 import '../core/services/session_service.dart';
 import '../features/auth/widgets/auth_gate.dart';
 import '../features/auth/pages/password_reset_page.dart';
-import '../features/messages/pages/messages_hub_page.dart';
 import '../features/notifications/pages/notifications_page.dart';
 import '../models/user_profile.dart';
 import '../supabase_config.dart';
@@ -110,36 +109,19 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
       final profile = UserProfile.fromMap(Map<String, dynamic>.from(row));
       final navigator = _navigatorKey.currentState;
       if (navigator == null) return;
-      final type = (data['type'] ?? 'info').toLowerCase();
-      final targetType = (data['target_type'] ?? '').toLowerCase();
-      final isConversationTarget =
-          targetType == 'group' || targetType == 'private_message';
-      if (isConversationTarget ||
-          type == 'message' ||
-          type == 'group_message' ||
-          type == 'private_message' ||
-          type == 'group_member') {
-        await navigator.push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => MessagesHubPage(
-              locale: _locale,
-              profile: profile,
-              initialTargetType: data['target_type'],
-              initialTargetId: data['target_id'],
-            ),
+      await navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => NotificationsPage(
+            locale: _locale,
+            userId: profile.id,
+            profile: profile,
+            initialNotificationId: data['notification_id'],
+            initialType: data['type'],
+            initialTargetType: data['target_type'],
+            initialTargetId: data['target_id'],
           ),
-        );
-      } else {
-        await navigator.push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => NotificationsPage(
-              locale: _locale,
-              userId: profile.id,
-              profile: profile,
-            ),
-          ),
-        );
-      }
+        ),
+      );
     } catch (error) {
       debugPrint('Ouverture de la notification impossible: $error');
     }
