@@ -21,8 +21,14 @@ String _fmt(DateTime d) {
 class TeacherEvaluationsPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final String? initialEvaluationId;
 
-  const TeacherEvaluationsPage({super.key, required this.locale, required this.profile});
+  const TeacherEvaluationsPage({
+    super.key,
+    required this.locale,
+    required this.profile,
+    this.initialEvaluationId,
+  });
 
   @override
   State<TeacherEvaluationsPage> createState() => _TeacherEvaluationsPageState();
@@ -33,6 +39,7 @@ class _TeacherEvaluationsPageState extends State<TeacherEvaluationsPage> {
   List<TeacherEvaluation> _items = const [];
   bool _loading = true;
   String? _error;
+  bool _initialTargetHandled = false;
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -54,6 +61,34 @@ class _TeacherEvaluationsPageState extends State<TeacherEvaluationsPage> {
         _items = items;
         _loading = false;
       });
+      final targetId = widget.initialEvaluationId;
+      if (!_initialTargetHandled && targetId != null) {
+        TeacherEvaluation? target;
+        for (final item in items) {
+          if (item.id == targetId) {
+            target = item;
+            break;
+          }
+        }
+        _initialTargetHandled = true;
+        final selected = target;
+        if (selected != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeacherEvaluationReviewPage(
+                  locale: widget.locale,
+                  evaluation: selected,
+                ),
+              ),
+            ).then((_) {
+              if (mounted) _load();
+            });
+          });
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
