@@ -579,7 +579,7 @@ class _ChapterLearningDetailPageState
                 style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
               )),
               Text(
-                _en ? 'CHAPTER \${widget.chapterNumber}' : 'CHAPITRE \${widget.chapterNumber}',
+                _en ? 'CHAPTER ${widget.chapterNumber}' : 'CHAPITRE ${widget.chapterNumber}',
                 style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700),
               ),
             ]),
