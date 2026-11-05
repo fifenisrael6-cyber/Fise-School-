@@ -221,7 +221,7 @@ $function$;
 
 drop trigger if exists notifications_enrich_target on public.notifications;
 create trigger notifications_enrich_target
-before insert or update of target_type, target_id
+before insert or update
 on public.notifications
 for each row
 execute function public.enrich_notification_target();
