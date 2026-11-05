@@ -27,6 +27,16 @@ class EvaluationService {
             : error.toString();
     final message = raw.toLowerCase();
 
+    if (message.contains('evaluation_has_submissions')) {
+      return fr
+          ? 'Suppression impossible : un élève a déjà commencé ou remis sa copie. Fermez plutôt cette épreuve pour préserver les travaux.'
+          : 'Cannot delete: a student has already started or submitted a copy. Close the exam instead to preserve student work.';
+    }
+    if (message.contains('evaluation_not_found_or_not_owned')) {
+      return fr
+          ? 'Cette évaluation est introuvable ou ne vous appartient pas.'
+          : 'This evaluation was not found or does not belong to you.';
+    }
     if (raw.contains('DEADLINE_PASSED') || message.contains('deadline_passed')) {
       return fr
           ? 'La date limite est dépassée : la remise n\'est plus acceptée.'
@@ -292,7 +302,8 @@ class EvaluationService {
   /// En cas d'échec, le brouillon et le fichier sont supprimés (pas de demi-publication).
   Future<String> createAndPublish({
     required String teacherId,
-    required String subjectId,
+    String? subjectId,
+    String? subjectName,
     required List<String> classIds,
     required String title,
     String? instructions,
@@ -311,11 +322,27 @@ class EvaluationService {
     List<Map<String, dynamic>> scheme = const [],
     String? criteria,
   }) async {
+    var resolvedSubjectId = subjectId?.trim();
+    if (resolvedSubjectId == null || resolvedSubjectId.isEmpty) {
+      final name = (subjectName ?? '').trim();
+      if (name.length < 2 || name.length > 80) {
+        throw ArgumentError('Le nom de la matière doit contenir entre 2 et 80 caractères.');
+      }
+      final resolved = await _client.rpc(
+        'teacher_resolve_evaluation_subject',
+        params: {
+          'p_class_ids': classIds,
+          'p_subject_name': name,
+        },
+      );
+      resolvedSubjectId = resolved.toString();
+    }
+
     final inserted = await _client
         .from('evaluations')
         .insert({
           'teacher_id': teacherId,
-          'subject_id': subjectId,
+          'subject_id': resolvedSubjectId,
           'period_id': periodId,
           'title': title.trim(),
           'instructions': (instructions ?? '').trim().isEmpty ? null : instructions!.trim(),
@@ -390,6 +417,42 @@ class EvaluationService {
     }).eq('id', id);
     await JsonCache.instance.remove('teacher_evaluations_${_client.auth.currentUser?.id ?? 'anonymous'}');
     await JsonCache.instance.remove('student_evaluations_${_client.auth.currentUser?.id ?? 'anonymous'}');
+  }
+
+  Future<void> deleteEvaluation(String id) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw const AuthException('Session utilisateur absente.');
+
+    final row = await _client
+        .from('evaluations')
+        .select('pdf_path,correction_pdf_path')
+        .eq('id', id)
+        .eq('teacher_id', userId)
+        .maybeSingle();
+    if (row == null) {
+      throw StateError('EVALUATION_NOT_FOUND_OR_NOT_OWNED');
+    }
+
+    await _client.rpc(
+      'delete_teacher_evaluation',
+      params: {'p_evaluation': id},
+    );
+
+    final paths = <String>{
+      for (final value in [row['pdf_path'], row['correction_pdf_path']])
+        if (value is String && value.trim().isNotEmpty) value.trim(),
+    }.toList(growable: false);
+    if (paths.isNotEmpty) {
+      try {
+        await _client.storage.from(_papers).remove(paths);
+      } catch (_) {
+        // La ligne et ses données sont supprimées; un éventuel fichier orphelin
+        // reste inaccessible depuis l'application et pourra être nettoyé côté admin.
+      }
+    }
+
+    await JsonCache.instance.remove('teacher_evaluations_$userId');
+    await JsonCache.instance.remove('student_evaluations_$userId');
   }
 
   Future<void> closeEvaluation(String id) async {

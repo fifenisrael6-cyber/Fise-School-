@@ -116,7 +116,42 @@ class _TeacherEvaluationsPageState extends State<TeacherEvaluationsPage> {
                               trailing: PopupMenuButton<String>(
                                 tooltip: _fr ? 'Actions sur l’épreuve' : 'Exam actions',
                                 onSelected: (action) async {
-                                  if (action == 'close') {
+                                  if (action == 'delete') {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (dialogContext) => AlertDialog(
+                                        title: Text(_fr ? 'Supprimer cette évaluation ?' : 'Delete this exam?'),
+                                        content: Text(_fr
+                                            ? 'Elle sera retirée de l’espace des élèves. Pour protéger les travaux, la suppression sera refusée si un élève a déjà commencé ou remis une copie.'
+                                            : 'It will be removed from students’ space. To protect student work, deletion is blocked if a student has started or submitted a copy.'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(dialogContext, false),
+                                            child: Text(_fr ? 'Garder' : 'Keep'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.pop(dialogContext, true),
+                                            child: Text(_fr ? 'Supprimer' : 'Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed != true || !mounted) return;
+                                    try {
+                                      await _service.deleteEvaluation(e.id);
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(_fr ? 'Évaluation supprimée.' : 'Exam deleted.')),
+                                      );
+                                      await _load();
+                                    } catch (error) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text(EvaluationService.friendlyError(error, fr: _fr))),
+                                        );
+                                      }
+                                    }
+                                  } else if (action == 'close') {
                                     final confirmed = await showDialog<bool>(
                                       context: context,
                                       builder: (dialogContext) => AlertDialog(
@@ -169,6 +204,10 @@ class _TeacherEvaluationsPageState extends State<TeacherEvaluationsPage> {
                                   PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier le titre' : 'Edit title')),
                                   if (e.status == 'published')
                                     PopupMenuItem(value: 'close', child: Text(_fr ? 'Annuler / fermer' : 'Cancel / close')),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text(_fr ? 'Supprimer l’évaluation' : 'Delete exam'),
+                                  ),
                                 ],
                               ),
                               onTap: () async {
@@ -220,7 +259,7 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
   final List<_SchemeRow> _scheme = [];
 
   List<SchoolClass> _classes = const [];
-  Subject? _subject;
+  String _subjectName = '';
   List<GradePeriod> _periods = const [];
   String? _periodId;
   PickedAttachment? _pdf;
@@ -266,8 +305,10 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
   Future<void> _publish() async {
     final title = _title.text.trim();
     if (title.length < 3) return _snack(_fr ? 'Saisissez le titre de l’épreuve.' : 'Enter a title.');
-    if (_classes.isEmpty || _subject == null) {
-      return _snack(_fr ? 'Choisissez les classes et la matière.' : 'Choose classes and subject.');
+    if (_classes.isEmpty || _subjectName.trim().length < 2) {
+      return _snack(_fr
+          ? 'Choisissez les classes et écrivez le nom de la matière.'
+          : 'Choose the classrooms and type the subject name.');
     }
     if (_pdf == null) return _snack(_fr ? 'Ajoutez le fichier PDF.' : 'Attach the PDF.');
     final minutes = int.tryParse(_duration.text.trim());
@@ -302,7 +343,7 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
     try {
       await _service.createAndPublish(
         teacherId: widget.profile.id,
-        subjectId: _subject!.id,
+        subjectName: _subjectName.trim(),
         classIds: _classes.map((c) => c.id).toList(),
         title: title,
         instructions: _instructions.text,
@@ -342,9 +383,13 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
           ClassSubjectPicker(
             locale: widget.locale,
             teacherId: widget.profile.id,
-            onChanged: (classes, subject) => setState(() {
+            manualSubjectEntry: true,
+            onChanged: (classes, _) => setState(() {
               _classes = classes;
-              _subject = subject;
+            }),
+            onManualSubjectChanged: (classes, subjectName) => setState(() {
+              _classes = classes;
+              _subjectName = subjectName;
             }),
           ),
           const SizedBox(height: 12),
