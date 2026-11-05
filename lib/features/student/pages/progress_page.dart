@@ -71,6 +71,8 @@ class _ProgressPageState extends State<ProgressPage> {
                   completedLessons: (row['completed_lessons'] as num?)?.toInt() ?? 0,
                   inProgressLessons: (row['in_progress_lessons'] as num?)?.toInt() ?? 0,
                   progressPercent: (row['progress_percent'] as num?)?.toDouble() ?? 0,
+                  courseRead: row['course_read'] == true,
+                  tracksChapterRead: row['tracks_chapter_read'] == true,
                 ))
             .toList(growable: false);
         setState(() {
@@ -130,6 +132,36 @@ class _ProgressPageState extends State<ProgressPage> {
           .inFilter('class_id', classIds)
           .order('updated_at', ascending: false);
 
+      // Chapter-level "Cours lu" is stored separately from lesson_progress.
+      // Read it once for the active student's chapters and merge it into the
+      // corresponding course without changing the lesson progress records.
+      final chapterIds = courseRows
+          .map((row) => row['chapter_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      final chapterReadById = <String, bool>{};
+      if (chapterIds.isNotEmpty) {
+        try {
+          final chapterProgressRows = await _client
+              .from('chapter_learning_progress')
+              .select('chapter_id,course_read')
+              .eq('student_id', widget.profile.id)
+              .inFilter('chapter_id', chapterIds);
+          for (final raw in chapterProgressRows) {
+            final row = Map<String, dynamic>.from(raw);
+            final chapterId = row['chapter_id']?.toString();
+            if (chapterId != null && chapterId.isNotEmpty) {
+              chapterReadById[chapterId] = row['course_read'] == true;
+            }
+          }
+        } catch (_) {
+          // Lesson progress remains usable if chapter-level progress is hidden
+          // by RLS or temporarily unavailable.
+        }
+      }
+
       final List<_CourseProgressData> courseResults = [];
 
       int totalLessons = 0;
@@ -158,16 +190,24 @@ class _ProgressPageState extends State<ProgressPage> {
             .whereType<String>()
             .where((id) => id.isNotEmpty)
             .toList();
+        final chapterId = course['chapter_id']?.toString();
+        final tracksChapterRead = chapterId != null && chapterId.isNotEmpty;
+        final courseRead = tracksChapterRead &&
+            chapterReadById[chapterId] == true;
 
-        if (lessonIds.isEmpty) {
+        // A chapter-linked course remains visible even when it has no separate
+        // lessons rows: its own read state is a tracked learning unit.
+        if (lessonIds.isEmpty && !tracksChapterRead) {
           continue;
         }
 
-        final progressRows = await _client
-            .from('lesson_progress')
-            .select()
-            .eq('student_id', widget.profile.id)
-            .inFilter('lesson_id', lessonIds);
+        final progressRows = lessonIds.isEmpty
+            ? const <dynamic>[]
+            : await _client
+                .from('lesson_progress')
+                .select()
+                .eq('student_id', widget.profile.id)
+                .inFilter('lesson_id', lessonIds);
 
         final progressByLesson = <String, Map<String, dynamic>>{};
 
@@ -211,9 +251,22 @@ class _ProgressPageState extends State<ProgressPage> {
           }
         }
 
-        final courseProgress = lessonIds.isEmpty
+        // Count the chapter's course-read state as one separate unit. It does
+        // not falsely mark its individual lessons as completed.
+        if (tracksChapterRead) {
+          totalLessons++;
+          progressCount++;
+          if (courseRead) {
+            completedLessons++;
+            courseProgressSum += 100;
+            progressSum += 100;
+          }
+        }
+
+        final trackedUnits = lessonIds.length + (tracksChapterRead ? 1 : 0);
+        final courseProgress = trackedUnits == 0
             ? 0.0
-            : courseProgressSum / lessonIds.length;
+            : courseProgressSum / trackedUnits;
 
         courseResults.add(
           _CourseProgressData(
@@ -224,6 +277,8 @@ class _ProgressPageState extends State<ProgressPage> {
             completedLessons: courseCompleted,
             inProgressLessons: courseInProgress,
             progressPercent: courseProgress,
+            courseRead: courseRead,
+            tracksChapterRead: tracksChapterRead,
           ),
         );
       }
@@ -261,6 +316,8 @@ class _ProgressPageState extends State<ProgressPage> {
                 'completed_lessons': course.completedLessons,
                 'in_progress_lessons': course.inProgressLessons,
                 'progress_percent': course.progressPercent,
+                'course_read': course.courseRead,
+                'tracks_chapter_read': course.tracksChapterRead,
               }).toList(),
             },
           );
@@ -282,6 +339,8 @@ class _ProgressPageState extends State<ProgressPage> {
             completedLessons: (row['completed_lessons'] as num?)?.toInt() ?? 0,
             inProgressLessons: (row['in_progress_lessons'] as num?)?.toInt() ?? 0,
             progressPercent: (row['progress_percent'] as num?)?.toDouble() ?? 0,
+            courseRead: row['course_read'] == true,
+            tracksChapterRead: row['tracks_chapter_read'] == true,
           )).toList(growable: false);
           setState(() {
             _totalLessons = (snapshot['total_lessons'] as num?)?.toInt() ?? 0;
@@ -373,11 +432,19 @@ class _ProgressPageState extends State<ProgressPage> {
   }
 
   String _progressDescription(_CourseProgressData course) {
-    if (_isFrench) {
-      return '${course.completedLessons}/${course.lessonCount} leçons terminées';
+    if (course.lessonCount == 0 && course.tracksChapterRead) {
+      if (_isFrench) return course.courseRead ? 'Cours lu' : 'Cours non lu';
+      return course.courseRead ? 'Course read' : 'Course not read';
     }
 
-    return '${course.completedLessons}/${course.lessonCount} lessons completed';
+    final lessons = _isFrench
+        ? '${course.completedLessons}/${course.lessonCount} leçons terminées'
+        : '${course.completedLessons}/${course.lessonCount} lessons completed';
+    if (!course.tracksChapterRead) return lessons;
+    final courseStatus = _isFrench
+        ? (course.courseRead ? 'Cours lu' : 'Cours non lu')
+        : (course.courseRead ? 'Course read' : 'Course not read');
+    return '$lessons • $courseStatus';
   }
 
   @override
@@ -589,7 +656,7 @@ class _ProgressPageState extends State<ProgressPage> {
           child: _StatCard(
             icon: Icons.menu_book_rounded,
             value: _totalLessons.toString(),
-            label: _isFrench ? 'Leçons' : 'Lessons',
+            label: _isFrench ? 'Cours / leçons' : 'Courses / lessons',
           ),
         ),
         const SizedBox(width: 10),
@@ -738,6 +805,8 @@ class _CourseProgressData {
   final int completedLessons;
   final int inProgressLessons;
   final double progressPercent;
+  final bool courseRead;
+  final bool tracksChapterRead;
 
   const _CourseProgressData({
     required this.id,
@@ -747,6 +816,8 @@ class _CourseProgressData {
     required this.completedLessons,
     required this.inProgressLessons,
     required this.progressPercent,
+    this.courseRead = false,
+    this.tracksChapterRead = false,
   });
 }
 
