@@ -78,12 +78,8 @@ begin
     return new;
   end if;
 
-  case lower(coalesce(new.type, ''))
-    when 'evaluation_new' then
-    when 'evaluation_reminder' then
-    when 'evaluation_receipt' then
-    when 'evaluation_review' then
-    when 'evaluation_result' then
+  case
+    when lower(coalesce(new.type, '')) in ('evaluation_new', 'evaluation_reminder', 'evaluation_receipt', 'evaluation_review', 'evaluation_result') then
       v_key := split_part(coalesce(new.body, ''), ' — ', 1);
       select e.id into v_id
       from public.evaluations e
@@ -110,7 +106,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'assignment' then
+    when lower(coalesce(new.type, '')) = 'assignment' then
       select a.id into v_id
       from public.assignments a
       where coalesce(nullif(a.title_fr, ''), a.title_en, '') = new.body
@@ -128,7 +124,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'submission' then
+    when lower(coalesce(new.type, '')) = 'submission' then
       select a.id into v_id
       from public.assignments a
       join public.assignment_submissions s on s.assignment_id = a.id
@@ -142,7 +138,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'course' then
+    when lower(coalesce(new.type, '')) = 'course' then
       v_key := split_part(coalesce(new.body, ''), ' : ', 1);
       select c.id into v_id
       from public.courses c
@@ -167,7 +163,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'timetable' then
+    when lower(coalesce(new.type, '')) = 'timetable' then
       select t.id into v_id
       from public.class_timetable_entries t
       where t.subject_fr = new.body
@@ -187,7 +183,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'bulletin' then
+    when lower(coalesce(new.type, '')) = 'bulletin' then
       select gp.id into v_id
       from public.grade_periods gp
       where gp.label_fr = new.body
@@ -203,7 +199,7 @@ begin
         new.target_id := v_id;
       end if;
 
-    when 'message' then
+    when lower(coalesce(new.type, '')) = 'message' then
       select pm.sender_id into v_id
       from public.private_messages pm
       join public.profiles p on p.id = pm.sender_id
