@@ -119,13 +119,29 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         .eq('subsystem', schoolClass['subsystem'])
         .eq('sector', schoolClass['sector'])
         .order('title_fr');
+    // A null dimension in the catalogue means a shared programme, not
+    // "no match". Prefer the most specific programme for this classroom,
+    // while retaining shared catalogues as a valid fallback.
     bool sameContext(Map<String, dynamic> curriculum) =>
-        curriculum['exam_level_id'] == schoolClass['exam_level_id'] &&
-        curriculum['series_id'] == schoolClass['series_id'] &&
-        curriculum['specialty_id'] == schoolClass['specialty_id'];
+        (curriculum['exam_level_id'] == null ||
+            curriculum['exam_level_id'] == schoolClass['exam_level_id']) &&
+        (curriculum['series_id'] == null ||
+            curriculum['series_id'] == schoolClass['series_id']) &&
+        (curriculum['specialty_id'] == null ||
+            curriculum['specialty_id'] == schoolClass['specialty_id']);
+    int specificity(Map<String, dynamic> curriculum) =>
+        (curriculum['exam_level_id'] == null ? 0 : 4) +
+        (curriculum['series_id'] == null ? 0 : 2) +
+        (curriculum['specialty_id'] == null ? 0 : 1);
     final matching = List<Map<String, dynamic>>.from(rows)
         .where(sameContext)
-        .toList(growable: false);
+        .toList()
+      ..sort((a, b) {
+        final bySpecificity = specificity(b).compareTo(specificity(a));
+        if (bySpecificity != 0) return bySpecificity;
+        return ((b['is_catalog_container'] == true) ? 1 : 0)
+            .compareTo((a['is_catalog_container'] == true) ? 1 : 0);
+      });
     final containers = matching
         .where((row) => row['is_catalog_container'] == true)
         .toList(growable: false);
