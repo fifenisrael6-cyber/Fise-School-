@@ -11,11 +11,13 @@ import 'create_assignment_questions_page.dart';
 class CreateAssignmentPage extends StatefulWidget {
   final Locale locale;
   final UserProfile profile;
+  final bool manualQcm;
 
   const CreateAssignmentPage({
     super.key,
     required this.locale,
     required this.profile,
+    this.manualQcm = false,
   });
 
   @override
@@ -38,10 +40,12 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
   late Future<List<SchoolClass>> _classesFuture;
   List<Course> _courses = const [];
   List<Lesson> _lessons = const [];
+  List<Subject> _subjects = const [];
   SchoolClass? _selectedClass;
   final Set<String> _additionalClassIds = <String>{};
   Future<List<SchoolClass>>? _compatibleAdditionalClassesFuture;
   Course? _selectedCourse;
+  Subject? _selectedSubject;
   Lesson? _selectedLesson;
 
   String _status = 'draft';
@@ -71,8 +75,11 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       return;
     }
 
-    if (_selectedClass == null || _selectedCourse == null) {
-      _showMessage(_isEnglish ? 'Select the classroom and course first.' : 'Sélectionnez d’abord la salle et le cours.');
+    if (_selectedClass == null ||
+        (widget.manualQcm ? _selectedSubject == null : _selectedCourse == null)) {
+      _showMessage(widget.manualQcm
+          ? (_isEnglish ? 'Select the classroom and subject first.' : 'Sélectionnez d’abord la salle et la matière.')
+          : (_isEnglish ? 'Select the classroom and course first.' : 'Sélectionnez d’abord la salle et le cours.'));
       return;
     }
 
@@ -93,8 +100,10 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       });
 
       final assignment = await _service.saveAssignment(
-        courseId: _selectedCourse!.id,
-        lessonId: _selectedLesson?.id,
+        courseId: widget.manualQcm ? null : _selectedCourse!.id,
+        subjectId: widget.manualQcm ? _selectedSubject!.id : _selectedCourse!.subjectId,
+        lessonId: widget.manualQcm ? null : _selectedLesson?.id,
+        isManualQcm: widget.manualQcm,
         teacherId: widget.profile.id,
         classId: _selectedClass!.id,
         titleFr: _titleFrController.text.trim(),
@@ -126,7 +135,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       // Copy the manually authored questions to matching courses in the
       // additional selected rooms. Each room gets its own assignment and
       // question rows, so student access remains scoped to that classroom.
-      if (_additionalClassIds.isNotEmpty) {
+      if (!widget.manualQcm && _additionalClassIds.isNotEmpty) {
         final questions = await _service.listQuestions(assignment.id);
         final teacherCourses = await _courseService.listTeacherCourses(widget.profile.id);
         final sourceChapterId = _selectedCourse!.chapterId;
@@ -175,6 +184,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
               courseId: targetCourse.id,
               subjectId: targetCourse.subjectId,
               lessonId: null,
+              isManualQcm: widget.manualQcm,
               teacherId: widget.profile.id,
               classId: targetId,
               titleFr: _titleFrController.text.trim(),
@@ -255,20 +265,34 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       _additionalClassIds.clear();
       _compatibleAdditionalClassesFuture = null;
       _selectedCourse = null;
+      _selectedSubject = null;
       _selectedLesson = null;
       _courses = const [];
+      _subjects = const [];
       _lessons = const [];
     });
-    if (value == null) {
+    if (value == null) return;
+
+    if (widget.manualQcm) {
+      try {
+        final subjects = await _courseService.listSubjectsForClass(value.id);
+        if (!mounted) return;
+        setState(() => _subjects = subjects);
+      } catch (error) {
+        if (mounted) _showMessage('${_isEnglish ? 'Unable to load subjects' : 'Impossible de charger les matières'}: $error');
+      }
       return;
     }
+
     final courses = await _courseService.listTeacherCourses(widget.profile.id);
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() {
       _courses = courses.where((c) => c.classId == value.id && c.status != 'archived').toList(growable: false);
     });
+  }
+
+  void _selectSubject(Subject? value) {
+    setState(() => _selectedSubject = value);
   }
 
   Future<void> _selectCourse(Course? value) async {
@@ -413,7 +437,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
       backgroundColor: const Color(0xFFF5F8F6),
       appBar: AppBar(
         title: Text(
-          _isEnglish ? 'Create assignment' : 'Créer un devoir',
+          widget.manualQcm ? (_isEnglish ? 'Create manual QCM' : 'Créer un QCM manuel') : (_isEnglish ? 'Create assignment' : 'Créer un devoir'),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF166534),
@@ -527,7 +551,7 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
           ),
         ),
         const SizedBox(height: 8),
-        if (_selectedCourse != null)
+        if (!widget.manualQcm && _selectedCourse != null)
           FutureBuilder<List<SchoolClass>>(
             future: _compatibleAdditionalClassesFuture,
             builder: (_, snapshot) {
@@ -581,15 +605,25 @@ class _CreateAssignmentPageState extends State<CreateAssignmentPage> {
             },
           ),
         const SizedBox(height: 12),
-        _dropdown<Course>(
-          label: _isEnglish ? 'Course' : 'Cours', value: _selectedCourse, items: _courses,
-          labelOf: (item) => item.labelFor(widget.locale.languageCode), onChanged: _selectCourse,
-        ),
-        const SizedBox(height: 12),
-        _dropdown<Lesson>(
-          label: _isEnglish ? 'Lesson (optional)' : 'Leçon (facultative)', value: _selectedLesson, items: _lessons,
-          labelOf: (item) => item.labelFor(widget.locale.languageCode), onChanged: (value) => setState(() => _selectedLesson = value),
-        ),
+        if (widget.manualQcm)
+          _dropdown<Subject>(
+            label: _isEnglish ? 'Subject' : 'Matière',
+            value: _selectedSubject,
+            items: _subjects,
+            labelOf: (item) => item.labelFor(widget.locale.languageCode),
+            onChanged: _selectSubject,
+          )
+        else ...[
+          _dropdown<Course>(
+            label: _isEnglish ? 'Course' : 'Cours', value: _selectedCourse, items: _courses,
+            labelOf: (item) => item.labelFor(widget.locale.languageCode), onChanged: _selectCourse,
+          ),
+          const SizedBox(height: 12),
+          _dropdown<Lesson>(
+            label: _isEnglish ? 'Lesson (optional)' : 'Leçon (facultative)', value: _selectedLesson, items: _lessons,
+            labelOf: (item) => item.labelFor(widget.locale.languageCode), onChanged: (value) => setState(() => _selectedLesson = value),
+          ),
+        ],
       ]),
     );
   }

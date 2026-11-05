@@ -28,6 +28,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
   late Future<List<Assignment>> _assignmentsFuture;
   late final TabController _tabController;
   final Map<String, String> _classNames = <String, String>{};
+  final Map<String, String> _subjectNames = <String, String>{};
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
@@ -59,6 +60,7 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
         builder: (_) => CreateAssignmentPage(
           locale: widget.locale,
           profile: widget.profile,
+          manualQcm: !linkedToCourse,
         ),
       ),
     );
@@ -75,16 +77,36 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
           .from('school_classes')
           .select('id, display_name')
           .eq('is_active', true);
+      final assignments = await _service.listTeacherAssignments(teacherId: widget.profile.id);
+      final subjectIds = assignments
+          .map((assignment) => assignment.subjectId)
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      final subjectRows = subjectIds.isEmpty
+          ? <dynamic>[]
+          : await Supabase.instance.client
+              .from('subjects')
+              .select('id,name_fr,name_en')
+              .inFilter('id', subjectIds);
       if (!mounted) return;
       setState(() {
         _classNames
           ..clear()
-          ..addEntries(
-            rows.map((row) => MapEntry(
-                  row['id'].toString(),
-                  (row['display_name'] ?? '').toString(),
-                )),
-          );
+          ..addEntries(rows.map((row) => MapEntry(
+                row['id'].toString(),
+                (row['display_name'] ?? '').toString(),
+              )));
+        _subjectNames
+          ..clear()
+          ..addEntries(subjectRows.map((row) => MapEntry(
+                row['id'].toString(),
+                (widget.locale.languageCode == 'en'
+                        ? row['name_en']
+                        : row['name_fr'])?.toString() ??
+                    '',
+              )));
       });
     } catch (_) {
       // Keep the QCM list available even if classroom labels cannot load.
@@ -284,6 +306,20 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
     if (date == null) return _fr ? 'Sans date limite' : 'No deadline';
     final local = date.toLocal();
     return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year} · ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _expiryLabel(Assignment assignment) {
+    final expiry = assignment.expiresAt;
+    if (!assignment.isManualQcm || expiry == null) return '';
+    final remaining = expiry.difference(DateTime.now());
+    if (remaining.isNegative || remaining == Duration.zero) {
+      return _fr ? 'Expiration imminente' : 'Expiring now';
+    }
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    return _fr
+        ? 'Disparaît dans ${hours} h ${minutes} min'
+        : 'Disappears in ${hours} h ${minutes} min';
   }
 
   @override
@@ -488,7 +524,13 @@ class _TeacherQcmHubPageState extends State<TeacherQcmHubPage> with SingleTicker
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
-                      '${_fr ? 'Salle' : 'Class'}: ${_classNames[assignment.classId] ?? (_fr ? 'Salle non disponible' : 'Class unavailable')}\n${_deadline(assignment.dueAt)}',
+                      [
+                        if (assignment.subjectId != null && (_subjectNames[assignment.subjectId!] ?? '').isNotEmpty)
+                          _subjectNames[assignment.subjectId!]!,
+                        '${_fr ? 'Salle' : 'Class'}: ${_classNames[assignment.classId] ?? (_fr ? 'Salle non disponible' : 'Class unavailable')}',
+                        if (assignment.isManualQcm) _expiryLabel(assignment),
+                        _deadline(assignment.dueAt),
+                      ].where((value) => value.isNotEmpty).join(' · '),
                     ),
                   ),
                   isThreeLine: true,

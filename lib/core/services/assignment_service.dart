@@ -20,7 +20,11 @@ class AssignmentService {
   }) async {
     final offline = OfflineRepository();
     final cachedAssignments = await offline.getAssignments(studentId);
+    final now = DateTime.now().toUtc();
+    bool isVisible(Assignment assignment) =>
+        assignment.expiresAt == null || assignment.expiresAt!.isAfter(now);
     final cachedFiltered = cachedAssignments.where((assignment) =>
+        isVisible(assignment) &&
         (courseId == null || assignment.courseId == courseId) &&
         (lessonId == null || assignment.lessonId == lessonId) &&
         (subjectId == null || assignment.subjectId == subjectId)).toList(growable: false);
@@ -45,6 +49,7 @@ class AssignmentService {
       if (courseId != null) request = request.eq('course_id', courseId);
       if (lessonId != null) request = request.eq('lesson_id', lessonId);
       if (subjectId != null) request = request.eq('subject_id', subjectId);
+      request = request.or('expires_at.is.null,expires_at.gt.${now.toIso8601String()}');
 
       final rows = await request.order('due_at', ascending: true);
       final assignments = rows
@@ -68,6 +73,7 @@ class AssignmentService {
       final cached = await OfflineRepository().getAssignments(studentId);
       return cached
           .where((assignment) =>
+              isVisible(assignment) &&
               (courseId == null || assignment.courseId == courseId) &&
               (lessonId == null || assignment.lessonId == lessonId) &&
               (subjectId == null || assignment.subjectId == subjectId))
@@ -90,6 +96,7 @@ class AssignmentService {
       if (courseId != null) request = request.eq('course_id', courseId);
       if (lessonId != null) request = request.eq('lesson_id', lessonId);
       if (subjectId != null) request = request.eq('subject_id', subjectId);
+      request = request.or('expires_at.is.null,expires_at.gt.${DateTime.now().toUtc().toIso8601String()}');
       final rows = await request.order('due_at', ascending: true)
           .timeout(JsonCache.networkTimeout);
       final offline = OfflineRepository();
@@ -265,7 +272,7 @@ class AssignmentService {
     String? classId,
     String? status,
   }) async {
-    final cacheKey = 'teacher_assignments_' + teacherId +
+    final cacheKey = 'teacher_assignments_v2_' + teacherId +
         '_' + (courseId ?? 'all-courses') +
         '_' + (classId ?? 'all-classes') +
         '_' + (status ?? 'all-statuses');
@@ -287,7 +294,10 @@ class AssignmentService {
 
     final prefs = await SharedPreferences.getInstance();
     final hidden = prefs.getStringList('hidden_teacher_assignments_$teacherId')?.toSet() ?? <String>{};
-    return assignments.where((assignment) => !hidden.contains(assignment.id)).toList(growable: false);
+    final now = DateTime.now().toUtc();
+    return assignments.where((assignment) =>
+        !hidden.contains(assignment.id) &&
+        (assignment.expiresAt == null || assignment.expiresAt!.isAfter(now))).toList(growable: false);
   }
 
   Future<Assignment> saveAssignment({
@@ -304,6 +314,7 @@ class AssignmentService {
     DateTime? dueAt,
     required String status,
     double maxScore = 20,
+    bool isManualQcm = false,
   }) async {
     final values = {
       'course_id': courseId,
@@ -318,6 +329,7 @@ class AssignmentService {
       'due_at': dueAt?.toIso8601String(),
       'status': status,
       'max_score': maxScore,
+      'is_manual_qcm': isManualQcm,
       'published_at': status == 'published'
           ? DateTime.now().toIso8601String()
           : null,
