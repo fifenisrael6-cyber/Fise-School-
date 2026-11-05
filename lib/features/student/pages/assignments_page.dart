@@ -87,6 +87,18 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
         assignment.status != 'closed';
   }
 
+  String _manualQcmExpiryLabel(Assignment assignment) {
+    final expiry = assignment.expiresAt;
+    if (!assignment.isManualQcm || expiry == null) return '';
+    final remaining = expiry.difference(DateTime.now());
+    if (!remaining.isNegative && remaining.inMinutes > 0) {
+      return _isEnglish
+          ? 'Disappears in ${remaining.inHours} h ${remaining.inMinutes.remainder(60)} min'
+          : 'Disparaît dans ${remaining.inHours} h ${remaining.inMinutes.remainder(60)} min';
+    }
+    return _isEnglish ? 'Expiring' : 'Expire bientôt';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -286,6 +298,11 @@ class _AssignmentsPageState extends State<AssignmentsPage> {
                     _buildStatusChip(
                       _isEnglish ? 'Closed' : 'Fermé',
                       Colors.grey,
+                    ),
+                  if (assignment.isManualQcm)
+                    _buildInfoChip(
+                      icon: Icons.hourglass_bottom_rounded,
+                      text: _manualQcmExpiryLabel(assignment),
                     ),
                   if (overdue)
                     _buildStatusChip(
