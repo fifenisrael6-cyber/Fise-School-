@@ -79,6 +79,8 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       subjectId: widget.subject.id,
     );
     _feedFuture = _load();
+    // Keep the cached chapter titles visible while fresh titles are fetched.
+    unawaited(_refreshCatalogChaptersInBackground());
     _connectionSubscription = _connectivity.connectionStream.listen((online) {
       if (mounted) {
         setState(() => _offlineMode = !online);
@@ -164,6 +166,22 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     return items;
   }
 
+  Future<void> _refreshCatalogChaptersInBackground() async {
+    try {
+      final chapters = await _courses.listStudentCatalogChapters(
+        widget.profile.id,
+        subjectId: widget.subject.id,
+        forceRefresh: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _catalogChaptersFuture = Future<List<CourseChapter>>.value(chapters);
+      });
+    } catch (_) {
+      // Keep the cached catalogue visible if Supabase is unavailable.
+    }
+  }
+
   Future<void> _refreshFeedInBackground() async {
     try {
       final freshItems = await _load(forceRefresh: true);
@@ -184,6 +202,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       _catalogChaptersFuture = _courses.listStudentCatalogChapters(
         widget.profile.id,
         subjectId: widget.subject.id,
+        forceRefresh: true,
       );
     });
     await _feedFuture;
