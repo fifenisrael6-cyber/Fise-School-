@@ -186,8 +186,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _load({bool showLoader = true}) async {
     final generation = ++_loadGeneration;
     if (showLoader && mounted) {
+      // Keep the conversation surface visible while the local snapshot and
+      // server refresh are read; never replace messages with a blocking spinner.
       setState(() {
-        _loading = true;
+        _loading = false;
         _loadError = null;
       });
     }
