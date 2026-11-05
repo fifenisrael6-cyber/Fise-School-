@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
@@ -68,6 +70,14 @@ class _ChapterLearningSubjectPageState
       groups.add(_CurriculumWithChapters(curricula[index], chapters));
       allChapters.addAll(chapters);
     }
+
+    // Prepare lessons, exercises, quizzes and media for the next offline
+    // opening. This runs after the chapter list is ready and never blocks it.
+    unawaited(
+      _learning
+          .prefetchOfflineChapters(allChapters.map((chapter) => chapter.id))
+          .catchError((Object _) {}),
+    );
 
     // Do not block the chapter list on a request per resource type for
     // every chapter. Large programmes can contain dozens of chapters; waiting
