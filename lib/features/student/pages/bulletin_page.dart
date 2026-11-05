@@ -11,6 +11,7 @@ class BulletinPage extends StatefulWidget {
   final String studentName;
   final String? className;
   final bool onlyPublished;
+  final String? initialPeriodId;
 
   const BulletinPage({
     super.key,
@@ -19,6 +20,7 @@ class BulletinPage extends StatefulWidget {
     required this.studentName,
     this.className,
     this.onlyPublished = true,
+    this.initialPeriodId,
   });
 
   @override
@@ -58,7 +60,17 @@ class _BulletinPageState extends State<BulletinPage> {
         _loadingPeriods = false;
       });
       if (periods.isNotEmpty) {
-        await _select(periods.last);
+        GradePeriod? target;
+        final targetId = widget.initialPeriodId;
+        if (targetId != null) {
+          for (final period in periods) {
+            if (period.id == targetId) {
+              target = period;
+              break;
+            }
+          }
+        }
+        await _select(target ?? periods.last);
       }
     } catch (e) {
       if (!mounted) {
