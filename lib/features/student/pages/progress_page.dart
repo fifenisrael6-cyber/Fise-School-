@@ -339,6 +339,8 @@ class _ProgressPageState extends State<ProgressPage> {
             completedLessons: (row['completed_lessons'] as num?)?.toInt() ?? 0,
             inProgressLessons: (row['in_progress_lessons'] as num?)?.toInt() ?? 0,
             progressPercent: (row['progress_percent'] as num?)?.toDouble() ?? 0,
+            courseRead: row['course_read'] == true,
+            tracksChapterRead: row['tracks_chapter_read'] == true,
           )).toList(growable: false);
           setState(() {
             _totalLessons = (snapshot['total_lessons'] as num?)?.toInt() ?? 0;
