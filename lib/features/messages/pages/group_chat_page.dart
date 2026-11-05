@@ -671,6 +671,10 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _pickAttachment() async {
     final attachment = await _photoService.pickFile(
       allowedExtensions: const [
+        // Keep every format accepted by the previous attachment button.
+        'jpg', 'jpeg', 'png', 'webp', 'pdf', 'mp4', 'mp3', 'm4a',
+        'mov', 'm4v', 'webm',
+        // Additional ordinary documents.
         'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip',
       ],
     );
