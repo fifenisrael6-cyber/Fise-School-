@@ -630,21 +630,25 @@ class AppDatabase extends _$AppDatabase {
       final ids = messages
           .map((message) => message['id'])
           .whereType<String>()
-          .toSet()
+          .toSet();
+      final cachedRows = await getCachedMessages(userId, kind, threadId);
+      final staleIds = cachedRows
+          .where((row) =>
+              row.read<String>('sync_status') != 'pending' &&
+              !ids.contains(row.read<String>('id')))
+          .map((row) => row.read<String>('id'))
           .toList(growable: false);
-      if (ids.isEmpty) {
-        await customStatement(
-          "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending'",
-          [userId, kind, threadId],
-        );
-        return;
-      }
 
-      final placeholders = List<String>.filled(ids.length, '?').join(',');
-      await customStatement(
-        "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending' AND id NOT IN ($placeholders)",
-        [userId, kind, threadId, ...ids],
-      );
+      // Delete in bounded batches to stay below SQLite's bind-variable limit
+      // even for conversations with a long history.
+      for (var start = 0; start < staleIds.length; start += 400) {
+        final batch = staleIds.skip(start).take(400).toList(growable: false);
+        final placeholders = List<String>.filled(batch.length, '?').join(',');
+        await customStatement(
+          "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending' AND id IN ($placeholders)",
+          [userId, kind, threadId, ...batch],
+        );
+      }
     });
   }
 
