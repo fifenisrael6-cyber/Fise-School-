@@ -16,6 +16,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/chapter_learning_content.dart';
 import '../../../core/utils/educational_text.dart';
+import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
@@ -542,100 +543,160 @@ class _ChapterLearningDetailPageState
         .createSignedUrl(path, 900);
   }
 
-  /// Affiche la leçon et ses schémas/images directement dans la même page.
-  Widget _courseLessonCard(ChapterLearningContentItem item, List<ChapterLearningContentItem> images) {
+  /// Présente chaque leçon comme une page de manuel scolaire illustré.
+  /// Les contenus et médias restent ceux publiés pour le chapitre dans Supabase.
+  Widget _courseLessonCard(
+    ChapterLearningContentItem item,
+    List<ChapterLearningContentItem> images,
+  ) {
     final title = item.titleFor(widget.locale.languageCode);
     final body = item.bodyFor(widget.locale.languageCode)?.trim() ?? '';
     final usableImages = images.where((image) =>
       (image.storagePath?.trim().isNotEmpty ?? false) ||
       (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [BoxShadow(color: Color(0x120F172A), blurRadius: 12, offset: Offset(0, 4))],
+      ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(bottom: 8),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFF166534), width: 2)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: const Color(0xFF166534),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            child: Row(children: [
+              const Icon(Icons.menu_book_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                _en ? 'FISE SCHOOL • LEARNING MATERIAL' : 'FISE SCHOOL • SUPPORT PÉDAGOGIQUE',
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
+              )),
+              Text(
+                _en ? 'CHAPTER \${widget.chapterNumber}' : 'CHAPITRE \${widget.chapterNumber}',
+                style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700),
               ),
-              child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title.toUpperCase(), style: const TextStyle(fontSize: 21, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
+                const SizedBox(height: 10),
+                Container(width: 72, height: 3, decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(3))),
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  RichLessonText(
+                    text: body,
+                    style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
+                  ),
+                ],
+                if (usableImages.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  Row(children: [
+                    const Icon(Icons.auto_awesome, color: Color(0xFF166534), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      _en ? 'SCIENTIFIC DIAGRAMS AND ILLUSTRATIONS' : 'SCHÉMAS ET ILLUSTRATIONS',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5, color: Color(0xFF166534)),
+                    )),
+                  ]),
+                  const SizedBox(height: 12),
+                  for (final image in usableImages)
+                    Padding(padding: const EdgeInsets.only(bottom: 16), child: _courseIllustration(image)),
+                ],
+                const SizedBox(height: 18),
+                const Divider(color: Color(0xFFE2E8F0)),
+                Row(children: [
+                  const Icon(Icons.school_outlined, size: 15, color: Color(0xFF64748B)),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(
+                    _en ? 'School learning document' : 'Document pédagogique scolaire',
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontStyle: FontStyle.italic),
+                  )),
+                  Text(widget.subject.labelFor(widget.locale.languageCode), style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w700)),
+                ]),
+              ],
             ),
-            if (body.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SelectableText(body, style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87)),
-            ],
-            if (usableImages.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text(_en ? 'Diagrams and illustrations' : 'Schémas et illustrations',
-                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 150,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: usableImages.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final image = usableImages[index];
-                    final source = (image.storagePath?.trim().isNotEmpty ?? false)
-                        ? image.storagePath
-                        : image.externalUrl;
-                    return InkWell(
-                      onTap: () async {
-                        final url = await _resolveChapterGalleryUrl(source);
-                        if (url == null || !mounted) return;
-                        await showDialog<void>(
-                          context: context,
-                          builder: (dialogContext) => Dialog(
-                            insetPadding: const EdgeInsets.all(12),
-                            child: InteractiveViewer(
-                              minScale: 0.5,
-                              maxScale: 5,
-                              child: Image.network(
-                                url,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, _, _) => Padding(
-                                  padding: const EdgeInsets.all(24),
-                                  child: Text(_en ? 'Image unavailable' : 'Image indisponible'),
-                                ),
-                              ),
-                            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _courseIllustration(ChapterLearningContentItem image) {
+    final source = (image.storagePath?.trim().isNotEmpty ?? false) ? image.storagePath : image.externalUrl;
+    final caption = image.titleFor(widget.locale.languageCode).trim();
+    return FutureBuilder<String?>(
+      future: _resolveChapterGalleryUrl(source),
+      builder: (context, snapshot) {
+        final url = snapshot.data;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Material(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: url == null ? null : () async {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => Dialog(
+                      insetPadding: const EdgeInsets.all(12),
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 6,
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(_en ? 'Illustration unavailable' : 'Illustration indisponible'),
                           ),
-                        );
-                      },
-                      child: FutureBuilder<String?>(
-                        future: _resolveChapterGalleryUrl(source),
-                        builder: (context, snapshot) {
-                          return Container(
-                            width: 190,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3F4F6),
-                              border: Border.all(color: const Color(0xFFD1D5DB)),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: snapshot.connectionState == ConnectionState.waiting
-                                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                                : snapshot.data == null
-                                    ? Center(child: Text(_en ? 'Image unavailable' : 'Image indisponible'))
-                                    : Image.network(snapshot.data!, fit: BoxFit.contain,
-                                        errorBuilder: (_, _, _) => Center(child: Text(_en ? 'Image unavailable' : 'Image indisponible'))),
-                          );
-                        },
+                        ),
                       ),
-                    );
-                  },
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 130, maxHeight: 300),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(8)),
+                  child: url == null
+                      ? SizedBox(
+                          height: 130,
+                          child: Center(child: snapshot.connectionState == ConnectionState.waiting
+                              ? const Icon(Icons.image_outlined, size: 34, color: Color(0xFF94A3B8))
+                              : Text(_en ? 'Illustration unavailable' : 'Illustration indisponible')),
+                        )
+                      : Image.network(
+                          url,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => SizedBox(
+                            height: 130,
+                            child: Center(child: Text(_en ? 'Illustration unavailable' : 'Illustration indisponible')),
+                          ),
+                        ),
                 ),
               ),
+            ),
+            if (caption.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(caption, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontStyle: FontStyle.italic)),
             ],
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
