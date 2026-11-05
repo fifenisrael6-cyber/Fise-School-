@@ -13,13 +13,17 @@ class ClassSubjectPicker extends StatefulWidget {
   final Locale locale;
   final String teacherId;
   final bool showAllCompatibleClasses;
+  final bool manualSubjectEntry;
   final void Function(List<SchoolClass> classes, Subject? subject) onChanged;
+  final void Function(List<SchoolClass> classes, String subjectName)? onManualSubjectChanged;
 
   const ClassSubjectPicker({
     super.key,
     required this.locale,
     required this.teacherId,
     this.showAllCompatibleClasses = false,
+    this.manualSubjectEntry = false,
+    this.onManualSubjectChanged,
     required this.onChanged,
   });
 
@@ -34,6 +38,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   final Set<String> _selectedIds = <String>{};
   final TextEditingController _classSearch = TextEditingController();
   final TextEditingController _subjectSearch = TextEditingController();
+  final TextEditingController _manualSubjectName = TextEditingController();
   List<SchoolClass> _allClasses = const [];
   List<Subject> _subjects = const [];
   Subject? _subject;
@@ -45,6 +50,7 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
   void dispose() {
     _classSearch.dispose();
     _subjectSearch.dispose();
+    _manualSubjectName.dispose();
     super.dispose();
   }
 
@@ -90,7 +96,15 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
       .where((c) => _selectedIds.contains(c.id))
       .toList(growable: false);
 
-  void _notify() => widget.onChanged(_selectedClasses, _subject);
+  void _notify() {
+    widget.onChanged(_selectedClasses, _subject);
+    if (widget.manualSubjectEntry) {
+      widget.onManualSubjectChanged?.call(
+        _selectedClasses,
+        _manualSubjectName.text.trim(),
+      );
+    }
+  }
 
   Future<void> _toggleClass(SchoolClass schoolClass, bool selected) async {
     setState(() {
@@ -354,70 +368,92 @@ class _ClassSubjectPickerState extends State<ClassSubjectPicker> {
           },
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _fr ? 'Matière commune aux salles' : 'Subject shared by selected rooms',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: _addSubject,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(_fr ? 'Ajouter une matière' : 'Add a subject'),
-            ),
-          ],
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _saveFollowedRooms,
-            icon: const Icon(Icons.bookmark_add_outlined),
-            label: Text(_fr ? 'Enregistrer comme « Mes salles »' : 'Save as “My classrooms”'),
+        if (widget.manualSubjectEntry) ...[
+          Text(
+            _fr ? 'Nom de la matière' : 'Subject name',
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
-        ),
-        if (_loadingSubjects)
-          const LinearProgressIndicator()
-        else if (_selectedIds.isEmpty)
-          Text(_fr ? 'Sélectionnez d’abord au moins une salle.' : 'Select at least one classroom first.')
-        else if (_subjects.isEmpty)
-          Text(_fr
-              ? 'Aucune matière n’est affectée à cette salle. Ajoutez une matière ou contactez l’administration.'
-              : 'No subject is assigned to this classroom. Add a subject or contact the administration.')
-        else ...[
+          const SizedBox(height: 8),
           TextField(
-            controller: _subjectSearch,
-            onChanged: (_) => setState(() {}),
+            controller: _manualSubjectName,
+            textCapitalization: TextCapitalization.sentences,
+            maxLength: 80,
+            onChanged: (_) => _notify(),
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: _fr ? 'Rechercher une matière…' : 'Search subjects…',
-              suffixIcon: _subjectSearch.text.isEmpty ? null : IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => setState(_subjectSearch.clear),
-              ),
+              prefixIcon: const Icon(Icons.edit_outlined),
+              hintText: _fr ? 'Écrivez vous-même la matière…' : 'Type the subject name…',
+              helperText: _fr
+                  ? 'Le nom saisi sera enregistré et associé à la matière de cette épreuve.'
+                  : 'The entered name will be saved and linked to this exam.',
               border: const OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 8),
-          if (visibleSubjects.isEmpty)
-            Text(_fr ? 'Aucune matière trouvée.' : 'No subject found.')
-          else
-            DropdownButtonFormField<String>(
-              key: ValueKey('${_subject?.id}-${_subjects.length}-${visibleSubjects.length}'),
-              initialValue: visibleSubjects.any((s) => s.id == _subject?.id) ? _subject?.id : null,
-              isExpanded: true,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: visibleSubjects.map((subject) => DropdownMenuItem<String>(
-                value: subject.id,
-                child: Text(subject.labelFor(widget.locale.languageCode)),
-              )).toList(growable: false),
-              onChanged: (id) {
-                if (id == null) return;
-                setState(() => _subject = _subjects.firstWhere((s) => s.id == id));
-                _notify();
-              },
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _fr ? 'Matière commune aux salles' : 'Subject shared by selected rooms',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _addSubject,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(_fr ? 'Ajouter une matière' : 'Add a subject'),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _saveFollowedRooms,
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: Text(_fr ? 'Enregistrer comme « Mes salles »' : 'Save as “My classrooms”'),
             ),
+          ),
+          if (_loadingSubjects)
+            const LinearProgressIndicator()
+          else if (_selectedIds.isEmpty)
+            Text(_fr ? 'Sélectionnez d’abord au moins une salle.' : 'Select at least one classroom first.')
+          else if (_subjects.isEmpty)
+            Text(_fr
+                ? 'Aucune matière n’est affectée à cette salle. Ajoutez une matière ou contactez l’administration.'
+                : 'No subject is assigned to this classroom. Add a subject or contact the administration.')
+          else ...[
+            TextField(
+              controller: _subjectSearch,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: _fr ? 'Rechercher une matière…' : 'Search subjects…',
+                suffixIcon: _subjectSearch.text.isEmpty ? null : IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(_subjectSearch.clear),
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (visibleSubjects.isEmpty)
+              Text(_fr ? 'Aucune matière trouvée.' : 'No subject found.')
+            else
+              DropdownButtonFormField<String>(
+                key: ValueKey('${_subject?.id}-${_subjects.length}-${visibleSubjects.length}'),
+                initialValue: visibleSubjects.any((s) => s.id == _subject?.id) ? _subject?.id : null,
+                isExpanded: true,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                items: visibleSubjects.map((subject) => DropdownMenuItem<String>(
+                  value: subject.id,
+                  child: Text(subject.labelFor(widget.locale.languageCode)),
+                )).toList(growable: false),
+                onChanged: (id) {
+                  if (id == null) return;
+                  setState(() => _subject = _subjects.firstWhere((s) => s.id == id));
+                  _notify();
+                },
+              ),
+          ],
         ],
       ],
     );
