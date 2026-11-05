@@ -613,6 +613,45 @@ class AppDatabase extends _$AppDatabase {
         [userId, kind, threadId],
       );
 
+  /// Atomically replaces one conversation snapshot after every remote message
+  /// has been saved. The previous readable cache remains intact if the network
+  /// refresh or the app is interrupted halfway through.
+  Future<void> replaceMessageCacheSnapshot({
+    required String userId,
+    required String kind,
+    required String threadId,
+    required List<Map<String, Object?>> messages,
+  }) async {
+    await transaction(() async {
+      for (final message in messages) {
+        await cacheMessage(message);
+      }
+
+      final ids = messages
+          .map((message) => message['id'])
+          .whereType<String>()
+          .toSet();
+      final cachedRows = await getCachedMessages(userId, kind, threadId);
+      final staleIds = cachedRows
+          .where((row) =>
+              row.read<String>('sync_status') != 'pending' &&
+              !ids.contains(row.read<String>('id')))
+          .map((row) => row.read<String>('id'))
+          .toList(growable: false);
+
+      // Delete in bounded batches to stay below SQLite's bind-variable limit
+      // even for conversations with a long history.
+      for (var start = 0; start < staleIds.length; start += 400) {
+        final batch = staleIds.skip(start).take(400).toList(growable: false);
+        final placeholders = List<String>.filled(batch.length, '?').join(',');
+        await customStatement(
+          "DELETE FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? AND sync_status<>'pending' AND id IN ($placeholders)",
+          [userId, kind, threadId, ...batch],
+        );
+      }
+    });
+  }
+
   Future<List<QueryRow>> getCachedMessages(String userId, String kind, String threadId) =>
       customSelect(
         'SELECT * FROM message_cache WHERE user_id=? AND kind=? AND thread_id=? ORDER BY created_at ASC',

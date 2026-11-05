@@ -70,6 +70,7 @@ class ChapterExerciseCorrection {
 class ChapterLearningService {
   static final Map<String, DateTime> _lastCacheRefresh = <String, DateTime>{};
   static final Map<String, Future<void>> _mediaPrefetches = <String, Future<void>>{};
+  static final Set<String> _offlineChapterPrefetches = <String>{};
 
   final SupabaseClient _client;
   final AppDatabase _database;
@@ -372,6 +373,61 @@ class ChapterLearningService {
       }
     });
   }
+
+  /// Prépare les chapitres déjà visibles pour les prochaines ouvertures hors
+  /// ligne. Cette tâche est volontairement indépendante du rendu de la page :
+  /// elle ne retarde jamais l'affichage des dossiers.
+  Future<void> prefetchOfflineChapters(Iterable<String> chapterIds) async {
+    if (!await ConnectivityService().isOnline()) return;
+
+    final userId = _cacheUserId;
+    final pending = chapterIds
+        .where((id) => id.trim().isNotEmpty)
+        .map((id) => id.trim())
+        .toSet()
+        .where((id) => _offlineChapterPrefetches.add('$userId:$id'))
+        .toList(growable: false);
+    if (pending.isEmpty) return;
+
+    try {
+      // Keep network and storage pressure bounded on long programmes.
+      for (var start = 0; start < pending.length; start += 3) {
+        final batch = pending.skip(start).take(3).toList(growable: false);
+        await Future.wait(batch.map((chapterId) async {
+          try {
+            await listContent(chapterId, forceRefresh: true);
+          } catch (_) {
+            // A previously cached chapter must remain readable on failure.
+          }
+          try {
+            await listExercises(chapterId, forceRefresh: true);
+          } catch (_) {}
+          try {
+            // forceRefresh also persists the question rows, not only quiz titles.
+            await listQuizzes(chapterId, forceRefresh: true);
+          } catch (_) {}
+        }));
+      }
+
+      // Each chapter downloads media sequentially; only two chapter folders
+      // are prepared at once to avoid saturating mobile data and memory.
+      for (var start = 0; start < pending.length; start += 2) {
+        final batch = pending.skip(start).take(2).toList(growable: false);
+        await Future.wait(batch.map((chapterId) async {
+          try {
+            await prefetchChapterMedia(chapterId);
+          } catch (_) {
+            // Metadata and text lessons remain cached even if media fails.
+          }
+        }));
+      }
+    } finally {
+      for (final id in pending) {
+        _offlineChapterPrefetches.remove('$userId:$id');
+      }
+    }
+  }
+
 
   Future<void> _prefetchChapterMediaImpl(String chapterId) async {
     final userId = _cacheUserId;

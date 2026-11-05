@@ -242,9 +242,11 @@ class GroupMessageService {
       final remote = (result as List)
           .map((row) => GroupMessage.fromMap(Map<String, dynamic>.from(row as Map)))
           .toList(growable: false);
-      await _db.beginMessageCacheRefresh(_userId, 'group', groupId);
-      for (final message in remote) {
-        await _db.cacheMessage({
+      await _db.replaceMessageCacheSnapshot(
+        userId: _userId,
+        kind: 'group',
+        threadId: groupId,
+        messages: remote.map((message) => <String, Object?>{
           'id': message.id,
           'user_id': _userId,
           'kind': 'group',
@@ -262,8 +264,8 @@ class GroupMessageService {
           'reply_to_id': message.replyToId,
           'deleted_at': message.deletedAt?.toUtc().toIso8601String(),
           'sync_status': 'sent',
-        });
-      }
+        }).toList(growable: false),
+      );
       // The server response is authoritative while online. Return it directly
       // instead of re-reading Drift, where concurrent refreshes can expose a
       // stale snapshot even after the newest rows were fetched successfully.

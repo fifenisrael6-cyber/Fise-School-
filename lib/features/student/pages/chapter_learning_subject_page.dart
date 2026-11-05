@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
@@ -69,6 +71,14 @@ class _ChapterLearningSubjectPageState
       allChapters.addAll(chapters);
     }
 
+    // Prepare lessons, exercises, quizzes and media for the next offline
+    // opening. This runs after the chapter list is ready and never blocks it.
+    unawaited(
+      _learning
+          .prefetchOfflineChapters(allChapters.map((chapter) => chapter.id))
+          .catchError((Object _) {}),
+    );
+
     // Do not block the chapter list on a request per resource type for
     // every chapter. Large programmes can contain dozens of chapters; waiting
     // for all their counts here caused the whole page to appear stuck/empty.
@@ -139,7 +149,18 @@ class _ChapterLearningSubjectPageState
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.menu_book_rounded, size: 34, color: Color(0xFF166534)),
+                  const SizedBox(height: 8),
+                  Text(widget.locale.languageCode == 'en'
+                      ? 'Opening programme…'
+                      : 'Ouverture du programme…'),
+                ],
+              ),
+            );
           }
           if (snapshot.hasError) return _error(snapshot.error.toString());
 

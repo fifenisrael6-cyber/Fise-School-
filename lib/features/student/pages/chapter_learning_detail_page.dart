@@ -172,7 +172,16 @@ class _ChapterLearningDetailPageState
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.menu_book_rounded, size: 34, color: Color(0xFF166534)),
+                  const SizedBox(height: 8),
+                  Text(_en ? 'Opening chapter…' : 'Ouverture du chapitre…'),
+                ],
+              ),
+            );
           }
           if (snapshot.hasError) {
             return Center(
