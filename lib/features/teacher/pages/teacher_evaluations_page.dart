@@ -259,7 +259,6 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
   final List<_SchemeRow> _scheme = [];
 
   List<SchoolClass> _classes = const [];
-  Subject? _subject;
   String _subjectName = '';
   List<GradePeriod> _periods = const [];
   String? _periodId;
@@ -385,14 +384,12 @@ class _TeacherEvaluationFormPageState extends State<TeacherEvaluationFormPage> {
             locale: widget.locale,
             teacherId: widget.profile.id,
             manualSubjectEntry: true,
-            onChanged: (classes, subject) => setState(() {
+            onChanged: (classes, _) => setState(() {
               _classes = classes;
-              _subject = subject;
             }),
             onManualSubjectChanged: (classes, subjectName) => setState(() {
               _classes = classes;
               _subjectName = subjectName;
-              _subject = null;
             }),
           ),
           const SizedBox(height: 12),
