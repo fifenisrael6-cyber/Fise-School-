@@ -46,6 +46,8 @@ async function gemini(prompt: string, apiKey: string): Promise<string> {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
+  let db: ReturnType<typeof createClient> | null = null;
+  let resourceId = "";
   try {
     const url = Deno.env.get("SUPABASE_URL");
     const anon = Deno.env.get("SUPABASE_ANON_KEY");
@@ -63,9 +65,9 @@ serve(async (req) => {
     if (profile?.role !== "admin") return json({ error: "Import réservé à l'administrateur." }, 403);
 
     const body = await req.json();
-    const resourceId = String(body?.resource_id ?? "").trim();
+    resourceId = String(body?.resource_id ?? "").trim();
     if (!resourceId) return json({ error: "resource_id manquant." }, 400);
-    const db = createClient(url, service);
+    db = createClient(url, service);
 
     const { data: resource, error: resourceError } = await db.from("course_resources")
       .select("id,course_id,resource_type,storage_path,file_name,mime_type")
@@ -105,13 +107,14 @@ serve(async (req) => {
 
     const subjectResult = await db.from("subjects").select("id,name_fr,name_en").eq("id", sourceCourse.subject_id).single();
     if (subjectResult.error || !subjectResult.data) throw new Error("Matière source introuvable.");
-    const prompt = `Tu es un outil d'organisation documentaire scolaire. Analyse le texte fourni et découpe-le en chapitres réellement présents dans le document. Ne crée aucun chapitre fictif et ne complète pas avec des connaissances externes. Conserve le contenu complet de chaque partie, sans résumé. Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","content_fr":"texte complet de la partie"}]}. Si le document ne présente pas de chapitres explicites, crée des sections cohérentes à partir des titres visibles sans inventer de notions. Maximum 30 chapitres.\nMatière connue: ${subjectResult.data.name_fr}. Salle source: ${sourceClass.display_name ?? sourceClass.name}.\nTEXTE DU PDF:\n${extracted.slice(0, 90000)}`;
+    const prompt = `Tu es un outil d'organisation documentaire scolaire. Analyse le texte fourni et découpe-le en chapitres réellement présents dans le document. Ne crée aucun chapitre fictif et ne complète pas avec des connaissances externes. Conserve le contenu complet de chaque partie, sans résumé. Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"texte complet en français","content_en":"faithful English translation of the complete content"}]}. Si le document ne présente pas de chapitres explicites, crée des sections cohérentes à partir des titres visibles sans inventer de notions. Maximum 30 chapitres.`
+\nMatière connue: ${subjectResult.data.name_fr}. Salle source: ${sourceClass.display_name ?? sourceClass.name}.\nTEXTE DU PDF:\n${extracted.slice(0, 90000)}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey));
     const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30) : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
 
     const { data: curricula, error: curriculaError } = await db.from("curricula")
-      .select("id,title_fr,subsystem,sector,exam_level_id,series_id,specialty_id")
+      .select("id,title_fr,subsystem,sector,exam_level_id,series_id,specialty_id,is_catalog_container")
       .eq("subject_id", sourceCourse.subject_id).eq("is_active", true)
       .eq("subsystem", sourceClass.subsystem).eq("sector", sourceClass.sector);
     if (curriculaError) throw curriculaError;
@@ -154,8 +157,8 @@ serve(async (req) => {
         }
         const bodyText = String(chapter.content_fr).trim();
         const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
-          chapter_id: target.id, content_type: "course", title_fr: title, title_en: title,
-          body_text_fr: bodyText, body_text_en: bodyText, position: 0,
+          chapter_id: target.id, content_type: "course", title_fr: title, title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
+          body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText, position: 0,
           is_published: true, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
@@ -164,6 +167,16 @@ serve(async (req) => {
     }
     const imported = report.filter((r) => r.status === "imported").length;
     const existingCount = report.filter((r) => r.status === "already_exists").length;
+    const wordCount = extracted.split(/\\s+/).filter(Boolean).length;
+    const { error: statusError } = await db.from("course_resources").update({
+      index_status: "indexed",
+      index_error: null,
+      index_preview: extracted.slice(0, 4000),
+      index_word_count: wordCount,
+      index_approved: true,
+      indexed_at: new Date().toISOString(),
+    }).eq("id", resourceId);
+    if (statusError) throw statusError;
     return json({
       success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
       subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
@@ -171,6 +184,18 @@ serve(async (req) => {
       message: `${imported} chapitre(s) alimenté(s), ${existingCount} déjà présent(s). Les contenus ont été importés dans le programme exact de la salle source.`,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Erreur lors de l'import du PDF." }, 500);
+    const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
+    if (db && resourceId) {
+      try {
+        await db.from("course_resources").update({
+          index_status: "failed",
+          index_error: message.slice(0, 2000),
+          indexed_at: new Date().toISOString(),
+        }).eq("id", resourceId);
+      } catch (_) {
+        // Le statut d'import ne doit jamais masquer l'erreur initiale.
+      }
+    }
+    return json({ error: message }, 500);
   }
 });
