@@ -1,0 +1,172 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import * as pdfjsLib from "npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+function normalize(value: unknown): string {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+async function extractPdf(bytes: Uint8Array): Promise<string> {
+  const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
+  const pages: string[] = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    const line = content.items.map((item: any) => item?.str ?? "").join(" ").replace(/\s+/g, " ").trim();
+    if (line) pages.push(line);
+  }
+  return pages.join("\n\n").trim();
+}
+
+async function gemini(prompt: string, apiKey: string): Promise<string> {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error?.message ?? "Erreur Gemini.");
+  const value = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("").trim();
+  if (!value) throw new Error("Gemini n'a retourné aucun contenu.");
+  return value.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
+  try {
+    const url = Deno.env.get("SUPABASE_URL");
+    const anon = Deno.env.get("SUPABASE_ANON_KEY");
+    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!url || !anon || !service || !geminiKey) return json({ error: "Configuration serveur incomplète (Supabase/Gemini)." }, 500);
+
+    const auth = req.headers.get("Authorization") ?? "";
+    if (!auth.startsWith("Bearer ")) return json({ error: "Connexion requise." }, 401);
+    const token = auth.slice(7).trim();
+    const userClient = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
+    const { data: authData, error: authError } = await userClient.auth.getUser(token);
+    if (authError || !authData.user) return json({ error: "Session invalide." }, 401);
+    const { data: profile } = await userClient.from("profiles").select("role").eq("id", authData.user.id).maybeSingle();
+    if (profile?.role !== "admin") return json({ error: "Import réservé à l'administrateur." }, 403);
+
+    const body = await req.json();
+    const resourceId = String(body?.resource_id ?? "").trim();
+    if (!resourceId) return json({ error: "resource_id manquant." }, 400);
+    const db = createClient(url, service);
+
+    const { data: resource, error: resourceError } = await db.from("course_resources")
+      .select("id,course_id,resource_type,storage_path,file_name,mime_type")
+      .eq("id", resourceId).single();
+    if (resourceError || !resource) return json({ error: "Fichier PDF introuvable." }, 404);
+    if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") return json({ error: "Le fichier doit être un PDF." }, 400);
+
+    const { data: sourceCourse, error: courseError } = await db.from("courses")
+      .select("id,class_id,subject_id,teacher_id,title_fr")
+      .eq("id", resource.course_id).single();
+    if (courseError || !sourceCourse?.class_id || !sourceCourse.subject_id) return json({ error: "Le cours source doit être lié à une salle et une matière." }, 400);
+
+    const { data: sourceClass, error: classError } = await db.from("school_classes")
+      .select("id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id")
+      .eq("id", sourceCourse.class_id).single();
+    if (classError || !sourceClass) throw new Error("Impossible de lire la salle source.");
+
+    const { data: file, error: downloadError } = await db.storage.from("course-resources").download(resource.storage_path);
+    if (downloadError || !file) throw new Error(downloadError?.message ?? "Téléchargement du PDF impossible.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let extracted = await extractPdf(bytes);
+    if (extracted.length < 250) {
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const scanned = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
+        method: "POST", headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [
+          { text: "Transcris fidèlement tout le texte de ce PDF scolaire en français. Conserve les titres, les formules, les tableaux sous forme textuelle et les exemples. Ne résume pas et n'invente rien." },
+          { inline_data: { mime_type: "application/pdf", data: btoa(binary) } },
+        ] }], generationConfig: { temperature: 0 } }),
+      });
+      const scannedData = await scanned.json();
+      if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
+      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\n") ?? "";
+    }
+    if (extracted.trim().length < 200) throw new Error("Le PDF ne contient pas assez de texte lisible pour l'import.");
+
+    const subjectResult = await db.from("subjects").select("id,name_fr,name_en").eq("id", sourceCourse.subject_id).single();
+    if (subjectResult.error || !subjectResult.data) throw new Error("Matière source introuvable.");
+    const prompt = `Tu es un outil d'organisation documentaire scolaire. Analyse le texte fourni et découpe-le en chapitres réellement présents dans le document. Ne crée aucun chapitre fictif et ne complète pas avec des connaissances externes. Conserve le contenu complet de chaque partie, sans résumé. Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","content_fr":"texte complet de la partie"}]}. Si le document ne présente pas de chapitres explicites, crée des sections cohérentes à partir des titres visibles sans inventer de notions. Maximum 30 chapitres.\nMatière connue: ${subjectResult.data.name_fr}. Salle source: ${sourceClass.display_name ?? sourceClass.name}.\nTEXTE DU PDF:\n${extracted.slice(0, 90000)}`;
+    const parsed = JSON.parse(await gemini(prompt, geminiKey));
+    const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30) : [];
+    if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
+
+    const { data: curricula, error: curriculaError } = await db.from("curricula")
+      .select("id,title_fr,subsystem,sector,exam_level_id,series_id,specialty_id")
+      .eq("subject_id", sourceCourse.subject_id).eq("is_active", true)
+      .eq("subsystem", sourceClass.subsystem).eq("sector", sourceClass.sector);
+    if (curriculaError) throw curriculaError;
+
+    const matchingCurricula = (curricula ?? []).filter((c: any) =>
+      c.exam_level_id === sourceClass.exam_level_id &&
+      c.series_id === sourceClass.series_id &&
+      c.specialty_id === sourceClass.specialty_id);
+    if (!matchingCurricula.length) throw new Error("Aucun programme actif ne correspond exactement à la salle source et à cette matière.");
+
+    const report: any[] = [];
+    for (const curriculum of matchingCurricula) {
+      const { data: existing, error: existingError } = await db.from("course_chapters")
+        .select("id,title_fr,position").eq("curriculum_id", curriculum.id).eq("is_active", true).order("position");
+      if (existingError) throw existingError;
+      let nextPosition = Math.max(-1, ...(existing ?? []).map((x: any) => Number(x.position ?? 0))) + 1;
+      for (const chapter of chapters) {
+        const title = String(chapter.title_fr).trim().slice(0, 250);
+        let target = (existing ?? []).find((x: any) => normalize(x.title_fr) === normalize(title));
+        if (!target) {
+          const { data: created, error: createError } = await db.from("course_chapters").insert({
+            curriculum_id: curriculum.id, title_fr: title, title_en: title,
+            description_fr: "Chapitre importé depuis un PDF pédagogique.", description_en: "Chapter imported from an educational PDF.",
+            position: nextPosition++, is_active: true,
+          }).select("id,title_fr,position").single();
+          if (createError) throw createError;
+          target = created;
+          (existing as any[]).push(created);
+        }
+        const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
+          .select("id").eq("chapter_id", target.id).eq("content_type", "course").eq("title_fr", title).limit(1);
+        if (duplicateError) throw duplicateError;
+        if ((duplicate ?? []).length) {
+          report.push({ chapter: title, curriculum: curriculum.title_fr, status: "already_exists" });
+          continue;
+        }
+        const bodyText = String(chapter.content_fr).trim();
+        const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
+          chapter_id: target.id, content_type: "course", title_fr: title, title_en: title,
+          body_text_fr: bodyText, body_text_en: bodyText, position: 0,
+          is_published: true, created_by: authData.user.id, folder_key: "course",
+        }).select("id").single();
+        if (itemError) throw itemError;
+        report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
+      }
+    }
+    const imported = report.filter((r) => r.status === "imported").length;
+    const existingCount = report.filter((r) => r.status === "already_exists").length;
+    return json({
+      success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
+      subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
+      imported, already_exists: existingCount, report,
+      message: `${imported} chapitre(s) alimenté(s), ${existingCount} déjà présent(s). Les contenus ont été importés dans le programme exact de la salle source.`,
+    });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Erreur lors de l'import du PDF." }, 500);
+  }
+});
