@@ -343,8 +343,27 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final type = switch (ext) { 'pdf' => 'pdf', 'jpg' || 'jpeg' || 'png' || 'webp' => 'image', 'mp4' || 'mov' => 'video', 'mp3' || 'wav' || 'm4a' => 'audio', 'doc' || 'docx' || 'txt' || 'ppt' || 'pptx' || 'xls' || 'xlsx' => 'document', _ => 'other' };
     try {
       final count = await _client.from('course_resources').select('id').eq('course_id', course['id']).count(CountOption.exact);
-      await _resources.uploadResource(courseId: course['id'].toString(), file: file, resourceType: type, position: count.count, titleFr: file.name, titleEn: file.name);
-      _snack(_fr ? 'Contenu ajouté à la salle et au cours.' : 'Content added to the classroom course.');
+      final uploaded = await _resources.uploadResource(courseId: course['id'].toString(), file: file, resourceType: type, position: count.count, titleFr: file.name, titleEn: file.name);
+      if (type == 'pdf') {
+        _snack(_fr ? 'PDF envoyé. Analyse IA et organisation des chapitres en cours…' : 'PDF uploaded. AI chapter analysis and organization in progress…');
+        final result = await _client.functions.invoke(
+          'import-course-pdf',
+          body: {'resource_id': uploaded.id},
+        );
+        final data = result.data;
+        if (result.status >= 200 && result.status < 300 && data is Map && data['success'] == true) {
+          final imported = data['imported'] ?? 0;
+          final existing = data['already_exists'] ?? 0;
+          _snack(_fr
+              ? 'Import terminé : $imported chapitre(s) alimenté(s), $existing déjà présent(s).'
+              : 'Import complete: $imported chapters populated, $existing already existed.');
+        } else {
+          final message = data is Map ? (data['error']?.toString() ?? 'Erreur IA inconnue.') : 'Réponse IA invalide.';
+          _snack(_fr ? 'PDF conservé, mais import IA échoué : $message' : 'PDF saved, but AI import failed: $message');
+        }
+      } else {
+        _snack(_fr ? 'Contenu ajouté à la salle et au cours.' : 'Content added to the classroom course.');
+      }
     } catch (e) { _snack(_fr ? 'Échec de l’envoi : $e' : 'Upload failed: $e'); }
   }
 
