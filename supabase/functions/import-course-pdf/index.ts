@@ -166,7 +166,7 @@ serve(async (req) => {
     }
     const imported = report.filter((r) => r.status === "imported").length;
     const existingCount = report.filter((r) => r.status === "already_exists").length;
-    const wordCount = extracted.split(/\\s+/).filter(Boolean).length;
+    const wordCount = extracted.split(/\s+/).filter(Boolean).length;
     const { error: statusError } = await db.from("course_resources").update({
       index_status: "indexed",
       index_error: null,
