@@ -395,7 +395,22 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           final c = _items[i];
           final room = (c['school_classes'] is Map) ? Map<String, dynamic>.from(c['school_classes'] as Map) : <String, dynamic>{};
           final subject = (c['subjects'] is Map) ? Map<String, dynamic>.from(c['subjects'] as Map) : <String, dynamic>{};
-          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'resource') _addResource(c); }, itemBuilder: (_) => [PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file'))])));
+          return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) async {
+            if (v == 'resource') {
+              await _addResource(c);
+            } else if (v == 'archive') {
+              try {
+                await _client.from('courses').update({'status': 'archived'}).eq('id', c['id']);
+                _snack(_fr ? 'Cours archivé. Il reste dans la base et peut être réactivé.' : 'Course archived. It remains in the database and can be restored.');
+                await _load();
+              } catch (e) {
+                _snack(_fr ? 'Impossible d’archiver ce cours : $e' : 'Unable to archive this course: $e');
+              }
+            }
+          }, itemBuilder: (_) => [
+            PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file')),
+            if (c['status'] != 'archived') PopupMenuItem(value: 'archive', child: Text(_fr ? 'Archiver le cours' : 'Archive course')),
+          ])));
         })))
       ]),
     );
