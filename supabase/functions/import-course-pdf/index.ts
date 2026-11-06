@@ -74,7 +74,7 @@ serve(async (req) => {
     if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") return json({ error: "Le fichier doit être un PDF." }, 400);
 
     const { data: sourceCourse, error: courseError } = await db.from("courses")
-      .select("id,class_id,subject_id,teacher_id,title_fr")
+      .select("id,class_id,subject_id,curriculum_id,teacher_id,title_fr")
       .eq("id", resource.course_id).single();
     if (courseError || !sourceCourse?.class_id || !sourceCourse.subject_id) return json({ error: "Le cours source doit être lié à une salle et une matière." }, 400);
 
@@ -116,10 +116,14 @@ serve(async (req) => {
       .eq("subsystem", sourceClass.subsystem).eq("sector", sourceClass.sector);
     if (curriculaError) throw curriculaError;
 
-    const matchingCurricula = (curricula ?? []).filter((c: any) =>
+    const contextCurricula = (curricula ?? []).filter((c: any) =>
       c.exam_level_id === sourceClass.exam_level_id &&
       c.series_id === sourceClass.series_id &&
       c.specialty_id === sourceClass.specialty_id);
+    const containers = contextCurricula.filter((c: any) => c.is_catalog_container === true);
+    const matchingCurricula = sourceCourse.curriculum_id
+      ? contextCurricula.filter((c: any) => c.id === sourceCourse.curriculum_id)
+      : (containers.length ? containers : contextCurricula);
     if (!matchingCurricula.length) throw new Error("Aucun programme actif ne correspond exactement à la salle source et à cette matière.");
 
     const report: any[] = [];
