@@ -544,7 +544,7 @@ class _ChapterLearningDetailPageState
     const legacyPrefix = 'legacy-course-resource:';
     if (path.startsWith(legacyPrefix)) {
       return Supabase.instance.client.storage
-          .from('cours-fichiers')
+          .from('course-resources')
           .createSignedUrl(path.substring(legacyPrefix.length), 900);
     }
     return Supabase.instance.client.storage
@@ -890,7 +890,7 @@ class _ChapterContentViewerPageState extends State<ChapterContentViewerPage> {
       if (path.startsWith(legacyPrefix)) {
         final legacyPath = path.substring(legacyPrefix.length);
         return Supabase.instance.client.storage
-            .from('cours-fichiers')
+            .from('course-resources')
             .createSignedUrl(legacyPath, 900);
       }
       return Supabase.instance.client.storage
