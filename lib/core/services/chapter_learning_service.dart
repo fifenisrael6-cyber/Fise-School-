@@ -459,7 +459,7 @@ class ChapterLearningService {
             if (sourceLower.startsWith('http://') || sourceLower.startsWith('https://')) {
               url = source;
             } else if (source.startsWith(legacyPrefix)) {
-              url = await _client.storage.from('cours-fichiers').createSignedUrl(
+              url = await _client.storage.from('course-resources').createSignedUrl(
                 source.substring(legacyPrefix.length), 900,
               );
             } else {
