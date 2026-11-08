@@ -236,9 +236,24 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
               data is Map && data['success'] == true) {
             final imported = data['imported'] ?? 0;
             final existingCount = data['already_exists'] ?? 0;
+            final targetRooms = data['target_rooms'] is List
+                ? (data['target_rooms'] as List)
+                    .whereType<Map>()
+                    .map((room) => room['name']?.toString() ?? '')
+                    .where((name) => name.trim().isNotEmpty)
+                    .toList(growable: false)
+                : const <String>[];
+            final roomSummary = targetRooms.isEmpty
+                ? t('aucune salle correspondante détectée', 'no matching classroom detected')
+                : targetRooms.take(3).join(', ') +
+                    (targetRooms.length > 3 ? ' +${targetRooms.length - 3}' : '');
+            final linkedChapters = (data['report'] is List)
+                ? (data['report'] as List).fold<int>(0, (sum, row) =>
+                    sum + ((row is Map ? row['linked_chapters'] as num? : null)?.toInt() ?? 0))
+                : 0;
             toast(t(
-              'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Les leçons sont en brouillon : vérifiez puis publiez-les.',
-              'Analysis complete: $imported lesson(s) created, $existingCount already existed. Lessons are drafts: review and publish them.',
+              'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Salles concernées : $roomSummary. $linkedChapters liaison(s) de chapitre. Les leçons restent en brouillon : vérifiez puis publiez-les.',
+              'Analysis complete: $imported lesson(s) created, $existingCount already existed. Matching classrooms: $roomSummary. $linkedChapters chapter link(s). Lessons remain drafts until reviewed and published.',
             ));
           } else {
             final message = data is Map
