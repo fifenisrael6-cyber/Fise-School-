@@ -21,7 +21,27 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
     const content = await page.getTextContent();
-    const line = content.items.map((item: any) => item?.str ?? "").join(" ").replace(/\s+/g, " ").trim();
+    // Keep the PDF's visual line structure instead of flattening every page
+    // into one long sentence. This lets the lesson formatter recover headings,
+    // numbered sections, formulas and table rows more faithfully.
+    const lineGroups = new Map<number, Array<{ x: number; text: string }>>();
+    for (const item of content.items as any[]) {
+      const text = String(item?.str ?? "").trim();
+      if (!text) continue;
+      const transform = Array.isArray(item?.transform) ? item.transform : [];
+      const x = Number(transform[4] ?? 0);
+      const y = Number(transform[5] ?? 0);
+      const key = Math.round(y / 2);
+      const group = lineGroups.get(key) ?? [];
+      group.push({ x, text });
+      lineGroups.set(key, group);
+    }
+    const line = [...lineGroups.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
+        .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join("\\n");
     if (line) pages.push(line);
   }
   return pages.join("\n\n").trim();
