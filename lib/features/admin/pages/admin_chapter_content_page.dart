@@ -181,7 +181,19 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         final file = picked.files.single;
         final bytes = file.bytes;
         if (bytes == null || bytes.isEmpty) {
-          toast(t('Impossible de lire ce fichier PDF.','Unable to read this PDF.')); return;
+          toast(t('Impossible de lire ce fichier.','Unable to read this file.')); return;
+        }
+        if (type.value == 'pdf' && bytes.length > 25 * 1024 * 1024) {
+          toast(t('Le PDF dépasse la limite de 25 Mo. Divise-le en plusieurs fichiers.',
+              'The PDF exceeds the 25 MB limit. Split it into smaller files.'));
+          return;
+        }
+        if (type.value == 'pdf' &&
+            (bytes.length < 5 ||
+             String.fromCharCodes(bytes.take(5)) != '%PDF-')) {
+          toast(t('Le fichier sélectionné n’est pas un PDF valide.',
+              'The selected file is not a valid PDF.'));
+          return;
         }
         final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
         storagePath = chapter!['id'].toString() + '/' + DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
