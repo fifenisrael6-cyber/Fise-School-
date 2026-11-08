@@ -124,7 +124,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             items: [
               DropdownMenuItem(value: 'course', child: Text(t('Cours écrit','Written course'))),
               const DropdownMenuItem(value: 'video', child: Text('Vidéo')),
-              const DropdownMenuItem(value: 'pdf', child: Text('PDF depuis le téléphone')),
+              const DropdownMenuItem(value: 'pdf', child: Text('PDF → leçons natives (IA)')),
               const DropdownMenuItem(value: 'image', child: Text('Image depuis le téléphone')),
               const DropdownMenuItem(value: 'audio', child: Text('Audio depuis le téléphone')),
             ],
@@ -141,7 +141,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
           if (v == 'pdf' || v == 'image' || v == 'audio') Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(v == 'pdf'
-                ? t('Le PDF sera choisi sur le téléphone après validation.','Choose the PDF from your phone after confirming.')
+                ? t('Le PDF sera converti en leçons natives. Les leçons seront créées en brouillon pour vérification avant publication.','Choose a PDF to convert into native lessons. Imported lessons remain drafts until you review and publish them.')
                 : v == 'image'
                     ? t('L’image sera choisie sur le téléphone après validation.','Choose the image from your phone after confirming.')
                     : t('Le fichier audio sera choisi sur le téléphone après validation.','Choose the audio file from your phone after confirming.')),
