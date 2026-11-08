@@ -115,8 +115,16 @@ serve(async (req) => {
       return json({ error: "Le programme du chapitre est introuvable ou inactif." }, 400);
     }
     const { data: subject, error: subjectError } = await db.from("subjects")
-      .select("id,name_fr,name_en").eq("id", curriculum.subject_id).single();
+      .select("id,name_fr,name_en,teaching_stream").eq("id", curriculum.subject_id).single();
     if (subjectError || !subject) throw new Error("Matière du programme introuvable.");
+
+    // Load every active curriculum for this subject. The selected chapter is
+    // only the source context; AI-detected chapter headings determine where
+    // the lessons are actually placed.
+    const { data: curricula, error: curriculaError } = await db.from("curricula")
+      .select("id,subject_id,subsystem,sector,exam_level_id,series_id,specialty_id,teaching_stream,title_fr,is_active,is_catalog_container")
+      .eq("subject_id", subject.id).eq("is_active", true);
+    if (curriculaError) throw curriculaError;
 
     const { data: file, error: downloadError } = await db.storage.from("chapter-content")
       .download(source.storage_path);
@@ -172,53 +180,123 @@ ${extracted.slice(0, 90000)}`;
       : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié.");
 
-    const { data: existingRows, error: existingError } = await db.from("course_chapters")
-      .select("id,title_fr,title_en,position").eq("curriculum_id", curriculum.id)
-      .eq("is_active", true).order("position");
-    if (existingError) throw existingError;
-    const existing = existingRows ?? [];
-    let nextPosition = Math.max(-1, ...existing.map((x: any) => Number(x.position ?? 0))) + 1;
+    // Determine every active classroom that actually studies this subject.
+    // Then choose the same canonical curriculum that the student catalogue uses:
+    // exact catalog containers first, otherwise compatible non-container curricula.
+    const { data: assignedRows, error: assignedError } = await db.from("class_subjects")
+      .select("class_id").eq("subject_id", subject.id).eq("is_active", true);
+    if (assignedError) throw assignedError;
+    const assignedClassIds = [...new Set((assignedRows ?? []).map((row: any) => String(row.class_id)))];
+    const { data: activeClasses, error: classesError } = assignedClassIds.length
+      ? await db.from("school_classes")
+          .select("id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id")
+          .in("id", assignedClassIds).eq("is_active", true)
+      : { data: [], error: null };
+    if (classesError) throw classesError;
+
+    const curriculumMatchesClass = (candidate: any, schoolClass: any) =>
+      candidate.subsystem === schoolClass.subsystem &&
+      candidate.sector === schoolClass.sector &&
+      (candidate.exam_level_id == null || candidate.exam_level_id === schoolClass.exam_level_id) &&
+      (candidate.series_id == null || candidate.series_id === schoolClass.series_id) &&
+      (candidate.specialty_id == null || candidate.specialty_id === schoolClass.specialty_id);
+
+    // Never cross subsystem, sector, exam level, specialty or teaching stream.
+    // Series is intentionally allowed to differ: the existing shared-chapter
+    // catalogue links equivalent chapters across compatible series.
+    const sameSourceContext = (candidate: any) =>
+      candidate.subsystem === curriculum.subsystem &&
+      candidate.sector === curriculum.sector &&
+      candidate.exam_level_id === curriculum.exam_level_id &&
+      candidate.specialty_id === curriculum.specialty_id &&
+      candidate.teaching_stream === curriculum.teaching_stream;
+
+    const selectedCurriculumIds = new Set<string>([curriculum.id]);
+    for (const schoolClass of activeClasses ?? []) {
+      const compatible = (curricula ?? []).filter((candidate: any) =>
+        sameSourceContext(candidate) && curriculumMatchesClass(candidate, schoolClass));
+      const exactContainers = compatible.filter((candidate: any) =>
+        candidate.is_catalog_container === true &&
+        candidate.exam_level_id === schoolClass.exam_level_id &&
+        candidate.series_id === schoolClass.series_id &&
+        candidate.specialty_id === schoolClass.specialty_id);
+      const selected = exactContainers.length
+        ? exactContainers
+        : compatible.filter((candidate: any) => candidate.is_catalog_container !== true);
+      for (const candidate of selected) selectedCurriculumIds.add(String(candidate.id));
+    }
+
+    const targetCurricula = (curricula ?? []).filter((candidate: any) =>
+      selectedCurriculumIds.has(String(candidate.id)));
+    if (!targetCurricula.some((candidate: any) => candidate.id === curriculum.id)) {
+      targetCurricula.push(curriculum);
+    }
+
+    const targetRooms = (activeClasses ?? []).filter((schoolClass: any) =>
+      targetCurricula.some((candidate: any) => curriculumMatchesClass(candidate, schoolClass)));
+    const chapterCache = new Map<string, { rows: any[]; nextPosition: number }>();
+    for (const targetCurriculum of targetCurricula) {
+      const { data: rows, error: rowsError } = await db.from("course_chapters")
+        .select("id,title_fr,title_en,position").eq("curriculum_id", targetCurriculum.id)
+        .eq("is_active", true).order("position");
+      if (rowsError) throw rowsError;
+      const existingRows = rows ?? [];
+      chapterCache.set(String(targetCurriculum.id), {
+        rows: existingRows,
+        nextPosition: Math.max(-1, ...existingRows.map((row: any) => Number(row.position ?? 0))) + 1,
+      });
+    }
+
     const report: any[] = [];
-
-    for (let index = 0; index < chapters.length; index++) {
-      const generated = chapters[index];
+    for (const generated of chapters) {
       const parsedTitle = String(generated.title_fr).trim().slice(0, 250);
-      let target: any = chapters.length === 1
-        ? sourceChapter
-        : existing.find((x: any) => normalize(x.title_fr) === normalize(parsedTitle));
+      // The selected chapter is only a source context. Always use the chapter
+      // heading detected in the PDF to find or create the actual destination.
+      const chapterTitle = parsedTitle;
+      const targetChapterIds = new Set<string>();
+      let sourceTarget: any = null;
 
-      if (!target && chapters.length > 1) {
-        const { data: created, error: createError } = await db.from("course_chapters").insert({
-          curriculum_id: curriculum.id,
-          title_fr: parsedTitle,
-          title_en: String(generated.title_en ?? parsedTitle).trim().slice(0, 250) || parsedTitle,
-          description_fr: "Chapitre issu d'un document PDF importé par l'administrateur.",
-          description_en: "Chapter created from an administrator-imported PDF.",
-          position: nextPosition++,
-          is_active: true,
-        }).select("id,title_fr,title_en,position").single();
-        if (createError) throw createError;
-        target = created;
-        existing.push(created);
+      for (const targetCurriculum of targetCurricula) {
+        const cache = chapterCache.get(String(targetCurriculum.id))!;
+        let target = cache.rows.find((row: any) => normalize(row.title_fr) === normalize(chapterTitle));
+
+        if (!target) {
+          const { data: created, error: createError } = await db.from("course_chapters").insert({
+            curriculum_id: targetCurriculum.id,
+            title_fr: chapterTitle,
+            title_en: String(generated.title_en ?? chapterTitle).trim().slice(0, 250) || chapterTitle,
+            description_fr: "Chapitre issu d'un document PDF importé par l'administrateur.",
+            description_en: "Chapter created from an administrator-imported PDF.",
+            position: cache.nextPosition++,
+            is_active: true,
+          }).select("id,title_fr,title_en,position").single();
+          if (createError) throw createError;
+          target = created;
+          cache.rows.push(created);
+        }
+
+        const targetId = String(target.id);
+        targetChapterIds.add(targetId);
+        if (targetCurriculum.id === curriculum.id) sourceTarget = target;
       }
 
-      const contentTitle = chapters.length === 1
-        ? (String(parsed.document_title ?? "").trim().slice(0, 250) || sourceChapter.title_fr)
-        : parsedTitle;
+      if (!sourceTarget) {
+        throw new Error("Impossible de déterminer le chapitre source pour enregistrer le cours.");
+      }
+
+      const contentTitle = parsedTitle;
       const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
         .select("id,title_fr,title_en,is_published,position")
-        .eq("chapter_id", target.id).eq("content_type", "course")
+        .eq("chapter_id", sourceTarget.id).eq("content_type", "course")
         .eq("title_fr", contentTitle).limit(1);
       if (duplicateError) throw duplicateError;
-      if (!restoreExisting && (duplicate ?? []).length) {
-        report.push({ chapter: target.title_fr, status: "already_exists" });
-        continue;
-      }
 
-      // Update existing lesson only after successful PDF extraction and AI generation.
-      // Keep its ID, publication state, links and position unchanged.
-      let item: any;
-      if (restoreExisting && (duplicate ?? []).length) {
+      let item: any = null;
+      let status = "imported_draft";
+      if (!restoreExisting && (duplicate ?? []).length) {
+        item = duplicate![0];
+        status = "already_exists";
+      } else if (restoreExisting && (duplicate ?? []).length) {
         const previous = duplicate![0];
         const { data: updated, error: updateError } = await db.from("chapter_content_items")
           .update({
@@ -230,11 +308,11 @@ ${extracted.slice(0, 90000)}`;
           .eq("id", previous.id).select("id").single();
         if (updateError) throw updateError;
         item = updated;
-        report.push({ chapter: target.title_fr, status: "restored_existing", content_item_id: item.id });
+        status = "restored_existing";
       } else if (restoreExisting) {
         const { data: existingCourses, error: coursesError } = await db.from("chapter_content_items")
           .select("id,title_fr,title_en,is_published,position")
-          .eq("chapter_id", target.id).eq("content_type", "course")
+          .eq("chapter_id", sourceTarget.id).eq("content_type", "course")
           .order("position").limit(1);
         if (coursesError) throw coursesError;
         if ((existingCourses ?? []).length) {
@@ -250,13 +328,13 @@ ${extracted.slice(0, 90000)}`;
             .eq("id", previous.id).select("id").single();
           if (updateError) throw updateError;
           item = updated;
-          report.push({ chapter: target.title_fr, status: "restored_existing", content_item_id: item.id });
+          status = "restored_existing";
         }
       }
 
       if (!item) {
         const { data: inserted, error: insertError } = await db.from("chapter_content_items").insert({
-          chapter_id: target.id,
+          chapter_id: sourceTarget.id,
           content_type: "course",
           title_fr: contentTitle,
           title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
@@ -269,13 +347,27 @@ ${extracted.slice(0, 90000)}`;
         }).select("id").single();
         if (insertError) throw insertError;
         item = inserted;
-        report.push({ chapter: target.title_fr, status: restoreExisting ? "restored_new" : "imported_draft", content_item_id: item.id });
+        status = restoreExisting ? "restored_new" : "imported_draft";
       }
 
-      const { count: linkedCount, error: linkError } = await db.from("chapter_content_item_chapters")
-        .select("chapter_id", { count: "exact", head: true }).eq("content_item_id", item.id);
-      if (linkError) throw linkError;
-      if (report.length) report[report.length - 1].linked_chapters = linkedCount ?? 1;
+      // Explicit links guarantee that every selected classroom's matching
+      // chapter receives the same lesson, even if its title punctuation differs.
+      const links = [...targetChapterIds].map((chapterId) => ({
+        content_item_id: item.id,
+        chapter_id: chapterId,
+      }));
+      if (links.length) {
+        const { error: linkInsertError } = await db.from("chapter_content_item_chapters")
+          .upsert(links, { onConflict: "content_item_id,chapter_id", ignoreDuplicates: true });
+        if (linkInsertError) throw linkInsertError;
+      }
+
+      report.push({
+        chapter: chapterTitle,
+        status,
+        content_item_id: item.id,
+        linked_chapters: targetChapterIds.size,
+      });
     }
 
     return json({
@@ -283,13 +375,19 @@ ${extracted.slice(0, 90000)}`;
       source_content_item_id: contentItemId,
       subject: subject.name_fr,
       source_chapter: sourceChapter.title_fr,
+      target_rooms: targetRooms.map((schoolClass: any) => ({
+        id: schoolClass.id,
+        name: schoolClass.display_name ?? schoolClass.name ?? "Salle",
+      })),
+      target_room_count: targetRooms.length,
+      target_curriculum_count: targetCurricula.length,
       detected_chapters: chapters.length,
       imported: report.filter((x) => x.status === "imported_draft").length,
       restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
       requires_admin_publication: !restoreExisting,
-      message: "Import terminé. Les leçons sont enregistrées en brouillon et associées aux chapitres équivalents. Vérifiez-les puis publiez-les depuis l'administration.",
+      message: `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
