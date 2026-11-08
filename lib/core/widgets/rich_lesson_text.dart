@@ -101,16 +101,16 @@ class RichLessonText extends StatelessWidget {
 
   static String _normalize(String raw) {
     return raw
-        .replaceAll('\\r\\n', '\\n')
-        .replaceAll(r'\\[', r'$$')
-        .replaceAll(r'\\]', r'$$')
-        .replaceAll(r'\\(', r'$')
-        .replaceAll(r'\\)', r'$');
+        .replaceAll('\r\n', '\n')
+        .replaceAll(r'\[', r'$$')
+        .replaceAll(r'\]', r'$$')
+        .replaceAll(r'\(', r'$')
+        .replaceAll(r'\)', r'$');
   }
 
   static List<_Block> _parseBlocks(String input) {
     final blocks = <_Block>[];
-    final lines = input.split('\\n');
+    final lines = input.split('\n');
     final paragraph = StringBuffer();
 
     void flushParagraph() {
@@ -140,7 +140,7 @@ class RichLessonText extends StatelessWidget {
           tableLines.add(lines[index].trim());
           index++;
         }
-        blocks.add(_Block(_BlockKind.table, tableLines.join('\\n')));
+        blocks.add(_Block(_BlockKind.table, tableLines.join('\n')));
         continue;
       }
 
@@ -187,7 +187,7 @@ class RichLessonText extends StatelessWidget {
         continue;
       }
 
-      final bullet = RegExp(r'^[-*•]\\s+(.+)$').firstMatch(trimmed);
+      final bullet = RegExp(r'^[-*•]\s+(.+)$').firstMatch(trimmed);
       if (bullet != null) {
         flushParagraph();
         blocks.add(_Block(_BlockKind.bullet, bullet.group(1)!.trim()));
@@ -195,7 +195,7 @@ class RichLessonText extends StatelessWidget {
         continue;
       }
 
-      final numbered = RegExp(r'^(\\d{1,2}[.)])\\s+(.+)$')
+      final numbered = RegExp(r'^(\d{1,2}[.)])\s+(.+)$')
           .firstMatch(trimmed);
       if (numbered != null) {
         flushParagraph();
@@ -209,7 +209,7 @@ class RichLessonText extends StatelessWidget {
       }
 
       if (paragraph.isNotEmpty) {
-        paragraph.write('\\n');
+        paragraph.write('\n');
       }
       paragraph.write(trimmed);
       index++;
@@ -225,7 +225,7 @@ class RichLessonText extends StatelessWidget {
     final separator = lines[index + 1].trim();
     return _isMarkdownTableRow(header) &&
         _isMarkdownTableRow(separator) &&
-        RegExp(r'^\\|?[\\s:|\\-]+\\|?$').hasMatch(separator);
+        RegExp(r'^\|?[\s:|\-]+\|?$').hasMatch(separator);
   }
 
   static bool _isMarkdownTableRow(String line) {
@@ -235,7 +235,7 @@ class RichLessonText extends StatelessWidget {
   }
 
   Widget _buildTable(String rawTable) {
-    final rows = rawTable.split('\\n').map((line) {
+    final rows = rawTable.split('\n').map((line) {
       final cells = line.split('|');
       return cells
           .skip(1)
@@ -314,210 +314,11 @@ class RichLessonText extends StatelessWidget {
   List<InlineSpan> _inlineSpans(String rawInput, TextStyle base) {
     final spans = <InlineSpan>[];
     final input = rawInput.replaceAllMapped(
-      RegExp(r'\\$\\$(.+?)\\$\\$'),
+      RegExp(r'\$\$(.+?)\$\$'),
       (match) => r'$' + match.group(1)! + r'$',
     );
     final pattern =
-        RegExp(r'\\$(?!\\s)([^$\\n]+?)(?<!\\s)\\$|\\*\\*(.+?)\\*\\*');
-
-    var cursor = 0;
-    for (final match in pattern.allMatches(input)) {
-      if (match.start > cursor) {
-        spans.add(TextSpan(
-          text: input.substring(cursor, match.start),
-          style: base,
-        ));
-      }
-
-      final tex = match.group(1);
-      final bold = match.group(2);
-      if (tex != null) {
-        spans.add(WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: Math.tex(
-            tex,
-            mathStyle: MathStyle.text,
-            textStyle: base,
-            onErrorFallback: (_) => Text(tex, style: base),
-          ),
-        ));
-      } else if (bold != null) {
-        spans.add(TextSpan(
-          text: bold,
-          style: base.copyWith(fontWeight: FontWeight.w800),
-        ));
-      }
-      cursor = match.end;
-    }
-
-    if (cursor < input.length) {
-      spans.add(TextSpan(text: input.substring(cursor), style: base));
-    }
-    return spans;
-  }
-}
-
-enum _BlockKind {
-  paragraph,
-  heading,
-  bullet,
-  numbered,
-  displayMath,
-  table,
-}
-
-class _Block {
-  final _BlockKind kind;
-  final String text;
-  final String marker;
-
-  const _Block(this.kind, this.text, {this.marker = ''});
-}
-,
-      ).firstMatch(trimmed);
-      if (heading != null) {
-        flushParagraph();
-        final headingText = heading.group(1) ??
-            (heading.group(2) != null
-                ? heading.group(2)! + '. ' + heading.group(3)!
-                : heading.group(4)! + ') ' + heading.group(5)!);
-        blocks.add(_Block(_BlockKind.heading, headingText.trim()));
-        index++;
-        continue;
-      }
-
-      final bullet = RegExp(r'^[-*•]\\s+(.+)$').firstMatch(trimmed);
-      if (bullet != null) {
-        flushParagraph();
-        blocks.add(_Block(_BlockKind.bullet, bullet.group(1)!.trim()));
-        index++;
-        continue;
-      }
-
-      final numbered = RegExp(r'^(\\d{1,2}[.)])\\s+(.+)$')
-          .firstMatch(trimmed);
-      if (numbered != null) {
-        flushParagraph();
-        blocks.add(_Block(
-          _BlockKind.numbered,
-          numbered.group(2)!.trim(),
-          marker: numbered.group(1)!,
-        ));
-        index++;
-        continue;
-      }
-
-      if (paragraph.isNotEmpty) {
-        paragraph.write('\\n');
-      }
-      paragraph.write(trimmed);
-      index++;
-    }
-
-    flushParagraph();
-    return blocks;
-  }
-
-  static bool _isMarkdownTableStart(List<String> lines, int index) {
-    if (index + 1 >= lines.length) return false;
-    final header = lines[index].trim();
-    final separator = lines[index + 1].trim();
-    return _isMarkdownTableRow(header) &&
-        _isMarkdownTableRow(separator) &&
-        RegExp(r'^\\|?[\\s:|\\-]+\\|?$').hasMatch(separator);
-  }
-
-  static bool _isMarkdownTableRow(String line) {
-    return line.startsWith('|') &&
-        line.endsWith('|') &&
-        line.split('|').length >= 3;
-  }
-
-  Widget _buildTable(String rawTable) {
-    final rows = rawTable.split('\\n').map((line) {
-      final cells = line.split('|');
-      return cells
-          .skip(1)
-          .take(cells.length - 2)
-          .map((cell) => cell.trim())
-          .toList();
-    }).toList();
-
-    if (rows.isEmpty) return const SizedBox.shrink();
-    final columnCount = rows.fold<int>(
-      0,
-      (maximum, row) => row.length > maximum ? row.length : maximum,
-    );
-    if (columnCount == 0) return const SizedBox.shrink();
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFB8CBE8)),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Table(
-            defaultColumnWidth: const IntrinsicColumnWidth(),
-            border: TableBorder(
-              horizontalInside:
-                  const BorderSide(color: Color(0xFFD7E2F2)),
-              verticalInside:
-                  const BorderSide(color: Color(0xFFD7E2F2)),
-            ),
-            children: List.generate(rows.length, (rowIndex) {
-              final isHeader = rowIndex == 0;
-              return TableRow(
-                decoration: BoxDecoration(
-                  color: isHeader
-                      ? const Color(0xFF2457A7)
-                      : rowIndex.isEven
-                          ? const Color(0xFFF1F6FF)
-                          : Colors.white,
-                ),
-                children: List.generate(columnCount, (columnIndex) {
-                  final value = columnIndex < rows[rowIndex].length
-                      ? rows[rowIndex][columnIndex]
-                      : '';
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 11,
-                    ),
-                    child: Text(
-                      value,
-                      style: TextStyle(
-                        color: isHeader
-                            ? Colors.white
-                            : const Color(0xFF263238),
-                        fontWeight:
-                            isHeader ? FontWeight.w800 : FontWeight.w500,
-                        fontSize: 14,
-                      ),
-                    ),
-                  );
-                }),
-              );
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<InlineSpan> _inlineSpans(String rawInput, TextStyle base) {
-    final spans = <InlineSpan>[];
-    final input = rawInput.replaceAllMapped(
-      RegExp(r'\\$\\$(.+?)\\$\\$'),
-      (match) => r'$' + match.group(1)! + r'$',
-    );
-    final pattern =
-        RegExp(r'\\$(?!\\s)([^$\\n]+?)(?<!\\s)\\$|\\*\\*(.+?)\\*\\*');
+        RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
 
     var cursor = 0;
     for (final match in pattern.allMatches(input)) {
