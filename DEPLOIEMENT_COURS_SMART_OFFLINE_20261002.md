@@ -18,7 +18,7 @@ Définir côté Supabase, jamais dans Dart :
 
 ```text
 GEMINI_API_KEY=<clé Gemini>
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 SMART_LESSON_CRON_SECRET=<secret aléatoire long>
 ```
 
