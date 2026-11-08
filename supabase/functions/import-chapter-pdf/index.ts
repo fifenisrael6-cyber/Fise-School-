@@ -115,8 +115,16 @@ serve(async (req) => {
       return json({ error: "Le programme du chapitre est introuvable ou inactif." }, 400);
     }
     const { data: subject, error: subjectError } = await db.from("subjects")
-      .select("id,name_fr,name_en").eq("id", curriculum.subject_id).single();
+      .select("id,name_fr,name_en,teaching_stream").eq("id", curriculum.subject_id).single();
     if (subjectError || !subject) throw new Error("Matière du programme introuvable.");
+
+    // Load every active curriculum for this subject. The selected chapter is
+    // only the source context; AI-detected chapter headings determine where
+    // the lessons are actually placed.
+    const { data: curricula, error: curriculaError } = await db.from("curricula")
+      .select("id,subject_id,subsystem,sector,exam_level_id,series_id,specialty_id,teaching_stream,title_fr,is_active,is_catalog_container")
+      .eq("subject_id", subject.id).eq("is_active", true);
+    if (curriculaError) throw curriculaError;
 
     const { data: file, error: downloadError } = await db.storage.from("chapter-content")
       .download(source.storage_path);
@@ -242,23 +250,21 @@ ${extracted.slice(0, 90000)}`;
     const report: any[] = [];
     for (const generated of chapters) {
       const parsedTitle = String(generated.title_fr).trim().slice(0, 250);
-      // A one-chapter PDF belongs to the chapter explicitly selected by the admin.
-      // A multi-chapter PDF is split by the AI's detected chapter headings.
-      const chapterTitle = chapters.length === 1 ? sourceChapter.title_fr : parsedTitle;
+      // The selected chapter is only a source context. Always use the chapter
+      // heading detected in the PDF to find or create the actual destination.
+      const chapterTitle = parsedTitle;
       const targetChapterIds = new Set<string>();
       let sourceTarget: any = null;
 
       for (const targetCurriculum of targetCurricula) {
         const cache = chapterCache.get(String(targetCurriculum.id))!;
-        let target = targetCurriculum.id === curriculum.id && chapters.length === 1
-          ? sourceChapter
-          : cache.rows.find((row: any) => normalize(row.title_fr) === normalize(chapterTitle));
+        let target = cache.rows.find((row: any) => normalize(row.title_fr) === normalize(chapterTitle));
 
         if (!target) {
           const { data: created, error: createError } = await db.from("course_chapters").insert({
             curriculum_id: targetCurriculum.id,
             title_fr: chapterTitle,
-            title_en: String(chapters.length === 1 ? sourceChapter.title_en : generated.title_en ?? chapterTitle).trim().slice(0, 250) || chapterTitle,
+            title_en: String(generated.title_en ?? chapterTitle).trim().slice(0, 250) || chapterTitle,
             description_fr: "Chapitre issu d'un document PDF importé par l'administrateur.",
             description_en: "Chapter created from an administrator-imported PDF.",
             position: cache.nextPosition++,
@@ -278,9 +284,7 @@ ${extracted.slice(0, 90000)}`;
         throw new Error("Impossible de déterminer le chapitre source pour enregistrer le cours.");
       }
 
-      const contentTitle = chapters.length === 1
-        ? (String(parsed.document_title ?? "").trim().slice(0, 250) || sourceChapter.title_fr)
-        : parsedTitle;
+      const contentTitle = parsedTitle;
       const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
         .select("id,title_fr,title_en,is_published,position")
         .eq("chapter_id", sourceTarget.id).eq("content_type", "course")
