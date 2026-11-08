@@ -26,7 +26,7 @@ function nextOccurrence(dayOfWeek: number, timeText: string, from = new Date()) 
 }
 
 async function geminiJson(apiKey: string, prompt: string) {
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
+  const model = "gemini-3.8-flash";
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
