@@ -14,7 +14,7 @@ L'application dépose le document dans le bucket privé/public déjà utilisé `
 
 - Vérifie le JWT et le rôle administrateur côté serveur.
 - Vérifie le type, le chapitre et le programme de destination.
-- Extrait le texte PDF (jusqu'à 120 pages et 25 Mo).
+- Vérifie la signature PDF, puis extrait le texte (jusqu'à 120 pages et 25 Mo).
 - Utilise Gemini pour structurer le document en chapitres et leçons.
 - Crée les chapitres manquants dans le programme choisi.
 - Enregistre les leçons dans `chapter_content_items` avec `is_published = false`.
@@ -32,9 +32,9 @@ La migration `20261108030000_chapter_content_realtime.sql` ajoute les tables de 
 
 Le workflow GitHub **Deploy Supabase Edge Functions** déploie désormais `import-chapter-pdf` après un push sur `main`. Il exige les secrets GitHub `SUPABASE_ACCESS_TOKEN` et `SUPABASE_PROJECT_REF`.
 
-Le workflow **Supabase Migrations** applique la migration si `SUPABASE_DB_URL` (ou `SUPABASE_DATABASE_URL`) est configuré.
+Le workflow **Supabase Migrations** applique la migration. Le secret `SUPABASE_DB_URL` (ou `SUPABASE_DATABASE_URL`) est obligatoire : s'il manque, le workflow échoue explicitement au lieu de signaler un succès trompeur.
 
-L'Edge Function utilise les secrets Supabase habituels `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` et `GEMINI_API_KEY`. Ne jamais mettre ces clés dans le code Flutter ou dans Git.
+L'Edge Function utilise les secrets Supabase habituels `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` et `GEMINI_API_KEY` (ainsi que `GEMINI_MODEL` en option). Vérifier dans **Supabase → Edge Functions → Secrets** que `GEMINI_API_KEY` est défini. Ne jamais mettre ces clés dans le code Flutter ou dans Git. Le workflow GitHub de déploiement exige aussi `SUPABASE_ACCESS_TOKEN` et `SUPABASE_PROJECT_REF`.
 
 ## Limites à contrôler après déploiement
 
