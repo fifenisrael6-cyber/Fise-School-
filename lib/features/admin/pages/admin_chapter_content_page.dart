@@ -197,7 +197,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         );
       }
       final existing = await db.from('chapter_content_items').select('id').eq('chapter_id', chapter!['id']);
-      await db.from('chapter_content_items').insert({
+      final inserted = await db.from('chapter_content_items').insert({
         'chapter_id': chapter!['id'],
         'content_type': type.value,
         'title_fr': titleFr.text.trim(),
@@ -209,7 +209,38 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'position': existing.length + 1,
         'is_published': published.value,
         'created_by': db.auth.currentUser?.id,
-      });
+      }).select('id').single();
+
+      if (type.value == 'pdf') {
+        toast(t('PDF envoyé. Extraction et organisation des leçons en cours…',
+            'PDF uploaded. Extracting and organizing lessons…'));
+        try {
+          final result = await db.functions.invoke(
+            'import-chapter-pdf',
+            body: {'content_item_id': inserted['id']},
+          );
+          final data = result.data;
+          if (result.status >= 200 && result.status < 300 &&
+              data is Map && data['success'] == true) {
+            final imported = data['imported'] ?? 0;
+            final existingCount = data['already_exists'] ?? 0;
+            toast(t(
+              'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Les leçons sont en brouillon : vérifiez puis publiez-les.',
+              'Analysis complete: $imported lesson(s) created, $existingCount already existed. Lessons are drafts: review and publish them.',
+            ));
+          } else {
+            final message = data is Map
+                ? (data['error']?.toString() ?? 'Erreur d’analyse inconnue.')
+                : 'Réponse du serveur invalide.';
+            toast(t('PDF conservé, mais conversion échouée : $message',
+                'PDF saved, but conversion failed: $message'));
+          }
+        } catch (importError) {
+          toast(t('PDF conservé dans Supabase, mais conversion échouée : $importError',
+              'PDF saved in Supabase, but conversion failed: $importError'));
+        }
+      }
+
       await chooseCurriculum(curriculum);
       if (type.value == 'course' && published.value) {
         try {
