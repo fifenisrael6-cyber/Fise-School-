@@ -57,7 +57,7 @@ type SchemeItem = { key: string; label: string; points: number };
 
 async function callGemini(apiKey: string, parts: unknown[]): Promise<{ result: any; model: string }> {
   const configured = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
-  const models = [...new Set([configured, "gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash"])];
+  const models = [...new Set([configured, "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.8-flash"])];
   let lastError = "Échec de l'appel IA.";
   for (const model of models) {
     const controller = new AbortController();
