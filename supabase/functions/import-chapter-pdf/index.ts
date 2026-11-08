@@ -42,7 +42,7 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
       .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
         .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
-      .join("\\n");
+      .join("\n");
     if (line) pages.push(line);
   }
   return pages.join("\n\n").trim();
@@ -91,6 +91,7 @@ serve(async (req) => {
 
     const body = await req.json();
     const contentItemId = String(body?.content_item_id ?? "").trim();
+    const restoreExisting = body?.restore_existing === true;
     if (!contentItemId) return json({ error: "content_item_id manquant." }, 400);
     const db = createClient(url, service);
 
@@ -205,27 +206,67 @@ ${extracted.slice(0, 90000)}`;
         ? (String(parsed.document_title ?? "").trim().slice(0, 250) || sourceChapter.title_fr)
         : parsedTitle;
       const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
-        .select("id").eq("chapter_id", target.id).eq("content_type", "course")
+        .select("id,title_fr,title_en,is_published,position")
+        .eq("chapter_id", target.id).eq("content_type", "course")
         .eq("title_fr", contentTitle).limit(1);
       if (duplicateError) throw duplicateError;
-      if ((duplicate ?? []).length) {
-        report.push({ chapter: target.title_fr, status: "already_exists" });
-        continue;
+
+      // Update existing lesson only after successful PDF extraction and AI generation.
+      // Keep its ID, publication state, links and position unchanged.
+      let item: any;
+      if (restoreExisting && (duplicate ?? []).length) {
+        const previous = duplicate![0];
+        const { data: updated, error: updateError } = await db.from("chapter_content_items")
+          .update({
+            title_en: String(generated.title_en ?? previous.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
+            body_text_fr: String(generated.content_fr).trim(),
+            body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+            folder_key: "course",
+          })
+          .eq("id", previous.id).select("id").single();
+        if (updateError) throw updateError;
+        item = updated;
+        report.push({ chapter: target.title_fr, status: "restored_existing", content_item_id: item.id });
+      } else if (restoreExisting) {
+        const { data: existingCourses, error: coursesError } = await db.from("chapter_content_items")
+          .select("id,title_fr,title_en,is_published,position")
+          .eq("chapter_id", target.id).eq("content_type", "course")
+          .order("position").limit(1);
+        if (coursesError) throw coursesError;
+        if ((existingCourses ?? []).length) {
+          const previous = existingCourses![0];
+          const { data: updated, error: updateError } = await db.from("chapter_content_items")
+            .update({
+              title_fr: contentTitle,
+              title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
+              body_text_fr: String(generated.content_fr).trim(),
+              body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+              folder_key: "course",
+            })
+            .eq("id", previous.id).select("id").single();
+          if (updateError) throw updateError;
+          item = updated;
+          report.push({ chapter: target.title_fr, status: "restored_existing", content_item_id: item.id });
+        }
       }
 
-      const { data: item, error: insertError } = await db.from("chapter_content_items").insert({
-        chapter_id: target.id,
-        content_type: "course",
-        title_fr: contentTitle,
-        title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
-        body_text_fr: String(generated.content_fr).trim(),
-        body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
-        position: 0,
-        is_published: false,
-        created_by: authData.user.id,
-        folder_key: "course",
-      }).select("id").single();
-      if (insertError) throw insertError;
+      if (!item) {
+        const { data: inserted, error: insertError } = await db.from("chapter_content_items").insert({
+          chapter_id: target.id,
+          content_type: "course",
+          title_fr: contentTitle,
+          title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
+          body_text_fr: String(generated.content_fr).trim(),
+          body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+          position: 0,
+          is_published: false,
+          created_by: authData.user.id,
+          folder_key: "course",
+        }).select("id").single();
+        if (insertError) throw insertError;
+        item = inserted;
+        report.push({ chapter: target.title_fr, status: restoreExisting ? "restored_new" : "imported_draft", content_item_id: item.id });
+      }
 
       const { count: linkedCount, error: linkError } = await db.from("chapter_content_item_chapters")
         .select("chapter_id", { count: "exact", head: true }).eq("content_item_id", item.id);
@@ -240,9 +281,10 @@ ${extracted.slice(0, 90000)}`;
       source_chapter: sourceChapter.title_fr,
       detected_chapters: chapters.length,
       imported: report.filter((x) => x.status === "imported_draft").length,
+      restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
-      requires_admin_publication: true,
+      requires_admin_publication: !restoreExisting,
       message: "Import terminé. Les leçons sont enregistrées en brouillon et associées aux chapitres équivalents. Vérifiez-les puis publiez-les depuis l'administration.",
     });
   } catch (error) {
