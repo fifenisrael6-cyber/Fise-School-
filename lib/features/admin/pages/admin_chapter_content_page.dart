@@ -273,6 +273,44 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     }
   }
 
+  Future<void> restoreCourseFromPdf(Map<String, dynamic> item) async {
+    if (item['content_type'] != 'pdf' ||
+        (item['storage_path'] as String? ?? '').isEmpty) {
+      toast(t('Le PDF source est introuvable.', 'The source PDF is unavailable.'));
+      return;
+    }
+    final ok = await confirm(t(
+      'Reconstruire le cours à partir du PDF original ? Le contenu existant sera conservé si la génération échoue. Son état publié/masqué sera préservé.',
+      'Rebuild the lesson from its original PDF? Existing content stays intact if generation fails. Its published/hidden state will be preserved.',
+    ));
+    if (!ok) return;
+    try {
+      toast(t('Restauration du cours en cours…', 'Restoring lesson…'));
+      final result = await db.functions.invoke(
+        'import-chapter-pdf',
+        body: {'content_item_id': item['id'], 'restore_existing': true},
+      );
+      final data = result.data;
+      if (result.status >= 200 && result.status < 300 &&
+          data is Map && data['success'] == true) {
+        final count = data['restored'] ?? 0;
+        toast(t(
+          'Restauration terminée : $count cours actualisé(s). Les anciens cours restent publiés comme avant.',
+          'Restoration complete: $count lesson(s) updated. Existing publication settings were preserved.',
+        ));
+        if (mounted) setState(() {});
+      } else {
+        final message = data is Map
+            ? (data['error']?.toString() ?? 'Erreur de restauration.')
+            : 'Réponse serveur invalide.';
+        toast(t('Restauration impossible : $message',
+            'Restoration failed: $message'));
+      }
+    } catch (e) {
+      toast(t('Restauration impossible : $e', 'Restoration failed: $e'));
+    }
+  }
+
   Future<void> editContent(Map<String, dynamic> item) async {
     final targetChapterId = chapter?['id']?.toString();
     final type = item['content_type'] as String? ?? 'course';
@@ -455,8 +493,10 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             title:Text((item['title_fr'] as String?)??''),
             subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
+                if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
+                  PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
                 PopupMenuItem(value:'toggle',child:Text(t('Masquer / publier','Hide / publish'))),
                 PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete'))),
