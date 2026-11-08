@@ -26,11 +26,10 @@ jobs:
         id: db
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::warning::Supabase migrations were not run because SUPABASE_DB_URL (or SUPABASE_DATABASE_URL) is not configured in GitHub Secrets. Configure it to enable automatic future migration deployment."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Supabase migrations cannot run: configure SUPABASE_DB_URL (or SUPABASE_DATABASE_URL) in GitHub Actions secrets."
+            exit 1
           fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply migrations
         if: steps.db.outputs.ready == 'true'
