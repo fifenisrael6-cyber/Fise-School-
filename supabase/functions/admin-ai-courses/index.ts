@@ -166,7 +166,7 @@ Description du chapitre EN: ${item.chapter_description_en}
 
 Respecte strictement le programme et le chapitre. Explique notions, définitions, méthodes, exemples et résumé. Produis exactement un objet JSON avec title_fr, title_en, description_fr, description_en, content_fr, content_en. Pas de LaTeX ni de commandes TeX; mathématiques en texte/Unicode.`;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash"}:generateContent`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${"gemini-3.8-flash"}:generateContent`, {
           method: "POST",
           headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
           body: JSON.stringify({
