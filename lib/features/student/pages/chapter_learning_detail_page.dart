@@ -54,6 +54,8 @@ class _ChapterLearningDetailPageState
   bool _savingRead = false;
   bool _generatingQuiz = false;
   int _loadGeneration = 0;
+  RealtimeChannel? _contentChannel;
+  Timer? _realtimeRefreshTimer;
 
   bool get _en => widget.locale.languageCode == 'en';
   String get _chapterTitle =>
@@ -63,6 +65,36 @@ class _ChapterLearningDetailPageState
   void initState() {
     super.initState();
     _future = _load();
+    _subscribeToPublishedContent();
+  }
+
+  void _subscribeToPublishedContent() {
+    _contentChannel = Supabase.instance.client
+        .channel('chapter-content-live-${widget.chapter.id}')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'chapter_content_items',
+        callback: (_) {
+          _realtimeRefreshTimer?.cancel();
+          _realtimeRefreshTimer = Timer(const Duration(milliseconds: 350), () {
+            if (mounted) {
+              unawaited(_refresh().catchError((_) {}));
+            }
+          });
+        },
+      )
+      ..subscribe();
+  }
+
+  @override
+  void dispose() {
+    _realtimeRefreshTimer?.cancel();
+    final channel = _contentChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    super.dispose();
   }
 
   Future<_ChapterData> _load({
