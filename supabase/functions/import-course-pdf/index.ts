@@ -107,7 +107,25 @@ serve(async (req) => {
 
     const subjectResult = await db.from("subjects").select("id,name_fr,name_en").eq("id", sourceCourse.subject_id).single();
     if (subjectResult.error || !subjectResult.data) throw new Error("Matière source introuvable.");
-    const prompt = `Tu es un outil d'organisation documentaire scolaire. Analyse le texte fourni et découpe-le en chapitres réellement présents dans le document. Ne crée aucun chapitre fictif et ne complète pas avec des connaissances externes. Conserve le contenu complet de chaque partie, sans résumé. Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"texte complet en français","content_en":"faithful English translation of the complete content"}]}. Si le document ne présente pas de chapitres explicites, crée des sections cohérentes à partir des titres visibles sans inventer de notions. Maximum 30 chapitres.\nMatière connue: ${subjectResult.data.name_fr}. Salle source: ${sourceClass.display_name ?? sourceClass.name}.\nTEXTE DU PDF:\n${extracted.slice(0, 90000)}`;
+    const prompt = `Tu es un rédacteur pédagogique expérimenté pour les classes du système scolaire camerounais francophone. Transforme le texte extrait en véritables cours de salle de classe, complets, progressifs et directement lisibles par les élèves dans l'application mobile. Il ne s'agit ni d'un résumé ni d'une copie brute du PDF.
+
+RÈGLES ABSOLUES :
+- Découpe le document uniquement selon les chapitres réellement présents. Si aucun chapitre explicite n'existe, crée des sections cohérentes à partir des titres et changements de notions visibles, sans inventer de contenu.
+- Conserve les notions, définitions, propriétés, théorèmes, démonstrations, formules, exemples, tableaux et exercices. Ne résume pas et ne supprime pas les explications.
+- N'invente aucune connaissance externe, donnée, formule, expérience, réponse ou référence.
+- Rédige en français scolaire naturel, avec des phrases complètes, des explications accessibles et une progression logique.
+- N'écris jamais le cours entier dans un seul paragraphe. Structure avec des titres Markdown (#, ##, ###), les grandes parties I., II., III., puis A., B. si pertinent.
+- Utilise les rubriques « Définition », « Propriété », « Théorème », « Démonstration », « Exemple », « Application » et « À retenir » uniquement lorsque le contenu source les justifie.
+- Place les formules mathématiques en LaTeX entre $...$ ou $$...$$. Mets les tableaux en tableau Markdown et les étapes en listes numérotées ou à puces.
+- Conserve les schémas et leurs légendes quand ils sont disponibles. Si un schéma est décrit mais non récupérable, indique « Schéma à insérer : [description fidèle] ».
+- Conserve tous les exercices et questions ; ne fabrique pas de corrigés.
+- N'ajoute pas artificiellement des objectifs ou rubriques absentes de la source.
+- Le rendu final doit être agréable sur téléphone : paragraphes aérés, titres clairs, pas de HTML ni de bloc de code.
+
+Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Maximum 30 chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
+
+TEXTE DU PDF :
+${extracted.slice(0, 90000)}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey));
     const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30) : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
