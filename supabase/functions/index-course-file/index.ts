@@ -62,7 +62,7 @@ async function transcribeWithGemini(bytes: Uint8Array, mime: string, language: s
     ? "Transcribe the educational PDF accurately. Return only the complete readable text, preserving headings, formulas, lists and examples. Do not summarize or invent content."
     : "Transcris fidèlement le PDF pédagogique. Retourne uniquement le texte complet et lisible, en conservant titres, formules, listes et exemples. Ne résume pas et n'invente rien.";
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash"}:generateContent`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash"}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
