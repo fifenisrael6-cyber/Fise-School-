@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/pedagogy.dart';
@@ -36,6 +37,8 @@ class _ChapterLearningSubjectPageState
   final ChapterLearningService _learning = ChapterLearningService();
   late Future<_SubjectData> _future;
   late Future<ChapterLearningCounts> _countsFuture;
+  RealtimeChannel? _chaptersChannel;
+  Timer? _realtimeRefreshTimer;
 
   bool get _en => widget.locale.languageCode == 'en';
   String _label(Curriculum value) => value.labelFor(widget.locale.languageCode);
@@ -46,6 +49,32 @@ class _ChapterLearningSubjectPageState
   void initState() {
     super.initState();
     _future = _load();
+    _chaptersChannel = Supabase.instance.client
+        .channel('subject-chapters-live-${widget.subject.id}')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'course_chapters',
+        callback: (_) {
+          _realtimeRefreshTimer?.cancel();
+          _realtimeRefreshTimer = Timer(const Duration(milliseconds: 350), () {
+            if (mounted) {
+              unawaited(_refresh().catchError((_) {}));
+            }
+          });
+        },
+      )
+      ..subscribe();
+  }
+
+  @override
+  void dispose() {
+    _realtimeRefreshTimer?.cancel();
+    final channel = _chaptersChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    super.dispose();
   }
 
   Future<_SubjectData> _load({bool forceRefresh = false}) async {
