@@ -210,6 +210,10 @@ ${extracted.slice(0, 90000)}`;
         .eq("chapter_id", target.id).eq("content_type", "course")
         .eq("title_fr", contentTitle).limit(1);
       if (duplicateError) throw duplicateError;
+      if (!restoreExisting && (duplicate ?? []).length) {
+        report.push({ chapter: target.title_fr, status: "already_exists" });
+        continue;
+      }
 
       // Update existing lesson only after successful PDF extraction and AI generation.
       // Keep its ID, publication state, links and position unchanged.
@@ -271,7 +275,7 @@ ${extracted.slice(0, 90000)}`;
       const { count: linkedCount, error: linkError } = await db.from("chapter_content_item_chapters")
         .select("chapter_id", { count: "exact", head: true }).eq("content_item_id", item.id);
       if (linkError) throw linkError;
-      report.push({ chapter: target.title_fr, status: "imported_draft", linked_chapters: linkedCount ?? 1, content_item_id: item.id });
+      if (report.length) report[report.length - 1].linked_chapters = linkedCount ?? 1;
     }
 
     return json({
