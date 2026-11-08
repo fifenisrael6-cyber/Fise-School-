@@ -368,8 +368,8 @@ class _Block {
         flushParagraph();
         final headingText = heading.group(1) ??
             (heading.group(2) != null
-                ? '\${heading.group(2)}. \${heading.group(3)}'
-                : '\${heading.group(4)}) \${heading.group(5)}');
+                ? heading.group(2)! + '. ' + heading.group(3)!
+                : heading.group(4)! + ') ' + heading.group(5)!);
         blocks.add(_Block(_BlockKind.heading, headingText.trim()));
         index++;
         continue;
