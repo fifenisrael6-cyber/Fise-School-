@@ -125,7 +125,6 @@ class PrivateMessageService {
       'body': row.read<String>('body'),
       'created_at': row.read<String>('created_at'),
       'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
-      'delivered_at': row.data.containsKey('delivered_at') ? row.readNullable<String>('delivered_at') : null,
       'read_at': row.readNullable<String>('read_at'),
       'deleted_at': row.data.containsKey('deleted_at') ? row.readNullable<String>('deleted_at') : null,
       'attachment_path': row.readNullable<String>('attachment_path'),
