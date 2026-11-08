@@ -40,6 +40,10 @@ jobs:
         if: steps.config.outputs.ready == 'true'
         run: supabase functions deploy chapter-quiz --project-ref "$SUPABASE_PROJECT_REF"
 
+      - name: Deploy import-course-pdf
+        if: steps.config.outputs.ready == 'true'
+        run: supabase functions deploy import-course-pdf --project-ref "$SUPABASE_PROJECT_REF"
+
       - name: Deploy import-chapter-pdf
         if: steps.config.outputs.ready == 'true'
         run: supabase functions deploy import-chapter-pdf --project-ref "$SUPABASE_PROJECT_REF"
