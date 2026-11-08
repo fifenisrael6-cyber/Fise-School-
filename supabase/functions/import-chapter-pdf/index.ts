@@ -102,6 +102,9 @@ serve(async (req) => {
     if (downloadError || !file) throw new Error(downloadError?.message ?? "Téléchargement du PDF impossible.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.length > 25 * 1024 * 1024) throw new Error("Le PDF dépasse la taille maximale de 25 Mo.");
+    if (bytes.length < 5 || new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") {
+      throw new Error("Le fichier stocké ne possède pas une signature PDF valide.");
+    }
 
     let extracted = await extractPdf(bytes);
     if (extracted.length < 250) {
