@@ -193,10 +193,20 @@ ${extracted.slice(0, 90000)}`;
       (candidate.series_id == null || candidate.series_id === schoolClass.series_id) &&
       (candidate.specialty_id == null || candidate.specialty_id === schoolClass.specialty_id);
 
+    // Never cross subsystem, sector, exam level, specialty or teaching stream.
+    // Series is intentionally allowed to differ: the existing shared-chapter
+    // catalogue links equivalent chapters across compatible series.
+    const sameSourceContext = (candidate: any) =>
+      candidate.subsystem === curriculum.subsystem &&
+      candidate.sector === curriculum.sector &&
+      candidate.exam_level_id === curriculum.exam_level_id &&
+      candidate.specialty_id === curriculum.specialty_id &&
+      candidate.teaching_stream === curriculum.teaching_stream;
+
     const selectedCurriculumIds = new Set<string>([curriculum.id]);
     for (const schoolClass of activeClasses ?? []) {
       const compatible = (curricula ?? []).filter((candidate: any) =>
-        curriculumMatchesClass(candidate, schoolClass));
+        sameSourceContext(candidate) && curriculumMatchesClass(candidate, schoolClass));
       const exactContainers = compatible.filter((candidate: any) =>
         candidate.is_catalog_container === true &&
         candidate.exam_level_id === schoolClass.exam_level_id &&
