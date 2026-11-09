@@ -41,7 +41,7 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
       .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
         .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
-      .join("\\n");
+      .join("\n");
     if (line) pages.push(line);
   }
   return pages.join("\n\n").trim();
