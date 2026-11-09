@@ -338,11 +338,21 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(t('Modifier le contenu', 'Edit content')),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: titleFr, decoration: const InputDecoration(labelText: 'Titre français')),
-        TextField(controller: titleEn, decoration: const InputDecoration(labelText: 'English title')),
+        TextField(controller: titleFr, decoration: const InputDecoration(labelText: 'Titre du contenu')),
+        ExpansionTile(
+          title: Text(t('Traduction anglaise (facultative)', 'Optional English translation')),
+          children: [
+            TextField(controller: titleEn, decoration: const InputDecoration(labelText: 'English title')),
+          ],
+        ),
         if (type == 'course') ...[
-          TextField(controller: bodyFr, maxLines: 5, decoration: const InputDecoration(labelText: 'Cours français')),
-          TextField(controller: bodyEn, maxLines: 5, decoration: const InputDecoration(labelText: 'English lesson')),
+          TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
+          ExpansionTile(
+            title: Text(t('Traduction anglaise du cours (facultative)', 'Optional English lesson translation')),
+            children: [
+              TextField(controller: bodyEn, maxLines: 10, decoration: const InputDecoration(labelText: 'English lesson')),
+            ],
+          ),
         ],
         if (type == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo MP4, YouTube ou Vimeo')),
         if (type == 'pdf') Text(t('Le PDF actuel est conservé. Choisis un nouveau PDF pour le remplacer.',
