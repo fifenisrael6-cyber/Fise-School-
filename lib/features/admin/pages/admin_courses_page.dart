@@ -153,7 +153,6 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     Map<String, dynamic>? selectedChapter;
 
     final titleFr = TextEditingController();
-    final titleEn = TextEditingController();
     final descFr = TextEditingController();
     final descEn = TextEditingController();
     final contentFr = TextEditingController();
@@ -234,17 +233,14 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     const SizedBox(height: 12),
                     TextField(controller: titleFr, decoration: InputDecoration(labelText: 'Titre français *')),
                     const SizedBox(height: 10),
-                    TextField(controller: titleEn, decoration: InputDecoration(labelText: 'English title *')),
-                    const SizedBox(height: 10),
                     TextField(controller: descFr, maxLines: 2, decoration: InputDecoration(labelText: _fr ? 'Description' : 'Description')),
                     const SizedBox(height: 10),
                     TextField(controller: contentFr, maxLines: 6, decoration: InputDecoration(labelText: _fr ? 'Contenu du cours (français)' : 'Course content (French)')),
                     const SizedBox(height: 10),
-                    TextField(controller: contentEn, maxLines: 6, decoration: const InputDecoration(labelText: 'Course content (English)')),
                     SwitchListTile(value: published, onChanged: saving ? null : (v) => setDialog(() => published = v), title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'), contentPadding: EdgeInsets.zero),
                     const SizedBox(height: 8),
                     FilledButton.icon(
-                      onPressed: saving || selectedSubject == null || selectedCurriculum == null || selectedChapter == null || titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty ? null : () async {
+                      onPressed: saving || selectedSubject == null || selectedCurriculum == null || selectedChapter == null || titleFr.text.trim().isEmpty ? null : () async {
                         setDialog(() => saving = true);
                         try {
                           await _courses.saveCourse(
@@ -254,11 +250,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             teacherId: _client.auth.currentUser!.id,
                             classId: selectedClass!['id'].toString(),
                             titleFr: titleFr.text,
-                            titleEn: titleEn.text,
+                            titleEn: titleFr.text.trim(),
                             descriptionFr: descFr.text,
-                            descriptionEn: descEn.text,
+                            descriptionEn: null,
                             contentFr: contentFr.text,
-                            contentEn: contentEn.text,
+                            contentEn: null,
                             status: published ? 'published' : 'draft',
                           );
                           if (sheetContext.mounted) {
@@ -307,7 +303,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         );
       },
     );
-    titleFr.dispose(); titleEn.dispose(); descFr.dispose(); descEn.dispose(); contentFr.dispose(); contentEn.dispose();
+    titleFr.dispose(); descFr.dispose(); descEn.dispose(); contentFr.dispose(); contentEn.dispose();
   }
 
   Future<void> _addResource(Map<String, dynamic> course) async {
