@@ -538,9 +538,12 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         final data = response.data;
         if (response.status < 200 || response.status >= 300 || data is! Map || data['success'] != true) {
           final message = data is Map ? data['error']?.toString() : null;
+          final errorMessage = message == null || message.isEmpty
+              ? (_fr ? 'erreur inconnue' : 'unknown error')
+              : message;
           _snack(_fr
-            ? 'Document remplacé, mais réimport échoué : \${message ?? 'erreur inconnue'}'
-            : 'Document replaced, but re-import failed: \${message ?? 'unknown error'}');
+              ? 'Document remplacé, mais réimport échoué : $errorMessage'
+              : 'Document replaced, but re-import failed: $errorMessage');
           return;
         }
         _snack(_fr ? 'PDF remplacé et contenus correspondants actualisés.' : 'PDF replaced and matching lesson content updated.');
