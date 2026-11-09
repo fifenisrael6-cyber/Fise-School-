@@ -94,6 +94,7 @@ serve(async (req) => {
 
     const body = await req.json();
     resourceId = String(body?.resource_id ?? "").trim();
+    const replaceExisting = body?.replace_existing === true;
     if (!resourceId) return json({ error: "resource_id manquant." }, 400);
     db = createClient(url, service);
 
@@ -198,11 +199,22 @@ ${extracted}`;
         const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
           .select("id").eq("chapter_id", target.id).eq("content_type", "course").eq("title_fr", title).limit(1);
         if (duplicateError) throw duplicateError;
+        const bodyText = String(chapter.content_fr).trim();
         if ((duplicate ?? []).length) {
-          report.push({ chapter: title, curriculum: curriculum.title_fr, status: "already_exists" });
+          if (replaceExisting) {
+            const { error: replaceError } = await db.from("chapter_content_items").update({
+              title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
+              body_text_fr: bodyText,
+              body_text_en: String(chapter.content_en ?? "").trim() || bodyText,
+              is_published: false,
+            }).eq("id", duplicate[0].id);
+            if (replaceError) throw replaceError;
+            report.push({ chapter: title, curriculum: curriculum.title_fr, status: "replaced" });
+          } else {
+            report.push({ chapter: title, curriculum: curriculum.title_fr, status: "already_exists" });
+          }
           continue;
         }
-        const bodyText = String(chapter.content_fr).trim();
         const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
           chapter_id: target.id, content_type: "course", title_fr: title, title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
           body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText, position: 0,
@@ -214,6 +226,7 @@ ${extracted}`;
     }
     const imported = report.filter((r) => r.status === "imported").length;
     const existingCount = report.filter((r) => r.status === "already_exists").length;
+    const replacedCount = report.filter((r) => r.status === "replaced").length;
     const wordCount = extracted.split(/\s+/).filter(Boolean).length;
     const { error: statusError } = await db.from("course_resources").update({
       index_status: "indexed",
@@ -227,8 +240,8 @@ ${extracted}`;
     return json({
       success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
       subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
-      imported, already_exists: existingCount, report,
-      message: `${imported} chapitre(s) préparé(s), ${existingCount} déjà présents. Les nouveaux cours sont enregistrés en brouillon dans les salles correspondantes : relisez et corrigez le contenu dans l’espace écrit, puis publiez-le pour les élèves.`,
+      imported, replaced: replacedCount, already_exists: existingCount, report,
+      message: `${imported} chapitre(s) préparé(s), ${replacedCount} remplacé(s), ${existingCount} déjà présents. Relisez les brouillons et publiez-les depuis l’espace écrit.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
