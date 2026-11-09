@@ -152,12 +152,12 @@ RÈGLES ABSOLUES :
 - N'ajoute pas artificiellement des objectifs ou rubriques absentes de la source.
 - Le rendu final doit être agréable sur téléphone : paragraphes aérés, titres clairs, pas de HTML ni de bloc de code.
 
-Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Maximum 30 chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
+Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Tous les chapitres réellement présents doivent être restitués ; ne fixe aucune limite artificielle de nombre de chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
 
 TEXTE EXTRAIT DU PDF (texte intégral, sans troncature) :
 ${extracted}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
-    const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30) : [];
+    const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()) : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
 
     const { data: curricula, error: curriculaError } = await db.from("curricula")
