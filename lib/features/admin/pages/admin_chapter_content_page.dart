@@ -98,9 +98,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<bool> confirm(String s) async=>await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(s),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Confirmer','Confirm')))]))??false;
   Future<void> editChapter([Map<String,dynamic>? old]) async {
     final n=TextEditingController(text:(old?['position']??(chapters.length+1)).toString()), f=TextEditingController(text:old?['title_fr'] as String? ?? ''), e=TextEditingController(text:old?['title_en'] as String? ?? '');
-    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(t('Chapitre','Chapter')),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:n,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:t('Numéro','Number'))),TextField(controller:f,decoration:const InputDecoration(labelText:'Titre français')),TextField(controller:e,decoration:const InputDecoration(labelText:'English title'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Enregistrer','Save')))]));
-    if(ok!=true)return;if(f.text.trim().isEmpty||e.text.trim().isEmpty){toast(t('Les deux titres sont obligatoires.','Both titles are required.'));return;}
-    try{final data={'curriculum_id':curriculum!['id'],'title_fr':f.text.trim(),'title_en':e.text.trim(),'position':int.tryParse(n.text)??chapters.length+1,'is_active':old?['is_active']??true};if(old==null){await db.from('course_chapters').insert(data);}else{await db.from('course_chapters').update(data).eq('id',old['id']);}await chooseCurriculum(curriculum);toast(t('Chapitre enregistré.','Chapter saved.'));}
+    final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(t('Chapitre','Chapter')),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:n,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:t('Numéro','Number'))),TextField(controller:f,decoration:const InputDecoration(labelText:'Titre français')),TextField(controller:e,decoration:const InputDecoration(labelText:'Titre anglais (facultatif)'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Enregistrer','Save')))]));
+    if(ok!=true)return;if(f.text.trim().isEmpty){toast(t('Le titre français est obligatoire.','The French title is required.'));return;}
+    try{final data={'curriculum_id':curriculum!['id'],'title_fr':f.text.trim(),'title_en':e.text.trim().isEmpty?f.text.trim():e.text.trim(),'position':int.tryParse(n.text)??chapters.length+1,'is_active':old?['is_active']??true};if(old==null){await db.from('course_chapters').insert(data);}else{await db.from('course_chapters').update(data).eq('id',old['id']);}await chooseCurriculum(curriculum);toast(t('Chapitre enregistré.','Chapter saved.'));}
     catch(e){toast(e.toString());}
   }
   Future<void> deleteChapter(Map<String,dynamic> ch) async {if(!await confirm(t('Supprimer ce chapitre et son contenu ?','Delete this chapter and its content?')))return;try{await db.from('course_chapters').delete().eq('id',ch['id']);if(chapter?['id']==ch['id'])chapter=null;await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
@@ -131,11 +131,11 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             onChanged: (next) { if (next != null) type.value = next; },
           )),
         TextField(controller: titleFr, decoration: const InputDecoration(labelText: 'Titre français')),
-        TextField(controller: titleEn, decoration: const InputDecoration(labelText: 'English title')),
+        ExpansionTile(title:Text(t('Traduction anglaise (facultative)','English translation (optional)')),children:[TextField(controller:titleEn,decoration:const InputDecoration(labelText:'English title'))]),
         ValueListenableBuilder<String>(valueListenable: type, builder: (_, v, __) => Column(children: [
           if (v == 'course') ...[
             TextField(controller: bodyFr, maxLines: 5, decoration: const InputDecoration(labelText: 'Cours français')),
-            TextField(controller: bodyEn, maxLines: 5, decoration: const InputDecoration(labelText: 'English lesson')),
+            ExpansionTile(title:Text(t('Traduction anglaise du cours (facultative)','Optional English lesson translation')),children:[TextField(controller:bodyEn,maxLines:8,decoration:const InputDecoration(labelText:'English lesson'))]),
           ],
           if (v == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo direct MP4 ou YouTube/Vimeo')),
           if (v == 'pdf' || v == 'image' || v == 'audio') Padding(
@@ -157,13 +157,13 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       ],
     ));
     if (ok != true) return;
-    if (titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty) {
-      toast(t('Les titres sont obligatoires.','Titles are required.')); return;
+    if (titleFr.text.trim().isEmpty) {
+      toast(t('Le titre français est obligatoire.','The French title is required.')); return;
     }
     String? storagePath;
     try {
-      if (type.value == 'course' && (bodyFr.text.trim().isEmpty || bodyEn.text.trim().isEmpty)) {
-        toast(t('Remplis les cours en français et en anglais.','Enter the lesson in French and English.')); return;
+      if (type.value == 'course' && bodyFr.text.trim().isEmpty) {
+        toast(t('Le contenu du cours en français est obligatoire.','French lesson content is required.')); return;
       }
       if (type.value == 'video' && url.text.trim().isEmpty) {
         toast(t('Le lien vidéo est obligatoire.','A video URL is required.')); return;
@@ -213,9 +213,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'chapter_id': chapter!['id'],
         'content_type': type.value,
         'title_fr': titleFr.text.trim(),
-        'title_en': titleEn.text.trim(),
+        'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
         'body_text_fr': type.value == 'course' ? bodyFr.text.trim() : null,
-        'body_text_en': type.value == 'course' ? bodyEn.text.trim() : null,
+        'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim()) : null,
         'external_url': type.value == 'video' ? url.text.trim() : null,
         'storage_path': storagePath,
         'position': existing.length + 1,
@@ -357,12 +357,12 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       ],
     ));
     if (ok != true) return;
-    if (titleFr.text.trim().isEmpty || titleEn.text.trim().isEmpty) {
-      toast(t('Les titres sont obligatoires.', 'Titles are required.'));
+    if (titleFr.text.trim().isEmpty) {
+      toast(t('Le titre français est obligatoire.', 'The French title is required.'));
       return;
     }
-    if (type == 'course' && (bodyFr.text.trim().isEmpty || bodyEn.text.trim().isEmpty)) {
-      toast(t('Remplis le cours dans les deux langues.', 'Enter the lesson in both languages.'));
+    if (type == 'course' && bodyFr.text.trim().isEmpty) {
+      toast(t('Le contenu du cours en français est obligatoire.', 'French lesson content is required.'));
       return;
     }
     if (type == 'video' && url.text.trim().isEmpty) {
@@ -404,12 +404,12 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       }
       final data = <String, dynamic>{
         'title_fr': titleFr.text.trim(),
-        'title_en': titleEn.text.trim(),
+        'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
         'is_published': published.value,
       };
       if (type == 'course') {
         data['body_text_fr'] = bodyFr.text.trim();
-        data['body_text_en'] = bodyEn.text.trim();
+        data['body_text_en'] = bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim();
       } else if (type == 'video') {
         data['external_url'] = url.text.trim();
       } else if (replacementPath != null) {
