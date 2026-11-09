@@ -355,7 +355,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              t('Mise en forme : ## pour un sous-titre, **mot** pour le gras, - pour une liste, $...$ pour une formule. Le cours français suffit ; la traduction est facultative.',
+              t('Mise en forme : ## pour un sous-titre, **mot** pour le gras, - pour une liste, \\$...\\$ pour une formule. Le cours français suffit ; la traduction est facultative.',
                 'Formatting: ## for a heading, **word** for bold, - for a list, $...$ for a formula. French content is enough; translation is optional.'),
               style: const TextStyle(fontSize: 12, height: 1.4),
             ),
