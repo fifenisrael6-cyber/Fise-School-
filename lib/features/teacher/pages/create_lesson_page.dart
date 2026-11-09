@@ -49,6 +49,11 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
+  String _englishOrFrench(TextEditingController english, TextEditingController french) {
+    final translated = english.text.trim();
+    return translated.isEmpty ? french.text.trim() : translated;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -134,16 +139,16 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
       final lesson = await _service.saveLesson(
         id: widget.lesson?.id,
         courseId: widget.course.id,
-        titleFr: _titleFrController.text,
-        titleEn: _titleEnController.text,
-        contentFr: _contentFrController.text,
-        contentEn: _contentEnController.text,
-        objectivesFr: _objectivesFrController.text,
-        objectivesEn: _objectivesEnController.text,
-        examplesFr: _examplesFrController.text,
-        examplesEn: _examplesEnController.text,
-        summaryFr: _summaryFrController.text,
-        summaryEn: _summaryEnController.text,
+        titleFr: _titleFrController.text.trim(),
+        titleEn: _englishOrFrench(_titleEnController, _titleFrController),
+        contentFr: _contentFrController.text.trim(),
+        contentEn: _englishOrFrench(_contentEnController, _contentFrController),
+        objectivesFr: _objectivesFrController.text.trim(),
+        objectivesEn: _englishOrFrench(_objectivesEnController, _objectivesFrController),
+        examplesFr: _examplesFrController.text.trim(),
+        examplesEn: _englishOrFrench(_examplesEnController, _examplesFrController),
+        summaryFr: _summaryFrController.text.trim(),
+        summaryEn: _englishOrFrench(_summaryEnController, _summaryFrController),
         position: position,
         durationMinutes: minutes,
         estimatedMinutes: minutes,
@@ -338,53 +343,45 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
               ),
             ),
             const SizedBox(height: 16),
-            _field(controller: _titleFrController, label: 'Titre français'),
-            _field(controller: _titleEnController, label: 'English title'),
+            _field(controller: _titleFrController, label: 'Titre du cours'),
             _field(
               controller: _contentFrController,
-              label: 'Contenu français',
-              maxLines: 8,
-            ),
-            _field(
-              controller: _contentEnController,
-              label: 'English content',
-              maxLines: 8,
+              label: 'Cours complet',
+              maxLines: 14,
             ),
             _field(
               controller: _objectivesFrController,
-              label: 'Objectifs',
+              label: 'Objectifs pédagogiques (facultatif)',
               required: false,
-              maxLines: 5,
-            ),
-            _field(
-              controller: _objectivesEnController,
-              label: 'Objectives',
-              required: false,
-              maxLines: 5,
+              maxLines: 4,
             ),
             _field(
               controller: _examplesFrController,
-              label: 'Exemples',
+              label: 'Exemples et applications corrigées (facultatif)',
               required: false,
-              maxLines: 5,
-            ),
-            _field(
-              controller: _examplesEnController,
-              label: 'Examples',
-              required: false,
-              maxLines: 5,
+              maxLines: 6,
             ),
             _field(
               controller: _summaryFrController,
-              label: 'Résumé',
+              label: 'À retenir (facultatif)',
               required: false,
-              maxLines: 5,
+              maxLines: 4,
             ),
-            _field(
-              controller: _summaryEnController,
-              label: 'Summary',
-              required: false,
-              maxLines: 5,
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_isFrench
+                  ? 'Traduction anglaise (facultative)'
+                  : 'English translation (optional)'),
+              subtitle: Text(_isFrench
+                  ? 'Laissez vide : le cours français sera affiché.'
+                  : 'Leave blank to display the French course.'),
+              children: [
+                _field(controller: _titleEnController, label: 'English title', required: false),
+                _field(controller: _contentEnController, label: 'English content', required: false, maxLines: 10),
+                _field(controller: _objectivesEnController, label: 'Objectives', required: false, maxLines: 4),
+                _field(controller: _examplesEnController, label: 'Examples', required: false, maxLines: 5),
+                _field(controller: _summaryEnController, label: 'Summary', required: false, maxLines: 4),
+              ],
             ),
             _field(
               controller: _minutesController,
