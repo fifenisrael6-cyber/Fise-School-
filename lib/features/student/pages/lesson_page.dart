@@ -46,40 +46,39 @@ class _LessonPageState extends State<LessonPage> {
   bool get isEnglish => widget.locale.languageCode == 'en';
 
   String get title {
-    final value = isEnglish ? widget.lesson.titleEn : widget.lesson.titleFr;
-
-    if (value.trim().isNotEmpty) {
-      return value.trim();
-    }
-
-    return isEnglish ? 'Lesson' : 'Leçon';
+    final englishTitle = widget.lesson.titleEn.trim();
+    final frenchTitle = widget.lesson.titleFr.trim();
+    final value = isEnglish && englishTitle.isNotEmpty
+        ? englishTitle
+        : frenchTitle;
+    return value.isNotEmpty ? value : (isEnglish ? 'Lesson' : 'Leçon');
   }
 
   String? get objectives {
     final value = isEnglish
-        ? widget.lesson.objectivesEn
+        ? (_clean(widget.lesson.objectivesEn) ?? _clean(widget.lesson.objectivesFr))
         : widget.lesson.objectivesFr;
-
     return _clean(value);
   }
 
   String? get content {
-    final value = isEnglish ? widget.lesson.contentEn : widget.lesson.contentFr;
-
+    final value = isEnglish
+        ? (_clean(widget.lesson.contentEn) ?? _clean(widget.lesson.contentFr))
+        : widget.lesson.contentFr;
     return _clean(value);
   }
 
   String? get examples {
     final value = isEnglish
-        ? widget.lesson.examplesEn
+        ? (_clean(widget.lesson.examplesEn) ?? _clean(widget.lesson.examplesFr))
         : widget.lesson.examplesFr;
-
     return _clean(value);
   }
 
   String? get summary {
-    final value = isEnglish ? widget.lesson.summaryEn : widget.lesson.summaryFr;
-
+    final value = isEnglish
+        ? (_clean(widget.lesson.summaryEn) ?? _clean(widget.lesson.summaryFr))
+        : widget.lesson.summaryFr;
     return _clean(value);
   }
 
