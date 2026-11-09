@@ -47,12 +47,20 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return pages.join("\n\n").trim();
 }
 
-async function gemini(prompt: string, apiKey: string): Promise<string> {
+async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Promise<string> {
+  const parts: any[] = [{ text: prompt }];
+  if (pdfBytes?.length) {
+    let binary = "";
+    for (let i = 0; i < pdfBytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...pdfBytes.subarray(i, i + 0x8000));
+    }
+    parts.push({ inline_data: { mime_type: "application/pdf", data: btoa(binary) } });
+  }
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${"gemini-3.8-flash"}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents: [{ role: "user", parts }],
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
     }),
   });
@@ -137,6 +145,8 @@ RÈGLES ABSOLUES :
 - N'écris jamais le cours entier dans un seul paragraphe. Structure avec des titres Markdown (#, ##, ###), les grandes parties I., II., III., puis A., B. si pertinent.
 - Utilise les rubriques « Définition », « Propriété », « Théorème », « Démonstration », « Exemple », « Application » et « À retenir » uniquement lorsque le contenu source les justifie.
 - Place les formules mathématiques en LaTeX entre $...$ ou $$...$$. Mets les tableaux en tableau Markdown et les étapes en listes numérotées ou à puces.
+- Analyse aussi les pages visuelles du PDF fourni en pièce jointe : schémas, figures, graphiques, illustrations, tableaux et légendes. Ne te limite pas au texte extrait automatiquement.
+- Pour chaque figure, conserve sa position logique dans le cours, sa légende et une description fidèle de ses éléments visibles. Si elle correspond à un schéma pris en charge, insère le jeton correspondant ; sinon écris « Schéma à redessiner : [description fidèle des éléments visibles et de leurs légendes] ». Ne prétends jamais qu’une image a été enregistrée si tu ne l’as pas réellement extraite.
 - Conserve les schémas et leurs légendes. Lorsque le texte ou la légende identifie clairement un schéma pris en charge, insère sur une ligne séparée le jeton correspondant exactement à sa place dans le cours : [[diagram:gravity_pair]], [[diagram:gravity_altitude]], [[diagram:weight]], [[diagram:geom_triangle]], [[diagram:geom_right_triangle]], [[diagram:geom_circle]], [[diagram:geom_square]], [[diagram:geom_parallel]], [[diagram:geom_coordinate]], [[diagram:geom_cube]], [[diagram:geom_pyramid]], [[diagram:geom_cylinder]], [[diagram:geom_prism]], [[diagram:graph_line]], [[diagram:stats_bar]], [[diagram:svt_cell]], [[diagram:svt_neuron]] ou [[diagram:svt_synapse]]. N'utilise un jeton que si la source le justifie clairement ; ne devine jamais. Pour tout autre schéma, conserve sa légende et indique « Schéma à redessiner : [description fidèle] » sans prétendre afficher une image.
 - Conserve tous les exercices et questions ; ne fabrique pas de corrigés.
 - N'ajoute pas artificiellement des objectifs ou rubriques absentes de la source.
@@ -144,9 +154,9 @@ RÈGLES ABSOLUES :
 
 Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Maximum 30 chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
 
-TEXTE DU PDF :
-${extracted.slice(0, 90000)}`;
-    const parsed = JSON.parse(await gemini(prompt, geminiKey));
+TEXTE EXTRAIT DU PDF (texte intégral, sans troncature) :
+${extracted}`;
+    const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
     const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30) : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
 
@@ -196,7 +206,7 @@ ${extracted.slice(0, 90000)}`;
         const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
           chapter_id: target.id, content_type: "course", title_fr: title, title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
           body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText, position: 0,
-          is_published: true, created_by: authData.user.id, folder_key: "course",
+          is_published: false, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
         report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
@@ -210,7 +220,7 @@ ${extracted.slice(0, 90000)}`;
       index_error: null,
       index_preview: extracted.slice(0, 4000),
       index_word_count: wordCount,
-      index_approved: true,
+      index_approved: false,
       indexed_at: new Date().toISOString(),
     }).eq("id", resourceId);
     if (statusError) throw statusError;
@@ -218,7 +228,7 @@ ${extracted.slice(0, 90000)}`;
       success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
       subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
       imported, already_exists: existingCount, report,
-      message: `${imported} chapitre(s) alimenté(s), ${existingCount} déjà présent(s). Les contenus ont été importés dans le programme exact de la salle source.`,
+      message: `${imported} chapitre(s) préparé(s), ${existingCount} déjà présents. Les nouveaux cours sont enregistrés en brouillon dans les salles correspondantes : relisez et corrigez le contenu dans l’espace écrit, puis publiez-le pour les élèves.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
