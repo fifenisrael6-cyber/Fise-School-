@@ -1034,18 +1034,21 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   Widget _chapterContentPost(Map<String, dynamic> item) {
     final code = widget.locale.languageCode;
-    final title = ((code == 'en' ? item['title_en'] : item['title_fr']) ??
-            item['title_fr'] ?? item['title_en'] ?? '')
-        .toString()
-        .trim();
-    final body = ((code == 'en' ? item['body_text_en'] : item['body_text_fr']) ??
-            item['body_text_fr'] ?? item['body_text_en'] ?? '')
-        .toString()
-        .trim();
-    final chapter = ((code == 'en' ? item['chapter_title_en'] : item['chapter_title_fr']) ??
-            item['chapter_title_fr'] ?? item['chapter_title_en'] ?? '')
-        .toString()
-        .trim();
+    final titleFr = (item['title_fr'] ?? '').toString().trim();
+    final titleEn = (item['title_en'] ?? '').toString().trim();
+    final title = code == 'en' && titleEn.isNotEmpty
+        ? titleEn
+        : (titleFr.isNotEmpty ? titleFr : titleEn);
+    final bodyFr = (item['body_text_fr'] ?? '').toString().trim();
+    final bodyEn = (item['body_text_en'] ?? '').toString().trim();
+    final body = code == 'en' && bodyEn.isNotEmpty
+        ? bodyEn
+        : (bodyFr.isNotEmpty ? bodyFr : bodyEn);
+    final chapterFr = (item['chapter_title_fr'] ?? '').toString().trim();
+    final chapterEn = (item['chapter_title_en'] ?? '').toString().trim();
+    final chapter = code == 'en' && chapterEn.isNotEmpty
+        ? chapterEn
+        : (chapterFr.isNotEmpty ? chapterFr : chapterEn);
 
     return _bubble(
       date: DateTime.tryParse(item['created_at']?.toString() ?? '') ?? DateTime.now(),
@@ -1099,8 +1102,16 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   Widget _coursePost(Course course, {bool showResources = true}) {
     final code = widget.locale.languageCode;
-    final content = (code == 'en' ? course.contentEn : course.contentFr)?.trim();
-    final description = (code == 'en' ? course.descriptionEn : course.descriptionFr)?.trim();
+    final contentEn = course.contentEn?.trim() ?? '';
+    final contentFr = course.contentFr?.trim() ?? '';
+    final content = code == 'en' && contentEn.isNotEmpty
+        ? contentEn
+        : (contentFr.isNotEmpty ? contentFr : contentEn);
+    final descriptionEn = course.descriptionEn?.trim() ?? '';
+    final descriptionFr = course.descriptionFr?.trim() ?? '';
+    final description = code == 'en' && descriptionEn.isNotEmpty
+        ? descriptionEn
+        : (descriptionFr.isNotEmpty ? descriptionFr : descriptionEn);
 
     return _bubble(
       date: course.publishedAt ?? DateTime.now(),
