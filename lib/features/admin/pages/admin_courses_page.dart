@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/pedagogy_service.dart';
 import 'school_classes_page.dart';
 import 'admin_chapter_content_page.dart';
+import '../../../models/pedagogy.dart';
 
 class AdminCoursesPage extends StatefulWidget {
   final Locale locale;
@@ -386,6 +387,171 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     } catch (e) { _snack(_fr ? 'Échec de l’envoi : $e' : 'Upload failed: $e'); }
   }
 
+
+  Future<void> _manageResources(Map<String, dynamic> course) async {
+    var resources = await _resources.listForCourse(course['id'].toString());
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.78,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: Row(children: [
+                  Expanded(child: Text(_fr ? 'Documents du cours' : 'Course documents',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+                  IconButton(
+                    tooltip: _fr ? 'Actualiser' : 'Refresh',
+                    onPressed: () async {
+                      final latest = await _resources.listForCourse(course['id'].toString());
+                      setSheetState(() => resources = latest);
+                    },
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ]),
+              ),
+              Expanded(
+                child: resources.isEmpty
+                  ? Center(child: Text(_fr ? 'Aucun document dans ce cours.' : 'No documents in this course.'))
+                  : ListView.separated(
+                      itemCount: resources.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (_, index) {
+                        final resource = resources[index];
+                        return ListTile(
+                          leading: Icon(resource.resourceType == 'pdf' ? Icons.picture_as_pdf_rounded : Icons.insert_drive_file_rounded),
+                          title: Text(resource.fileName, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          subtitle: Text('\${resource.resourceType.toUpperCase()} • \${resource.indexStatus}'),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (action) async {
+                              if (action == 'replace') {
+                                await _replaceResource(resource);
+                                if (!mounted || !sheetContext.mounted) return;
+                                final latest = await _resources.listForCourse(course['id'].toString());
+                                setSheetState(() => resources = latest);
+                              } else if (action == 'delete') {
+                                final confirmed = await showDialog<bool>(
+                                  context: sheetContext,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: Text(_fr ? 'Supprimer ce document ?' : 'Delete this document?'),
+                                    content: Text(_fr
+                                      ? 'Le fichier « \${resource.fileName} » sera supprimé. Les leçons déjà créées resteront dans les chapitres.'
+                                      : 'The file "\${resource.fileName}" will be deleted. Existing lessons will remain in their chapters.'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(dialogContext, true),
+                                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                                        child: Text(_fr ? 'Supprimer' : 'Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed != true) return;
+                                try {
+                                  await _resources.deleteResource(resource);
+                                  if (!sheetContext.mounted) return;
+                                  final latest = await _resources.listForCourse(course['id'].toString());
+                                  setSheetState(() => resources = latest);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(_fr ? 'Document supprimé.' : 'Document deleted.')),
+                                  );
+                                } catch (e) {
+                                  _snack(_fr ? 'Suppression impossible : $e' : 'Unable to delete document: $e');
+                                }
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              PopupMenuItem(value: 'replace', child: Text(_fr ? 'Remplacer par un autre document' : 'Replace with another document')),
+                              PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer le document' : 'Delete document')),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _addResource(course);
+                    },
+                    icon: const Icon(Icons.add),
+                    label: Text(_fr ? 'Ajouter un nouveau document' : 'Add a new document'),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _replaceResource(CourseResource resource) async {
+    final result = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null || file.bytes!.isEmpty) {
+      _snack(_fr ? 'Impossible de lire le nouveau fichier.' : 'Unable to read the new file.');
+      return;
+    }
+    final extension = file.extension?.toLowerCase() ?? '';
+    final type = switch (extension) {
+      'pdf' => 'pdf',
+      'jpg' || 'jpeg' || 'png' || 'webp' => 'image',
+      'mp4' || 'mov' => 'video',
+      'mp3' || 'wav' || 'm4a' => 'audio',
+      'doc' || 'docx' || 'txt' || 'ppt' || 'pptx' || 'xls' || 'xlsx' => 'document',
+      _ => 'other',
+    };
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Confirmer le remplacement' : 'Confirm replacement'),
+        content: Text(_fr
+          ? '« \${resource.fileName} » sera remplacé par « \${file.name} ». Si le fichier est un PDF, ses contenus correspondants seront réimportés.'
+          : '"\${resource.fileName}" will be replaced by "\${file.name}". If it is a PDF, matching lesson content will be re-imported.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(_fr ? 'Remplacer' : 'Replace')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _resources.replaceResourceFile(resource: resource, file: file, resourceType: type);
+      if (type == 'pdf') {
+        final response = await _client.functions.invoke(
+          'import-course-pdf',
+          body: {'resource_id': resource.id, 'replace_existing': true},
+        );
+        final data = response.data;
+        if (response.status < 200 || response.status >= 300 || data is! Map || data['success'] != true) {
+          final message = data is Map ? data['error']?.toString() : null;
+          _snack(_fr
+            ? 'Document remplacé, mais réimport échoué : \${message ?? 'erreur inconnue'}'
+            : 'Document replaced, but re-import failed: \${message ?? 'unknown error'}');
+          return;
+        }
+        _snack(_fr ? 'PDF remplacé et contenus correspondants actualisés.' : 'PDF replaced and matching lesson content updated.');
+      } else {
+        _snack(_fr ? 'Document remplacé.' : 'Document replaced.');
+      }
+    } catch (e) {
+      _snack(_fr ? 'Remplacement impossible : $e' : 'Unable to replace document: $e');
+    }
+  }
+
   void _snack(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   @override
@@ -417,6 +583,8 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) async {
             if (v == 'resource') {
               await _addResource(c);
+            } else if (v == 'manage_resources') {
+              await _manageResources(c);
             } else if (v == 'archive') {
               try {
                 await _client.from('courses').update({'status': 'archived'}).eq('id', c['id']);
@@ -428,6 +596,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
             }
           }, itemBuilder: (_) => [
             PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file')),
+            PopupMenuItem(value: 'manage_resources', child: Text(_fr ? 'Gérer / remplacer / supprimer les documents' : 'Manage / replace / delete documents')),
             if (c['status'] != 'archived') PopupMenuItem(value: 'archive', child: Text(_fr ? 'Archiver le cours' : 'Archive course')),
           ])));
         })))
