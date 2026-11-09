@@ -134,7 +134,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         ExpansionTile(title:Text(t('Traduction anglaise (facultative)','English translation (optional)')),children:[TextField(controller:titleEn,decoration:const InputDecoration(labelText:'English title'))]),
         ValueListenableBuilder<String>(valueListenable: type, builder: (_, v, __) => Column(children: [
           if (v == 'course') ...[
-            TextField(controller: bodyFr, maxLines: 5, decoration: const InputDecoration(labelText: 'Cours français')),
+            TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
             ExpansionTile(title:Text(t('Traduction anglaise du cours (facultative)','Optional English lesson translation')),children:[TextField(controller:bodyEn,maxLines:8,decoration:const InputDecoration(labelText:'English lesson'))]),
           ],
           if (v == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo direct MP4 ou YouTube/Vimeo')),
@@ -346,6 +346,20 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
           ],
         ),
         if (type == 'course') ...[
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8, bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              t('Mise en forme : ## pour un sous-titre, **mot** pour le gras, - pour une liste, $...$ pour une formule. Le cours français suffit ; la traduction est facultative.',
+                'Formatting: ## for a heading, **word** for bold, - for a list, $...$ for a formula. French content is enough; translation is optional.'),
+              style: const TextStyle(fontSize: 12, height: 1.4),
+            ),
+          ),
           TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
           ExpansionTile(
             title: Text(t('Traduction anglaise du cours (facultative)', 'Optional English lesson translation')),
