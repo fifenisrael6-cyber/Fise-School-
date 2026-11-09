@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import 'school_classes_page.dart';
+import 'admin_chapter_content_page.dart';
 
 class AdminCoursesPage extends StatefulWidget {
   final Locale locale;
@@ -351,9 +352,25 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           if (result.status >= 200 && result.status < 300 && data is Map && data['success'] == true) {
             final imported = data['imported'] ?? 0;
             final existing = data['already_exists'] ?? 0;
-            _snack(_fr
-                ? 'Import terminé : $imported chapitre(s) alimenté(s), $existing déjà présent(s).'
-                : 'Import complete: $imported chapters populated, $existing already existed.');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(_fr
+                    ? 'Extraction terminée : $imported chapitre(s) préparé(s), $existing déjà présent(s). Les nouveaux cours sont en brouillon.'
+                    : 'Extraction complete: $imported chapter(s) prepared, $existing already existed. New lessons are drafts.'),
+                duration: const Duration(seconds: 8),
+                action: SnackBarAction(
+                  label: _fr ? 'Ouvrir les cours écrits' : 'Open written lessons',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminChapterContentPage(locale: widget.locale),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
           } else {
             final message = data is Map ? (data['error']?.toString() ?? 'Erreur IA inconnue.') : 'Réponse IA invalide.';
             _snack(_fr ? 'PDF conservé, mais import IA échoué : $message' : 'PDF saved, but AI import failed: $message');
