@@ -10,7 +10,7 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class OfflinePdfCourseImporter {
-  static const int maxPages = 50;
+  static const int maxPages = 500;
   static const int batchSize = 10;
 
   Future<List<Map<String, dynamic>>> importFile(
@@ -119,6 +119,25 @@ class OfflinePdfCourseImporter {
     final result = <Map<String, dynamic>>[];
     final lines = text.split(RegExp(r'\\r?\\n'));
     final buffer = <String>[];
+    final tableRows = <List<String>>[];
+    void flushTable() {
+      if (tableRows.length >= 2) {
+        result.add({
+          'type': 'table',
+          'cells': tableRows.map((row) => List<String>.from(row)).toList(),
+          'firstRowHeader': true,
+          'page': page,
+          'selected': true,
+        });
+      } else if (tableRows.isNotEmpty) {
+        buffer.add(tableRows.first.join(' '));
+      }
+      tableRows.clear();
+    }
+    List<String>? splitColumns(String value) {
+      final parts = value.split(RegExp(r'\\t|\\s{2,}')).map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+      return parts.length >= 2 ? parts : null;
+    }
     void flush() {
       final value = buffer.join(' ').trim();
       if (value.isNotEmpty) {
@@ -130,8 +149,21 @@ class OfflinePdfCourseImporter {
     for (final raw in lines) {
       final line = raw.trim();
       if (line.isEmpty) {
+        flushTable();
         flush();
         continue;
+      }
+      final columns = splitColumns(raw);
+      if (columns != null) {
+        final sameWidth = tableRows.isEmpty || tableRows.first.length == columns.length;
+        if (!sameWidth) {
+          flushTable();
+          flush();
+        }
+        tableRows.add(columns);
+        continue;
+      } else {
+        flushTable();
       }
       final bullet = RegExp(r'^(?:[•●▪◦‣–—-])\\s+(.+)$').firstMatch(line);
       final numbered = RegExp(r'^(?:\\d+[.)]|[a-zA-Z][.)])\\s+(.+)$').firstMatch(line);
@@ -157,6 +189,7 @@ class OfflinePdfCourseImporter {
         buffer.add(line);
       }
     }
+    flushTable();
     flush();
     return result;
   }
