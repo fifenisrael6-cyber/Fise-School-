@@ -9,10 +9,7 @@ name: Build Android apk
 
 on:
   push:
-    branches: [main, master]
-    paths-ignore:
-      - '.github/workflows/android-apk.yml'
-      - '.github/workflows/ios-build.yml'
+    branches: [main, master, feature/course-rich-editor-part1]
   pull_request:
     branches: [main, master]
   workflow_dispatch:
