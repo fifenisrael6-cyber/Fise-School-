@@ -664,6 +664,109 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     }
   }
 
+  Future<void> viewCourseRecord(Map<String, dynamic> course) async {
+    final title = (course['title_fr'] ?? '').toString();
+    final body = (course['content_fr'] ?? '').toString();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(
+            child: LessonContentRenderer(
+              text: body,
+              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(height: 1.65) ??
+                  const TextStyle(fontSize: 16, height: 1.65),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(t('Fermer', 'Close'))),
+        ],
+      ),
+    );
+  }
+
+  Future<void> editCourseRecord(Map<String, dynamic> course) async {
+    final titleFr = TextEditingController(text: course['title_fr']?.toString() ?? '');
+    final titleEn = TextEditingController(text: course['title_en']?.toString() ?? '');
+    final content = _controllerFromStored(course['content_fr']?.toString());
+    bool published = course['status'] == 'published';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text(t('Modifier le cours', 'Edit course')),
+          content: SizedBox(
+            width: 720,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(controller: titleFr, decoration: const InputDecoration(labelText: 'Titre français *')),
+                  const SizedBox(height: 8),
+                  TextField(controller: titleEn, decoration: const InputDecoration(labelText: 'Titre anglais (facultatif)')),
+                  const SizedBox(height: 12),
+                  _buildCourseEditor(content),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: published,
+                    title: Text(t('Publier pour les élèves', 'Publish for students')),
+                    onChanged: (value) => setDialog(() => published = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(t('Annuler', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(t('Enregistrer', 'Save'))),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) { content.dispose(); titleFr.dispose(); titleEn.dispose(); return; }
+    if (titleFr.text.trim().isEmpty || content.document.toPlainText().trim().isEmpty) {
+      toast(t('Le titre et le contenu du cours sont obligatoires.', 'Course title and content are required.'));
+      content.dispose(); titleFr.dispose(); titleEn.dispose();
+      return;
+    }
+    try {
+      final encoded = jsonEncode(content.document.toDelta().toJson());
+      final oldStatus = (course['status'] ?? 'draft').toString();
+      final updates = <String, dynamic>{
+        'title_fr': titleFr.text.trim(),
+        'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
+        'content_fr': encoded,
+        'status': published ? 'published' : (oldStatus == 'archived' ? 'archived' : 'draft'),
+      };
+      if ((course['content_en'] ?? '').toString().trim().isEmpty) updates['content_en'] = encoded;
+      await db.from('courses').update(updates).eq('id', course['id']);
+      if (mounted) setState(() {});
+      toast(t('Cours modifié. Les élèves verront la version publiée.', 'Course updated. Students will see the published version.'));
+    } catch (e) {
+      toast(t('Modification impossible : $e', 'Unable to update course: $e'));
+    } finally {
+      content.dispose(); titleFr.dispose(); titleEn.dispose();
+    }
+  }
+
+  Future<void> deleteCourseRecord(Map<String, dynamic> course) async {
+    if (!await confirm(t(
+      'Supprimer définitivement ce cours de cette salle ? Cette action ne supprime pas les contenus des autres chapitres.',
+      'Permanently delete this course from this classroom? Content in other chapters is not affected.',
+    ))) return;
+    try {
+      await db.from('courses').delete().eq('id', course['id']);
+      if (mounted) setState(() {});
+      toast(t('Cours supprimé.', 'Course deleted.'));
+    } catch (e) {
+      toast(t('Suppression impossible : $e', 'Unable to delete course: $e'));
+    }
+  }
   Future<void> toggleContent(Map<String, dynamic> item) async {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
@@ -745,6 +848,52 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
               ],
             ),
           ))).toList());
+        },
+      ),
+      const SizedBox(height: 18),
+      Row(children: [
+        const Icon(Icons.menu_book_rounded, color: Color(0xFF166534)),
+        const SizedBox(width: 8),
+        Expanded(child: Text(t('Cours déjà créés dans cette salle', 'Existing classroom courses'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+      ]),
+      FutureBuilder<List<Map<String, dynamic>>>(
+        future: db.from('courses')
+            .select('id,title_fr,title_en,content_fr,content_en,status,created_at,class_id,chapter_id')
+            .eq('class_id', schoolClass!['id'])
+            .eq('chapter_id', chapter!['id'])
+            .order('created_at', ascending: false)
+            .then((rows) => rows.map((row) => Map<String, dynamic>.from(row)).toList()),
+        builder: (context, courseSnapshot) {
+          if (courseSnapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()));
+          }
+          if (courseSnapshot.hasError) return Text(courseSnapshot.error.toString());
+          final existingCourses = courseSnapshot.data ?? const <Map<String, dynamic>>[];
+          if (existingCourses.isEmpty) {
+            return Padding(padding: const EdgeInsets.all(8), child: Text(t('Aucun cours de cette salle dans ce chapitre.', 'No classroom courses in this chapter yet.')));
+          }
+          return Column(
+            children: existingCourses.map((course) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.menu_book_outlined, color: Color(0xFF166534)),
+                title: Text((course['title_fr'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text((course['status'] ?? 'draft') == 'published' ? t('Publié pour les élèves', 'Published for students') : (course['status'] ?? 'draft').toString()),
+                onTap: () => viewCourseRecord(course),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'view') viewCourseRecord(course);
+                    if (action == 'edit') editCourseRecord(course);
+                    if (action == 'delete') deleteCourseRecord(course);
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'view', child: Text(t('Voir le cours', 'View course'))),
+                    PopupMenuItem(value: 'edit', child: Text(t('Modifier le cours', 'Edit course'))),
+                    PopupMenuItem(value: 'delete', child: Text(t('Supprimer le cours', 'Delete course'))),
+                  ],
+                ),
+              ),
+            )).toList(),
+          );
         },
       ),
     ]
