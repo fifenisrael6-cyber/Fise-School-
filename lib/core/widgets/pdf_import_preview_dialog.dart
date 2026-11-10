@@ -75,7 +75,7 @@ class _PdfImportPreviewDialogState extends State<PdfImportPreviewDialog> {
     }
     final text = block['text']?.toString() ?? '';
     if (type == 'heading') {
-      return Text(text, style: TextStyle(fontSize: 20 - ((block['level'] as int? ?? 1) * 2), fontWeight: FontWeight.bold));
+      return Text(text, style: TextStyle(fontSize: 20.0 - ((block['level'] as int? ?? 1) * 2), fontWeight: FontWeight.bold));
     }
     if (type == 'list') {
       return Text('${block['ordered'] == true ? '1.' : '•'} $text');
