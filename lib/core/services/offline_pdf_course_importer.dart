@@ -155,6 +155,7 @@ class OfflinePdfCourseImporter {
       }
       final columns = splitColumns(raw);
       if (columns != null) {
+        if (tableRows.isEmpty) flush();
         final sameWidth = tableRows.isEmpty || tableRows.first.length == columns.length;
         if (!sameWidth) {
           flushTable();
