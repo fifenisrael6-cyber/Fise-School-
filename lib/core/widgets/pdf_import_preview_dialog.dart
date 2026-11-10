@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'course_table_embed.dart';
 
 class PdfImportPreviewDialog extends StatefulWidget {
   const PdfImportPreviewDialog({super.key, required this.blocks});
@@ -41,6 +42,28 @@ class _PdfImportPreviewDialogState extends State<PdfImportPreviewDialog> {
 
   Widget _blockPreview(Map<String, dynamic> block) {
     final type = block['type'];
+    if (type == 'table') {
+      final rows = (block['cells'] as List? ?? const [])
+          .map((row) => (row as List).map((cell) => cell.toString()).toList())
+          .toList();
+      if (rows.isEmpty) return const Text('Tableau vide');
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          border: TableBorder.all(color: Theme.of(context).colorScheme.outline),
+          defaultColumnWidth: const IntrinsicColumnWidth(),
+          children: List.generate(rows.length, (r) => TableRow(
+            decoration: block['firstRowHeader'] == true && r == 0
+                ? BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest)
+                : null,
+            children: rows[r].map((cell) => Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(cell, style: TextStyle(fontWeight: block['firstRowHeader'] == true && r == 0 ? FontWeight.bold : FontWeight.normal)),
+            )).toList(),
+          )),
+        ),
+      );
+    }
     if (type == 'image') {
       final data = block['data']?.toString() ?? '';
       try {
@@ -97,7 +120,28 @@ class _PdfImportPreviewDialogState extends State<PdfImportPreviewDialog> {
                             ],
                           ),
                           _blockPreview(block),
-                          if (type != 'image') Wrap(
+                          if (type == 'table')
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final updated = await showCourseTableDialog(
+                                    context,
+                                    initialData: {
+                                      'cells': block['cells'],
+                                      'firstRowHeader': block['firstRowHeader'] == true,
+                                    },
+                                  );
+                                  if (updated != null) setState(() {
+                                    block['cells'] = updated['cells'];
+                                    block['firstRowHeader'] = updated['firstRowHeader'];
+                                  });
+                                },
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text('Modifier le tableau'),
+                              ),
+                            ),
+                          if (type != 'image' && type != 'table') Wrap(
                             alignment: WrapAlignment.end,
                             spacing: 4,
                             children: [
