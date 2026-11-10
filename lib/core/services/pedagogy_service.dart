@@ -931,7 +931,33 @@ class CourseService {
   }
 
   Future<void> deleteCourse(String id) async {
+    // Remove stored objects before the database cascade removes resource rows.
+    // course_resources has ON DELETE CASCADE, but Storage objects are separate.
+    final resourceRows = await _client
+        .from('course_resources')
+        .select('storage_path')
+        .eq('course_id', id);
+    final paths = resourceRows
+        .map((row) => row['storage_path']?.toString())
+        .whereType<String>()
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    if (paths.isNotEmpty) {
+      // Storage removal is best-effort: the course row must still be removable
+      // even if one stale object has already disappeared from the bucket.
+      try {
+        await _client.storage.from(ResourceService.bucket).remove(paths);
+      } catch (error) {
+        debugPrint('Course resource cleanup failed for $id: $error');
+      }
+    }
     await _client.from('courses').delete().eq('id', id);
+    try {
+      await JsonCache.instance.remove('resources_course_$id');
+      await OfflineRepository().deleteCourse(id);
+    } catch (_) {
+      // Local cache cleanup must not undo a successful remote deletion.
+    }
   }
 }
 
