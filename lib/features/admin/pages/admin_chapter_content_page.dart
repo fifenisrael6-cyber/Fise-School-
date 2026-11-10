@@ -301,6 +301,15 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     try{final data={'curriculum_id':curriculum!['id'],'title_fr':f.text.trim(),'title_en':e.text.trim().isEmpty?f.text.trim():e.text.trim(),'position':int.tryParse(n.text)??chapters.length+1,'is_active':old?['is_active']??true};if(old==null){await db.from('course_chapters').insert(data);}else{await db.from('course_chapters').update(data).eq('id',old['id']);}await chooseCurriculum(curriculum);toast(t('Chapitre enregistré.','Chapter saved.'));}
     catch(e){toast(e.toString());}
   }
+  Future<void> _removeStorageIfUnused(String path) async {
+    final references = await db.from('chapter_content_items')
+        .select('id')
+        .eq('storage_path', path)
+        .limit(1);
+    if ((references as List).isEmpty) {
+      await db.storage.from('chapter-content').remove([path]);
+    }
+  }
   Future<void> deleteChapter(Map<String,dynamic> ch) async {if(!await confirm(t('Supprimer ce chapitre et son contenu ?','Delete this chapter and its content?')))return;try{await db.from('course_chapters').delete().eq('id',ch['id']);if(chapter?['id']==ch['id'])chapter=null;await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
   Future<void> toggleChapter(Map<String,dynamic> ch) async {try{await db.from('course_chapters').update({'is_active':!(ch['is_active'] as bool? ?? true)}).eq('id',ch['id']);await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
   Future<void> addContent() async {
@@ -641,8 +650,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         data['storage_path'] = replacementPath;
       }
       await db.from('chapter_content_items').update(data).eq('id', item['id']);
-      if (replacementPath != null && oldPath != null && oldPath.isNotEmpty) {
-        try { await db.storage.from('chapter-content').remove([oldPath]); } catch (_) {}
+      if (replacementPath != null && oldPath != null && oldPath.isNotEmpty && oldPath != replacementPath) {
+        try { await _removeStorageIfUnused(oldPath); } catch (_) {}
       }
       if (mounted) setState(() {});
       if (type == 'course' && published.value && targetChapterId != null) {
@@ -794,10 +803,10 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     if (!await confirm(t('Supprimer ce contenu ?', 'Delete this content?'))) return;
     try {
       final storagePath = item['storage_path'] as String?;
-      if (storagePath != null && storagePath.isNotEmpty) {
-        await db.storage.from('chapter-content').remove([storagePath]);
-      }
       await db.from('chapter_content_items').delete().eq('id', item['id']);
+      if (storagePath != null && storagePath.isNotEmpty) {
+        await _removeStorageIfUnused(storagePath);
+      }
       if (mounted) setState(() {});
       toast(t('Contenu supprimé.', 'Content deleted.'));
     } catch (e) { toast(e.toString()); }
