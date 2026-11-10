@@ -125,7 +125,18 @@ class RichLessonText extends StatelessWidget {
   }
 
   static bool _isStandaloneMath(String line) {
-    if (line.length > 150 || line.contains(r'
+    if (line.length > 150 || line.contains(String.fromCharCode(36))) {
+      return false;
+    }
+    final hasMathNotation = RegExp(
+      r'(\\\\frac|\\\\sqrt|\\\\int|\\\\sum|\\\\lim|\\\\prod|'
+      r'\\\\Delta|\\\\theta|\\\\pi|[=<>≤≥≠∞→±×÷√∫∑])|'
+      r'([_^]|\\\\to|\\\\infty)',
+    ).hasMatch(line);
+    if (!hasMathNotation) return false;
+    final words = RegExp(r'[A-Za-zÀ-ÿ]{3,}').allMatches(line).length;
+    return words <= 5;
+  }
 
   Widget _buildListItem(String marker, String content) {
     return Padding(
