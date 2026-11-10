@@ -38,11 +38,19 @@ class OfflinePdfCourseImporter {
         for (var index = 0; index < extracted.length; index++) {
           final pageIndex = start + index;
           var text = (extracted[index]['text'] ?? '').toString().trim();
-          final needsOcr = text.replaceAll(RegExp(r'\s+'), '').length < 35;
+          final needsOcr = text.replaceAll(RegExp(r'\\s+'), '').length < 35;
+          // Keep a visual copy of pages likely to contain scientific figures,
+          // diagrams or scanned content. This is a full-page render, not a
+          // cropped embedded-image object; the administrator chooses whether
+          // to keep it in the editable course.
+          final hasVisualCue = RegExp(
+            r'(figure|fig\\.?|schéma|schema|diagramme|graphique|illustration|photo|image|planche)',
+            caseSensitive: false,
+          ).hasMatch(text) || text.length < 900;
           Uint8List? pageImage;
-          if (needsOcr) {
+          if (needsOcr || hasVisualCue) {
             pageImage = await _renderPage(document, pageIndex);
-            if (pageImage != null) {
+            if (needsOcr && pageImage != null) {
               final directory = await getTemporaryDirectory();
               final imageFile = File('${directory.path}/fise_pdf_ocr_${pageIndex + 1}.jpg');
               await imageFile.writeAsBytes(pageImage, flush: true);
@@ -57,17 +65,20 @@ class OfflinePdfCourseImporter {
 
           final pageBlocks = _blocksFromText(text, pageIndex + 1, (extracted[index]['lines'] as List?) ?? const []);
           blocks.addAll(pageBlocks);
-          // Preserve scanned/image-only pages as a compressed full-page image.
-          // A whole-page fallback is safer than pretending to crop figures accurately.
-          if (needsOcr && pageImage != null) {
+          // Preserve scanned pages and pages with likely scientific visuals.
+          // These are optional full-page images in the preview; admins can
+          // deselect or remove pages that do not contain useful illustrations.
+          if (pageImage != null && (needsOcr || hasVisualCue)) {
             final compressed = _compressPage(pageImage);
             if (compressed != null) {
               blocks.add({
                 'type': 'image',
                 'page': pageIndex + 1,
                 'data': 'data:image/jpeg;base64,${base64Encode(compressed)}',
-                'label': 'Page scannée ${pageIndex + 1} (image de référence)',
-                'selected': pageBlocks.isEmpty,
+                'label': needsOcr
+                    ? 'Page scannée ${pageIndex + 1} (image de référence)'
+                    : 'Page ${pageIndex + 1} (schéma/illustration à conserver si utile)',
+                'selected': needsOcr && pageBlocks.isEmpty,
               });
             }
           }
