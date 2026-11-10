@@ -262,9 +262,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         if (type == 'heading') {
           final level = block['level'] as int? ?? 2;
           final attribute = level <= 1 ? Attribute.h1 : level == 2 ? Attribute.h2 : Attribute.h3;
-          controller.formatLine(offset, length, attribute);
+          controller.formatText(offset, length, attribute);
         } else if (type == 'list') {
-          controller.formatLine(offset, length, block['ordered'] == true ? Attribute.ol : Attribute.ul);
+          controller.formatText(offset, length, block['ordered'] == true ? Attribute.ol : Attribute.ul);
         }
         offset += length;
       }
