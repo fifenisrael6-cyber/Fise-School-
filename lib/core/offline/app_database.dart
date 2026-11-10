@@ -772,6 +772,14 @@ class AppDatabase extends _$AppDatabase {
     await into(localProgress).insertOnConflictUpdate(progress);
   }
 
+  Future<void> deleteCourse(String id) async {
+    await (delete(cachedCourses)..where((row) => row.id.equals(id))).go();
+  }
+
+  Future<void> deleteLessonsForCourse(String courseId) async {
+    await (delete(cachedLessons)..where((row) => row.courseId.equals(courseId))).go();
+  }
+
   Future<void> deleteAllCourses() async {
     await delete(cachedCourses).go();
   }
