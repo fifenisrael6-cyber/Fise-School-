@@ -891,7 +891,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       if (decoded is Map && decoded['ops'] is List) {
         return LessonContentRenderer(
           text: body,
-          style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 15, height: 1.55) ?? const TextStyle(fontSize: 15, height: 1.55),
         );
       }
     } catch (_) {
