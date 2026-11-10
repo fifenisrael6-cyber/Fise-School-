@@ -474,3 +474,20 @@ class RichLessonText extends StatelessWidget {
     return spans;
   }
 }
+
+enum _BlockKind {
+  paragraph,
+  heading,
+  bullet,
+  numbered,
+  displayMath,
+  table,
+}
+
+class _Block {
+  final _BlockKind kind;
+  final String text;
+  final String marker;
+
+  const _Block(this.kind, this.text, {this.marker = ''});
+}
