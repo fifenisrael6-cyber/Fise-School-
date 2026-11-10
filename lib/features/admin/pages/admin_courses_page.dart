@@ -310,7 +310,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final descEn = TextEditingController();
     final contentFr = QuillController.basic();
     final contentEn = TextEditingController();
-    bool published = true;
+    bool published = false;
     bool saving = false;
 
     Future<void> loadSubjects(StateSetter setDialog) async {
