@@ -388,9 +388,9 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
           final existingId = matches.isNotEmpty
               ? matches.first['id']?.toString()
               : null;
-          final pendingStatus = wantsPublication && hasAttachments
-              ? 'draft'
-              : (wantsPublication ? 'published' : 'draft');
+          // Keep every target as draft until the whole multi-room send succeeds.
+          // Publication is finalized only after all selected files are uploaded.
+          const pendingStatus = 'draft';
 
           final course = await _courses.saveCourse(
             id: existingId,
@@ -451,7 +451,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
         }
       }
 
-      if (wantsPublication && hasAttachments) {
+      if (wantsPublication) {
         for (final course in savedCourses) {
           await _courses.saveCourse(
             id: course.id,
