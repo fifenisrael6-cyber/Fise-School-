@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/widgets/course_table_embed.dart';
 import 'school_classes_page.dart';
 import 'admin_chapter_content_page.dart';
 import '../../../models/pedagogy.dart';
@@ -251,11 +252,69 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                         const SizedBox(height: 8),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
-                          child: QuillSimpleToolbar(
-                            controller: contentFr,
-                            config: const QuillSimpleToolbarConfig(
-                              multiRowsDisplay: false,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              QuillSimpleToolbar(
+                                controller: contentFr,
+                                config: const QuillSimpleToolbarConfig(
+                                  multiRowsDisplay: false,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              OutlinedButton.icon(
+                                onPressed: saving ? null : () async {
+                                  final dimensions = await showDialog<List<int>>(
+                                    context: context,
+                                    builder: (dialogContext) {
+                                      final rowsController = TextEditingController(text: '3');
+                                      final columnsController = TextEditingController(text: '3');
+                                      return AlertDialog(
+                                        title: const Text('Insérer un tableau'),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            TextField(controller: rowsController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Nombre de lignes')),
+                                            TextField(controller: columnsController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Nombre de colonnes')),
+                                          ],
+                                        ),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Annuler')),
+                                          FilledButton(
+                                            onPressed: () {
+                                              final rows = int.tryParse(rowsController.text) ?? 0;
+                                              final columns = int.tryParse(columnsController.text) ?? 0;
+                                              if (rows < 1 || columns < 1 || rows > 20 || columns > 12) return;
+                                              Navigator.pop(dialogContext, [rows, columns]);
+                                            },
+                                            child: const Text('Créer'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                  if (dimensions == null || !context.mounted) return;
+                                  final cells = List.generate(
+                                    dimensions[0],
+                                    (_) => List<String>.filled(dimensions[1], ''),
+                                  );
+                                  final selection = contentFr.selection;
+                                  final start = selection.isValid ? selection.start : contentFr.document.length - 1;
+                                  final length = selection.isValid ? selection.end - selection.start : 0;
+                                  contentFr.replaceText(
+                                    start,
+                                    length,
+                                    BlockEmbed.custom(CourseTableEmbed.fromCells(
+                                      cells: cells,
+                                      firstRowHeader: false,
+                                    )),
+                                    TextSelection.collapsed(offset: start + 1),
+                                  );
+                                },
+                                icon: const Icon(Icons.table_chart_outlined),
+                                label: const Text('Tableau'),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -269,9 +328,10 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                           padding: const EdgeInsets.all(8),
                           child: QuillEditor.basic(
                             controller: contentFr,
-                            config: const QuillEditorConfig(
-                              padding: EdgeInsets.all(8),
+                            config: QuillEditorConfig(
+                              padding: const EdgeInsets.all(8),
                               expands: false,
+                              embedBuilders: [CourseTableEmbedBuilder()],
                             ),
                           ),
                         ),
