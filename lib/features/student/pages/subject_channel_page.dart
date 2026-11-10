@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../../../core/offline/json_cache.dart';
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
@@ -882,6 +884,19 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
   /// tableaux et formules LaTeX. Les illustrations restent à leur position
   /// exacte dans le texte du cours.
   Widget _formattedCourseBody(String body) {
+    // New Quill Delta courses contain native inline images and tables.
+    // Keep the legacy Markdown renderer below for older published content.
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['ops'] is List) {
+        return LessonContentRenderer(
+          text: body,
+          style: const TextStyle(fontSize: 15, height: 1.55, color: Colors.black87),
+        );
+      }
+    } catch (_) {
+      // Legacy Markdown/text continues through the existing renderer.
+    }
     final widgets = <Widget>[];
     final textBuffer = StringBuffer();
     final imagePattern = RegExp(r'^!\[([^\]]*)\]\(([^)]+)\)$');
