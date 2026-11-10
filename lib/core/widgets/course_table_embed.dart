@@ -5,9 +5,9 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 /// JSON-backed table embed stored as a Quill custom block.
 class CourseTableEmbed extends CustomBlockEmbed {
-  const CourseTableEmbed(String value) : super(type, value);
+  const CourseTableEmbed(String value) : super('courseTable', value);
 
-  static const String type = 'courseTable';
+  static const String embedType = 'courseTable';
 
   factory CourseTableEmbed.fromCells({
     required List<List<String>> cells,
@@ -63,7 +63,7 @@ class CourseTableEmbedBuilder extends EmbedBuilder {
   final VoidCallback? onChanged;
 
   @override
-  String get key => CourseTableEmbed.type;
+  String get key => CourseTableEmbed.embedType;
 
   @override
   Widget build(BuildContext context, EmbedContext embedContext) {
