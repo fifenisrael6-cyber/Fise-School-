@@ -29,7 +29,7 @@ class OfflinePdfCourseImporter {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
       for (var start = 0; start < pageCount; start += batchSize) {
-        final end = (start + batchSize).clamp(0, pageCount);
+        final end = (start + batchSize).clamp(0, pageCount).toInt();
         final extracted = await compute(_extractPdfTextBatch, {
           'bytes': bytes,
           'start': start,
@@ -93,8 +93,8 @@ class OfflinePdfCourseImporter {
     try {
       page = await document.getPage(index + 1);
       final rendered = await page.render(
-        width: page.width * (1000 / page.width).clamp(0.5, 1.0),
-        height: page.height * (1000 / page.width).clamp(0.5, 1.0),
+        width: (page.width * (1000 / page.width).clamp(0.5, 1.0)).toDouble(),
+        height: (page.height * (1000 / page.width).clamp(0.5, 1.0)).toDouble(),
         format: pdfx.PdfPageImageFormat.jpeg,
         quality: 70,
       );
