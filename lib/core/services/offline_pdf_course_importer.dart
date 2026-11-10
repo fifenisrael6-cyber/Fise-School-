@@ -55,7 +55,7 @@ class OfflinePdfCourseImporter {
             }
           }
 
-          final pageBlocks = _blocksFromText(text, pageIndex + 1);
+          final pageBlocks = _blocksFromText(text, pageIndex + 1, (extracted[index]['lines'] as List?) ?? const []);
           blocks.addAll(pageBlocks);
           // Preserve scanned/image-only pages as a compressed full-page image.
           // A whole-page fallback is safer than pretending to crop figures accurately.
@@ -115,7 +115,7 @@ class OfflinePdfCourseImporter {
     return Uint8List.fromList(img.encodeJpg(resized, quality: 70));
   }
 
-  List<Map<String, dynamic>> _blocksFromText(String text, int page) {
+  List<Map<String, dynamic>> _blocksFromText(String text, int page, List<dynamic> lineMetadata) {
     final result = <Map<String, dynamic>>[];
     final lines = text.split(RegExp(r'\\r?\\n'));
     final buffer = <String>[];
@@ -179,12 +179,14 @@ class OfflinePdfCourseImporter {
         });
         continue;
       }
-      final headingLike = line.length <= 90 &&
+      final fontSize = fontByText[line] ?? 0;
+      final fontHeading = medianFont > 0 && fontSize >= medianFont * 1.22;
+      final headingLike = (fontHeading || (line.length <= 90 &&
           !line.endsWith('.') &&
           (line == line.toUpperCase() || RegExp(r'^(CHAPITRE|LEÇON|SECTION|I{1,3}[.)]|[0-9]+[.)])\\b', caseSensitive: false).hasMatch(line));
       if (headingLike) {
         flush();
-        final level = line.length < 35 ? 1 : line.length < 65 ? 2 : 3;
+        final level = fontHeading && medianFont > 0 ? (fontSize >= medianFont * 1.65 ? 1 : fontSize >= medianFont * 1.35 ? 2 : 3) : (line.length < 35 ? 1 : line.length < 65 ? 2 : 3);
         result.add({'type': 'heading', 'level': level, 'text': line, 'page': page, 'selected': true});
       } else {
         buffer.add(line);
@@ -229,7 +231,17 @@ List<Map<String, dynamic>> _extractPdfTextBatch(Map<String, dynamic> args) {
     final result = <Map<String, dynamic>>[];
     for (var page = start; page < end; page++) {
       final text = extractor.extractText(startPageIndex: page, endPageIndex: page);
-      result.add({'page': page + 1, 'text': text});
+      final lines = extractor.extractTextLines(startPageIndex: page, endPageIndex: page);
+      result.add({
+        'page': page + 1,
+        'text': text,
+        'lines': lines.map((line) => {
+          'text': line.text,
+          'fontSize': line.fontSize,
+          'left': line.bounds.left,
+          'top': line.bounds.top,
+        }).toList(),
+      });
     }
     return result;
   } finally {
