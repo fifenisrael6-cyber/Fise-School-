@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_assignments_page.dart';
 import 'admin_courses_page.dart';
+import 'admin_course_sending_page.dart';
 import 'admin_chapter_content_page.dart';
 import 'admin_grades_page.dart';
 import 'admin_ai_courses_page.dart';
@@ -63,6 +64,11 @@ class AdminDashboardPage extends StatelessWidget {
         icon: Icons.account_tree_rounded,
         title: _isFrench ? 'Chapitres et contenus' : 'Chapters and content',
         builder: (_) => AdminChapterContentPage(locale: locale),
+      ),
+      _AdminEntry(
+        icon: Icons.send_rounded,
+        title: _isFrench ? 'Envoi des cours' : 'Send courses',
+        builder: (_) => AdminCourseSendingPage(locale: locale),
       ),
       _AdminEntry(
         icon: Icons.library_books_rounded,
