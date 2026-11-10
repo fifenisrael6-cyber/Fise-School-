@@ -16,7 +16,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/services/chapter_learning_service.dart';
 import '../../../models/chapter_learning_content.dart';
 import '../../../core/utils/educational_text.dart';
-import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
@@ -635,7 +635,7 @@ class _ChapterLearningDetailPageState
                 Container(width: 72, height: 3, decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(3))),
                 if (body.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  RichLessonText(
+                  LessonContentRenderer(
                     text: body,
                     style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
                   ),

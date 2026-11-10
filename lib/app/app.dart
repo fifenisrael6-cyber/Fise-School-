@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/gestures.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -191,6 +193,13 @@ class _FiseSchoolAppState extends State<FiseSchoolApp> {
       scaffoldMessengerKey: fiseMessengerKey,
       title: 'Fise School',
       locale: _locale,
+      localizationsDelegates: const [
+        FlutterQuillLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('fr'), Locale('en')],
       theme: FiseSchoolTheme.light(),
       routes: FiseSchoolRoutes.publicRoutes(
         locale: _locale,
