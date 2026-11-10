@@ -21,8 +21,8 @@ begin
   from public.course_chapters source_ch
   join public.curricula source_cu on source_cu.id = source_ch.curriculum_id
   join public.course_chapters ch
-    on lower(regexp_replace(trim(ch.title_fr), '\\s+', ' ', 'g'))
-     = lower(regexp_replace(trim(source_ch.title_fr), '\\s+', ' ', 'g'))
+    on lower(regexp_replace(trim(ch.title_fr), '\s+', ' ', 'g'))
+     = lower(regexp_replace(trim(source_ch.title_fr), '\s+', ' ', 'g'))
   join public.curricula cu on cu.id = ch.curriculum_id
   where source_ch.id = new.chapter_id
     and source_ch.is_active and ch.is_active
@@ -58,8 +58,8 @@ from public.chapter_content_items i
 join public.course_chapters source_ch on source_ch.id = i.chapter_id
 join public.curricula source_cu on source_cu.id = source_ch.curriculum_id
 join public.course_chapters ch
-  on lower(regexp_replace(trim(ch.title_fr), '\\s+', ' ', 'g'))
-   = lower(regexp_replace(trim(source_ch.title_fr), '\\s+', ' ', 'g'))
+  on lower(regexp_replace(trim(ch.title_fr), '\s+', ' ', 'g'))
+   = lower(regexp_replace(trim(source_ch.title_fr), '\s+', ' ', 'g'))
 join public.curricula cu on cu.id = ch.curriculum_id
 where source_cu.is_active and cu.is_active
   and source_ch.is_active and ch.is_active
