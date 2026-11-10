@@ -27,13 +27,12 @@ android {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.fise_school"
         // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // For more information, see https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+        // You can force using the value of versionCode by specifying the value during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -51,6 +50,12 @@ android {
 
     buildTypes {
         release {
+            // Ignore optional ML Kit OCR scripts not bundled by google_mlkit_text_recognition.
+            // The app currently uses the Latin recognizer; add the script SDKs if that changes.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // Use the stable private release key when configured in GitHub Secrets.
             // Keep a debug-signed APK only for testing when no release key is available.
             signingConfig = if (keystorePropertiesFile.exists()) {
