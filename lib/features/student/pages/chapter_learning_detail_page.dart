@@ -637,7 +637,7 @@ class _ChapterLearningDetailPageState
                   const SizedBox(height: 20),
                   LessonContentRenderer(
                     text: body,
-                    style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontSize: 15.5, height: 1.75) ?? const TextStyle(fontSize: 15.5, height: 1.75),
                   ),
                 ],
                 if (usableImages.isNotEmpty) ...[
