@@ -318,10 +318,10 @@ ${extracted.slice(0, 90000)}`;
             folder_key: "course",
             is_published: previous.is_published === true || publishGeneratedLessons,
           })
-          .eq("id", previous.id).select("id").single();
+          .eq("id", previous.id).select("id,is_published").single();
         if (updateError) throw updateError;
         item = updated;
-        status = "restored_existing";
+        status = updated.is_published === true ? "restored_existing_published" : "restored_existing";
       } else if (restoreExisting) {
         const { data: existingCourses, error: coursesError } = await db.from("chapter_content_items")
           .select("id,title_fr,title_en,is_published,position")
@@ -339,10 +339,10 @@ ${extracted.slice(0, 90000)}`;
               folder_key: "course",
               is_published: previous.is_published === true || publishGeneratedLessons,
             })
-            .eq("id", previous.id).select("id").single();
+            .eq("id", previous.id).select("id,is_published").single();
           if (updateError) throw updateError;
           item = updated;
-          status = "restored_existing";
+          status = updated.is_published === true ? "restored_existing_published" : "restored_existing";
         }
       }
 
@@ -401,7 +401,7 @@ ${extracted.slice(0, 90000)}`;
       restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
-      requires_admin_publication: !restoreExisting && !publishGeneratedLessons,
+      requires_admin_publication: report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
       message: publishGeneratedLessons
         ? `Import terminé : les leçons natives sont publiées et reliées aux chapitres correspondants de ${targetRooms.length} salle(s).`
         : `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
