@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_resource_viewer.dart';
 import '../../../core/services/pedagogy_service.dart';
-import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import '../../ai/pages/ai_page.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
@@ -613,7 +614,11 @@ class _LessonPageState extends State<LessonPage> {
             ],
           ),
           const SizedBox(height: 16),
-          RichLessonText(text: content),
+          LessonContentRenderer(
+            text: content,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.65) ??
+                const TextStyle(fontSize: 16, height: 1.65),
+          ),
         ],
       ),
     );
