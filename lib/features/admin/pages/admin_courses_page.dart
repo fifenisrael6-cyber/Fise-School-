@@ -1,5 +1,8 @@
 
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -157,7 +160,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final titleFr = TextEditingController();
     final descFr = TextEditingController();
     final descEn = TextEditingController();
-    final contentFr = TextEditingController();
+    final contentFr = QuillController.basic();
     final contentEn = TextEditingController();
     bool published = true;
     bool saving = false;
@@ -209,9 +212,10 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
+                      isExpanded: true,
                       initialValue: selectedSubject,
                       decoration: InputDecoration(labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom'),
-                      items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
+                      items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'), maxLines: 1, overflow: TextOverflow.ellipsis)); }).toList(),
                       onChanged: saving ? null : (value) async {
                         selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
                         if (value != null) { curricula = await _curriculaForClass(value['id'].toString(), selectedClass!); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
@@ -220,13 +224,15 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
+                      isExpanded: true,
                       initialValue: selectedCurriculum,
                       decoration: InputDecoration(labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *'),
-                      items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
+                      items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en'), maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
                       onChanged: saving ? null : (value) async { selectedCurriculum = value; selectedChapter = null; chapters = value == null ? [] : List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', value['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; setDialog(() {}); },
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
+                      isExpanded: true,
                       initialValue: selectedChapter,
                       decoration: InputDecoration(labelText: _fr ? 'Chapitre *' : 'Chapter *'),
                       items: chapters.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
@@ -237,7 +243,40 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     const SizedBox(height: 10),
                     TextField(controller: descFr, maxLines: 2, decoration: InputDecoration(labelText: _fr ? 'Description' : 'Description')),
                     const SizedBox(height: 10),
-                    TextField(controller: contentFr, maxLines: 6, decoration: InputDecoration(labelText: _fr ? 'Contenu du cours (français)' : 'Course content (French)')),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(_fr ? 'Contenu du cours (français)' : 'Course content (French)',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: QuillSimpleToolbar(
+                            controller: contentFr,
+                            config: const QuillSimpleToolbarConfig(
+                              multiRowsDisplay: false,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          constraints: const BoxConstraints(minHeight: 300),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: QuillEditor.basic(
+                            controller: contentFr,
+                            config: const QuillEditorConfig(
+                              padding: EdgeInsets.all(8),
+                              expands: false,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
                     SwitchListTile(value: published, onChanged: saving ? null : (v) => setDialog(() => published = v), title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'), contentPadding: EdgeInsets.zero),
                     const SizedBox(height: 8),
@@ -255,7 +294,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             titleEn: titleFr.text.trim(),
                             descriptionFr: descFr.text,
                             descriptionEn: null,
-                            contentFr: contentFr.text,
+                            contentFr: jsonEncode(contentFr.document.toDelta().toJson()),
                             contentEn: null,
                             status: published ? 'published' : 'draft',
                           );
