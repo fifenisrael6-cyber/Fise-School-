@@ -129,9 +129,9 @@ class RichLessonText extends StatelessWidget {
       return false;
     }
     final hasMathNotation = RegExp(
-      r'(\\\\frac|\\\\sqrt|\\\\int|\\\\sum|\\\\lim|\\\\prod|'
-      r'\\\\Delta|\\\\theta|\\\\pi|[=<>≤≥≠∞→±×÷√∫∑])|'
-      r'([_^]|\\\\to|\\\\infty)',
+      r'(\\frac|\\sqrt|\\int|\\sum|\\lim|\\prod|'
+      r'\\Delta|\\theta|\\pi|[=<>≤≥≠∞→±×÷√∫∑])|'
+      r'([_^]|\\to|\\infty)',
     ).hasMatch(line);
     if (!hasMathNotation) return false;
     final words = RegExp(r'[A-Za-zÀ-ÿ]{3,}').allMatches(line).length;
