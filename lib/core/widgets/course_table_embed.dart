@@ -234,8 +234,9 @@ class _CourseTableDialogState extends State<_CourseTableDialog> {
       title: const Text('Modifier le tableau'),
       content: SizedBox(
         width: double.maxFinite,
+        height: MediaQuery.sizeOf(context).height * 0.55,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.max,
           children: [
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
