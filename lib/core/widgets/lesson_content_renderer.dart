@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
 
-import 'course_table_embed.dart';
 import 'rich_lesson_text.dart';
 
 /// Renders a course body stored as Quill Delta JSON.
@@ -155,7 +154,6 @@ class _LessonContentRendererState extends State<LessonContentRenderer> {
           imageProviderBuilder: _dataImageProvider,
         ),
       ),
-      CourseTableEmbedBuilder(),
     ];
 
     final editor = QuillEditor.basic(
