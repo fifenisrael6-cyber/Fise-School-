@@ -38,7 +38,7 @@ class OfflinePdfCourseImporter {
         for (var index = 0; index < extracted.length; index++) {
           final pageIndex = start + index;
           var text = (extracted[index]['text'] ?? '').toString().trim();
-          final needsOcr = text.replaceAll(RegExp(r'\\s+'), '').length < 35;
+          final needsOcr = text.replaceAll(RegExp(r'\s+'), '').length < 35;
           Uint8List? pageImage;
           if (needsOcr) {
             pageImage = await _renderPage(document, pageIndex);
@@ -117,7 +117,16 @@ class OfflinePdfCourseImporter {
 
   List<Map<String, dynamic>> _blocksFromText(String text, int page, List<dynamic> lineMetadata) {
     final result = <Map<String, dynamic>>[];
-    final lines = text.split(RegExp(r'\\r?\\n'));
+    final lines = text.split(RegExp(r'\r?\n'));
+    final sizes = lineMetadata.whereType<Map>()
+        .map((line) => (line['fontSize'] as num?)?.toDouble() ?? 0)
+        .where((size) => size > 0).toList()..sort();
+    final medianFont = sizes.isEmpty ? 0.0 : sizes[sizes.length ~/ 2];
+    final fontByText = <String, double>{
+      for (final line in lineMetadata.whereType<Map>())
+        (line['text']?.toString().trim() ?? ''):
+            (line['fontSize'] as num?)?.toDouble() ?? 0,
+    };
     final buffer = <String>[];
     final tableRows = <List<String>>[];
     void flushTable() {
@@ -135,7 +144,7 @@ class OfflinePdfCourseImporter {
       tableRows.clear();
     }
     List<String>? splitColumns(String value) {
-      final parts = value.split(RegExp(r'\\t|\\s{2,}')).map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
+      final parts = value.split(RegExp(r'\t|\s{2,}')).map((v) => v.trim()).where((v) => v.isNotEmpty).toList();
       return parts.length >= 2 ? parts : null;
     }
     void flush() {
@@ -166,8 +175,8 @@ class OfflinePdfCourseImporter {
       } else {
         flushTable();
       }
-      final bullet = RegExp(r'^(?:[•●▪◦‣–—-])\\s+(.+)$').firstMatch(line);
-      final numbered = RegExp(r'^(?:\\d+[.)]|[a-zA-Z][.)])\\s+(.+)$').firstMatch(line);
+      final bullet = RegExp(r'^(?:[•●▪◦‣–—-])\s+(.+)$').firstMatch(line);
+      final numbered = RegExp(r'^(?:\d+[.)]|[a-zA-Z][.)])\s+(.+)$').firstMatch(line);
       if (bullet != null || numbered != null) {
         flush();
         result.add({
@@ -183,7 +192,7 @@ class OfflinePdfCourseImporter {
       final fontHeading = medianFont > 0 && fontSize >= medianFont * 1.22;
       final headingLike = (fontHeading || (line.length <= 90 &&
           !line.endsWith('.') &&
-          (line == line.toUpperCase() || RegExp(r'^(CHAPITRE|LEÇON|SECTION|I{1,3}[.)]|[0-9]+[.)])\\b', caseSensitive: false).hasMatch(line)));
+          (line == line.toUpperCase() || RegExp(r'^(CHAPITRE|LEÇON|SECTION|I{1,3}[.)]|[0-9]+[.)])\b', caseSensitive: false).hasMatch(line))));
       if (headingLike) {
         flush();
         final level = fontHeading && medianFont > 0 ? (fontSize >= medianFont * 1.65 ? 1 : fontSize >= medianFont * 1.35 ? 2 : 3) : (line.length < 35 ? 1 : line.length < 65 ? 2 : 3);
