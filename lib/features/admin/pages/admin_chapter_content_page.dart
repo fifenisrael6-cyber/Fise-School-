@@ -407,13 +407,15 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         );
       }
       final existing = await db.from('chapter_content_items').select('id').eq('chapter_id', chapter!['id']);
+      final encodedFrench = jsonEncode(bodyFr.document.toDelta().toJson());
+      final translatedEnglish = bodyEn.text.trim();
       final inserted = await db.from('chapter_content_items').insert({
         'chapter_id': chapter!['id'],
         'content_type': type.value,
         'title_fr': titleFr.text.trim(),
         'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
-        'body_text_fr': type.value == 'course' ? jsonEncode(bodyFr.document.toDelta().toJson()) : null,
-        'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.document.toPlainText().trim() : bodyEn.text.trim()) : null,
+        'body_text_fr': type.value == 'course' ? encodedFrench : null,
+        'body_text_en': type.value == 'course' ? (translatedEnglish.isEmpty ? encodedFrench : translatedEnglish) : null,
         'external_url': type.value == 'video' ? url.text.trim() : null,
         'storage_path': storagePath,
         'position': existing.length + 1,
@@ -630,8 +632,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'is_published': published.value,
       };
       if (type == 'course') {
-        data['body_text_fr'] = jsonEncode(bodyFr.document.toDelta().toJson());
-        data['body_text_en'] = bodyEn.text.trim().isEmpty ? bodyFr.document.toPlainText().trim() : bodyEn.text.trim();
+        final encodedFrench = jsonEncode(bodyFr.document.toDelta().toJson());
+        data['body_text_fr'] = encodedFrench;
+        data['body_text_en'] = bodyEn.text.trim().isEmpty ? encodedFrench : bodyEn.text.trim();
       } else if (type == 'video') {
         data['external_url'] = url.text.trim();
       } else if (replacementPath != null) {
