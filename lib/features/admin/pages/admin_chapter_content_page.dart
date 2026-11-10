@@ -104,6 +104,15 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   String label(Map<String,dynamic> m,String f,String e)=>(m[fr?f:e] as String?)??(m['display_name'] as String?)??'';
   void toast(String s){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s)));}
   Future<bool> confirm(String s) async=>await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(s),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Confirmer','Confirm')))]))??false;
+  bool _isQuillDelta(String? raw) {
+    try {
+      final decoded = jsonDecode(raw ?? '');
+      return decoded is Map && decoded['ops'] is List;
+    } catch (_) {
+      return false;
+    }
+  }
+
   QuillController _controllerFromStored(String? raw) {
     final value = raw ?? '';
     try {
@@ -540,7 +549,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final type = item['content_type'] as String? ?? 'course';
     final titleFr = TextEditingController(text: item['title_fr'] as String? ?? '');
     final titleEn = TextEditingController(text: item['title_en'] as String? ?? '');
-    final bodyFr = _controllerFromStored(item['body_text_fr'] as String?);
+    final originalBodyFr = item['body_text_fr'] as String? ?? '';
+    final bodyFr = _controllerFromStored(originalBodyFr);
     final bodyEn = TextEditingController(text: item['body_text_en'] as String? ?? '');
     final url = TextEditingController(text: item['external_url'] as String? ?? '');
     final published = ValueNotifier<bool>(item['is_published'] as bool? ?? false);
@@ -641,7 +651,10 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'is_published': published.value,
       };
       if (type == 'course') {
-        final encodedFrench = jsonEncode(bodyFr.document.toDelta().toJson());
+        final editedPlain = bodyFr.document.toPlainText().trim();
+        final encodedFrench = !_isQuillDelta(originalBodyFr) && editedPlain == originalBodyFr.trim()
+            ? originalBodyFr
+            : jsonEncode(bodyFr.document.toDelta().toJson());
         data['body_text_fr'] = encodedFrench;
         data['body_text_en'] = bodyEn.text.trim().isEmpty ? encodedFrench : bodyEn.text.trim();
       } else if (type == 'video') {
@@ -700,7 +713,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> editCourseRecord(Map<String, dynamic> course) async {
     final titleFr = TextEditingController(text: course['title_fr']?.toString() ?? '');
     final titleEn = TextEditingController(text: course['title_en']?.toString() ?? '');
-    final content = _controllerFromStored(course['content_fr']?.toString());
+    final originalContent = course['content_fr']?.toString() ?? '';
+    final content = _controllerFromStored(originalContent);
     bool published = course['status'] == 'published';
     final ok = await showDialog<bool>(
       context: context,
@@ -744,7 +758,10 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       return;
     }
     try {
-      final encoded = jsonEncode(content.document.toDelta().toJson());
+      final editedPlain = content.document.toPlainText().trim();
+      final encoded = !_isQuillDelta(originalContent) && editedPlain == originalContent.trim()
+          ? originalContent
+          : jsonEncode(content.document.toDelta().toJson());
       final oldStatus = (course['status'] ?? 'draft').toString();
       final updates = <String, dynamic>{
         'title_fr': titleFr.text.trim(),
