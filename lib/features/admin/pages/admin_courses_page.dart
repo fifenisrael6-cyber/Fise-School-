@@ -226,6 +226,24 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       var offset = start;
       for (final block in selected) {
         final type = block['type']?.toString() ?? 'paragraph';
+        if (type == 'table') {
+          final cells = (block['cells'] as List? ?? const [])
+              .map((row) => (row as List).map((cell) => cell.toString()).toList())
+              .toList();
+          if (cells.isNotEmpty) {
+            controller.document.insert(
+              offset,
+              BlockEmbed.custom(CourseTableEmbed.fromCells(
+                cells: cells,
+                firstRowHeader: block['firstRowHeader'] == true,
+              )),
+            );
+            offset += 1;
+            controller.document.insert(offset, '\n');
+            offset += 1;
+          }
+          continue;
+        }
         if (type == 'image') {
           final data = block['data']?.toString() ?? '';
           if (data.startsWith('data:image/')) {
