@@ -728,6 +728,168 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     titleFr.dispose(); contentFr.dispose(); contentEn.dispose();
   }
 
+  Future<void> _editCourse(Map<String, dynamic> course) async {
+    final title = TextEditingController(text: _name(course));
+    QuillController editor;
+    final rawContent = course['content_fr']?.toString() ?? '';
+    try {
+      final decoded = jsonDecode(rawContent);
+      if (decoded is List && decoded.isNotEmpty) {
+        editor = QuillController(
+          document: Document.fromJson(List<Map<String, dynamic>>.from(
+            decoded.map((item) => Map<String, dynamic>.from(item as Map)),
+          )),
+          selection: const TextSelection.collapsed(offset: 0),
+        );
+      } else {
+        editor = QuillController.basic();
+        if (rawContent.trim().isNotEmpty) {
+          editor.document.insert(0, rawContent);
+        }
+      }
+    } catch (_) {
+      editor = QuillController.basic();
+      if (rawContent.trim().isNotEmpty) {
+        editor.document.insert(0, rawContent);
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        var saving = false;
+        return StatefulBuilder(
+          builder: (context, setSheetState) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              18, 8, 18, MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _fr ? 'Modifier le cours' : 'Edit course',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: title,
+                    decoration: InputDecoration(labelText: _fr ? 'Titre du cours *' : 'Course title *'),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_fr ? 'Contenu du cours' : 'Course content',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: QuillSimpleToolbar(
+                      controller: editor,
+                      config: const QuillSimpleToolbarConfig(multiRowsDisplay: false),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    constraints: const BoxConstraints(minHeight: 260, maxHeight: 440),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: QuillEditor.basic(
+                      controller: editor,
+                      config: QuillEditorConfig(
+                        padding: const EdgeInsets.all(8),
+                        embedBuilders: [CourseTableEmbedBuilder(), CourseImageEmbedBuilder()],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    onPressed: saving || title.text.trim().isEmpty ? null : () async {
+                      setSheetState(() => saving = true);
+                      try {
+                        await _client.from('courses').update({
+                          'title_fr': title.text.trim(),
+                          'title_en': title.text.trim(),
+                          'content_fr': jsonEncode(editor.document.toDelta().toJson()),
+                        }).eq('id', course['id']);
+                        if (!sheetContext.mounted) return;
+                        Navigator.pop(sheetContext);
+                        _snack(_fr ? 'Cours modifié avec succès.' : 'Course updated successfully.');
+                        await _load();
+                      } catch (e) {
+                        if (sheetContext.mounted) {
+                          setSheetState(() => saving = false);
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            SnackBar(content: Text(_fr ? 'Modification impossible : $e' : 'Unable to update course: $e')),
+                          );
+                        }
+                      }
+                    },
+                    icon: saving
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.save_rounded),
+                    label: Text(saving ? (_fr ? 'Enregistrement…' : 'Saving…') : (_fr ? 'Enregistrer les modifications' : 'Save changes')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    title.dispose();
+    editor.dispose();
+  }
+
+  Future<void> _setCoursePublication(Map<String, dynamic> course) async {
+    final currentlyPublished = course['status'] == 'published';
+    try {
+      if (currentlyPublished) {
+        await _client.from('courses').update({
+          'status': 'draft',
+          'published_at': null,
+        }).eq('id', course['id']);
+        _snack(_fr ? 'Cours remis en brouillon.' : 'Course moved back to draft.');
+      } else {
+        await _courses.publishCourse(course['id'].toString());
+        _snack(_fr ? 'Cours publié dans la salle de l’élève.' : 'Course published to the student classroom.');
+      }
+      await _load();
+    } catch (e) {
+      _snack(_fr ? 'Publication impossible : $e' : 'Unable to change publication: $e');
+    }
+  }
+
+  Future<void> _deleteCourse(Map<String, dynamic> course) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Supprimer définitivement ce cours ?' : 'Permanently delete this course?'),
+        content: Text(_fr
+          ? '« ${_name(course)} » sera supprimé de la base de données. Cette action est irréversible.'
+          : '"${_name(course)}" will be deleted from the database. This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Supprimer' : 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _courses.deleteCourse(course['id'].toString());
+      _snack(_fr ? 'Cours supprimé.' : 'Course deleted.');
+      await _load();
+    } catch (e) {
+      _snack(_fr ? 'Suppression impossible : $e' : 'Unable to delete course: $e');
+    }
+  }
+
   Future<void> _addResource(Map<String, dynamic> course) async {
     final source = await showModalBottomSheet<String>(
       context: context,
@@ -1009,7 +1171,13 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           final room = (c['school_classes'] is Map) ? Map<String, dynamic>.from(c['school_classes'] as Map) : <String, dynamic>{};
           final subject = (c['subjects'] is Map) ? Map<String, dynamic>.from(c['subjects'] as Map) : <String, dynamic>{};
           return Card(child: ListTile(isThreeLine: true, leading: const CircleAvatar(backgroundColor: Color(0xFF166534), child: Icon(Icons.menu_book, color: Colors.white)), title: Text(_name(c), style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${room['display_name'] ?? ''}\n${_nestedName(subject, 'name_fr', 'name_en')} • ${c['status'] ?? 'draft'}'), trailing: PopupMenuButton<String>(onSelected: (v) async {
-            if (v == 'resource') {
+            if (v == 'edit') {
+              await _editCourse(c);
+            } else if (v == 'publish' || v == 'unpublish') {
+              await _setCoursePublication(c);
+            } else if (v == 'delete') {
+              await _deleteCourse(c);
+            } else if (v == 'resource') {
               await _addResource(c);
             } else if (v == 'manage_resources') {
               await _manageResources(c);
@@ -1023,6 +1191,10 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               }
             }
           }, itemBuilder: (_) => [
+            PopupMenuItem(value: 'edit', child: Text(_fr ? 'Modifier le cours' : 'Edit course')),
+            PopupMenuItem(value: c['status'] == 'published' ? 'unpublish' : 'publish', child: Text(c['status'] == 'published' ? (_fr ? 'Retirer de la publication' : 'Unpublish course') : (_fr ? 'Publier dans l’espace élève' : 'Publish to student area'))),
+            PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer définitivement le cours' : 'Delete course permanently')),
+            const PopupMenuDivider(),
             PopupMenuItem(value: 'resource', child: Text(_fr ? 'Ajouter photo/PDF/fichier' : 'Add photo/PDF/file')),
             PopupMenuItem(value: 'manage_resources', child: Text(_fr ? 'Gérer / remplacer / supprimer les documents' : 'Manage / replace / delete documents')),
             if (c['status'] != 'archived') PopupMenuItem(value: 'archive', child: Text(_fr ? 'Archiver le cours' : 'Archive course')),
