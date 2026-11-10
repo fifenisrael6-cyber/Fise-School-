@@ -1,5 +1,6 @@
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -9,6 +10,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/course_table_embed.dart';
+import '../../../core/services/offline_pdf_course_importer.dart';
+import '../../../core/widgets/pdf_import_preview_dialog.dart';
 import 'school_classes_page.dart';
 import 'admin_chapter_content_page.dart';
 import '../../../models/pedagogy.dart';
@@ -138,6 +141,130 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     return containers.isNotEmpty ? containers : matching;
   }
 
+  Future<void> _importPdfIntoEditor(
+    BuildContext context,
+    QuillController controller,
+    StateSetter setDialog,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      final bytes = file.bytes ??
+          (file.path != null ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null || bytes.isEmpty) {
+        _snack(_fr ? 'Impossible de lire ce fichier PDF.' : 'Unable to read this PDF file.');
+        return;
+      }
+
+      var completed = 0;
+      var total = 1;
+      StateSetter? updateProgress;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setProgress) {
+            updateProgress = setProgress;
+            return AlertDialog(
+              title: Text(_fr ? 'Analyse du PDF' : 'Analyzing PDF'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  LinearProgressIndicator(value: total == 0 ? null : completed / total),
+                  const SizedBox(height: 12),
+                  Text(_fr
+                      ? 'Pages traitées : $completed / $total. Le traitement continue par lots de 10 pages.'
+                      : 'Pages processed: $completed / $total. Processing continues in batches of 10 pages.'),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      List<Map<String, dynamic>> blocks;
+      try {
+        blocks = await OfflinePdfCourseImporter().importFile(
+          bytes,
+          onProgress: (done, count) {
+            completed = done;
+            total = count;
+            updateProgress?.call(() {});
+          },
+        );
+      } finally {
+        if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      }
+      if (!context.mounted || blocks.isEmpty) {
+        if (context.mounted) _snack(_fr ? 'Aucun texte exploitable trouvé dans ce PDF.' : 'No usable text was found in this PDF.');
+        return;
+      }
+
+      final selected = await showDialog<List<Map<String, dynamic>>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PdfImportPreviewDialog(blocks: blocks),
+      );
+      if (selected == null || selected.isEmpty || !context.mounted) return;
+
+      final selection = controller.selection;
+      final start = selection.isValid ? selection.start : controller.document.length - 1;
+      if (selection.isValid && selection.end > selection.start) {
+        controller.replaceText(
+          start,
+          selection.end - selection.start,
+          '',
+          TextSelection.collapsed(offset: start),
+        );
+      }
+      var offset = start;
+      for (final block in selected) {
+        final type = block['type']?.toString() ?? 'paragraph';
+        if (type == 'image') {
+          final data = block['data']?.toString() ?? '';
+          if (data.startsWith('data:image/')) {
+            controller.document.insert(offset, BlockEmbed.image(data));
+            offset += 1;
+            controller.document.insert(offset, '\n');
+            offset += 1;
+          }
+          continue;
+        }
+        final text = block['text']?.toString().trim() ?? '';
+        if (text.isEmpty) continue;
+        controller.document.insert(offset, text);
+        controller.document.insert(offset + text.length, '\n');
+        final length = text.length + 1;
+        if (type == 'heading') {
+          final level = block['level'] as int? ?? 2;
+          final attribute = level <= 1 ? Attribute.h1 : level == 2 ? Attribute.h2 : Attribute.h3;
+          controller.formatLine(offset, length, attribute);
+        } else if (type == 'list') {
+          controller.formatLine(offset, length, block['ordered'] == true ? Attribute.ol : Attribute.ul);
+        }
+        offset += length;
+      }
+      controller.updateSelection(
+        TextSelection.collapsed(offset: offset),
+        ChangeSource.local,
+      );
+      setDialog(() {});
+      _snack(_fr ? '${selected.length} bloc(s) PDF inséré(s) dans le cours.' : '${selected.length} PDF block(s) inserted into the course.');
+    } on FormatException catch (e) {
+      if (context.mounted) _snack(e.message);
+    } catch (e) {
+      if (context.mounted) {
+        _snack(_fr ? 'Échec de l’import PDF : $e' : 'PDF import failed: $e');
+      }
+    }
+  }
+
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
       await _client.from('school_classes').select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active').eq('is_active', true).order('display_name'),
@@ -249,6 +376,15 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                       children: [
                         Text(_fr ? 'Contenu du cours (français)' : 'Course content (French)',
                             style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: saving ? null : () => _importPdfIntoEditor(context, contentFr, setDialog),
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                            label: Text(_fr ? 'Importer un PDF' : 'Import a PDF'),
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
