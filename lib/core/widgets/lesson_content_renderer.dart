@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import 'rich_lesson_text.dart';
+import 'course_image_embed.dart';
+import 'course_table_embed.dart';
 
 /// Displays Quill Delta courses while keeping compatibility with legacy text.
 class LessonContentRenderer extends StatefulWidget {
@@ -86,6 +88,7 @@ class _LessonContentRendererState extends State<LessonContentRenderer> {
         padding: EdgeInsets.zero,
         expands: false,
         showCursor: false,
+        embedBuilders: [CourseImageEmbedBuilder(), CourseTableEmbedBuilder()],
       ),
     );
     return DefaultTextStyle.merge(style: widget.style, child: editor);
