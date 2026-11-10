@@ -316,6 +316,7 @@ ${extracted.slice(0, 90000)}`;
             body_text_fr: String(generated.content_fr).trim(),
             body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
             folder_key: "course",
+            is_published: previous.is_published === true || publishGeneratedLessons,
           })
           .eq("id", previous.id).select("id").single();
         if (updateError) throw updateError;
@@ -336,6 +337,7 @@ ${extracted.slice(0, 90000)}`;
               body_text_fr: String(generated.content_fr).trim(),
               body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
               folder_key: "course",
+              is_published: previous.is_published === true || publishGeneratedLessons,
             })
             .eq("id", previous.id).select("id").single();
           if (updateError) throw updateError;
