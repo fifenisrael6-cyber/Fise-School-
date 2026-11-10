@@ -19,6 +19,32 @@ class RichLessonText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isUnreadablePayload(text)) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          border: Border.all(color: const Color(0xFFFED7AA)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, color: Color(0xFF9A3412)),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Ce contenu est illisible et doit être corrigé par l’enseignant.',
+                style: TextStyle(color: Color(0xFF7C2D12), height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final blocks = _parseBlocks(_normalize(text));
     final children = <Widget>[];
 
@@ -159,6 +185,17 @@ class RichLessonText extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static bool _isUnreadablePayload(String raw) {
+    final value = raw.trimLeft();
+    if (value.isEmpty) return false;
+    final serializedEditorData = RegExp(
+      r'^(?:\{\s*"?ops"?\s*:|\[\s*\{\s*"?insert"?\s*:)',
+    ).hasMatch(value);
+    final replacementCharacters =
+        RegExp('\uFFFD').allMatches(raw).length;
+    return serializedEditorData || replacementCharacters >= 3;
   }
 
   static String _normalize(String raw) {
