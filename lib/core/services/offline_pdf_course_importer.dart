@@ -38,13 +38,13 @@ class OfflinePdfCourseImporter {
         for (var index = 0; index < extracted.length; index++) {
           final pageIndex = start + index;
           var text = (extracted[index]['text'] ?? '').toString().trim();
-          final needsOcr = text.replaceAll(RegExp(r'\\s+'), '').length < 35;
+          final needsOcr = text.replaceAll(RegExp(r'\s+'), '').length < 35;
           // Keep a visual copy of pages likely to contain scientific figures,
           // diagrams or scanned content. This is a full-page render, not a
           // cropped embedded-image object; the administrator chooses whether
           // to keep it in the editable course.
           final hasVisualCue = RegExp(
-            r'(figure|fig\\.?|schéma|schema|diagramme|graphique|illustration|photo|image|planche)',
+            r'(figure|fig\.?|schéma|schema|diagramme|graphique|illustration|photo|image|planche)',
             caseSensitive: false,
           ).hasMatch(text) || text.length < 900;
           Uint8List? pageImage;
