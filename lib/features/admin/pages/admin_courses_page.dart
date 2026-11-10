@@ -52,7 +52,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     try {
       final rows = await _client
           .from('courses')
-          .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
+          .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,updated_at,published_at,class_id,subject_id,teacher_id,curriculum_id,chapter_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
           .order('created_at', ascending: false);
       if (!mounted) {
         return;
@@ -731,6 +731,8 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   Future<void> _editCourse(Map<String, dynamic> course) async {
     final title = TextEditingController(text: _name(course));
     QuillController editor;
+    // Admin list fetches the complete saved document so editing never opens
+    // with a blank editor and accidentally overwrites an existing course.
     final rawContent = course['content_fr']?.toString() ?? '';
     try {
       final decoded = jsonDecode(rawContent);
