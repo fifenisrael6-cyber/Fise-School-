@@ -954,6 +954,7 @@ class CourseService {
     await _client.from('courses').delete().eq('id', id);
     try {
       await JsonCache.instance.remove('resources_course_$id');
+      await OfflineRepository().deleteCourse(id);
     } catch (_) {
       // Local cache cleanup must not undo a successful remote deletion.
     }
