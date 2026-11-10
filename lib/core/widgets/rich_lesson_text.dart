@@ -164,9 +164,9 @@ class RichLessonText extends StatelessWidget {
       return false;
     }
     final hasMathNotation = RegExp(
-      r'(\\\\frac|\\\\sqrt|\\\\int|\\\\sum|\\\\lim|\\\\prod|'
-      r'\\\\Delta|\\\\theta|\\\\pi|[=<>≤≥≠∞→±×÷√∫∑])|'
-      r'([_^]|\\\\to|\\\\infty)',
+      r'(\\frac|\\sqrt|\\int|\\sum|\\lim|\\prod|'
+      r'\\Delta|\\theta|\\pi|[=<>≤≥≠∞→±×÷√∫∑])|'
+      r'([_^]|\\to|\\infty)',
     ).hasMatch(line);
     final chemicalFormula = RegExp(
       r'^[A-Z][a-z]?[0-9]+(?:[A-Z][a-z]?[0-9]*)+$',
