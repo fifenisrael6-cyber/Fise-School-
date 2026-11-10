@@ -1,7 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import '../../../core/widgets/course_image_embed.dart';
+import '../../../core/widgets/course_table_embed.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import 'admin_chapter_assessments_page.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
@@ -13,6 +20,7 @@ class AdminChapterContentPage extends StatefulWidget {
 }
 class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   final db = Supabase.instance.client;
+  final ImagePicker _imagePicker = ImagePicker();
   bool loading = true;
   String? error;
   List<Map<String,dynamic>> classes=[], subjects=[], curricula=[], chapters=[];
@@ -96,6 +104,196 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   String label(Map<String,dynamic> m,String f,String e)=>(m[fr?f:e] as String?)??(m['display_name'] as String?)??'';
   void toast(String s){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(s)));}
   Future<bool> confirm(String s) async=>await showDialog<bool>(context:context,builder:(c)=>AlertDialog(content:Text(s),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Confirmer','Confirm')))]))??false;
+  QuillController _controllerFromStored(String? raw) {
+    final value = raw ?? '';
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map && decoded['ops'] is List) {
+        final operations = (decoded['ops'] as List)
+            .whereType<Map>()
+            .map((op) => Map<String, dynamic>.from(op))
+            .toList(growable: false);
+        if (operations.isNotEmpty) {
+          return QuillController(
+            document: Document.fromJson(operations),
+            selection: const TextSelection.collapsed(offset: 0),
+          );
+        }
+      }
+    } catch (_) {
+      // Existing plain-text/Markdown lessons are converted without data loss.
+    }
+    final document = Document();
+    if (value.isNotEmpty) document.insert(0, value);
+    return QuillController(
+      document: document,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+  }
+
+  Widget _buildCourseEditor(QuillController controller) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: QuillSimpleToolbar(
+            controller: controller,
+            config: const QuillSimpleToolbarConfig(multiRowsDisplay: false),
+          ),
+        ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _insertImage(controller),
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(t('Ajouter une image ici', 'Insert image here')),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _insertTable(controller),
+              icon: const Icon(Icons.table_chart_outlined),
+              label: Text(t('Insérer un tableau', 'Insert table')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          constraints: const BoxConstraints(minHeight: 260, maxHeight: 420),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.all(8),
+          child: QuillEditor.basic(
+            controller: controller,
+            config: QuillEditorConfig(
+              padding: const EdgeInsets.all(8),
+              expands: false,
+              embedBuilders: [CourseTableEmbedBuilder(), CourseImageEmbedBuilder()],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _insertImage(QuillController controller) async {
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 1800,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (bytes.isEmpty) {
+      toast(t('Image vide ou illisible.', 'The image is empty or unreadable.'));
+      return;
+    }
+    final extension = picked.name.split('.').last.toLowerCase();
+    final mime = extension == 'png'
+        ? 'image/png'
+        : extension == 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    final dataUri = 'data:$mime;base64,\u0024{base64Encode(bytes)}';
+    final selection = controller.selection;
+    final start = selection.isValid
+        ? selection.start
+        : controller.document.length - 1;
+    final length = selection.isValid ? selection.end - selection.start : 0;
+    if (length > 0) {
+      controller.replaceText(
+        start, length, '', TextSelection.collapsed(offset: start),
+      );
+    }
+    controller.document.insert(start, BlockEmbed.image(dataUri));
+    controller.document.insert(start + 1, '\n');
+    controller.updateSelection(
+      TextSelection.collapsed(offset: start + 2),
+      ChangeSource.local,
+    );
+  }
+
+  Future<void> _insertTable(QuillController controller) async {
+    final table = await showCourseTableDialog(context);
+    if (table == null) return;
+    final cells = (table['cells'] as List? ?? const [])
+        .map((row) => (row as List).map((cell) => cell.toString()).toList())
+        .toList();
+    if (cells.isEmpty) return;
+    final selection = controller.selection;
+    final start = selection.isValid
+        ? selection.start
+        : controller.document.length - 1;
+    final length = selection.isValid ? selection.end - selection.start : 0;
+    if (length > 0) {
+      controller.replaceText(
+        start, length, '', TextSelection.collapsed(offset: start),
+      );
+    }
+    controller.document.insert(
+      start,
+      BlockEmbed.custom(CourseTableEmbed.fromCells(
+        cells: cells,
+        firstRowHeader: table['firstRowHeader'] == true,
+      )),
+    );
+    controller.document.insert(start + 1, '\n');
+    controller.updateSelection(
+      TextSelection.collapsed(offset: start + 2),
+      ChangeSource.local,
+    );
+  }
+
+  Future<void> viewContent(Map<String, dynamic> item) async {
+    final title = (item['title_fr'] ?? '').toString();
+    final body = (item['body_text_fr'] ?? '').toString();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title.isEmpty ? t('Aperçu du contenu', 'Content preview') : title),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (body.trim().isNotEmpty)
+                  LessonContentRenderer(
+                    text: body,
+                    style: Theme.of(dialogContext).textTheme.bodyLarge ??
+                        const TextStyle(fontSize: 16, height: 1.65),
+                  )
+                else
+                  Text(t(
+                    'Ce contenu est un fichier ou un média. Utilisez Modifier pour remplacer sa source.',
+                    'This item is a file or media resource. Use Edit to replace its source.',
+                  )),
+                if ((item['storage_path'] as String? ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    t('Fichier source conservé dans Supabase Storage.',
+                      'Source file is preserved in Supabase Storage.'),
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(t('Fermer', 'Close')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> editChapter([Map<String,dynamic>? old]) async {
     final n=TextEditingController(text:(old?['position']??(chapters.length+1)).toString()), f=TextEditingController(text:old?['title_fr'] as String? ?? ''), e=TextEditingController(text:old?['title_en'] as String? ?? '');
     final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text(t('Chapitre','Chapter')),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:n,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:t('Numéro','Number'))),TextField(controller:f,decoration:const InputDecoration(labelText:'Titre français')),TextField(controller:e,decoration:const InputDecoration(labelText:'Titre anglais (facultatif)'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:Text(t('Annuler','Cancel'))),FilledButton(onPressed:()=>Navigator.pop(c,true),child:Text(t('Enregistrer','Save')))]));
@@ -110,7 +308,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final targetChapterId = chapter!['id'].toString();
     final titleFr = TextEditingController();
     final titleEn = TextEditingController();
-    final bodyFr = TextEditingController();
+    final bodyFr = QuillController.basic();
     final bodyEn = TextEditingController();
     final url = TextEditingController();
     final type = ValueNotifier<String>('course');
@@ -134,7 +332,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         ExpansionTile(title:Text(t('Traduction anglaise (facultative)','English translation (optional)')),children:[TextField(controller:titleEn,decoration:const InputDecoration(labelText:'English title'))]),
         ValueListenableBuilder<String>(valueListenable: type, builder: (_, v, __) => Column(children: [
           if (v == 'course') ...[
-            TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
+            _buildCourseEditor(bodyFr),
             ExpansionTile(title:Text(t('Traduction anglaise du cours (facultative)','Optional English lesson translation')),children:[TextField(controller:bodyEn,maxLines:8,decoration:const InputDecoration(labelText:'English lesson'))]),
           ],
           if (v == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo direct MP4 ou YouTube/Vimeo')),
@@ -162,7 +360,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     }
     String? storagePath;
     try {
-      if (type.value == 'course' && bodyFr.text.trim().isEmpty) {
+      if (type.value == 'course' && bodyFr.document.toPlainText().trim().isEmpty) {
         toast(t('Le contenu du cours en français est obligatoire.','French lesson content is required.')); return;
       }
       if (type.value == 'video' && url.text.trim().isEmpty) {
@@ -214,7 +412,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'content_type': type.value,
         'title_fr': titleFr.text.trim(),
         'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
-        'body_text_fr': type.value == 'course' ? bodyFr.text.trim() : null,
+        'body_text_fr': type.value == 'course' ? jsonEncode(bodyFr.document.toDelta().toJson()) : null,
         'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim()) : null,
         'external_url': type.value == 'video' ? url.text.trim() : null,
         'storage_path': storagePath,
@@ -331,7 +529,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final type = item['content_type'] as String? ?? 'course';
     final titleFr = TextEditingController(text: item['title_fr'] as String? ?? '');
     final titleEn = TextEditingController(text: item['title_en'] as String? ?? '');
-    final bodyFr = TextEditingController(text: item['body_text_fr'] as String? ?? '');
+    final bodyFr = _controllerFromStored(item['body_text_fr'] as String?);
     final bodyEn = TextEditingController(text: item['body_text_en'] as String? ?? '');
     final url = TextEditingController(text: item['external_url'] as String? ?? '');
     final published = ValueNotifier<bool>(item['is_published'] as bool? ?? false);
@@ -360,7 +558,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
               style: const TextStyle(fontSize: 12, height: 1.4),
             ),
           ),
-          TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
+          _buildCourseEditor(bodyFr),
           ExpansionTile(
             title: Text(t('Traduction anglaise du cours (facultative)', 'Optional English lesson translation')),
             children: [
@@ -385,7 +583,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       toast(t('Le titre français est obligatoire.', 'The French title is required.'));
       return;
     }
-    if (type == 'course' && bodyFr.text.trim().isEmpty) {
+    if (type == 'course' && bodyFr.document.toPlainText().trim().isEmpty) {
       toast(t('Le contenu du cours en français est obligatoire.', 'French lesson content is required.'));
       return;
     }
@@ -432,7 +630,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'is_published': published.value,
       };
       if (type == 'course') {
-        data['body_text_fr'] = bodyFr.text.trim();
+        data['body_text_fr'] = jsonEncode(bodyFr.document.toDelta().toJson());
         data['body_text_en'] = bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim();
       } else if (type == 'video') {
         data['external_url'] = url.text.trim();
@@ -531,9 +729,11 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             leading:Icon(item['content_type']=='pdf'?Icons.picture_as_pdf:item['content_type']=='video'?Icons.play_circle:Icons.menu_book),
             title:Text((item['title_fr'] as String?)??''),
             subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
+            onTap: () => viewContent(item),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='view')viewContent(item);if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
+                PopupMenuItem(value:'view',child:Text(t('Voir le cours','View course'))),
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
