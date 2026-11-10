@@ -236,6 +236,11 @@ class OfflineRepository {
   // NETTOYAGE DU CACHE
   // ============================================================
 
+  Future<void> deleteCourse(String id) async {
+    await _database.deleteCourse(id);
+    await _database.deleteLessonsForCourse(id);
+  }
+
   Future<void> clearCourses() async {
     await _database.deleteAllCourses();
   }
