@@ -210,8 +210,22 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedSubject,
-                      decoration: InputDecoration(labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom'),
-                      items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom',
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: subjects.map((s) {
+                        final m = Map<String, dynamic>.from(s['subjects'] as Map);
+                        return DropdownMenuItem(
+                          value: m,
+                          child: Text(
+                            _nestedName(m, 'name_fr', 'name_en'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
                       onChanged: saving ? null : (value) async {
                         selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
                         if (value != null) { curricula = await _curriculaForClass(value['id'].toString(), selectedClass!); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
@@ -221,8 +235,19 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     const SizedBox(height: 12),
                     DropdownButtonFormField<Map<String, dynamic>>(
                       initialValue: selectedCurriculum,
-                      decoration: InputDecoration(labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *'),
-                      items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *',
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: curricula.map((c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(
+                          _nestedName(c, 'title_fr', 'title_en'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )).toList(),
                       onChanged: saving ? null : (value) async { selectedCurriculum = value; selectedChapter = null; chapters = value == null ? [] : List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', value['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; setDialog(() {}); },
                     ),
                     const SizedBox(height: 12),
