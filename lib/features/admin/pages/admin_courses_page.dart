@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/course_table_embed.dart';
+import '../../../core/widgets/course_image_embed.dart';
 import '../../../core/services/offline_pdf_course_importer.dart';
 import '../../../core/widgets/pdf_import_preview_dialog.dart';
 import 'school_classes_page.dart';
@@ -283,6 +284,36 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     }
   }
 
+  Future<void> _insertImageIntoEditor(
+    QuillController controller,
+    StateSetter setDialog,
+  ) async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+      maxWidth: 1800,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (bytes.isEmpty) {
+      _snack(_fr ? 'Image vide ou illisible.' : 'The image is empty or unreadable.');
+      return;
+    }
+    final extension = picked.name.split('.').last.toLowerCase();
+    final mime = extension == 'png' ? 'image/png' : extension == 'webp' ? 'image/webp' : 'image/jpeg';
+    final dataUri = 'data:' + mime + ';base64,' + base64Encode(bytes);
+    final selection = controller.selection;
+    final start = selection.isValid ? selection.start : controller.document.length - 1;
+    final length = selection.isValid ? selection.end - selection.start : 0;
+    if (length > 0) {
+      controller.replaceText(start, length, '', TextSelection.collapsed(offset: start));
+    }
+    controller.document.insert(start, BlockEmbed.image(dataUri));
+    controller.document.insert(start + 1, '\n');
+    controller.updateSelection(TextSelection.collapsed(offset: start + 2), ChangeSource.local);
+    setDialog(() {});
+  }
+
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
       await _client.from('school_classes').select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active').eq('is_active', true).order('display_name'),
@@ -306,8 +337,6 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final selectedChapters = <Map<String, dynamic>>[];
 
     final titleFr = TextEditingController();
-    final descFr = TextEditingController();
-    final descEn = TextEditingController();
     final contentFr = QuillController.basic();
     final contentEn = TextEditingController();
     bool published = false;
@@ -454,8 +483,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     const SizedBox(height: 12),
                     TextField(controller: titleFr, decoration: InputDecoration(labelText: 'Titre français *')),
                     const SizedBox(height: 10),
-                    TextField(controller: descFr, maxLines: 2, decoration: InputDecoration(labelText: _fr ? 'Description' : 'Description')),
-                    const SizedBox(height: 10),
+
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -483,6 +511,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                                 ),
                               ),
                               const SizedBox(width: 6),
+                              OutlinedButton.icon(
+                                onPressed: saving ? null : () => _insertImageIntoEditor(contentFr, setDialog),
+                                icon: const Icon(Icons.add_photo_alternate_outlined),
+                                label: const Text('Image'),
+                              ),
                               OutlinedButton.icon(
                                 onPressed: saving ? null : () async {
                                   final dimensions = await showDialog<List<int>>(
@@ -552,7 +585,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             config: QuillEditorConfig(
                               padding: const EdgeInsets.all(8),
                               expands: false,
-                              embedBuilders: [CourseTableEmbedBuilder()],
+                              embedBuilders: [CourseTableEmbedBuilder(), CourseImageEmbedBuilder()],
                             ),
                           ),
                         ),
@@ -618,7 +651,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                                 classId: classId,
                                 titleFr: titleFr.text,
                                 titleEn: titleFr.text.trim(),
-                                descriptionFr: descFr.text,
+                                descriptionFr: '',
                                 descriptionEn: null,
                                 contentFr: encodedContent,
                                 contentEn: null,
@@ -692,7 +725,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         );
       },
     );
-    titleFr.dispose(); descFr.dispose(); descEn.dispose(); contentFr.dispose(); contentEn.dispose();
+    titleFr.dispose(); contentFr.dispose(); contentEn.dispose();
   }
 
   Future<void> _addResource(Map<String, dynamic> course) async {
@@ -955,6 +988,14 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               MaterialPageRoute(
                 builder: (_) => SchoolClassesPage(locale: widget.locale),
               ),
+            ),
+          ),
+          IconButton(
+            tooltip: _fr ? 'Gérer les cours par salle et chapitre' : 'Manage courses by class and chapter',
+            icon: const Icon(Icons.folder_open_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => AdminChapterContentPage(locale: widget.locale)),
             ),
           ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
