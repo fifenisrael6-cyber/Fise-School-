@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/localization/app_texts.dart';
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import 'teacher_resource_page.dart';
@@ -46,6 +47,7 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
 
   bool _saving = false;
   bool _deleting = false;
+  late TextEditingController _activeContentController;
 
   bool get _isFrench => widget.locale.languageCode == 'fr';
 
@@ -83,6 +85,1278 @@ class _CreateLessonPageState extends State<CreateLessonPage> {
     );
 
     _published = lesson?.isPublished ?? false;
+    _activeContentController = _contentFrController;
+    _contentFrController.addListener(_refreshPreview);
+    _contentEnController.addListener(_refreshPreview);
+  }
+
+  void _refreshPreview() {
+    if (mounted) setState(() {});
+  }
+
+  void _insertSnippet(String snippet) {
+    final controller = _activeContentController;
+    final selection = controller.selection;
+    final start = selection.isValid ? selection.start : controller.text.length;
+    final end = selection.isValid ? selection.end : controller.text.length;
+    final before = controller.text.substring(0, start);
+    final after = controller.text.substring(end);
+    final prefix = before.isNotEmpty && !before.endsWith('\n') ? '\n' : '';
+    final insertion = '$prefix$snippet';
+    final cursor = before.length + insertion.length;
+    controller.value = TextEditingValue(
+      text: '$before$insertion$after',
+      selection: TextSelection.collapsed(offset: cursor),
+    );
+  }
+
+  Widget _editorAction(String label, IconData icon, String snippet) {
+    return OutlinedButton.icon(
+      onPressed: (_saving || _deleting) ? null : () => _insertSnippet(snippet),
+      icon: Icon(icon, size: 17),
+      label: Text(label),
+    );
+  }
+
+  Widget _buildEditorToolbar() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _isFrench ? 'Outils de rédaction' : 'Writing tools',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _editorAction(
+                  _isFrench ? 'Sous-titre' : 'Heading',
+                  Icons.title,
+                  _isFrench ? '## Nouveau titre' : '## New heading',
+                ),
+                _editorAction(
+                  _isFrench ? 'Formule' : 'Formula',
+                  Icons.functions,
+                  r'$\frac{a}{b}
+
+  @override
+  void dispose() {
+    _titleFrController.dispose();
+    _titleEnController.dispose();
+    _contentFrController.dispose();
+    _contentEnController.dispose();
+    _objectivesFrController.dispose();
+    _objectivesEnController.dispose();
+    _examplesFrController.dispose();
+    _examplesEnController.dispose();
+    _summaryFrController.dispose();
+    _summaryEnController.dispose();
+    _minutesController.dispose();
+
+    super.dispose();
+  }
+
+  Future<void> _saveLesson() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final minutes = int.tryParse(_minutesController.text.trim());
+
+    if (minutes == null || minutes <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFrench
+                ? 'Veuillez entrer une durée valide.'
+                : 'Please enter a valid duration.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      int position;
+
+      if (widget.lesson != null) {
+        position = widget.lesson!.position;
+      } else {
+        final lessons = await _service.listAllLessons(widget.course.id);
+        position = lessons.length + 1;
+      }
+
+      final lesson = await _service.saveLesson(
+        id: widget.lesson?.id,
+        courseId: widget.course.id,
+        titleFr: _titleFrController.text.trim(),
+        titleEn: _englishOrFrench(_titleEnController, _titleFrController),
+        contentFr: _contentFrController.text.trim(),
+        contentEn: _englishOrFrench(_contentEnController, _contentFrController),
+        objectivesFr: _objectivesFrController.text.trim(),
+        objectivesEn: _englishOrFrench(_objectivesEnController, _objectivesFrController),
+        examplesFr: _examplesFrController.text.trim(),
+        examplesEn: _englishOrFrench(_examplesEnController, _examplesFrController),
+        summaryFr: _summaryFrController.text.trim(),
+        summaryEn: _englishOrFrench(_summaryEnController, _summaryFrController),
+        position: position,
+        durationMinutes: minutes,
+        estimatedMinutes: minutes,
+        isPublished: _published,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TeacherResourcePage(
+            locale: widget.locale,
+            profile: widget.profile,
+            course: widget.course,
+            lesson: lesson,
+          ),
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? (_isFrench
+                      ? 'Leçon modifiée avec succès.'
+                      : 'Lesson updated successfully.')
+                : (_isFrench
+                      ? 'Leçon enregistrée avec succès.'
+                      : 'Lesson saved successfully.'),
+          ),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteLesson() async {
+    final lesson = widget.lesson;
+
+    if (lesson == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(_isFrench ? 'Supprimer la leçon' : 'Delete lesson'),
+          content: Text(
+            _isFrench
+                ? 'Voulez-vous vraiment supprimer cette leçon ? Cette action est définitive.'
+                : 'Do you really want to delete this lesson? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _deleting = true;
+    });
+
+    try {
+      await _service.deleteLesson(lesson.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isFrench ? 'Leçon supprimée.' : 'Lesson deleted.'),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _deleting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.isEditing
+              ? (_isFrench ? 'Modifier la leçon' : 'Edit lesson')
+              : (_isFrench ? 'Nouvelle leçon' : 'New lesson'),
+        ),
+        actions: [
+          if (widget.isEditing)
+            IconButton(
+              onPressed: (_saving || _deleting) ? null : _deleteLesson,
+              tooltip: _isFrench ? 'Supprimer' : 'Delete',
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isFrench ? 'Cours' : 'Course',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.course.labelFor(widget.locale.languageCode),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Text(
+                _isFrench
+                    ? r'Astuce de mise en forme : « ## Titre » pour un sous-titre (ex. ## Définitions importantes, ## Formules, ## Exercices), « **mot** » pour le gras, « - » pour une liste, et les formules entre $...$ (ex. $x^2+1$) ou $$...$$ pour une formule centrée.'
+                    : r'Formatting tip: "## Title" for a heading (e.g. ## Key definitions, ## Formulas, ## Exercises), "**word**" for bold, "-" for a list, and formulas between $...$ (e.g. $x^2+1$) or $$...$$ for a centred formula.',
+                style: const TextStyle(height: 1.4, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _field(controller: _titleFrController, label: 'Titre du cours'),
+            _field(
+              controller: _contentFrController,
+              label: 'Cours complet',
+              maxLines: 14,
+              onTap: () => setState(() => _activeContentController = _contentFrController),
+            ),
+            _buildEditorToolbar(),
+            _buildContentPreview(),
+            _field(
+              controller: _objectivesFrController,
+              label: 'Objectifs pédagogiques (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            _field(
+              controller: _examplesFrController,
+              label: 'Exemples et applications corrigées (facultatif)',
+              required: false,
+              maxLines: 6,
+            ),
+            _field(
+              controller: _summaryFrController,
+              label: 'À retenir (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_isFrench
+                  ? 'Traduction anglaise (facultative)'
+                  : 'English translation (optional)'),
+              subtitle: Text(_isFrench
+                  ? 'Laissez vide : le cours français sera affiché.'
+                  : 'Leave blank to display the French course.'),
+              children: [
+                _field(controller: _titleEnController, label: 'English title', required: false),
+                _field(
+                  controller: _contentEnController,
+                  label: 'English content',
+                  required: false,
+                  maxLines: 10,
+                  onTap: () => setState(() => _activeContentController = _contentEnController),
+                ),
+                _field(controller: _objectivesEnController, label: 'Objectives', required: false, maxLines: 4),
+                _field(controller: _examplesEnController, label: 'Examples', required: false, maxLines: 5),
+                _field(controller: _summaryEnController, label: 'Summary', required: false, maxLines: 4),
+              ],
+            ),
+            _field(
+              controller: _minutesController,
+              label: _isFrench
+                  ? 'Durée estimée (minutes)'
+                  : 'Estimated duration (minutes)',
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                _isFrench ? 'Publier cette leçon' : 'Publish this lesson',
+              ),
+              subtitle: Text(
+                _published
+                    ? (_isFrench
+                          ? 'La leçon sera visible par les élèves.'
+                          : 'The lesson will be visible to students.')
+                    : (_isFrench
+                          ? 'La leçon restera en brouillon.'
+                          : 'The lesson will remain a draft.'),
+              ),
+              value: _published,
+              onChanged: (_saving || _deleting)
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _published = value;
+                      });
+                    },
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: (_saving || _deleting) ? null : _saveLesson,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(
+                widget.isEditing
+                    ? (_isFrench
+                          ? 'Enregistrer les modifications'
+                          : 'Save changes')
+                    : (_isFrench ? 'Enregistrer la leçon' : 'Save lesson'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    bool required = true,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    VoidCallback? onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        onTap: onTap,
+        validator: required
+            ? (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return AppTexts(widget.locale).requiredField;
+                }
+
+                return null;
+              }
+            : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+,
+                ),
+                _editorAction(
+                  _isFrench ? 'Exemple corrigé' : 'Worked example',
+                  Icons.calculate_outlined,
+                  _isFrench
+                      ? '**Exemple corrigé**\n\nÉnoncé :\n\n**Solution :**\n\n'
+                          r'$x = \frac{10}{2} = 5
+
+  @override
+  void dispose() {
+    _titleFrController.dispose();
+    _titleEnController.dispose();
+    _contentFrController.dispose();
+    _contentEnController.dispose();
+    _objectivesFrController.dispose();
+    _objectivesEnController.dispose();
+    _examplesFrController.dispose();
+    _examplesEnController.dispose();
+    _summaryFrController.dispose();
+    _summaryEnController.dispose();
+    _minutesController.dispose();
+
+    super.dispose();
+  }
+
+  Future<void> _saveLesson() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final minutes = int.tryParse(_minutesController.text.trim());
+
+    if (minutes == null || minutes <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFrench
+                ? 'Veuillez entrer une durée valide.'
+                : 'Please enter a valid duration.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      int position;
+
+      if (widget.lesson != null) {
+        position = widget.lesson!.position;
+      } else {
+        final lessons = await _service.listAllLessons(widget.course.id);
+        position = lessons.length + 1;
+      }
+
+      final lesson = await _service.saveLesson(
+        id: widget.lesson?.id,
+        courseId: widget.course.id,
+        titleFr: _titleFrController.text.trim(),
+        titleEn: _englishOrFrench(_titleEnController, _titleFrController),
+        contentFr: _contentFrController.text.trim(),
+        contentEn: _englishOrFrench(_contentEnController, _contentFrController),
+        objectivesFr: _objectivesFrController.text.trim(),
+        objectivesEn: _englishOrFrench(_objectivesEnController, _objectivesFrController),
+        examplesFr: _examplesFrController.text.trim(),
+        examplesEn: _englishOrFrench(_examplesEnController, _examplesFrController),
+        summaryFr: _summaryFrController.text.trim(),
+        summaryEn: _englishOrFrench(_summaryEnController, _summaryFrController),
+        position: position,
+        durationMinutes: minutes,
+        estimatedMinutes: minutes,
+        isPublished: _published,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TeacherResourcePage(
+            locale: widget.locale,
+            profile: widget.profile,
+            course: widget.course,
+            lesson: lesson,
+          ),
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? (_isFrench
+                      ? 'Leçon modifiée avec succès.'
+                      : 'Lesson updated successfully.')
+                : (_isFrench
+                      ? 'Leçon enregistrée avec succès.'
+                      : 'Lesson saved successfully.'),
+          ),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteLesson() async {
+    final lesson = widget.lesson;
+
+    if (lesson == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(_isFrench ? 'Supprimer la leçon' : 'Delete lesson'),
+          content: Text(
+            _isFrench
+                ? 'Voulez-vous vraiment supprimer cette leçon ? Cette action est définitive.'
+                : 'Do you really want to delete this lesson? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _deleting = true;
+    });
+
+    try {
+      await _service.deleteLesson(lesson.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isFrench ? 'Leçon supprimée.' : 'Lesson deleted.'),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _deleting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.isEditing
+              ? (_isFrench ? 'Modifier la leçon' : 'Edit lesson')
+              : (_isFrench ? 'Nouvelle leçon' : 'New lesson'),
+        ),
+        actions: [
+          if (widget.isEditing)
+            IconButton(
+              onPressed: (_saving || _deleting) ? null : _deleteLesson,
+              tooltip: _isFrench ? 'Supprimer' : 'Delete',
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isFrench ? 'Cours' : 'Course',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.course.labelFor(widget.locale.languageCode),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Text(
+                _isFrench
+                    ? r'Astuce de mise en forme : « ## Titre » pour un sous-titre (ex. ## Définitions importantes, ## Formules, ## Exercices), « **mot** » pour le gras, « - » pour une liste, et les formules entre $...$ (ex. $x^2+1$) ou $$...$$ pour une formule centrée.'
+                    : r'Formatting tip: "## Title" for a heading (e.g. ## Key definitions, ## Formulas, ## Exercises), "**word**" for bold, "-" for a list, and formulas between $...$ (e.g. $x^2+1$) or $$...$$ for a centred formula.',
+                style: const TextStyle(height: 1.4, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _field(controller: _titleFrController, label: 'Titre du cours'),
+            _field(
+              controller: _contentFrController,
+              label: 'Cours complet',
+              maxLines: 14,
+            ),
+            _field(
+              controller: _objectivesFrController,
+              label: 'Objectifs pédagogiques (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            _field(
+              controller: _examplesFrController,
+              label: 'Exemples et applications corrigées (facultatif)',
+              required: false,
+              maxLines: 6,
+            ),
+            _field(
+              controller: _summaryFrController,
+              label: 'À retenir (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_isFrench
+                  ? 'Traduction anglaise (facultative)'
+                  : 'English translation (optional)'),
+              subtitle: Text(_isFrench
+                  ? 'Laissez vide : le cours français sera affiché.'
+                  : 'Leave blank to display the French course.'),
+              children: [
+                _field(controller: _titleEnController, label: 'English title', required: false),
+                _field(controller: _contentEnController, label: 'English content', required: false, maxLines: 10),
+                _field(controller: _objectivesEnController, label: 'Objectives', required: false, maxLines: 4),
+                _field(controller: _examplesEnController, label: 'Examples', required: false, maxLines: 5),
+                _field(controller: _summaryEnController, label: 'Summary', required: false, maxLines: 4),
+              ],
+            ),
+            _field(
+              controller: _minutesController,
+              label: _isFrench
+                  ? 'Durée estimée (minutes)'
+                  : 'Estimated duration (minutes)',
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                _isFrench ? 'Publier cette leçon' : 'Publish this lesson',
+              ),
+              subtitle: Text(
+                _published
+                    ? (_isFrench
+                          ? 'La leçon sera visible par les élèves.'
+                          : 'The lesson will be visible to students.')
+                    : (_isFrench
+                          ? 'La leçon restera en brouillon.'
+                          : 'The lesson will remain a draft.'),
+              ),
+              value: _published,
+              onChanged: (_saving || _deleting)
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _published = value;
+                      });
+                    },
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: (_saving || _deleting) ? null : _saveLesson,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(
+                widget.isEditing
+                    ? (_isFrench
+                          ? 'Enregistrer les modifications'
+                          : 'Save changes')
+                    : (_isFrench ? 'Enregistrer la leçon' : 'Save lesson'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    bool required = true,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        validator: required
+            ? (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return AppTexts(widget.locale).requiredField;
+                }
+
+                return null;
+              }
+            : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+
+                      : '**Worked example**\n\nQuestion:\n\n**Solution:**\n\n'
+                          r'$x = \frac{10}{2} = 5
+
+  @override
+  void dispose() {
+    _titleFrController.dispose();
+    _titleEnController.dispose();
+    _contentFrController.dispose();
+    _contentEnController.dispose();
+    _objectivesFrController.dispose();
+    _objectivesEnController.dispose();
+    _examplesFrController.dispose();
+    _examplesEnController.dispose();
+    _summaryFrController.dispose();
+    _summaryEnController.dispose();
+    _minutesController.dispose();
+
+    super.dispose();
+  }
+
+  Future<void> _saveLesson() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final minutes = int.tryParse(_minutesController.text.trim());
+
+    if (minutes == null || minutes <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFrench
+                ? 'Veuillez entrer une durée valide.'
+                : 'Please enter a valid duration.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      int position;
+
+      if (widget.lesson != null) {
+        position = widget.lesson!.position;
+      } else {
+        final lessons = await _service.listAllLessons(widget.course.id);
+        position = lessons.length + 1;
+      }
+
+      final lesson = await _service.saveLesson(
+        id: widget.lesson?.id,
+        courseId: widget.course.id,
+        titleFr: _titleFrController.text.trim(),
+        titleEn: _englishOrFrench(_titleEnController, _titleFrController),
+        contentFr: _contentFrController.text.trim(),
+        contentEn: _englishOrFrench(_contentEnController, _contentFrController),
+        objectivesFr: _objectivesFrController.text.trim(),
+        objectivesEn: _englishOrFrench(_objectivesEnController, _objectivesFrController),
+        examplesFr: _examplesFrController.text.trim(),
+        examplesEn: _englishOrFrench(_examplesEnController, _examplesFrController),
+        summaryFr: _summaryFrController.text.trim(),
+        summaryEn: _englishOrFrench(_summaryEnController, _summaryFrController),
+        position: position,
+        durationMinutes: minutes,
+        estimatedMinutes: minutes,
+        isPublished: _published,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TeacherResourcePage(
+            locale: widget.locale,
+            profile: widget.profile,
+            course: widget.course,
+            lesson: lesson,
+          ),
+        ),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? (_isFrench
+                      ? 'Leçon modifiée avec succès.'
+                      : 'Lesson updated successfully.')
+                : (_isFrench
+                      ? 'Leçon enregistrée avec succès.'
+                      : 'Lesson saved successfully.'),
+          ),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteLesson() async {
+    final lesson = widget.lesson;
+
+    if (lesson == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(_isFrench ? 'Supprimer la leçon' : 'Delete lesson'),
+          content: Text(
+            _isFrench
+                ? 'Voulez-vous vraiment supprimer cette leçon ? Cette action est définitive.'
+                : 'Do you really want to delete this lesson? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: Text(_isFrench ? 'Annuler' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: Text(_isFrench ? 'Supprimer' : 'Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _deleting = true;
+    });
+
+    try {
+      await _service.deleteLesson(lesson.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isFrench ? 'Leçon supprimée.' : 'Lesson deleted.'),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _deleting = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppTexts(widget.locale).courseSaveError}\n$error'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.isEditing
+              ? (_isFrench ? 'Modifier la leçon' : 'Edit lesson')
+              : (_isFrench ? 'Nouvelle leçon' : 'New lesson'),
+        ),
+        actions: [
+          if (widget.isEditing)
+            IconButton(
+              onPressed: (_saving || _deleting) ? null : _deleteLesson,
+              tooltip: _isFrench ? 'Supprimer' : 'Delete',
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isFrench ? 'Cours' : 'Course',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.course.labelFor(widget.locale.languageCode),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Text(
+                _isFrench
+                    ? r'Astuce de mise en forme : « ## Titre » pour un sous-titre (ex. ## Définitions importantes, ## Formules, ## Exercices), « **mot** » pour le gras, « - » pour une liste, et les formules entre $...$ (ex. $x^2+1$) ou $$...$$ pour une formule centrée.'
+                    : r'Formatting tip: "## Title" for a heading (e.g. ## Key definitions, ## Formulas, ## Exercises), "**word**" for bold, "-" for a list, and formulas between $...$ (e.g. $x^2+1$) or $$...$$ for a centred formula.',
+                style: const TextStyle(height: 1.4, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _field(controller: _titleFrController, label: 'Titre du cours'),
+            _field(
+              controller: _contentFrController,
+              label: 'Cours complet',
+              maxLines: 14,
+            ),
+            _field(
+              controller: _objectivesFrController,
+              label: 'Objectifs pédagogiques (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            _field(
+              controller: _examplesFrController,
+              label: 'Exemples et applications corrigées (facultatif)',
+              required: false,
+              maxLines: 6,
+            ),
+            _field(
+              controller: _summaryFrController,
+              label: 'À retenir (facultatif)',
+              required: false,
+              maxLines: 4,
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_isFrench
+                  ? 'Traduction anglaise (facultative)'
+                  : 'English translation (optional)'),
+              subtitle: Text(_isFrench
+                  ? 'Laissez vide : le cours français sera affiché.'
+                  : 'Leave blank to display the French course.'),
+              children: [
+                _field(controller: _titleEnController, label: 'English title', required: false),
+                _field(controller: _contentEnController, label: 'English content', required: false, maxLines: 10),
+                _field(controller: _objectivesEnController, label: 'Objectives', required: false, maxLines: 4),
+                _field(controller: _examplesEnController, label: 'Examples', required: false, maxLines: 5),
+                _field(controller: _summaryEnController, label: 'Summary', required: false, maxLines: 4),
+              ],
+            ),
+            _field(
+              controller: _minutesController,
+              label: _isFrench
+                  ? 'Durée estimée (minutes)'
+                  : 'Estimated duration (minutes)',
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                _isFrench ? 'Publier cette leçon' : 'Publish this lesson',
+              ),
+              subtitle: Text(
+                _published
+                    ? (_isFrench
+                          ? 'La leçon sera visible par les élèves.'
+                          : 'The lesson will be visible to students.')
+                    : (_isFrench
+                          ? 'La leçon restera en brouillon.'
+                          : 'The lesson will remain a draft.'),
+              ),
+              value: _published,
+              onChanged: (_saving || _deleting)
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _published = value;
+                      });
+                    },
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: (_saving || _deleting) ? null : _saveLesson,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save),
+              label: Text(
+                widget.isEditing
+                    ? (_isFrench
+                          ? 'Enregistrer les modifications'
+                          : 'Save changes')
+                    : (_isFrench ? 'Enregistrer la leçon' : 'Save lesson'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    bool required = true,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        validator: required
+            ? (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return AppTexts(widget.locale).requiredField;
+                }
+
+                return null;
+              }
+            : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+}
+,
+                ),
+                _editorAction(
+                  _isFrench ? 'Liste' : 'List',
+                  Icons.format_list_bulleted,
+                  _isFrench ? '- Élément' : '- Item',
+                ),
+                _editorAction(
+                  _isFrench ? 'Tableau' : 'Table',
+                  Icons.table_chart_outlined,
+                  _isFrench
+                      ? 'Grandeur | Valeur\n--- | ---\nA | 1\nB | 2'
+                      : 'Quantity | Value\n--- | ---\nA | 1\nB | 2',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContentPreview() {
+    final previewText = _activeContentController.text.trim();
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.menu_book_outlined),
+        title: Text(_isFrench ? 'Aperçu du manuel' : 'Textbook preview'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: previewText.isEmpty
+                ? Text(_isFrench
+                    ? 'Le contenu apparaîtra ici.'
+                    : 'Your lesson content will appear here.')
+                : RichLessonText(text: previewText),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
