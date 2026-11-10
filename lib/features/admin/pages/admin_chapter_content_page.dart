@@ -631,7 +631,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       };
       if (type == 'course') {
         data['body_text_fr'] = jsonEncode(bodyFr.document.toDelta().toJson());
-        data['body_text_en'] = bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim();
+        data['body_text_en'] = bodyEn.text.trim().isEmpty ? bodyFr.document.toPlainText().trim() : bodyEn.text.trim();
       } else if (type == 'video') {
         data['external_url'] = url.text.trim();
       } else if (replacementPath != null) {
