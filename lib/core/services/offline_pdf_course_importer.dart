@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -39,18 +38,13 @@ class OfflinePdfCourseImporter {
           final pageIndex = start + index;
           var text = (extracted[index]['text'] ?? '').toString().trim();
           final needsOcr = text.replaceAll(RegExp(r'\s+'), '').length < 35;
-          // Keep a visual copy of pages likely to contain scientific figures,
-          // diagrams or scanned content. This is a full-page render, not a
-          // cropped embedded-image object; the administrator chooses whether
-          // to keep it in the editable course.
-          final hasVisualCue = RegExp(
-            r'(figure|fig\.?|schéma|schema|diagramme|graphique|illustration|photo|image|planche)',
-            caseSensitive: false,
-          ).hasMatch(text) || text.length < 900;
+          // Render only when OCR is needed for a scanned/near-empty page.
+          // A full-page screenshot is not an extracted illustration: inserting
+          // it duplicates text and creates huge blank image areas in the lesson.
           Uint8List? pageImage;
-          if (needsOcr || hasVisualCue) {
+          if (needsOcr) {
             pageImage = await _renderPage(document, pageIndex);
-            if (needsOcr && pageImage != null) {
+            if (pageImage != null) {
               final directory = await getTemporaryDirectory();
               final imageFile = File('${directory.path}/fise_pdf_ocr_${pageIndex + 1}.jpg');
               await imageFile.writeAsBytes(pageImage, flush: true);
@@ -63,25 +57,10 @@ class OfflinePdfCourseImporter {
             }
           }
 
+          // Only extracted text and tables are inserted into the course editor.
+          // The rendered page above is an OCR aid, never published as an image.
           final pageBlocks = _blocksFromText(text, pageIndex + 1, (extracted[index]['lines'] as List?) ?? const []);
           blocks.addAll(pageBlocks);
-          // Preserve scanned pages and pages with likely scientific visuals.
-          // These are optional full-page images in the preview; admins can
-          // deselect or remove pages that do not contain useful illustrations.
-          if (pageImage != null && (needsOcr || hasVisualCue)) {
-            final compressed = _compressPage(pageImage);
-            if (compressed != null) {
-              blocks.add({
-                'type': 'image',
-                'page': pageIndex + 1,
-                'data': 'data:image/jpeg;base64,${base64Encode(compressed)}',
-                'label': needsOcr
-                    ? 'Page scannée ${pageIndex + 1} (image de référence)'
-                    : 'Page ${pageIndex + 1} (schéma/illustration à conserver si utile)',
-                'selected': needsOcr && pageBlocks.isEmpty,
-              });
-            }
-          }
         }
         onProgress(end, pageCount);
       }
@@ -115,15 +94,6 @@ class OfflinePdfCourseImporter {
     } finally {
       await page?.close();
     }
-  }
-
-  Uint8List? _compressPage(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return bytes;
-    final resized = decoded.width > 1000
-        ? img.copyResize(decoded, width: 1000)
-        : decoded;
-    return Uint8List.fromList(img.encodeJpg(resized, quality: 70));
   }
 
   List<Map<String, dynamic>> _blocksFromText(String text, int page, List<dynamic> lineMetadata) {
