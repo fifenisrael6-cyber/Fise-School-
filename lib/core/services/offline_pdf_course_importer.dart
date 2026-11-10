@@ -183,7 +183,7 @@ class OfflinePdfCourseImporter {
       final fontHeading = medianFont > 0 && fontSize >= medianFont * 1.22;
       final headingLike = (fontHeading || (line.length <= 90 &&
           !line.endsWith('.') &&
-          (line == line.toUpperCase() || RegExp(r'^(CHAPITRE|LEÇON|SECTION|I{1,3}[.)]|[0-9]+[.)])\\b', caseSensitive: false).hasMatch(line));
+          (line == line.toUpperCase() || RegExp(r'^(CHAPITRE|LEÇON|SECTION|I{1,3}[.)]|[0-9]+[.)])\\b', caseSensitive: false).hasMatch(line)));
       if (headingLike) {
         flush();
         final level = fontHeading && medianFont > 0 ? (fontSize >= medianFont * 1.65 ? 1 : fontSize >= medianFont * 1.35 ? 2 : 3) : (line.length < 35 ? 1 : line.length < 65 ? 2 : 3);
