@@ -46,7 +46,7 @@ class CourseImageEmbedBuilder extends EmbedBuilder {
           width: double.infinity,
           constraints: const BoxConstraints(maxHeight: 420, minHeight: 72),
           alignment: Alignment.center,
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: .35),
+          color: theme.colorScheme.surfaceContainerHighest.withOpacity(.35),
           padding: const EdgeInsets.all(8),
           child: image,
         ),
