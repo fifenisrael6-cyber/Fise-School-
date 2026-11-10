@@ -1,12 +1,23 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill_extensions/flutter_quill_extensions.dart';
 
-import 'rich_lesson_text.dart';
 import 'course_table_embed.dart';
+import 'rich_lesson_text.dart';
 
-/// Displays Quill Delta courses while keeping compatibility with legacy text.
+/// Renders a course body stored as Quill Delta JSON.
+///
+/// Supported inputs:
+/// - Quill Delta array: [{"insert":"Text"}, ...]
+/// - Legacy Quill object: {"ops":[{"insert":"Text"}, ...]}
+/// - Plain text / legacy text: rendered with [RichLessonText].
+///
+/// The document/controller is created in initState (or when the input changes),
+/// never from build(). Quill's own scrollable is disabled so the parent page
+/// (usually a ListView) remains the only vertical scroll view.
 class LessonContentRenderer extends StatefulWidget {
   const LessonContentRenderer({
     super.key,
@@ -47,21 +58,76 @@ class _LessonContentRendererState extends State<LessonContentRenderer> {
   }
 
   void _createController() {
+    final raw = widget.text.trim();
+    if (raw.isEmpty) return;
+
     try {
-      final decoded = jsonDecode(widget.text);
-      if (decoded is! Map || decoded['ops'] is! List) return;
-      final operations = (decoded['ops'] as List)
-          .whereType<Map>()
-          .map((operation) => Map<String, dynamic>.from(operation))
-          .toList(growable: false);
-      if (operations.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      final List<dynamic>? rawOperations;
+
+      if (decoded is List) {
+        // Format currently produced by the Fise School Quill editor.
+        rawOperations = decoded;
+      } else if (decoded is Map && decoded['ops'] is List) {
+        // Backward compatibility with the classic Quill {"ops": [...]} form.
+        rawOperations = decoded['ops'] as List<dynamic>;
+      } else {
+        // Valid JSON, but not a Quill Delta document: use the text fallback.
+        return;
+      }
+
+      if (rawOperations.isEmpty) return;
+
+      final operations = rawOperations.map((operation) {
+        if (operation is! Map) {
+          throw const FormatException('Invalid Quill Delta operation');
+        }
+        return Map<String, dynamic>.from(operation);
+      }).toList(growable: false);
+
+      final document = Document.fromJson(operations);
       _controller = QuillController(
-        document: Document.fromJson(operations),
+        document: document,
         selection: const TextSelection.collapsed(offset: 0),
         readOnly: true,
       );
     } catch (_) {
-      // A non-Delta value is an older plain-text/Markdown course.
+      // Invalid JSON/Delta must never crash the student course page.
+      // The original content is displayed by RichLessonText below.
+      _controller?.dispose();
+      _controller = null;
+    }
+  }
+
+  /// Returns a MemoryImage for data:image/...;base64,... sources.
+  /// Returning null lets flutter_quill_extensions handle normal URLs.
+  static ImageProvider<Object>? _dataImageProvider(
+    BuildContext context,
+    String imageUrl,
+  ) {
+    if (!imageUrl.startsWith('data:image/')) return null;
+
+    try {
+      final commaIndex = imageUrl.indexOf(',');
+      if (commaIndex < 0) return null;
+
+      final metadata = imageUrl.substring(5, commaIndex).toLowerCase();
+      final payload = imageUrl.substring(commaIndex + 1);
+      final Uint8List bytes;
+
+      if (metadata.split(';').contains('base64')) {
+        bytes = base64Decode(base64.normalize(payload));
+      } else {
+        bytes = Uint8List.fromList(
+          utf8.encode(Uri.decodeComponent(payload)),
+        );
+      }
+
+      if (bytes.isEmpty) return null;
+      return MemoryImage(bytes);
+    } catch (_) {
+      // A malformed image is ignored instead of crashing the whole course.
+      return null;
     }
   }
 
@@ -74,6 +140,7 @@ class _LessonContentRendererState extends State<LessonContentRenderer> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
+
     if (controller == null) {
       return RichLessonText(
         text: widget.text,
@@ -81,15 +148,31 @@ class _LessonContentRendererState extends State<LessonContentRenderer> {
         selectable: widget.selectable,
       );
     }
+
+    final embedBuilders = <EmbedBuilder>[
+      ...FlutterQuillEmbeds.editorBuilders(
+        imageEmbedConfig: QuillEditorImageEmbedConfig(
+          imageProviderBuilder: _dataImageProvider,
+        ),
+      ),
+      CourseTableEmbedBuilder(),
+    ];
+
     final editor = QuillEditor.basic(
       controller: controller,
       config: QuillEditorConfig(
         padding: EdgeInsets.zero,
         expands: false,
+        scrollable: false,
         showCursor: false,
-        embedBuilders: [CourseTableEmbedBuilder()],
+        enableInteractiveSelection: widget.selectable,
+        embedBuilders: embedBuilders,
       ),
     );
-    return DefaultTextStyle.merge(style: widget.style, child: editor);
+
+    return DefaultTextStyle.merge(
+      style: widget.style,
+      child: editor,
+    );
   }
 }

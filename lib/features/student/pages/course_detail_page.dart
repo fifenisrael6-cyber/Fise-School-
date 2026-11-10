@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/offline/connectivity_service.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import '../../../core/offline/course_offline_service.dart';
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/assignment_service.dart';
@@ -671,9 +672,10 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               ],
             ),
             const SizedBox(height: 12),
-            SelectableText(
-              courseContent,
+            LessonContentRenderer(
+              text: courseContent,
               style: const TextStyle(fontSize: 15, height: 1.55),
+              selectable: true,
             ),
           ],
         ),
