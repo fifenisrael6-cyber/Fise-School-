@@ -15,6 +15,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_quill: ^11.5.0
+  syncfusion_flutter_pdf: ^31.2.18
+  google_mlkit_text_recognition: ^0.15.0
+  image: ^4.5.4
 
   cupertino_icons: ^1.0.8
   image_picker: ^1.2.1
