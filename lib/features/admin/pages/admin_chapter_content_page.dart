@@ -197,7 +197,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         : extension == 'webp'
             ? 'image/webp'
             : 'image/jpeg';
-    final dataUri = 'data:$mime;base64,\u0024{base64Encode(bytes)}';
+    final dataUri = 'data:' + mime + ';base64,' + base64Encode(bytes);
     final selection = controller.selection;
     final start = selection.isValid
         ? selection.start
@@ -413,7 +413,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'title_fr': titleFr.text.trim(),
         'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
         'body_text_fr': type.value == 'course' ? jsonEncode(bodyFr.document.toDelta().toJson()) : null,
-        'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim()) : null,
+        'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.document.toPlainText().trim() : bodyEn.text.trim()) : null,
         'external_url': type.value == 'video' ? url.text.trim() : null,
         'storage_path': storagePath,
         'position': existing.length + 1,
