@@ -469,9 +469,14 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
                 ? (data['report'] as List).fold<int>(0, (sum, row) =>
                     sum + ((row is Map ? row['linked_chapters'] as num? : null)?.toInt() ?? 0))
                 : 0;
+            final requiresPublication = data['requires_admin_publication'] == true;
             toast(t(
-              'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Salles concernées : $roomSummary. $linkedChapters liaison(s) de chapitre. Les leçons restent en brouillon : vérifiez puis publiez-les.',
-              'Analysis complete: $imported lesson(s) created, $existingCount already existed. Matching classrooms: $roomSummary. $linkedChapters chapter link(s). Lessons remain drafts until reviewed and published.',
+              requiresPublication
+                  ? 'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Salles : $roomSummary. $linkedChapters liaison(s). Les leçons sont en brouillon : ouvrez le chapitre et publiez-les.'
+                  : 'Publication réussie : $imported leçon(s) native(s) visible(s) par les élèves. Salles : $roomSummary. $linkedChapters liaison(s) de chapitre.',
+              requiresPublication
+                  ? 'Analysis complete: $imported lesson(s) created, $existingCount already existed. Classrooms: $roomSummary. $linkedChapters chapter link(s). Lessons are drafts: open the chapter and publish them.'
+                  : 'Published successfully: $imported native lesson(s) are visible to students. Classrooms: $roomSummary. $linkedChapters chapter link(s).',
             ));
           } else {
             final message = data is Map
