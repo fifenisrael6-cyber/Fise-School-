@@ -39,9 +39,9 @@ async function extractPdf(bytes: Uint8Array): Promise<string[]> {
     const line = [...lineGroups.entries()]
       .sort((a, b) => b[0] - a[0])
       .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
-        .map((part) => part.text).join(" ").replace(/\\s+/g, " ").trim())
+        .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
-      .join("\\n");
+      .join("\n");
     pages.push(line);
   }
   return pages;
@@ -150,8 +150,8 @@ serve(async (req) => {
     const extractedPages = await extractPdf(bytes);
     const sourcePageCount = extractedPages.length;
     let extracted = extractedPages
-      .map((page, index) => `[PAGE ${index + 1}]\\n${page}`)
-      .join("\\n\\n")
+      .map((page, index) => `[PAGE ${index + 1}]\n${page}`)
+      .join("\n\n")
       .trim();
     if (extracted.length < 250) {
       let binary = "";
