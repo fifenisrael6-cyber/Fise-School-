@@ -1,11 +1,13 @@
 /// Pagination automatique des anciens textes longs lors de leur première lecture
 /// en cahier. Les pages créées par l'éditeur ne sont jamais repaginées.
 class NotebookPagePagination {
-  static const int _targetCharactersPerPage = 2100;
+  static const int _baseCharactersPerPage = 2100;
 
   static List<Map<String, dynamic>> expandLegacyPages(
-    List<Map<String, dynamic>> pages,
-  ) {
+    List<Map<String, dynamic>> pages, {
+    double fontSize = 16,
+  }) {
+    final targetCharactersPerPage = (_baseCharactersPerPage * 16 / fontSize.clamp(14, 28)).round().clamp(900, 2400);
     if (pages.length != 1 || pages.first['id'] != 'legacy-page-1') {
       return pages;
     }
@@ -17,8 +19,8 @@ class NotebookPagePagination {
     if (block['type'] != 'text') return pages;
     final french = (block['text_fr'] ?? block['text'] ?? '').toString();
     final english = (block['text_en'] ?? french).toString();
-    final frenchPages = _splitText(french);
-    final englishPages = _splitText(english);
+    final frenchPages = _splitText(french, targetCharactersPerPage);
+    final englishPages = _splitText(english, targetCharactersPerPage);
     final count = frenchPages.length > englishPages.length
         ? frenchPages.length
         : englishPages.length;
@@ -42,7 +44,7 @@ class NotebookPagePagination {
     });
   }
 
-  static List<String> _splitText(String text) {
+  static List<String> _splitText(String text, int targetCharactersPerPage) {
     if (text.trim().isEmpty) return const <String>[];
     final paragraphs = text.split(RegExp(r'\n\s*\n'));
     final result = <String>[];
@@ -55,7 +57,7 @@ class NotebookPagePagination {
     for (final rawParagraph in paragraphs) {
       final paragraph = rawParagraph.trim();
       if (paragraph.isEmpty) continue;
-      if (paragraph.length > _targetCharactersPerPage) {
+      if (paragraph.length > targetCharactersPerPage) {
         flush();
         final words = paragraph.split(RegExp(r'\s+'));
         var longChunk = '';
