@@ -1023,8 +1023,8 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     final page = await document.getPage(pageNumber);
     try {
       final image = await page.render(
-        width: (page.width * 2).round(),
-        height: (page.height * 2).round(),
+        width: page.width * 2,
+        height: page.height * 2,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
