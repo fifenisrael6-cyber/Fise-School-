@@ -230,7 +230,9 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
   Widget _pagePreview(int index) {
     final page = _pages[index];
     return LayoutBuilder(builder: (context, constraints) {
-      final width = (constraints.maxWidth - 32).clamp(260.0, 794.0).toDouble();
+      final availableWidth = constraints.maxWidth - 32;
+      final heightLimitedWidth = (constraints.maxHeight - 32) * 210 / 297;
+      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
       return Center(
         child: SizedBox(
           width: width,
