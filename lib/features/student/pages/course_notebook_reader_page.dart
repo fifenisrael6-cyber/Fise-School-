@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../core/offline/notebook_image_cache.dart';
+import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
 
 /// Lecteur de cahier : une page indépendante à la fois, avec navigation horizontale.
