@@ -311,6 +311,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             'teacher_id': _db.auth.currentUser?.id,
             'curriculum_id': _curriculumId,
             'chapter_id': chapter['id'].toString(),
+            'publish': _publish,
           },
         ),
       ),
