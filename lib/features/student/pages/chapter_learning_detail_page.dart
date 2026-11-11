@@ -53,6 +53,7 @@ class _ChapterLearningDetailPageState
   late Future<_ChapterData> _future;
   bool _savingRead = false;
   bool _generatingQuiz = false;
+  bool _a4Layout = false;
   int _loadGeneration = 0;
   RealtimeChannel? _contentChannel;
   Timer? _realtimeRefreshTimer;
@@ -199,6 +200,15 @@ class _ChapterLearningDetailPageState
         backgroundColor: green,
         foregroundColor: Colors.white,
         title: Text(_en ? 'Chapter' : 'Chapitre'),
+        actions: [
+          IconButton(
+            tooltip: _a4Layout
+                ? (_en ? 'Switch to phone layout' : 'Passer au format téléphone')
+                : (_en ? 'Switch to A4 layout' : 'Passer au format A4'),
+            onPressed: () => setState(() => _a4Layout = !_a4Layout),
+            icon: Icon(_a4Layout ? Icons.phone_android_rounded : Icons.description_outlined),
+          ),
+        ],
       ),
       body: FutureBuilder<_ChapterData>(
         future: _future,
@@ -595,80 +605,91 @@ class _ChapterLearningDetailPageState
     final usableImages = images.where((image) =>
       (image.storagePath?.trim().isNotEmpty ?? false) ||
       (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
+    final horizontalPadding = _a4Layout ? 38.0 : 20.0;
+    final titleSize = _a4Layout ? 25.0 : 21.0;
+    final bodySize = _a4Layout ? 17.0 : 15.5;
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [BoxShadow(color: Color(0x120F172A), blurRadius: 12, offset: Offset(0, 4))],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            color: const Color(0xFF166534),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            child: Row(children: [
-              const Icon(Icons.menu_book_rounded, color: Colors.white, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text(
-                _en ? 'FISE SCHOOL • LEARNING MATERIAL' : 'FISE SCHOOL • SUPPORT PÉDAGOGIQUE',
-                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
-              )),
-              Text(
-                _en ? 'CHAPTER ${widget.chapterNumber}' : 'CHAPITRE ${widget.chapterNumber}',
-                style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700),
-              ),
-            ]),
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: _a4Layout ? 794 : double.infinity),
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(_a4Layout ? 2 : 8),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(color: Color(0x120F172A), blurRadius: 12, offset: Offset(0, 4)),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title.toUpperCase(), style: const TextStyle(fontSize: 21, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
-                const SizedBox(height: 10),
-                Container(width: 72, height: 3, decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(3))),
-                if (body.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  RichLessonText(
-                    text: body,
-                    style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
-                  ),
-                ],
-                if (usableImages.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  Row(children: [
-                    const Icon(Icons.auto_awesome, color: Color(0xFF166534), size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(
-                      _en ? 'SCIENTIFIC DIAGRAMS AND ILLUSTRATIONS' : 'SCHÉMAS ET ILLUSTRATIONS',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5, color: Color(0xFF166534)),
-                    )),
-                  ]),
-                  const SizedBox(height: 12),
-                  for (final image in usableImages)
-                    Padding(padding: const EdgeInsets.only(bottom: 16), child: _courseIllustration(image)),
-                ],
-                const SizedBox(height: 18),
-                const Divider(color: Color(0xFFE2E8F0)),
-                Row(children: [
-                  const Icon(Icons.school_outlined, size: 15, color: Color(0xFF64748B)),
-                  const SizedBox(width: 6),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                color: const Color(0xFF166534),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                child: Row(children: [
+                  const Icon(Icons.menu_book_rounded, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
                   Expanded(child: Text(
-                    _en ? 'School learning document' : 'Document pédagogique scolaire',
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontStyle: FontStyle.italic),
+                    _en ? 'FISE SCHOOL • LEARNING MATERIAL' : 'FISE SCHOOL • SUPPORT PÉDAGOGIQUE',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8),
                   )),
-                  Text(widget.subject.labelFor(widget.locale.languageCode), style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w700)),
+                  Text(
+                    _a4Layout ? 'A4' : (_en ? 'PHONE' : 'TÉLÉPHONE'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700),
+                  ),
                 ]),
-              ],
-            ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(horizontalPadding, _a4Layout ? 42 : 22, horizontalPadding, _a4Layout ? 44 : 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title.toUpperCase(), style: TextStyle(fontSize: titleSize, height: 1.25, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
+                    const SizedBox(height: 10),
+                    Container(width: 72, height: 3, decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(3))),
+                    if (body.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      RichLessonText(
+                        text: body,
+                        style: TextStyle(fontSize: bodySize, height: _a4Layout ? 1.85 : 1.75, color: const Color(0xFF1E293B)),
+                      ),
+                    ],
+                    if (usableImages.isNotEmpty) ...[
+                      const SizedBox(height: 22),
+                      Row(children: [
+                        const Icon(Icons.auto_awesome, color: Color(0xFF166534), size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(
+                          _en ? 'SCIENTIFIC DIAGRAMS AND ILLUSTRATIONS' : 'SCHÉMAS ET ILLUSTRATIONS',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5, color: Color(0xFF166534)),
+                        )),
+                      ]),
+                      const SizedBox(height: 12),
+                      for (final image in usableImages)
+                        Padding(padding: const EdgeInsets.only(bottom: 16), child: _courseIllustration(image)),
+                    ],
+                    const SizedBox(height: 18),
+                    const Divider(color: Color(0xFFE2E8F0)),
+                    Row(children: [
+                      const Icon(Icons.school_outlined, size: 15, color: Color(0xFF64748B)),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(
+                        _en ? 'School learning document' : 'Document pédagogique scolaire',
+                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontStyle: FontStyle.italic),
+                      )),
+                      Text(widget.subject.labelFor(widget.locale.languageCode), style: const TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w700)),
+                    ]),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
