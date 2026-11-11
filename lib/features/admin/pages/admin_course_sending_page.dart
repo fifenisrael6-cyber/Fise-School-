@@ -731,7 +731,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             OutlinedButton.icon(
               onPressed: _saving || _chapterIds.isEmpty ? null : _openNotebookEditor,
               icon: const Icon(Icons.menu_book_rounded),
-              label: Text(_t('Créer le cours comme un cahier A4', 'Create the course as an A4 notebook')),
+              label: Text(_t('Créer un cahier A4 pour le premier chapitre sélectionné', 'Create an A4 notebook for the first selected chapter')),
             ),
             const Divider(height: 28),
             _sectionTitle(
