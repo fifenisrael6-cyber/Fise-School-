@@ -84,7 +84,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
       final courses = List<Map<String, dynamic>>.from(
         await _db
             .from('courses')
-            .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,class_id,subject_id,curriculum_id,chapter_id,teacher_id,smart_lesson_enabled,minimum_exercise_score,school_classes(display_name,name),subjects(name_fr,name_en)')
+            .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,class_id,subject_id,curriculum_id,chapter_id,teacher_id,smart_lesson_enabled,minimum_exercise_score,pages_json,school_classes(display_name,name),subjects(name_fr,name_en)')
             .order('updated_at', ascending: false),
       );
       if (!mounted) return;
@@ -305,6 +305,13 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
         builder: (_) => CourseNotebookEditorPage(
           locale: widget.locale,
           chapterId: chapter['id'].toString(),
+          courseContext: {
+            'class_ids': _targetClassIds.toList(growable: false),
+            'subject_id': _subjectId,
+            'teacher_id': _db.auth.currentUser?.id,
+            'curriculum_id': _curriculumId,
+            'chapter_id': chapter['id'].toString(),
+          },
         ),
       ),
     );
@@ -830,6 +837,31 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
     );
   }
 
+  Future<void> _editCoursePages(Map<String, dynamic> row) async {
+    final chapterId = row['chapter_id']?.toString() ?? '';
+    if (chapterId.isEmpty) {
+      _showMessage(_t('Ce cours doit être associé à un chapitre avant de créer ses pages.', 'This course must be linked to a chapter before adding pages.'));
+      return;
+    }
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CourseNotebookEditorPage(
+          locale: widget.locale,
+          chapterId: chapterId,
+          existingCourse: row,
+          courseContext: {
+            'class_ids': [row['class_id']?.toString() ?? ''],
+            'subject_id': row['subject_id'],
+            'teacher_id': row['teacher_id'],
+            'curriculum_id': row['curriculum_id'],
+            'chapter_id': chapterId,
+          },
+        ),
+      ),
+    );
+    if (saved == true && mounted) await _loadCourses();
+  }
+
   Widget _buildExistingCourses() {
     final visible = _courseRows.where((row) {
       if (_filter == 'published') return row['status'] == 'published';
@@ -891,10 +923,13 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                   trailing: PopupMenuButton<String>(
                     onSelected: (action) {
                       if (action == 'edit') _editCourse(row);
+                      if (action == 'pages') _editCoursePages(row);
                       if (action == 'delete') _deleteCourse(row);
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'edit', child: Text(_t('Modifier', 'Edit'))),
+                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty)
+                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier les pages A4', 'Edit A4 pages'))),
                       PopupMenuItem(value: 'delete', child: Text(_t('Supprimer', 'Delete'))),
                     ],
                   ),
