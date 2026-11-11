@@ -423,7 +423,6 @@ class _ChapterLearningDetailPageState
   Widget _buildResourceFolders(_ChapterData data) {
     const folders = <_ChapterResourceFolder>[
       _ChapterResourceFolder.course,
-      _ChapterResourceFolder.pdf,
       _ChapterResourceFolder.images,
       _ChapterResourceFolder.audio,
       _ChapterResourceFolder.video,
@@ -463,6 +462,26 @@ class _ChapterLearningDetailPageState
     _ChapterResourceFolder folder,
     _ChapterData currentData,
   ) async {
+    if (folder == _ChapterResourceFolder.course) {
+      final lessons = currentData.content
+          .where((item) => item.folderKey == 'course' && item.isPublished)
+          .toList(growable: false);
+      if (lessons.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_en
+              ? 'No course has been published in this chapter yet.'
+              : 'Aucun cours n’a encore été publié dans ce chapitre.'),
+        ));
+        return;
+      }
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => CourseNotebookReaderPage(
+          item: lessons.first,
+          locale: widget.locale,
+        ),
+      ));
+      return;
+    }
     if (folder != _ChapterResourceFolder.exercises) {
       final items = _folderItems(currentData, folder);
       await Navigator.of(context).push(
