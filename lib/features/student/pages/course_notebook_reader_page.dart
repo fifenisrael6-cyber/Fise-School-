@@ -62,6 +62,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
     try {
+      final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
       final rows = await Supabase.instance.client
           .from('course_pages')
           .select('page_number,image_url')
@@ -75,7 +77,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         Uint8List? bytes;
         try {
           if (!forceRetry) {
-            bytes = await _localDb.getCachedCoursePageImage(widget.item.id, number);
+            bytes = await _localDb.getCachedCoursePageImage(userId, widget.item.id, number);
           }
           if (bytes == null) {
             try {
@@ -87,6 +89,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                   .from('course-pages').download(path);
             }
             await _localDb.cacheCoursePageImage(
+              userId: userId,
               courseId: widget.item.id,
               pageNumber: number,
               bytes: bytes,
@@ -128,6 +131,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
   Future<void> _retryCoursePage(int pageNumber) async {
     try {
+      final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) throw StateError('Session utilisateur absente.');
       final rows = await Supabase.instance.client
           .from('course_pages')
           .select('image_url')
@@ -139,6 +144,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       final bytes = await Supabase.instance.client.storage
           .from('course-pages').download(path);
       await _localDb.cacheCoursePageImage(
+        userId: userId,
         courseId: widget.item.id,
         pageNumber: pageNumber,
         bytes: bytes,
