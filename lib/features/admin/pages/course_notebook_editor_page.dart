@@ -96,6 +96,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         ));
       }
     } else {
+      _published = widget.courseContext?['publish'] == true;
       _pages.add(_NotebookPage());
     }
   }
