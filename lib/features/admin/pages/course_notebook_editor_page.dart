@@ -81,7 +81,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       }
       if (_pages.isEmpty) {
         _pages.add(_NotebookPage(
-          text: (item['body_text_fr'] ?? item['body_text_en'] ?? '').toString(),
+          text: (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString(),
         ));
       }
     } else {
