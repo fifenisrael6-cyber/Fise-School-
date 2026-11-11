@@ -136,6 +136,7 @@ class _ChapterLearningDetailPageState
   Future<void> _cacheOriginalLessonPdfs(
     List<ChapterLearningContentItem> content,
   ) async {
+    await _service.cacheNotebookPageImages(content);
     final sourceItems = <String, ChapterLearningContentItem>{};
     for (final item in content) {
       final path = (item.sourcePdfPath ?? '').trim();
