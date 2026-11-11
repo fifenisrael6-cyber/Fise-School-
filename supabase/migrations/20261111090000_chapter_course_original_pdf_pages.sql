@@ -48,7 +48,15 @@ USING (
       WHERE ci.source_pdf_path = objects.name
         AND ci.is_published
         AND ci.content_type = 'course'
-        AND public.student_can_access_chapter(ci.chapter_id)
+        AND (
+          public.student_can_access_chapter(ci.chapter_id)
+          OR EXISTS (
+            SELECT 1
+            FROM public.chapter_content_item_chapters linked
+            WHERE linked.content_item_id = ci.id
+              AND public.student_can_access_chapter(linked.chapter_id)
+          )
+        )
     )
   )
 );
