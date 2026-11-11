@@ -43,3 +43,12 @@ L'Edge Function utilise les secrets Supabase habituels `SUPABASE_URL`, `SUPABASE
 - Chaque leçon importée conserve désormais le chemin du PDF source et les numéros de pages associés. L'élève peut ouvrir ces pages originales dans une présentation de manuel A4/mobile : les schémas, images, tableaux et leur position sur la page restent fidèles au document.
 - Le PDF original est mis en cache localement lors de l'ouverture du chapitre pour permettre la consultation ultérieure hors connexion. Les pages sources ne sont accessibles que si la leçon correspondante est publiée et que l'élève est autorisé à lire le chapitre.
 - Tester avec un compte administrateur, puis avec un compte élève de chaque sous-système/série concerné.
+
+## Cahiers numériques A4
+
+- Dans **Administration → Envoi des cours**, sélectionnez un chapitre puis ouvrez **Créer le cours comme un cahier A4**.
+- Chaque page est indépendante. L'administrateur peut écrire le texte, insérer des images, ajouter ou supprimer des pages et basculer vers l'aperçu avant publication.
+- Les cours déjà présents dans `chapter_content_items` sont conservés. La migration `20261111120000_course_notebook_pages.sql` les représente initialement par une page modifiable à partir de leur texte existant.
+- Les élèves ouvrent les cours dans un lecteur à pages tournantes. Les images insérées dans les pages restent protégées par les règles d'accès du chapitre et sont disponibles après préchargement/cache.
+- Les PDF ouverts depuis les ressources hors connexion sont rendus en feuilles A4 individuelles, avec navigation page précédente/suivante. Le fichier PDF original reste intact.
+- Les migrations `20261111120000_course_notebook_pages.sql` et `20261111121000_notebook_page_image_storage_access.sql` sont additives ; elles ne suppriment aucun cours ni aucune ressource.
