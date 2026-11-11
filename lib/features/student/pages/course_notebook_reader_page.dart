@@ -260,6 +260,42 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     }
   }
 
+  Future<void> _openImageGallery(String selectedPath) async {
+    final paths = <String>[];
+    for (final page in widget.item.pages) {
+      final raw = page['blocks'];
+      if (raw is! List) continue;
+      for (final block in raw.whereType<Map>()) {
+        if (block['type'] != 'image') continue;
+        final path = block['storage_path']?.toString().trim() ?? '';
+        if (path.isNotEmpty && !paths.contains(path)) paths.add(path);
+      }
+    }
+    if (paths.isEmpty) paths.add(selectedPath);
+    final providers = <ImageProvider<Object>>[];
+    final tags = <String>[];
+    for (final path in paths) {
+      final resolved = await _resolveImage(path);
+      if (resolved is File) {
+        providers.add(FileImage(resolved));
+      } else if (resolved is String) {
+        providers.add(NetworkImage(resolved));
+      }
+      if (resolved is File || resolved is String) {
+        tags.add('course-image-${widget.item.id}-$path');
+      }
+    }
+    if (!mounted || providers.isEmpty) return;
+    final selectedIndex = paths.indexOf(selectedPath).clamp(0, providers.length - 1);
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => _CourseImageFullscreenPage(
+        images: providers,
+        heroTags: tags,
+        initialIndex: selectedIndex,
+      ),
+    ));
+  }
+
   Widget _buildPage(Map<String, dynamic> page, int number) {
     final rawBlocks = page['blocks'];
     final blocks = rawBlocks is List
@@ -329,10 +365,16 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                               : Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   child: InteractiveViewer(
-                                    child: snapshot.data is File
-                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
-                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
-                                            errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                    child: GestureDetector(
+                                    onTap: () => _openImageGallery(block['storage_path'].toString()),
+                                    child: Hero(
+                                      tag: 'course-image-${widget.item.id}-${block['storage_path']}',
+                                      child: snapshot.data is File
+                                          ? Image.file(snapshot.data as File, fit: BoxFit.contain)
+                                          : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
+                                              errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                    ),
+                                  ),
                                   ),
                                 ),
                         ),
@@ -411,6 +453,93 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 }
 
+
+
+class _CourseImageFullscreenPage extends StatefulWidget {
+  const _CourseImageFullscreenPage({
+    required this.images,
+    required this.heroTags,
+    required this.initialIndex,
+  });
+
+  final List<ImageProvider<Object>> images;
+  final List<String> heroTags;
+  final int initialIndex;
+
+  @override
+  State<_CourseImageFullscreenPage> createState() => _CourseImageFullscreenPageState();
+}
+
+class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> {
+  late final PageController _controller =
+      PageController(initialPage: widget.initialIndex);
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    body: GestureDetector(
+      onVerticalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) > 350) Navigator.of(context).pop();
+      },
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: widget.images.length,
+            itemBuilder: (context, index) => Center(
+              child: Hero(
+                tag: widget.heroTags[index],
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 5,
+                  child: Image(
+                    image: widget.images[index],
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 8,
+            right: 12,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+            ),
+          ),
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: MediaQuery.paddingOf(context).bottom + 18,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'Balayer pour changer d’image',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
 
 /// Lecteur A4 des cours stockés dans la table historique `courses`.
 class CourseRecordNotebookReaderPage extends StatefulWidget {
