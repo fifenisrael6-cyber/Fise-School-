@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -30,7 +31,6 @@ class OfflineResourceViewer extends StatefulWidget {
 
 class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   AudioPlayer? _audioPlayer;
-  PdfControllerPinch? _pdfController;
   String? _textContent;
   WebViewController? _webController;
 
@@ -40,9 +40,7 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   void initState() {
     super.initState();
     final path = widget.localPath;
-    if (path != null && widget.resource.resourceType == 'pdf') {
-      _pdfController = PdfControllerPinch(document: PdfDocument.openFile(path));
-    } else if (path != null && widget.resource.resourceType != 'image' &&
+    if (path != null && widget.resource.resourceType != 'pdf' && (path != null && widget.resource.resourceType != 'image' &&
         widget.resource.resourceType != 'audio' && widget.resource.resourceType != 'video') {
       _prepareDocument(path);
     }
@@ -68,7 +66,6 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
 
   @override
   void dispose() {
-    _pdfController?.dispose();
     _audioPlayer?.dispose();
     super.dispose();
   }
@@ -93,11 +90,7 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   Widget _buildLocal(String path) {
     switch (widget.resource.resourceType) {
       case 'pdf':
-        final controller = _pdfController;
-        if (controller == null) {
-          return const SizedBox.shrink();
-        }
-        return PdfViewPinch(controller: controller);
+        return _PdfA4PageBook(path: path, locale: widget.locale);
       case 'image':
         return Center(child: InteractiveViewer(child: Image.file(File(path), fit: BoxFit.contain)));
       case 'audio':
@@ -134,6 +127,133 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
           ),
         );
     }
+  }
+}
+
+
+/// Affiche tout PDF importé comme un cahier A4 : une page à la fois.
+class _PdfA4PageBook extends StatefulWidget {
+  const _PdfA4PageBook({required this.path, required this.locale});
+  final String path;
+  final Locale locale;
+
+  @override
+  State<_PdfA4PageBook> createState() => _PdfA4PageBookState();
+}
+
+class _PdfA4PageBookState extends State<_PdfA4PageBook> {
+  late final Future<PdfDocument> _future = PdfDocument.openFile(widget.path);
+  PdfDocument? _document;
+  int _page = 0;
+
+  bool get _fr => widget.locale.languageCode != 'en';
+
+  Future<Uint8List> _render(PdfDocument document, int pageNumber) async {
+    final source = await document.getPage(pageNumber);
+    try {
+      final image = await source.render(
+        width: (source.width * 2).round(),
+        height: (source.height * 2).round(),
+        format: PdfPageImageFormat.png,
+      );
+      if (image == null || image.bytes.isEmpty) {
+        throw StateError('Impossible de rendre la page $pageNumber.');
+      }
+      return image.bytes;
+    } finally {
+      await source.close();
+    }
+  }
+
+  @override
+  void dispose() {
+    final document = _document;
+    if (document != null) {
+      document.close();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PdfDocument>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Center(child: Text(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open PDF.'));
+        }
+        final document = snapshot.data!;
+        _document ??= document;
+        return Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                itemCount: document.pagesCount,
+                onPageChanged: (index) => setState(() => _page = index),
+                itemBuilder: (context, index) => LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = (constraints.maxWidth - 24).clamp(260.0, 794.0).toDouble();
+                    return Center(
+                      child: SizedBox(
+                        width: width,
+                        child: AspectRatio(
+                          aspectRatio: 210 / 297,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 10),
+                            color: Colors.white,
+                            padding: const EdgeInsets.all(4),
+                            child: FutureBuilder<Uint8List>(
+                              future: _render(document, index + 1),
+                              builder: (context, pageSnapshot) {
+                                if (pageSnapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator());
+                                }
+                                if (pageSnapshot.hasError || !pageSnapshot.hasData) {
+                                  return Center(child: Text(_fr ? 'Page illisible.' : 'Page unavailable.'));
+                                }
+                                return InteractiveViewer(
+                                  minScale: 1,
+                                  maxScale: 4,
+                                  child: Image.memory(pageSnapshot.data!, fit: BoxFit.contain),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: _page == 0 ? null : () => setState(() => _page--),
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                    Text('${_fr ? 'Page' : 'Page'} ${_page + 1} / ${document.pagesCount}',
+                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+                    IconButton(
+                      onPressed: _page >= document.pagesCount - 1 ? null : () => setState(() => _page++),
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
