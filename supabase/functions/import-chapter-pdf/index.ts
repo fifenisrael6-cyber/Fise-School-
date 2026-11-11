@@ -168,7 +168,7 @@ serve(async (req) => {
       });
       const scannedData = await scanned.json();
       if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
-      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\\n") ?? "";
+      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\n") ?? "";
     }
     if (extracted.trim().length < 200) throw new Error("Le PDF ne contient pas assez de texte lisible.");
 
