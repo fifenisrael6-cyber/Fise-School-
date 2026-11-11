@@ -150,11 +150,12 @@ class AppDatabase extends _$AppDatabase {
     ''');
     await customStatement('''
       CREATE TABLE IF NOT EXISTS course_page_cache (
+        user_id TEXT NOT NULL,
         course_id TEXT NOT NULL,
         page_number INTEGER NOT NULL,
         image_bytes BLOB NOT NULL,
         updated_at TEXT NOT NULL,
-        PRIMARY KEY(course_id, page_number)
+        PRIMARY KEY(user_id, course_id, page_number)
       )
     ''');
   }
@@ -186,24 +187,25 @@ class AppDatabase extends _$AppDatabase {
     [userId, courseId, pageNumber, fontSize, DateTime.now().toUtc().toIso8601String()],
   );
 
-  Future<Uint8List?> getCachedCoursePageImage(String courseId, int pageNumber) async {
+  Future<Uint8List?> getCachedCoursePageImage(String userId, String courseId, int pageNumber) async {
     final rows = await customSelect(
-      'SELECT image_bytes FROM course_page_cache WHERE course_id=? AND page_number=? LIMIT 1',
-      variables: [Variable(courseId), Variable(pageNumber)],
+      'SELECT image_bytes FROM course_page_cache WHERE user_id=? AND course_id=? AND page_number=? LIMIT 1',
+      variables: [Variable(userId), Variable(courseId), Variable(pageNumber)],
     ).get();
     return rows.isEmpty ? null : rows.first.read<Uint8List>('image_bytes');
   }
 
   Future<void> cacheCoursePageImage({
+    required String userId,
     required String courseId,
     required int pageNumber,
     required Uint8List bytes,
   }) => customStatement(
-    '''INSERT INTO course_page_cache(course_id,page_number,image_bytes,updated_at)
-       VALUES(?,?,?,?)
-       ON CONFLICT(course_id,page_number) DO UPDATE SET
+    '''INSERT INTO course_page_cache(user_id,course_id,page_number,image_bytes,updated_at)
+       VALUES(?,?,?,?,?)
+       ON CONFLICT(user_id,course_id,page_number) DO UPDATE SET
        image_bytes=excluded.image_bytes,updated_at=excluded.updated_at''',
-    [courseId, pageNumber, bytes, DateTime.now().toUtc().toIso8601String()],
+    [userId, courseId, pageNumber, bytes, DateTime.now().toUtc().toIso8601String()],
   );
 
   Future<void> _createAiConversationCacheTable() async {
