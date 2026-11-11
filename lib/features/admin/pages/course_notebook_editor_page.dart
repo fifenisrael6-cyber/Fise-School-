@@ -232,16 +232,18 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
     return LayoutBuilder(builder: (context, constraints) {
       final width = (constraints.maxWidth - 32).clamp(260.0, 794.0).toDouble();
       return Center(
-        child: Container(
+        child: SizedBox(
           width: width,
-          margin: const EdgeInsets.symmetric(vertical: 14),
-          padding: const EdgeInsets.fromLTRB(28, 34, 28, 30),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
-          ),
-          child: SingleChildScrollView(
+          child: AspectRatio(
+            aspectRatio: 210 / 297,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(28, 34, 28, 30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
+              ),
+              child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -266,6 +268,9 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                   child: Text('${_t('Page', 'Page')} ${index + 1}', style: const TextStyle(color: Colors.black45, fontSize: 10)),
                 ),
               ],
+            ),
+          ),
+        ),
             ),
           ),
         ),
