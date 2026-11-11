@@ -473,6 +473,8 @@ class _CourseImageFullscreenPage extends StatefulWidget {
 class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> {
   late final PageController _controller =
       PageController(initialPage: widget.initialIndex);
+  final TransformationController _zoomController = TransformationController();
+  bool _zoomed = false;
 
   @override
   void initState() {
@@ -483,6 +485,7 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
   @override
   void dispose() {
     _controller.dispose();
+    _zoomController.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -502,14 +505,25 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
             itemBuilder: (context, index) => Center(
               child: Hero(
                 tag: widget.heroTags[index],
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 5,
-                  child: Image(
-                    image: widget.images[index],
-                    fit: BoxFit.contain,
-                    width: double.infinity,
-                    height: double.infinity,
+                child: GestureDetector(
+                  onDoubleTap: () {
+                    setState(() {
+                      _zoomed = !_zoomed;
+                      _zoomController.value = _zoomed
+                          ? (Matrix4.identity()..scale(2.0))
+                          : Matrix4.identity();
+                    });
+                  },
+                  child: InteractiveViewer(
+                    transformationController: _zoomController,
+                    minScale: 1,
+                    maxScale: 5,
+                    child: Image(
+                      image: widget.images[index],
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
                   ),
                 ),
               ),
