@@ -54,7 +54,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
     return LayoutBuilder(builder: (context, constraints) {
-      final width = (constraints.maxWidth - 28).clamp(280.0, 794.0).toDouble();
+      final availableWidth = constraints.maxWidth - 28;
+      final heightLimitedWidth = (constraints.maxHeight - 28) * 210 / 297;
+      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
       return Center(
         child: SizedBox(
           width: width,
