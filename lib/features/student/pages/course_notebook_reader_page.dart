@@ -56,16 +56,19 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     return LayoutBuilder(builder: (context, constraints) {
       final width = (constraints.maxWidth - 28).clamp(280.0, 794.0).toDouble();
       return Center(
-        child: Container(
+        child: SizedBox(
           width: width,
-          margin: const EdgeInsets.symmetric(vertical: 12),
-          padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
-          ),
-          child: SingleChildScrollView(
+          child: AspectRatio(
+            aspectRatio: 210 / 297,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
+              ),
+              child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -102,6 +105,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                     style: const TextStyle(fontSize: 10, color: Colors.black45)),
                 ),
               ],
+            ),
+          ),
+        ),
             ),
           ),
         ),
