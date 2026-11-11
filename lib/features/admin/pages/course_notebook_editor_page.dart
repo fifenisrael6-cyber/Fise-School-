@@ -354,6 +354,24 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
             Row(children: [
               Expanded(child: Text('${_t('PAGE', 'PAGE')} ${index + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)))),
               IconButton(
+                tooltip: _t('Monter la page', 'Move page up'),
+                onPressed: index == 0 ? null : () => setState(() {
+                  final previous = _pages[index - 1];
+                  _pages[index - 1] = _pages[index];
+                  _pages[index] = previous;
+                }),
+                icon: const Icon(Icons.arrow_upward_rounded, size: 19),
+              ),
+              IconButton(
+                tooltip: _t('Descendre la page', 'Move page down'),
+                onPressed: index == _pages.length - 1 ? null : () => setState(() {
+                  final next = _pages[index + 1];
+                  _pages[index + 1] = _pages[index];
+                  _pages[index] = next;
+                }),
+                icon: const Icon(Icons.arrow_downward_rounded, size: 19),
+              ),
+              IconButton(
                 tooltip: _t('Supprimer la page', 'Delete page'),
                 onPressed: _pages.length == 1 ? null : () {
                   setState(() {
