@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';
+import 'course_notebook_editor_page.dart';
 
 /// Espace dédié à l'envoi de cours par l'administrateur.
 /// Un cours distinct est enregistré pour chaque salle et chaque chapitre,
@@ -288,6 +289,27 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
       if (!mounted) return;
       setState(() => _loadingChoices = false);
       _showMessage(_t('Chargement des chapitres impossible : ', 'Unable to load chapters: ') + e.toString());
+    }
+  }
+
+  Future<void> _openNotebookEditor() async {
+    if (_chapterIds.isEmpty) {
+      _showMessage(_t('Sélectionnez au moins un chapitre.', 'Select at least one chapter.'));
+      return;
+    }
+    final selected = _chapters.where((item) => _chapterIds.contains(item['id']?.toString())).toList();
+    if (selected.isEmpty) return;
+    final chapter = selected.first;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CourseNotebookEditorPage(
+          locale: widget.locale,
+          chapterId: chapter['id'].toString(),
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
+      _showMessage(_t('Cahier enregistré dans le chapitre sélectionné.', 'Notebook saved in the selected chapter.'));
     }
   }
 
@@ -705,6 +727,12 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                   },
                 );
               }),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _saving || _chapterIds.isEmpty ? null : _openNotebookEditor,
+              icon: const Icon(Icons.menu_book_rounded),
+              label: Text(_t('Créer le cours comme un cahier A4', 'Create the course as an A4 notebook')),
+            ),
             const Divider(height: 28),
             _sectionTitle(
               _t('3. Choisir les salles destinataires', '3. Choose target classrooms'),
