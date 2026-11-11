@@ -169,10 +169,13 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           'position': index + 1,
           'format': 'A4',
           'blocks': [
-            if (_pages[index].text.text.trim().isNotEmpty)
+            if (_pages[index].text.text.trim().isNotEmpty ||
+                _pages[index].textEn.text.trim().isNotEmpty)
               {
                 'type': 'text',
-                'text_fr': _pages[index].text.text.trim(),
+                'text_fr': _pages[index].text.text.trim().isEmpty
+                    ? _pages[index].textEn.text.trim()
+                    : _pages[index].text.text.trim(),
                 'text_en': _pages[index].textEn.text.trim().isEmpty
                     ? _pages[index].text.text.trim()
                     : _pages[index].textEn.text.trim(),
@@ -190,7 +193,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       return;
     }
     if (_pages.every((page) =>
-        page.text.text.trim().isEmpty && page.images.isEmpty)) {
+        page.text.text.trim().isEmpty && page.textEn.text.trim().isEmpty && page.images.isEmpty)) {
       setState(() => _error = _t('Ajoutez du texte ou une image dans au moins une page.', 'Add text or an image to at least one page.'));
       return;
     }
