@@ -201,7 +201,9 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                 onPageChanged: (index) => setState(() => _page = index),
                 itemBuilder: (context, index) => LayoutBuilder(
                   builder: (context, constraints) {
-                    final width = (constraints.maxWidth - 24).clamp(260.0, 794.0).toDouble();
+                    final availableWidth = constraints.maxWidth - 24;
+                    final heightLimitedWidth = (constraints.maxHeight - 24) * 210 / 297;
+                    final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
                     return Center(
                       child: SizedBox(
                         width: width,
