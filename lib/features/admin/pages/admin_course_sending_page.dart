@@ -316,6 +316,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
       ),
     );
     if (saved == true && mounted) {
+      await _loadCourses();
       _showMessage(_t('Cahier enregistré dans le chapitre sélectionné.', 'Notebook saved in the selected chapter.'));
     }
   }
