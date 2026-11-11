@@ -14,6 +14,7 @@ import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
 import 'assignment_detail_page.dart';
 import 'lesson_page.dart';
+import 'course_notebook_reader_page.dart';
 
 class CourseDetailPage extends StatefulWidget {
   final Locale locale;
@@ -283,9 +284,9 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: [
                   _buildCourseHeader(isEnglish),
                   const SizedBox(height: 12),
-                  if (courseContent != null && courseContent.isNotEmpty) ...[
+                  if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _buildCourseContentCard(courseContent, isEnglish),
+                    _buildCourseContentCard(courseContent ?? '', isEnglish),
                   ],
                   const SizedBox(height: 18),
                   const Center(
@@ -341,9 +342,9 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               children: [
                 _buildCourseHeader(isEnglish),
                 const SizedBox(height: 12),
-                if (courseContent != null && courseContent.isNotEmpty) ...[
+                if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _buildCourseContentCard(courseContent, isEnglish),
+                  _buildCourseContentCard(courseContent ?? '', isEnglish),
                 ],
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
@@ -649,6 +650,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
   }
 
   Widget _buildCourseContentCard(String courseContent, bool isEnglish) {
+    final pages = widget.course.pages;
     return Card(
       elevation: 0,
       color: Colors.white,
@@ -656,28 +658,41 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: Colors.grey.withValues(alpha: 0.14)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.article_outlined, color: Color(0xFF166534)),
-                const SizedBox(width: 8),
-                Text(
-                  isEnglish ? 'Course content' : 'Contenu du cours',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => CourseRecordNotebookReaderPage(
+            title: widget.course.labelFor(widget.locale.languageCode),
+            pages: pages,
+            fallbackText: courseContent,
+            locale: widget.locale,
+          ),
+        )),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              const Icon(Icons.menu_book_rounded, color: Color(0xFF166534), size: 30),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isEnglish ? 'Course notebook' : 'Cahier du cours',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${pages.isEmpty ? 1 : pages.length} ${isEnglish ? 'A4 page(s)' : 'page(s) A4'} • ${isEnglish ? 'Tap to read' : 'Appuyez pour lire'}',
+                      style: const TextStyle(color: Colors.black54, fontSize: 12),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            LessonContentRenderer(
-              text: courseContent,
-              style: const TextStyle(fontSize: 15, height: 1.55),
-              selectable: true,
-            ),
-          ],
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF166534)),
+            ],
+          ),
         ),
       ),
     );

@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../offline/app_database.dart';
 import '../offline/connectivity_service.dart';
+import '../offline/notebook_image_cache.dart';
 
 import '../../models/chapter_learning_content.dart';
 import '../../models/pedagogy.dart';
@@ -230,7 +231,7 @@ class ChapterLearningService {
     try {
       final legacyCourses = await _client
           .from('courses')
-          .select('id,title_fr,title_en,content_fr,content_en')
+          .select('id,title_fr,title_en,content_fr,content_en,pages_json')
           .eq('chapter_id', chapterId)
           .eq('status', 'published');
       courses = legacyCourses
@@ -255,6 +256,7 @@ class ChapterLearningService {
         'title_en': course['title_en']?.toString() ?? 'Course',
         'body_text_fr': bodyFr,
         'body_text_en': bodyEn,
+        'pages_json': course['pages_json'],
         'position': 0,
         'is_published': true,
       });
@@ -280,6 +282,20 @@ class ChapterLearningService {
             'title_en': lesson['title_en']?.toString() ?? 'Lesson',
             'body_text_fr': bodyFr,
             'body_text_en': bodyEn,
+            'pages_json': [
+              {
+                'id': 'legacy-page-1',
+                'position': 1,
+                'format': 'A4',
+                'blocks': [
+                  {
+                    'type': 'text',
+                    'text_fr': bodyFr ?? '',
+                    'text_en': bodyEn ?? bodyFr ?? '',
+                  },
+                ],
+              },
+            ],
             'position': (lesson['position'] as num?)?.toInt() ?? 0,
             'is_published': true,
           });
@@ -429,6 +445,28 @@ class ChapterLearningService {
     }
   }
 
+
+  Future<void> cacheNotebookPageImages(
+    List<ChapterLearningContentItem> items,
+  ) async {
+    final userId = _cacheUserId;
+    for (final item in items) {
+      for (final page in item.pages) {
+        final rawBlocks = page['blocks'];
+        if (rawBlocks is! List) continue;
+        for (final raw in rawBlocks.whereType<Map>()) {
+          if (raw['type'] != 'image') continue;
+          final path = raw['storage_path']?.toString().trim() ?? '';
+          if (path.isEmpty) continue;
+          await NotebookImageCache.download(
+            userId: userId,
+            storagePath: path,
+            client: _client,
+          );
+        }
+      }
+    }
+  }
 
   String _originalPdfCacheKey(String sourcePath) {
     // Stable FNV-1a key: multiple lessons from one PDF share one offline copy.

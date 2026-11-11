@@ -158,6 +158,7 @@ class Course {
       contentEn;
   final bool smartLessonEnabled;
   final int minimumExerciseScore;
+  final List<Map<String, dynamic>> pages;
   final DateTime? publishedAt;
   const Course({
     required this.id,
@@ -175,6 +176,7 @@ class Course {
     this.contentEn,
     this.smartLessonEnabled = true,
     this.minimumExerciseScore = 50,
+    this.pages = const <Map<String, dynamic>>[],
     this.publishedAt,
   });
   factory Course.fromMap(Map<String, dynamic> map) => Course(
@@ -192,6 +194,12 @@ class Course {
     contentEn: map['content_en'] as String?,
     smartLessonEnabled: map['smart_lesson_enabled'] as bool? ?? true,
     minimumExerciseScore: (map['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+    pages: map['pages_json'] is List
+        ? (map['pages_json'] as List)
+            .whereType<Map>()
+            .map((page) => Map<String, dynamic>.from(page))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[],
     status: map['status'] as String? ?? 'draft',
     publishedAt: map['published_at'] is String
         ? DateTime.tryParse(map['published_at'] as String)

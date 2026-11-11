@@ -22,6 +22,7 @@ import '../../../models/user_profile.dart';
 import '../../../core/services/quota_service.dart';
 import '../../premium/premium_gate.dart';
 import 'chapter_folder_page.dart';
+import 'course_notebook_reader_page.dart';
 import '../../messages/widgets/message_media.dart';
 
 class ChapterLearningDetailPage extends StatefulWidget {
@@ -135,6 +136,7 @@ class _ChapterLearningDetailPageState
   Future<void> _cacheOriginalLessonPdfs(
     List<ChapterLearningContentItem> content,
   ) async {
+    await _service.cacheNotebookPageImages(content);
     final sourceItems = <String, ChapterLearningContentItem>{};
     for (final item in content) {
       final path = (item.sourcePdfPath ?? '').trim();
@@ -651,7 +653,11 @@ class _ChapterLearningDetailPageState
     final titleSize = _a4Layout ? 25.0 : 21.0;
     final bodySize = _a4Layout ? 17.0 : 15.5;
 
-    return Align(
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => CourseNotebookReaderPage(item: item, locale: widget.locale),
+      )),
+      child: Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: _a4Layout ? 794 : double.infinity),
@@ -749,8 +755,7 @@ class _ChapterLearningDetailPageState
           ),
         ),
       ),
-    );
-  }
+    ));  }
 
   Widget _courseIllustration(ChapterLearningContentItem image) {
     final source = (image.storagePath?.trim().isNotEmpty ?? false) ? image.storagePath : image.externalUrl;
@@ -987,7 +992,7 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
   PdfDocument? _document;
   int _totalPages = 0;
   int _pageIndex = 0;
-  bool _a4Layout = false;
+  bool _a4Layout = true;
 
   bool get _en => widget.locale.languageCode == 'en';
   int get _startPage => widget.item.sourcePageStart ?? 1;
@@ -1018,8 +1023,8 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     final page = await document.getPage(pageNumber);
     try {
       final image = await page.render(
-        width: (page.width * 2).round(),
-        height: (page.height * 2).round(),
+        width: page.width * 2,
+        height: page.height * 2,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {

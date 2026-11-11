@@ -28,6 +28,7 @@ class ChapterLearningContentItem {
     this.sourcePageStart,
     this.sourcePageEnd,
     this.storedFolderKey,
+    this.pages = const <Map<String, dynamic>>[],
   });
 
   final String id;
@@ -47,6 +48,8 @@ class ChapterLearningContentItem {
   final int? sourcePageStart;
   final int? sourcePageEnd;
   final String? storedFolderKey;
+  /// Ordered, independently editable notebook pages stored in pages_json.
+  final List<Map<String, dynamic>> pages;
 
   /// Flutter's canonical folder routing, with backward compatibility for
   /// rows created before folder_key was added to the chapter catalogue.
@@ -98,6 +101,12 @@ class ChapterLearningContentItem {
       sourcePageStart: _asNullableInt(map['source_page_start']),
       sourcePageEnd: _asNullableInt(map['source_page_end']),
       storedFolderKey: map['folder_key'] as String?,
+      pages: map['pages_json'] is List
+          ? (map['pages_json'] as List)
+              .whereType<Map>()
+              .map((page) => Map<String, dynamic>.from(page))
+              .toList(growable: false)
+          : const <Map<String, dynamic>>[],
     );
   }
 }

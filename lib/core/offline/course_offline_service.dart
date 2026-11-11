@@ -14,6 +14,7 @@ import 'offline_repository.dart';
 import 'app_database.dart';
 import 'connectivity_service.dart';
 import 'offline_settings.dart';
+import 'notebook_image_cache.dart';
 
 class OfflineDownloadProgress {
   final String resourceId;
@@ -160,6 +161,7 @@ class CourseOfflineService {
     }
 
     final resources = await _resources.listForCourse(course.id);
+    unawaited(_cacheNotebookPageImages(userId: userId, course: course));
     final lessons = await LessonService().listCourseLessons(course.id);
     await OfflineRepository().saveLessons(lessons);
     // Cache both directly linked QCMs and older QCMs associated with this
@@ -184,6 +186,26 @@ class CourseOfflineService {
       }
     }
     // Les pièces jointes ne sont téléchargées qu'à la demande d'ouverture.
+  }
+
+  Future<void> _cacheNotebookPageImages({
+    required String userId,
+    required Course course,
+  }) async {
+    for (final page in course.pages) {
+      final rawBlocks = page['blocks'];
+      if (rawBlocks is! List) continue;
+      for (final raw in rawBlocks.whereType<Map>()) {
+        if (raw['type'] != 'image') continue;
+        final path = raw['storage_path']?.toString().trim() ?? '';
+        if (path.isEmpty) continue;
+        await NotebookImageCache.download(
+          userId: userId,
+          storagePath: path,
+          client: _client,
+        );
+      }
+    }
   }
 
   /// Télécharge un fichier à sa première ouverture et renvoie toujours sa copie
