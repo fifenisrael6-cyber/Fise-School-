@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/offline/notebook_page_pagination.dart';
 
 /// Éditeur de cahier : chaque page est indépendante et prévisualisable au format A4.
 class CourseNotebookEditorPage extends StatefulWidget {
