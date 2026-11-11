@@ -156,8 +156,8 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
     final source = await document.getPage(pageNumber);
     try {
       final image = await source.render(
-        width: (source.width * 2).round(),
-        height: (source.height * 2).round(),
+        width: source.width * 2,
+        height: source.height * 2,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
