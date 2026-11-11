@@ -430,6 +430,15 @@ class ChapterLearningService {
   }
 
 
+  String _originalPdfCacheKey(String sourcePath) {
+    // Stable FNV-1a key: multiple lessons from one PDF share one offline copy.
+    var hash = 2166136261;
+    for (final unit in sourcePath.codeUnits) {
+      hash = ((hash ^ unit) * 16777619) & 0xFFFFFFFF;
+    }
+    return 'source_${hash.toRadixString(16)}';
+  }
+
   /// Loads the exact original PDF pages linked to an imported lesson.
   /// The same per-lesson file name is used by background prefetch, so opening
   /// the book while offline does not trigger another network request.
@@ -440,7 +449,7 @@ class ChapterLearningService {
     }
     final userId = _cacheUserId;
     final safeUser = userId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final safeId = _originalPdfCacheKey(source);
     final directory = await getApplicationSupportDirectory();
     final local = File(p.join(
       directory.path,
@@ -504,7 +513,9 @@ class ChapterLearningService {
             (sourceLower.contains('youtube.com') ||
                 sourceLower.contains('youtu.be') ||
                 sourceLower.contains('vimeo.com'))) continue;
-        final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        final safeId = isOriginalLessonPdf
+            ? _originalPdfCacheKey(source)
+            : item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
         final local = File(p.join(directory.path, 'offline', 'chapter_media', safeUser, '$safeId.bin'));
         if (await local.exists() && await local.length() > 0) continue;
 
