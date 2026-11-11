@@ -40,8 +40,11 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   void initState() {
     super.initState();
     final path = widget.localPath;
-    if (path != null && widget.resource.resourceType != 'pdf' && (path != null && widget.resource.resourceType != 'image' &&
-        widget.resource.resourceType != 'audio' && widget.resource.resourceType != 'video') {
+    if (path != null &&
+        widget.resource.resourceType != 'pdf' &&
+        widget.resource.resourceType != 'image' &&
+        widget.resource.resourceType != 'audio' &&
+        widget.resource.resourceType != 'video') {
       _prepareDocument(path);
     }
   }
@@ -144,6 +147,7 @@ class _PdfA4PageBook extends StatefulWidget {
 class _PdfA4PageBookState extends State<_PdfA4PageBook> {
   late final Future<PdfDocument> _future = PdfDocument.openFile(widget.path);
   PdfDocument? _document;
+  final PageController _controller = PageController();
   int _page = 0;
 
   bool get _fr => widget.locale.languageCode != 'en';
@@ -171,6 +175,7 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
     if (document != null) {
       document.close();
     }
+    _controller.dispose();
     super.dispose();
   }
 
@@ -191,6 +196,7 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
           children: [
             Expanded(
               child: PageView.builder(
+                controller: _controller,
                 itemCount: document.pagesCount,
                 onPageChanged: (index) => setState(() => _page = index),
                 itemBuilder: (context, index) => LayoutBuilder(
@@ -237,13 +243,13 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      onPressed: _page == 0 ? null : () => setState(() => _page--),
+                      onPressed: _page == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
                       icon: const Icon(Icons.chevron_left_rounded),
                     ),
                     Text('${_fr ? 'Page' : 'Page'} ${_page + 1} / ${document.pagesCount}',
                       style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
                     IconButton(
-                      onPressed: _page >= document.pagesCount - 1 ? null : () => setState(() => _page++),
+                      onPressed: _page >= document.pagesCount - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
                       icon: const Icon(Icons.chevron_right_rounded),
                     ),
                   ],
