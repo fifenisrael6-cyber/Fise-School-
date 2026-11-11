@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/offline/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -31,6 +32,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   double _fontSize = 16;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
+  List<Map<String, dynamic>> _pdfPages = const [];
+  final Map<int, Object> _pageErrors = {};
 
   bool get _en => widget.locale.languageCode == 'en';
 
@@ -53,6 +56,110 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       });
     } catch (_) {
       // A local preference read failure must not prevent course reading.
+    }
+  }
+
+  Future<void> _loadCoursePages({bool forceRetry = false}) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('course_pages')
+          .select('page_number,image_url')
+          .eq('course_id', widget.item.id)
+          .order('page_number');
+      if (rows.isEmpty) return;
+      final pages = <Map<String, dynamic>>[];
+      for (final row in rows) {
+        final number = (row['page_number'] as num).toInt();
+        final path = row['image_url']?.toString() ?? '';
+        Uint8List? bytes;
+        try {
+          if (!forceRetry) {
+            bytes = await _localDb.getCachedCoursePageImage(widget.item.id, number);
+          }
+          if (bytes == null) {
+            try {
+              bytes = await Supabase.instance.client.storage
+                  .from('course-pages').download(path);
+            } catch (_) {
+              // One automatic retry for transient storage/network failures.
+              bytes = await Supabase.instance.client.storage
+                  .from('course-pages').download(path);
+            }
+            await _localDb.cacheCoursePageImage(
+              courseId: widget.item.id,
+              pageNumber: number,
+              bytes: bytes,
+            );
+          }
+          pages.add({
+            'id': 'pdf-page-$number',
+            'position': number,
+            'blocks': [{'type': 'raster', 'bytes': bytes}],
+          });
+          _pageErrors.remove(number);
+        } catch (error) {
+          _pageErrors[number] = error;
+          pages.add({
+            'id': 'pdf-page-$number',
+            'position': number,
+            'blocks': [{'type': 'raster-error', 'page_number': number}],
+          });
+        }
+      }
+      if (!mounted) return;
+      setState(() => _pdfPages = pages);
+      final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
+        final page = ((saved?['page_number'] as num?)?.toInt() ?? 0)
+            .clamp(0, pages.length - 1);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _controller.hasClients) {
+            _controller.jumpToPage(page);
+            setState(() => _index = page);
+          }
+        });
+      }
+    } catch (_) {
+      // Keep the text/notebook version available if no raster pages exist.
+    }
+  }
+
+  Future<void> _retryCoursePage(int pageNumber) async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('course_pages')
+          .select('image_url')
+          .eq('course_id', widget.item.id)
+          .eq('page_number', pageNumber)
+          .limit(1);
+      if (rows.isEmpty) throw StateError('Page introuvable.');
+      final path = rows.first['image_url'].toString();
+      final bytes = await Supabase.instance.client.storage
+          .from('course-pages').download(path);
+      await _localDb.cacheCoursePageImage(
+        courseId: widget.item.id,
+        pageNumber: pageNumber,
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pageErrors.remove(pageNumber);
+        final index = _pdfPages.indexWhere((p) => p['position'] == pageNumber);
+        if (index >= 0) {
+          _pdfPages[index] = {
+            'id': 'pdf-page-$pageNumber',
+            'position': pageNumber,
+            'blocks': [{'type': 'raster', 'bytes': bytes}],
+          };
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _pageErrors[pageNumber] = error);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_en ? 'Page retry failed: $error' : 'Nouvel essai impossible : $error'),
+      ));
     }
   }
 
@@ -111,6 +218,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   List<Map<String, dynamic>> get _pages {
+    if (_pdfPages.isNotEmpty) return _pdfPages;
     final source = widget.item.pages.isNotEmpty
         ? widget.item.pages
         : [
@@ -181,6 +289,28 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                           child: RichLessonText(
                             text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
                             style: TextStyle(fontSize: _fontSize, height: 1.75, color: const Color(0xFF1E293B)),
+                          ),
+                        ),
+                      if (block['type'] == 'raster' && block['bytes'] is Uint8List)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
+                        ),
+                      if (block['type'] == 'raster-error')
+                        Expanded(
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
+                                const SizedBox(height: 8),
+                                FilledButton.icon(
+                                  onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
+                                  icon: const Icon(Icons.refresh),
+                                  label: Text(_en ? 'Retry' : 'Réessayer'),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
