@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -429,6 +430,61 @@ class ChapterLearningService {
   }
 
 
+  String _originalPdfCacheKey(String sourcePath) {
+    // Stable FNV-1a key: multiple lessons from one PDF share one offline copy.
+    var hash = 2166136261;
+    for (final unit in sourcePath.codeUnits) {
+      hash = ((hash ^ unit) * 16777619) & 0xFFFFFFFF;
+    }
+    return 'source_${hash.toRadixString(16)}';
+  }
+
+  /// Loads the exact original PDF pages linked to an imported lesson.
+  /// The same per-lesson file name is used by background prefetch, so opening
+  /// the book while offline does not trigger another network request.
+  Future<Uint8List> loadOriginalPdfBytes(ChapterLearningContentItem item) async {
+    final source = (item.sourcePdfPath ?? '').trim();
+    if (source.isEmpty) {
+      throw StateError('Aucun PDF source n’est associé à cette leçon.');
+    }
+    final userId = _cacheUserId;
+    final safeUser = userId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final safeId = _originalPdfCacheKey(source);
+    final directory = await getApplicationSupportDirectory();
+    final local = File(p.join(
+      directory.path,
+      'offline',
+      'chapter_media',
+      safeUser,
+      '$safeId.bin',
+    ));
+    if (await local.exists() && await local.length() > 0) {
+      return local.readAsBytes();
+    }
+    if (!await ConnectivityService().isOnline()) {
+      throw const SocketException('Le PDF original n’est pas encore disponible hors connexion.');
+    }
+    final url = await _client.storage
+        .from('chapter-content')
+        .createSignedUrl(source, 900);
+    final response = await http
+        .get(Uri.parse(url))
+        .timeout(const Duration(seconds: 45));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw HttpException('Téléchargement du PDF impossible (HTTP ${response.statusCode}).');
+    }
+    if (response.bodyBytes.isEmpty) {
+      throw const FormatException('Le PDF source téléchargé est vide.');
+    }
+    await local.parent.create(recursive: true);
+    final temporary = File('${local.path}.part');
+    if (await temporary.exists()) await temporary.delete();
+    await temporary.writeAsBytes(response.bodyBytes, flush: true);
+    if (await local.exists()) await local.delete();
+    await temporary.rename(local.path);
+    return Uint8List.fromList(response.bodyBytes);
+  }
+
   Future<void> _prefetchChapterMediaImpl(String chapterId) async {
     final userId = _cacheUserId;
     final safeUser = userId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
@@ -437,9 +493,19 @@ class ChapterLearningService {
     try {
       final items = await listContent(chapterId);
       for (final item in items) {
-        if (!const {'pdf', 'images', 'video', 'audio'}.contains(item.folderKey)) continue;
-        final path = (item.storagePath ?? '').trim();
-        final external = (item.externalUrl ?? '').trim();
+        final originalPdfPath = (item.sourcePdfPath ?? '').trim();
+        final isOriginalLessonPdf =
+            item.folderKey == 'course' && originalPdfPath.isNotEmpty;
+        if (!isOriginalLessonPdf &&
+            !const {'pdf', 'images', 'video', 'audio'}.contains(item.folderKey)) {
+          continue;
+        }
+        final path = isOriginalLessonPdf
+            ? originalPdfPath
+            : (item.storagePath ?? '').trim();
+        final external = isOriginalLessonPdf
+            ? ''
+            : (item.externalUrl ?? '').trim();
         final source = path.isNotEmpty ? path : external;
         if (source.isEmpty) continue;
         final sourceLower = source.toLowerCase();
@@ -447,7 +513,9 @@ class ChapterLearningService {
             (sourceLower.contains('youtube.com') ||
                 sourceLower.contains('youtu.be') ||
                 sourceLower.contains('vimeo.com'))) continue;
-        final safeId = item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+        final safeId = isOriginalLessonPdf
+            ? _originalPdfCacheKey(source)
+            : item.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
         final local = File(p.join(directory.path, 'offline', 'chapter_media', safeUser, '$safeId.bin'));
         if (await local.exists() && await local.length() > 0) continue;
 

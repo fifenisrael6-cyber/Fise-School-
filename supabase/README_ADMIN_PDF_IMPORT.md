@@ -40,5 +40,6 @@ L'Edge Function utilise les secrets Supabase habituels `SUPABASE_URL`, `SUPABASE
 
 - Les PDF composés uniquement d'images dépendent de la lecture PDF multimodale de Gemini.
 - Les tableaux et formules complexes doivent être relus par l'administrateur après extraction.
-- Les schémas et images intégrés au PDF ne sont pas encore convertis automatiquement en illustrations natives.
+- Chaque leçon importée conserve désormais le chemin du PDF source et les numéros de pages associés. L'élève peut ouvrir ces pages originales dans une présentation de manuel A4/mobile : les schémas, images, tableaux et leur position sur la page restent fidèles au document.
+- Le PDF original est mis en cache localement lors de l'ouverture du chapitre pour permettre la consultation ultérieure hors connexion. Les pages sources ne sont accessibles que si la leçon correspondante est publiée et que l'élève est autorisé à lire le chapitre.
 - Tester avec un compte administrateur, puis avec un compte élève de chaque sous-système/série concerné.
