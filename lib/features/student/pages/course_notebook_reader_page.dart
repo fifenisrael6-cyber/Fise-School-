@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -297,7 +298,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                           child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
                         ),
                       if (block['type'] == 'raster-error')
-                        Expanded(
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
                           child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
