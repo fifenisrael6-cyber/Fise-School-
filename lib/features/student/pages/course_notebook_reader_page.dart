@@ -30,7 +30,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   bool get _en => widget.locale.languageCode == 'en';
 
   List<Map<String, dynamic>> get _pages {
-    if (widget.item.pages.isNotEmpty) return widget.item.pages;
+    if (widget.item.pages.isNotEmpty) {
+      return NotebookPagePagination.expandLegacyPages(widget.item.pages);
+    }
     final body = widget.item.bodyFor(widget.locale.languageCode) ??
         widget.item.bodyFor('fr') ?? '';
     return [
@@ -206,7 +208,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
   bool get _en => widget.locale.languageCode == 'en';
 
   List<Map<String, dynamic>> get _pages => widget.pages.isNotEmpty
-      ? widget.pages
+      ? NotebookPagePagination.expandLegacyPages(widget.pages)
       : [
           {'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
         ];
