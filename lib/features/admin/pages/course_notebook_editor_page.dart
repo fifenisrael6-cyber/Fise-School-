@@ -26,14 +26,22 @@ class CourseNotebookEditorPage extends StatefulWidget {
 }
 
 class _NotebookPage {
-  _NotebookPage({String text = '', List<Map<String, dynamic>>? images})
-      : text = TextEditingController(text: text),
+  _NotebookPage({
+    String text = '',
+    String textEn = '',
+    List<Map<String, dynamic>>? images,
+  })  : text = TextEditingController(text: text),
+        textEn = TextEditingController(text: textEn),
         images = images ?? <Map<String, dynamic>>[];
 
   final TextEditingController text;
+  final TextEditingController textEn;
   final List<Map<String, dynamic>> images;
 
-  void dispose() => text.dispose();
+  void dispose() {
+    text.dispose();
+    textEn.dispose();
+  }
 }
 
 class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
@@ -65,23 +73,26 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           final page = Map<String, dynamic>.from(raw);
           final blocks = page['blocks'];
           String text = '';
+          String textEn = '';
           final images = <Map<String, dynamic>>[];
           if (blocks is List) {
             for (final rawBlock in blocks.whereType<Map>()) {
               final block = Map<String, dynamic>.from(rawBlock);
               if (block['type'] == 'text') {
                 text = (block['text_fr'] ?? block['text'] ?? '').toString();
+                textEn = (block['text_en'] ?? text).toString();
               } else if (block['type'] == 'image') {
                 images.add(block);
               }
             }
           }
-          _pages.add(_NotebookPage(text: text, images: images));
+          _pages.add(_NotebookPage(text: text, textEn: textEn, images: images));
         }
       }
       if (_pages.isEmpty) {
         _pages.add(_NotebookPage(
           text: (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString(),
+          textEn: (item['body_text_en'] ?? item['content_en'] ?? item['body_text_fr'] ?? item['content_fr'] ?? '').toString(),
         ));
       }
     } else {
@@ -162,7 +173,9 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
               {
                 'type': 'text',
                 'text_fr': _pages[index].text.text.trim(),
-                'text_en': _pages[index].text.text.trim(),
+                'text_en': _pages[index].textEn.text.trim().isEmpty
+                    ? _pages[index].text.text.trim()
+                    : _pages[index].textEn.text.trim(),
               },
             ..._pages[index].images,
           ],
@@ -189,6 +202,9 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       final pages = _serializePages();
       final plainText = _pages.map((page) => page.text.text.trim())
           .where((value) => value.isNotEmpty).join('\n\n');
+      final plainTextEn = _pages.map((page) => page.textEn.text.trim().isEmpty
+          ? page.text.text.trim()
+          : page.textEn.text.trim()).where((value) => value.isNotEmpty).join('\n\n');
       if (widget.courseContext != null) {
         final contextData = widget.courseContext!;
         final classIds = (contextData['class_ids'] as List? ?? const [])
@@ -204,7 +220,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
             'title_fr': _titleFr.text.trim(),
             'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
             'content_fr': plainText,
-            'content_en': plainText,
+            'content_en': plainTextEn,
             'pages_json': pages,
             'status': _published ? 'published' : 'draft',
             'published_at': _published ? DateTime.now().toIso8601String() : null,
@@ -237,7 +253,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           'title_fr': _titleFr.text.trim(),
           'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
           'body_text_fr': plainText,
-          'body_text_en': plainText,
+          'body_text_en': plainTextEn,
           'pages_json': pages,
           'is_published': _published,
           'created_by': _db.auth.currentUser?.id,
@@ -353,10 +369,25 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
               minLines: 7,
               maxLines: 18,
               decoration: InputDecoration(
-                labelText: _t('Texte de cette page', 'Text on this page'),
+                labelText: _t('Texte français de cette page', 'French text on this page'),
                 hintText: _t('Rédige le contenu de la page…', 'Write this page…'),
                 border: const OutlineInputBorder(),
               ),
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_t('Traduction anglaise (facultative)', 'English translation (optional)')),
+              children: [
+                TextField(
+                  controller: page.textEn,
+                  minLines: 4,
+                  maxLines: 12,
+                  decoration: const InputDecoration(
+                    labelText: 'English text',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
