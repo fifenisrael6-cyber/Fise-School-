@@ -284,7 +284,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: [
                   _buildCourseHeader(isEnglish),
                   const SizedBox(height: 12),
-                  if (courseContent != null && courseContent.isNotEmpty) ...[
+                  if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     _buildCourseContentCard(courseContent, isEnglish),
                   ],
@@ -342,7 +342,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               children: [
                 _buildCourseHeader(isEnglish),
                 const SizedBox(height: 12),
-                if (courseContent != null && courseContent.isNotEmpty) ...[
+                if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _buildCourseContentCard(courseContent, isEnglish),
                 ],
