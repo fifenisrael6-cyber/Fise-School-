@@ -230,7 +230,7 @@ class ChapterLearningService {
     try {
       final legacyCourses = await _client
           .from('courses')
-          .select('id,title_fr,title_en,content_fr,content_en')
+          .select('id,title_fr,title_en,content_fr,content_en,pages_json')
           .eq('chapter_id', chapterId)
           .eq('status', 'published');
       courses = legacyCourses
@@ -255,6 +255,7 @@ class ChapterLearningService {
         'title_en': course['title_en']?.toString() ?? 'Course',
         'body_text_fr': bodyFr,
         'body_text_en': bodyEn,
+        'pages_json': course['pages_json'],
         'position': 0,
         'is_published': true,
       });
@@ -280,6 +281,20 @@ class ChapterLearningService {
             'title_en': lesson['title_en']?.toString() ?? 'Lesson',
             'body_text_fr': bodyFr,
             'body_text_en': bodyEn,
+            'pages_json': [
+              {
+                'id': 'legacy-lesson-page-1',
+                'position': 1,
+                'format': 'A4',
+                'blocks': [
+                  {
+                    'type': 'text',
+                    'text_fr': bodyFr ?? '',
+                    'text_en': bodyEn ?? bodyFr ?? '',
+                  },
+                ],
+              },
+            ],
             'position': (lesson['position'] as num?)?.toInt() ?? 0,
             'is_published': true,
           });
