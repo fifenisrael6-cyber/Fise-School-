@@ -113,6 +113,10 @@ class _ChapterLearningDetailPageState
           onTimeout: () => const <ChapterLearningContentItem>[],
         );
 
+    // Download the source PDFs in the background once the chapter is opened.
+    // This prepares the original illustrated pages for later offline reading.
+    unawaited(_cacheOriginalLessonPdfs(content));
+
     unawaited(_refreshChapterMetadata(
       generation: generation,
       content: content,
@@ -126,6 +130,25 @@ class _ChapterLearningDetailPageState
       counts: const ChapterLearningCounts(),
       progress: null,
     );
+  }
+
+  Future<void> _cacheOriginalLessonPdfs(
+    List<ChapterLearningContentItem> content,
+  ) async {
+    final sourceItems = <String, ChapterLearningContentItem>{};
+    for (final item in content) {
+      final path = (item.sourcePdfPath ?? '').trim();
+      if (item.folderKey == 'course' && path.isNotEmpty) {
+        sourceItems.putIfAbsent(path, () => item);
+      }
+    }
+    for (final item in sourceItems.values) {
+      try {
+        await _service.loadOriginalPdfBytes(item);
+      } catch (_) {
+        // The lesson text remains available; PDF caching retries when opened.
+      }
+    }
   }
 
   Future<void> _refreshChapterMetadata({
