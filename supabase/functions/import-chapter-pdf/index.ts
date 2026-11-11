@@ -15,16 +15,15 @@ function normalize(value: unknown): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-async function extractPdf(bytes: Uint8Array): Promise<string> {
+async function extractPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
   if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
     const content = await page.getTextContent();
-    // Keep the PDF's visual line structure instead of flattening every page
-    // into one long sentence. This lets the lesson formatter recover headings,
-    // numbered sections, formulas and table rows more faithfully.
+    // Keep each page separate so each generated lesson can refer to the
+    // original pages containing its figures, tables and exact page layout.
     const lineGroups = new Map<number, Array<{ x: number; text: string }>>();
     for (const item of content.items as any[]) {
       const text = String(item?.str ?? "").trim();
@@ -40,12 +39,12 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
     const line = [...lineGroups.entries()]
       .sort((a, b) => b[0] - a[0])
       .map(([, parts]) => parts.sort((a, b) => a.x - b.x)
-        .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
+        .map((part) => part.text).join(" ").replace(/\\s+/g, " ").trim())
       .filter(Boolean)
-      .join("\n");
-    if (line) pages.push(line);
+      .join("\\n");
+    pages.push(line);
   }
-  return pages.join("\n\n").trim();
+  return pages;
 }
 
 async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Promise<string> {
@@ -148,7 +147,12 @@ serve(async (req) => {
       throw new Error("Le fichier stocké ne possède pas une signature PDF valide.");
     }
 
-    let extracted = await extractPdf(bytes);
+    const extractedPages = await extractPdf(bytes);
+    const sourcePageCount = extractedPages.length;
+    let extracted = extractedPages
+      .map((page, index) => `[PAGE ${index + 1}]\\n${page}`)
+      .join("\\n\\n")
+      .trim();
     if (extracted.length < 250) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -164,7 +168,7 @@ serve(async (req) => {
       });
       const scannedData = await scanned.json();
       if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
-      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\n") ?? "";
+      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\\n") ?? "";
     }
     if (extracted.trim().length < 200) throw new Error("Le PDF ne contient pas assez de texte lisible.");
 
@@ -183,13 +187,26 @@ RÈGLES ABSOLUES :
 - N'ajoute pas artificiellement une introduction, des objectifs ou une conclusion si le document ne contient pas les éléments nécessaires.
 - Le contenu doit être propre sur un écran de téléphone : titres courts, paragraphes aérés, aucune balise HTML, aucun bloc de code.
 
-Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","title_en":"...","content_fr":"cours structuré complet en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Si le PDF traite d'un seul chapitre, retourne un seul élément. Maximum 30 chapitres. Matière : ${subject.name_fr}. Programme : ${curriculum.title_fr}. Chapitre sélectionné par l'administrateur : ${sourceChapter.title_fr}.
+Pour chaque chapitre, indique aussi source_page_start et source_page_end (numéros de pages du PDF, numérotation commençant à 1). Ces bornes doivent couvrir les pages originales qui contiennent réellement le chapitre, ses exemples, ses tableaux et ses schémas. Si plusieurs chapitres se trouvent sur une même page, cette page peut appartenir aux deux. N'invente jamais de numéro de page.
+
+Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","title_en":"...","content_fr":"cours structuré complet en français avec Markdown","content_en":"faithful English translation preserving the same structure","source_page_start":1,"source_page_end":3}]}. Si le PDF traite d'un seul chapitre, retourne un seul élément. Maximum 30 chapitres. Matière : ${subject.name_fr}. Programme : ${curriculum.title_fr}. Chapitre sélectionné par l'administrateur : ${sourceChapter.title_fr}. Le PDF contient ${sourcePageCount} page(s). Les marqueurs [PAGE n] identifient les numéros de page originaux.
 
 TEXTE DU PDF :
 ${extracted.slice(0, 90000)}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
     const chapters = Array.isArray(parsed.chapters)
-      ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30)
+      ? parsed.chapters
+          .filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim())
+          .slice(0, 30)
+          .map((c: any) => {
+            const start = Number(c.source_page_start);
+            const end = Number(c.source_page_end);
+            const validStart = Number.isInteger(start) && start >= 1 && start <= sourcePageCount ? start : 1;
+            const validEnd = Number.isInteger(end) && end >= validStart && end <= sourcePageCount
+              ? end
+              : sourcePageCount;
+            return { ...c, source_page_start: validStart, source_page_end: validEnd };
+          })
       : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié.");
 
@@ -316,6 +333,9 @@ ${extracted.slice(0, 90000)}`;
             title_en: String(generated.title_en ?? previous.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
             body_text_fr: String(generated.content_fr).trim(),
             body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+            source_pdf_path: source.storage_path,
+            source_page_start: generated.source_page_start,
+            source_page_end: generated.source_page_end,
             folder_key: "course",
           })
           .eq("id", previous.id).select("id").single();
@@ -336,6 +356,9 @@ ${extracted.slice(0, 90000)}`;
               title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
               body_text_fr: String(generated.content_fr).trim(),
               body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+              source_pdf_path: source.storage_path,
+              source_page_start: generated.source_page_start,
+              source_page_end: generated.source_page_end,
               folder_key: "course",
             })
             .eq("id", previous.id).select("id").single();
@@ -353,6 +376,9 @@ ${extracted.slice(0, 90000)}`;
           title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
           body_text_fr: String(generated.content_fr).trim(),
           body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+          source_pdf_path: source.storage_path,
+          source_page_start: generated.source_page_start,
+          source_page_end: generated.source_page_end,
           position: 0,
           is_published: false,
           created_by: authData.user.id,
