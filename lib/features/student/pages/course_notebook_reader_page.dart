@@ -37,6 +37,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         widget.item.bodyFor('fr') ?? '';
     return [
       {
+        'id': 'legacy-page-1',
+        'position': 1,
+        'format': 'A4',
         'blocks': [
           {'type': 'text', 'text_fr': body, 'text_en': body},
         ],
@@ -210,7 +213,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
   List<Map<String, dynamic>> get _pages => widget.pages.isNotEmpty
       ? NotebookPagePagination.expandLegacyPages(widget.pages)
       : [
-          {'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
+          {'id': 'legacy-page-1', 'position': 1, 'format': 'A4', 'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
         ];
 
   Future<Object?> _resolveImage(String path) async {
