@@ -111,21 +111,23 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   List<Map<String, dynamic>> get _pages {
-    if (widget.item.pages.isNotEmpty) {
-      return NotebookPagePagination.expandLegacyPages(widget.item.pages);
-    }
-    final body = widget.item.bodyFor(widget.locale.languageCode) ??
-        widget.item.bodyFor('fr') ?? '';
-    return [
-      {
-        'id': 'legacy-page-1',
-        'position': 1,
-        'format': 'A4',
-        'blocks': [
-          {'type': 'text', 'text_fr': body, 'text_en': body},
-        ],
-      },
-    ];
+    final source = widget.item.pages.isNotEmpty
+        ? widget.item.pages
+        : [
+            {
+              'id': 'legacy-page-1',
+              'position': 1,
+              'format': 'A4',
+              'blocks': [
+                {
+                  'type': 'text',
+                  'text_fr': widget.item.bodyFor('fr') ?? '',
+                  'text_en': widget.item.bodyFor('en') ?? widget.item.bodyFor('fr') ?? '',
+                },
+              ],
+            },
+          ];
+    return NotebookPagePagination.expandLegacyPages(source, fontSize: _fontSize);
   }
 
   Future<Object?> _resolveImage(String path) async {
