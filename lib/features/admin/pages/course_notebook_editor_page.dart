@@ -244,33 +244,32 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                 boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
               ),
               child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(_titleFr.text.trim(), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
-                const Divider(height: 26, color: Color(0xFF16A34A)),
-                if (page.text.text.trim().isNotEmpty)
-                  Text(page.text.text, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
-                for (final image in page.images)
-                  if ((image['storage_path'] ?? '').toString().isNotEmpty)
-                    FutureBuilder<String?>(
-                      future: _imageUrl(image['storage_path'].toString()),
-                      builder: (context, snapshot) => snapshot.data == null
-                          ? const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator())
-                          : Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              child: Image.network(snapshot.data!, fit: BoxFit.contain),
-                            ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(_titleFr.text.trim(), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+                    const Divider(height: 26, color: Color(0xFF16A34A)),
+                    if (page.text.text.trim().isNotEmpty)
+                      Text(page.text.text, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
+                    for (final image in page.images)
+                      if ((image['storage_path'] ?? '').toString().isNotEmpty)
+                        FutureBuilder<String?>(
+                          future: _imageUrl(image['storage_path'].toString()),
+                          builder: (context, snapshot) => snapshot.data == null
+                              ? const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator())
+                              : Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Image.network(snapshot.data!, fit: BoxFit.contain),
+                                ),
+                        ),
+                    const SizedBox(height: 20),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Text('${_t('Page', 'Page')} ${index + 1}', style: const TextStyle(color: Colors.black45, fontSize: 10)),
                     ),
-                const SizedBox(height: 20),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Text('${_t('Page', 'Page')} ${index + 1}', style: const TextStyle(color: Colors.black45, fontSize: 10)),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
+              ),
             ),
           ),
         ),
