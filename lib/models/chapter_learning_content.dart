@@ -24,6 +24,9 @@ class ChapterLearningContentItem {
     this.bodyTextEn,
     this.externalUrl,
     this.storagePath,
+    this.sourcePdfPath,
+    this.sourcePageStart,
+    this.sourcePageEnd,
     this.storedFolderKey,
   });
 
@@ -38,6 +41,11 @@ class ChapterLearningContentItem {
   final String? bodyTextEn;
   final String? externalUrl;
   final String? storagePath;
+
+  /// Original PDF source and the page interval represented by this lesson.
+  final String? sourcePdfPath;
+  final int? sourcePageStart;
+  final int? sourcePageEnd;
   final String? storedFolderKey;
 
   /// Flutter's canonical folder routing, with backward compatibility for
@@ -86,6 +94,9 @@ class ChapterLearningContentItem {
       bodyTextEn: map['body_text_en'] as String?,
       externalUrl: map['external_url'] as String?,
       storagePath: map['storage_path'] as String?,
+      sourcePdfPath: map['source_pdf_path'] as String?,
+      sourcePageStart: _asNullableInt(map['source_page_start']),
+      sourcePageEnd: _asNullableInt(map['source_page_end']),
       storedFolderKey: map['folder_key'] as String?,
     );
   }
@@ -342,6 +353,9 @@ class ChapterQuizAttempt {
 
 int _asInt(Object? value, {int fallback = 0}) =>
     value is num ? value.toInt() : fallback;
+
+int? _asNullableInt(Object? value) =>
+    value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
 
 DateTime? _asDate(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
