@@ -49,5 +49,6 @@ USING (
         AND ci.is_published
         AND ci.content_type = 'course'
         AND public.student_can_access_chapter_content(ci.id)
-    )  )
+    )
+  )
 );
