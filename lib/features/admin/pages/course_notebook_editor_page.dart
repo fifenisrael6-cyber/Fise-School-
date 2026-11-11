@@ -70,8 +70,11 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       _published = item['is_published'] == true || item['status'] == 'published';
       final rawPages = item['pages_json'];
       if (rawPages is List) {
-        for (final raw in rawPages.whereType<Map>()) {
-          final page = Map<String, dynamic>.from(raw);
+        final savedPages = rawPages
+            .whereType<Map>()
+            .map((raw) => Map<String, dynamic>.from(raw))
+            .toList(growable: false);
+        for (final page in NotebookPagePagination.expandLegacyPages(savedPages)) {
           final blocks = page['blocks'];
           String text = '';
           String textEn = '';
