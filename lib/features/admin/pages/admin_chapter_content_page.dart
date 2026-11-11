@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
+import 'course_notebook_editor_page.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
 class AdminChapterContentPage extends StatefulWidget {
@@ -511,7 +512,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         label:Text(t('Créer le programme de cette classe','Create this class programme')),
       )),
     if(curriculum!=null)Row(children:[Expanded(child:Text(t('Chapitres au programme','Programme chapters'),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17))),IconButton(onPressed:()=>editChapter(),icon:const Icon(Icons.add_circle,color:Color(0xFF166534)))]),
-    for(final ch in chapters)Card(child:ListTile(title:Text(label(ch,'title_fr','title_en')),subtitle:Text((ch['is_active'] as bool? ?? true)?t('Visible','Visible'):t('Masqué','Hidden')),selected:chapter?['id']==ch['id'],onTap:()=>setState(()=>chapter=ch),trailing:PopupMenuButton<String>(onSelected:(v){if(v=='edit')editChapter(ch);if(v=='hide')toggleChapter(ch);if(v=='delete')deleteChapter(ch);},itemBuilder:(_)=>[PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),PopupMenuItem(value:'hide',child:Text(t('Masquer / afficher','Hide / show'))),PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete')))]))),
+    for(final ch in chapters)Card(child:ListTile(title:Text(label(ch,'title_fr','title_en')),subtitle:Text((ch['is_active'] as bool? ?? true)?t('Visible','Visible'):t('Masqué','Hidden')),selected:chapter?['id']==ch['id'],onTap:()=>setState(()=>chapter=ch),trailing:PopupMenuButton<String>(onSelected:(v){if(v=='edit')editChapter(ch);if(v=='hide')toggleChapter(ch);if(v=='delete')deleteChapter(ch);},itemBuilder:(_)=>[PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
+                if (item['content_type'] == 'course')
+                  PopupMenuItem(value:'pages',child:Text(t('Modifier les pages du cahier','Edit notebook pages'))),PopupMenuItem(value:'hide',child:Text(t('Masquer / afficher','Hide / show'))),PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete')))]))),
     if(chapter!=null) ...[
       Padding(padding:const EdgeInsets.only(top:20),child:Text(t('Chapitre sélectionné : ','Selected chapter: ')+label(chapter!,'title_fr','title_en'),style:const TextStyle(fontWeight:FontWeight.bold))),
       const SizedBox(height:8),
@@ -519,6 +522,22 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         onPressed:()=>Navigator.of(context).push(MaterialPageRoute(builder:(_)=>AdminChapterAssessmentsPage(chapterId:chapter!['id'].toString(),chapterTitle:label(chapter!,'title_fr','title_en'),locale:widget.locale))),
         icon:const Icon(Icons.quiz_outlined),
         label:Text(t('Gérer exercices et quiz','Manage exercises and quizzes')),
+      ),
+      const SizedBox(height: 8),
+      FilledButton.icon(
+        onPressed: () async {
+          final saved = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => CourseNotebookEditorPage(
+                locale: widget.locale,
+                chapterId: chapter!['id'].toString(),
+              ),
+            ),
+          );
+          if (saved == true && mounted) setState(() {});
+        },
+        icon: const Icon(Icons.menu_book_rounded),
+        label: Text(t('Créer un cours en pages A4', 'Create an A4 page-based course')),
       ),
       FutureBuilder<List<Map<String,dynamic>>>(
         future:db.from('chapter_content_items').select().eq('chapter_id',chapter!['id']).order('position').then((rows)=>rows.map((r)=>Map<String,dynamic>.from(r)).toList()),
@@ -532,7 +551,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             title:Text((item['title_fr'] as String?)??''),
             subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='pages')Navigator.of(context).push(MaterialPageRoute(builder:(_)=>CourseNotebookEditorPage(locale:widget.locale,chapterId:chapter!['id'].toString(),existingItem:item))).then((saved){if(saved==true&&mounted)setState((){});});if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
