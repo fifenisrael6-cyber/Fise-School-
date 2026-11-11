@@ -594,6 +594,25 @@ class _ChapterLearningDetailPageState
         .createSignedUrl(path, 900);
   }
 
+  Future<void> _openOriginalPdfLesson(ChapterLearningContentItem item) async {
+    try {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OriginalPdfLessonBookPage(
+          item: item,
+          locale: widget.locale,
+          service: _service,
+        ),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_en
+            ? 'Original PDF pages could not be opened: $error'
+            : 'Impossible d’ouvrir les pages originales du PDF : $error'),
+      ));
+    }
+  }
+
   /// Présente chaque leçon comme une page de manuel scolaire illustré.
   /// Les contenus et médias restent ceux publiés pour le chapitre dans Supabase.
   Widget _courseLessonCard(
@@ -657,6 +676,22 @@ class _ChapterLearningDetailPageState
                       RichLessonText(
                         text: body,
                         style: TextStyle(fontSize: bodySize, height: _a4Layout ? 1.85 : 1.75, color: const Color(0xFF1E293B)),
+                      ),
+                    ],
+                    if ((item.sourcePdfPath ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      OutlinedButton.icon(
+                        onPressed: () => _openOriginalPdfLesson(item),
+                        icon: const Icon(Icons.auto_stories_rounded),
+                        label: Text(
+                          _en
+                              ? 'View original pages (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})'
+                              : 'Voir les pages originales (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF166534),
+                          side: const BorderSide(color: Color(0xFF86B99A)),
+                        ),
                       ),
                     ],
                     if (usableImages.isNotEmpty) ...[
@@ -905,6 +940,186 @@ class _ChapterData {
   final ChapterLearningProgress? progress;
 }
 
+
+/// Affiche les pages originales comme des pages de manuel A4,
+/// avec navigation horizontale et zoom, sans barre d'outils PDF traditionnelle.
+class OriginalPdfLessonBookPage extends StatefulWidget {
+  const OriginalPdfLessonBookPage({
+    super.key,
+    required this.item,
+    required this.locale,
+    required this.service,
+  });
+
+  final ChapterLearningContentItem item;
+  final Locale locale;
+  final ChapterLearningService service;
+
+  @override
+  State<OriginalPdfLessonBookPage> createState() => _OriginalPdfLessonBookPageState();
+}
+
+class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
+  late Future<PdfDocument> _documentFuture;
+  PdfDocument? _document;
+  int _totalPages = 0;
+  int _pageIndex = 0;
+  bool _a4Layout = false;
+
+  bool get _en => widget.locale.languageCode == 'en';
+  int get _startPage => widget.item.sourcePageStart ?? 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _documentFuture = _openDocument();
+  }
+
+  Future<PdfDocument> _openDocument() async {
+    final bytes = await widget.service.loadOriginalPdfBytes(widget.item);
+    final document = await PdfDocument.openData(bytes);
+    _document = document;
+    final maxPage = document.pagesCount;
+    if (_startPage > maxPage) {
+      await document.close();
+      _document = null;
+      throw StateError('La page source indiquée dépasse le nombre de pages du PDF.');
+    }
+    final requestedEnd = widget.item.sourcePageEnd ?? maxPage;
+    final end = requestedEnd.clamp(_startPage, maxPage).toInt();
+    _totalPages = end - _startPage + 1;
+    return document;
+  }
+
+  Future<Uint8List> _renderPage(PdfDocument document, int pageNumber) async {
+    final page = await document.getPage(pageNumber);
+    try {
+      final image = await page.render(
+        width: (page.width * 2).round(),
+        height: (page.height * 2).round(),
+        format: PdfPageImageFormat.png,
+      );
+      if (image == null || image.bytes.isEmpty) {
+        throw StateError('Impossible de rendre la page $pageNumber.');
+      }
+      return image.bytes;
+    } finally {
+      await page.close();
+    }
+  }
+
+  @override
+  void dispose() {
+    final document = _document;
+    if (document != null) {
+      unawaited(document.close());
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF166534);
+    return Scaffold(
+      backgroundColor: const Color(0xFFE9EEE9),
+      appBar: AppBar(
+        backgroundColor: green,
+        foregroundColor: Colors.white,
+        title: Text(widget.item.titleFor(widget.locale.languageCode)),
+        actions: [
+          IconButton(
+            tooltip: _a4Layout
+                ? (_en ? 'Phone layout' : 'Format téléphone')
+                : (_en ? 'A4 layout' : 'Format A4'),
+            onPressed: () => setState(() => _a4Layout = !_a4Layout),
+            icon: Icon(_a4Layout ? Icons.phone_android_rounded : Icons.description_outlined),
+          ),
+        ],
+      ),
+      body: FutureBuilder<PdfDocument>(
+        future: _documentFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: Text(_en ? 'Preparing original pages…' : 'Préparation des pages originales…'));
+          }
+          if (snapshot.hasError || !snapshot.hasData) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  (_en ? 'Original pages unavailable: ' : 'Pages originales indisponibles : ') +
+                      (snapshot.error?.toString() ?? ''),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+          final document = snapshot.data!;
+          return Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  itemCount: _totalPages,
+                  onPageChanged: (index) => setState(() => _pageIndex = index),
+                  itemBuilder: (context, index) {
+                    final pageNumber = _startPage + index;
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final pageWidth = _a4Layout
+                            ? (constraints.maxWidth - 32).clamp(280.0, 794.0).toDouble()
+                            : (constraints.maxWidth - 20).toDouble();
+                        return Center(
+                          child: SizedBox(
+                            width: pageWidth,
+                            child: FutureBuilder<Uint8List>(
+                              future: _renderPage(document, pageNumber),
+                              builder: (context, pageSnapshot) {
+                                if (pageSnapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator());
+                                }
+                                if (pageSnapshot.hasError || !pageSnapshot.hasData) {
+                                  return Center(child: Text(_en ? 'Page could not be rendered.' : 'Impossible de rendre cette page.'));
+                                }
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 12),
+                                  color: Colors.white,
+                                  child: InteractiveViewer(
+                                    minScale: 1,
+                                    maxScale: 4,
+                                    child: Image.memory(
+                                      pageSnapshot.data!,
+                                      fit: BoxFit.contain,
+                                      width: pageWidth,
+                                      gaplessPlayback: true,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    '${_en ? 'Original page' : 'Page originale'} ${_startPage + _pageIndex}/${_startPage + _totalPages - 1}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: green),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
 
 /// Lecteur intégré des contenus de chapitre. Les PDF privés sont servis via
 /// une URL Supabase signée; les vidéos MP4 sont lues dans l'application.
