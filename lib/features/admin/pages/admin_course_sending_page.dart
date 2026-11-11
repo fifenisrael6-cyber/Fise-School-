@@ -528,7 +528,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
   Future<void> _loadCourses() async {
     final rows = await _db
         .from('courses')
-        .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,class_id,subject_id,curriculum_id,chapter_id,teacher_id,smart_lesson_enabled,minimum_exercise_score,school_classes(display_name,name),subjects(name_fr,name_en)')
+        .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,class_id,subject_id,curriculum_id,chapter_id,teacher_id,smart_lesson_enabled,minimum_exercise_score,pages_json,school_classes(display_name,name),subjects(name_fr,name_en)')
         .order('updated_at', ascending: false);
     if (!mounted) return;
     setState(() => _courseRows = List<Map<String, dynamic>>.from(rows));
