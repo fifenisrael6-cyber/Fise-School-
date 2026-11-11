@@ -11,11 +11,15 @@ class CourseNotebookEditorPage extends StatefulWidget {
     required this.locale,
     required this.chapterId,
     this.existingItem,
+    this.existingCourse,
+    this.courseContext,
   });
 
   final Locale locale;
   final String chapterId;
   final Map<String, dynamic>? existingItem;
+  final Map<String, dynamic>? existingCourse;
+  final Map<String, dynamic>? courseContext;
 
   @override
   State<CourseNotebookEditorPage> createState() => _CourseNotebookEditorPageState();
@@ -50,11 +54,11 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
   @override
   void initState() {
     super.initState();
-    final item = widget.existingItem;
+    final item = widget.existingItem ?? widget.existingCourse;
     if (item != null) {
       _titleFr.text = item['title_fr']?.toString() ?? '';
       _titleEn.text = item['title_en']?.toString() ?? '';
-      _published = item['is_published'] == true;
+      _published = item['is_published'] == true || item['status'] == 'published';
       final rawPages = item['pages_json'];
       if (rawPages is List) {
         for (final raw in rawPages.whereType<Map>()) {
@@ -185,27 +189,70 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       final pages = _serializePages();
       final plainText = _pages.map((page) => page.text.text.trim())
           .where((value) => value.isNotEmpty).join('\n\n');
-      final data = <String, dynamic>{
-        'chapter_id': widget.chapterId,
-        'content_type': 'course',
-        'title_fr': _titleFr.text.trim(),
-        'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
-        'body_text_fr': plainText,
-        'body_text_en': plainText,
-        'pages_json': pages,
-        'is_published': _published,
-        'created_by': _db.auth.currentUser?.id,
-      };
-      final existingId = widget.existingItem?['id']?.toString();
-      if (existingId == null) {
-        final rows = await _db.from('chapter_content_items')
-            .select('position').eq('chapter_id', widget.chapterId).order('position', ascending: false).limit(1);
-        data['position'] = rows.isEmpty ? 1 : ((rows.first['position'] as num?)?.toInt() ?? 0) + 1;
-        await _db.from('chapter_content_items').insert(data);
+      if (widget.courseContext != null) {
+        final contextData = widget.courseContext!;
+        final classIds = (contextData['class_ids'] as List? ?? const [])
+            .map((value) => value.toString()).where((value) => value.isNotEmpty).toList();
+        if (classIds.isEmpty) throw StateError(_t('Aucune salle destinataire sélectionnée.', 'No target classroom selected.'));
+        for (final classId in classIds) {
+          final values = <String, dynamic>{
+            'curriculum_id': contextData['curriculum_id'],
+            'chapter_id': contextData['chapter_id'],
+            'subject_id': contextData['subject_id'],
+            'teacher_id': contextData['teacher_id'],
+            'class_id': classId,
+            'title_fr': _titleFr.text.trim(),
+            'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
+            'content_fr': plainText,
+            'content_en': plainText,
+            'pages_json': pages,
+            'status': _published ? 'published' : 'draft',
+            'published_at': _published ? DateTime.now().toIso8601String() : null,
+          };
+          final existingId = widget.existingCourse != null &&
+                  widget.existingCourse!['class_id']?.toString() == classId
+              ? widget.existingCourse!['id']?.toString()
+              : null;
+          if (existingId != null) {
+            await _db.from('courses').update(values).eq('id', existingId);
+          } else {
+            final matches = await _db.from('courses').select('id')
+                .eq('class_id', classId)
+                .eq('subject_id', contextData['subject_id'])
+                .eq('chapter_id', contextData['chapter_id'])
+                .eq('title_fr', _titleFr.text.trim())
+                .neq('status', 'archived')
+                .limit(1);
+            if (matches.isEmpty) {
+              await _db.from('courses').insert(values);
+            } else {
+              await _db.from('courses').update(values).eq('id', matches.first['id']);
+            }
+          }
+        }
       } else {
-        data.remove('created_by');
-        data.remove('chapter_id');
-        await _db.from('chapter_content_items').update(data).eq('id', existingId);
+        final data = <String, dynamic>{
+          'chapter_id': widget.chapterId,
+          'content_type': 'course',
+          'title_fr': _titleFr.text.trim(),
+          'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
+          'body_text_fr': plainText,
+          'body_text_en': plainText,
+          'pages_json': pages,
+          'is_published': _published,
+          'created_by': _db.auth.currentUser?.id,
+        };
+        final existingId = widget.existingItem?['id']?.toString();
+        if (existingId == null) {
+          final rows = await _db.from('chapter_content_items')
+              .select('position').eq('chapter_id', widget.chapterId).order('position', ascending: false).limit(1);
+          data['position'] = rows.isEmpty ? 1 : ((rows.first['position'] as num?)?.toInt() ?? 0) + 1;
+          await _db.from('chapter_content_items').insert(data);
+        } else {
+          data.remove('created_by');
+          data.remove('chapter_id');
+          await _db.from('chapter_content_items').update(data).eq('id', existingId);
+        }
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
