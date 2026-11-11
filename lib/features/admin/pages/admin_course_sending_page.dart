@@ -735,12 +735,6 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                   },
                 );
               }),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _saving || _chapterIds.isEmpty ? null : _openNotebookEditor,
-              icon: const Icon(Icons.menu_book_rounded),
-              label: Text(_t('Créer un cahier A4 pour le premier chapitre sélectionné', 'Create an A4 notebook for the first selected chapter')),
-            ),
             const Divider(height: 28),
             _sectionTitle(
               _t('3. Choisir les salles destinataires', '3. Choose target classrooms'),
@@ -772,6 +766,24 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
               _t('4. Rédiger le cours', '4. Write the course'),
               _t('Le texte sera enregistré dans le cours correspondant à chaque salle et chaque chapitre.', 'The text will be saved in the course for each selected classroom and chapter.'),
             ),
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(_t(
+                'Pour créer un véritable cahier, composez le cours page par page, insérez les images et vérifiez l’aperçu A4 avant publication.',
+                'To create a real notebook, compose the course page by page, insert images, and check the A4 preview before publishing.',
+              )),
+            ),
+            OutlinedButton.icon(
+              onPressed: _saving || _chapterIds.isEmpty ? null : _openNotebookEditor,
+              icon: const Icon(Icons.menu_book_rounded),
+              label: Text(_t('Ouvrir l’éditeur de pages A4', 'Open A4 page editor')),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _title,
               decoration: InputDecoration(labelText: _t('Titre du cours *', 'Course title *')),
