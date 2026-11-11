@@ -513,8 +513,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       )),
     if(curriculum!=null)Row(children:[Expanded(child:Text(t('Chapitres au programme','Programme chapters'),style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17))),IconButton(onPressed:()=>editChapter(),icon:const Icon(Icons.add_circle,color:Color(0xFF166534)))]),
     for(final ch in chapters)Card(child:ListTile(title:Text(label(ch,'title_fr','title_en')),subtitle:Text((ch['is_active'] as bool? ?? true)?t('Visible','Visible'):t('Masqué','Hidden')),selected:chapter?['id']==ch['id'],onTap:()=>setState(()=>chapter=ch),trailing:PopupMenuButton<String>(onSelected:(v){if(v=='edit')editChapter(ch);if(v=='hide')toggleChapter(ch);if(v=='delete')deleteChapter(ch);},itemBuilder:(_)=>[PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
-                if (item['content_type'] == 'course')
-                  PopupMenuItem(value:'pages',child:Text(t('Modifier les pages du cahier','Edit notebook pages'))),PopupMenuItem(value:'hide',child:Text(t('Masquer / afficher','Hide / show'))),PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete')))]))),
+                PopupMenuItem(value:'hide',child:Text(t('Masquer / afficher','Hide / show'))),PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete')))]))),
     if(chapter!=null) ...[
       Padding(padding:const EdgeInsets.only(top:20),child:Text(t('Chapitre sélectionné : ','Selected chapter: ')+label(chapter!,'title_fr','title_en'),style:const TextStyle(fontWeight:FontWeight.bold))),
       const SizedBox(height:8),
@@ -556,6 +555,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
+                if (item['content_type'] == 'course')
+                  PopupMenuItem(value:'pages',child:Text(t('Modifier les pages du cahier','Edit notebook pages'))),
                 PopupMenuItem(value:'toggle',child:Text(t('Masquer / publier','Hide / publish'))),
                 PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete'))),
               ],
