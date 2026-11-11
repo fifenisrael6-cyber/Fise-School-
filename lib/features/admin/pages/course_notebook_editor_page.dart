@@ -296,6 +296,9 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
 
   Widget _pagePreview(int index) {
     final page = _pages[index];
+    final previewText = _fr || page.textEn.text.trim().isEmpty
+        ? page.text.text
+        : page.textEn.text;
     return LayoutBuilder(builder: (context, constraints) {
       final availableWidth = constraints.maxWidth - 32;
       final heightLimitedWidth = (constraints.maxHeight - 32) * 210 / 297;
@@ -318,8 +321,8 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                   children: [
                     Text(_titleFr.text.trim(), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
                     const Divider(height: 26, color: Color(0xFF16A34A)),
-                    if (page.text.text.trim().isNotEmpty)
-                      RichLessonText(text: page.text.text, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
+                    if (previewText.trim().isNotEmpty)
+                      RichLessonText(text: previewText, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
                     for (final image in page.images)
                       if ((image['storage_path'] ?? '').toString().isNotEmpty)
                         FutureBuilder<String?>(
