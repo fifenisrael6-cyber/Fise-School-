@@ -48,7 +48,7 @@ L'Edge Function utilise les secrets Supabase habituels `SUPABASE_URL`, `SUPABASE
 
 - Dans **Administration → Envoi des cours**, sélectionnez un chapitre puis ouvrez **Créer le cours comme un cahier A4**.
 - Chaque page est indépendante. L'administrateur peut écrire le texte, insérer des images, ajouter ou supprimer des pages et basculer vers l'aperçu avant publication.
-- Les cours déjà présents dans `chapter_content_items` et dans `courses` sont conservés. Les migrations `20261111120000_course_notebook_pages.sql` et `20261111122000_course_records_notebook_pages.sql` les représentent initialement par une page modifiable à partir de leur texte existant.
+- Les cours déjà présents dans `chapter_content_items` et dans `courses` sont conservés. Les migrations `20261111230723_course_notebook_pages.sql` et `20261111230745_course_records_notebook_pages.sql` les représentent initialement par une page modifiable à partir de leur texte existant.
 - Les élèves ouvrent les cours dans un lecteur à pages tournantes. Les images insérées dans les pages restent protégées par les règles d'accès du chapitre et sont disponibles après préchargement/cache.
 - Les PDF ouverts depuis les ressources hors connexion sont rendus en feuilles A4 individuelles, avec navigation page précédente/suivante. Le fichier PDF original reste intact.
-- Les migrations `20261111120000_course_notebook_pages.sql`, `20261111121000_notebook_page_image_storage_access.sql`, `20261111122000_course_records_notebook_pages.sql` et `20261111123000_notebook_course_image_storage_access.sql` sont additives ; elles ne suppriment aucun cours ni aucune ressource.
+- Les migrations `20261111230723_course_notebook_pages.sql`, `20261111230736_notebook_page_image_storage_access.sql`, `20261111230745_course_records_notebook_pages.sql` et `20261111230753_notebook_course_image_storage_access.sql` sont additives ; elles ne suppriment aucun cours ni aucune ressource.
