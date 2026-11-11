@@ -94,10 +94,28 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         }
       }
       if (_pages.isEmpty) {
-        _pages.add(_NotebookPage(
-          text: (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString(),
-          textEn: (item['body_text_en'] ?? item['content_en'] ?? item['body_text_fr'] ?? item['content_fr'] ?? '').toString(),
-        ));
+        final legacyFr = (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString();
+        final legacyEn = (item['body_text_en'] ?? item['content_en'] ?? item['body_text_fr'] ?? item['content_fr'] ?? '').toString();
+        final legacyPages = NotebookPagePagination.expandLegacyPages([
+          {
+            'id': 'legacy-page-1',
+            'position': 1,
+            'blocks': [
+              {'type': 'text', 'text_fr': legacyFr, 'text_en': legacyEn},
+            ],
+          },
+        ]);
+        for (final legacyPage in legacyPages) {
+          final blocks = legacyPage['blocks'] as List? ?? const [];
+          final textBlock = blocks.whereType<Map>().cast<Map>().firstWhere(
+            (block) => block['type'] == 'text',
+            orElse: () => <String, dynamic>{},
+          );
+          _pages.add(_NotebookPage(
+            text: (textBlock['text_fr'] ?? '').toString(),
+            textEn: (textBlock['text_en'] ?? '').toString(),
+          ));
+        }
       }
     } else {
       _published = widget.courseContext?['publish'] == true;
