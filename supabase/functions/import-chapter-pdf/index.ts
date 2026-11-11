@@ -48,12 +48,25 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return pages.join("\n\n").trim();
 }
 
-async function gemini(prompt: string, apiKey: string): Promise<string> {
+async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Promise<string> {
+  const parts: any[] = [{ text: prompt }];
+  if (pdfBytes?.length) {
+    let binary = "";
+    for (let i = 0; i < pdfBytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...pdfBytes.subarray(i, i + 0x8000));
+    }
+    parts.push({
+      inline_data: {
+        mime_type: "application/pdf",
+        data: btoa(binary),
+      },
+    });
+  }
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${"gemini-3.8-flash"}:generateContent`, {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents: [{ role: "user", parts }],
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
     }),
   });
@@ -174,7 +187,7 @@ Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapte
 
 TEXTE DU PDF :
 ${extracted.slice(0, 90000)}`;
-    const parsed = JSON.parse(await gemini(prompt, geminiKey));
+    const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()).slice(0, 30)
       : [];
