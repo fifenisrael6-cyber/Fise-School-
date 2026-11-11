@@ -2,6 +2,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/widgets/rich_lesson_text.dart';
+
 /// Éditeur de cahier : chaque page est indépendante et prévisualisable au format A4.
 class CourseNotebookEditorPage extends StatefulWidget {
   const CourseNotebookEditorPage({
@@ -313,7 +315,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                     Text(_titleFr.text.trim(), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
                     const Divider(height: 26, color: Color(0xFF16A34A)),
                     if (page.text.text.trim().isNotEmpty)
-                      Text(page.text.text, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
+                      RichLessonText(text: page.text.text, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
                     for (final image in page.images)
                       if ((image['storage_path'] ?? '').toString().isNotEmpty)
                         FutureBuilder<String?>(
