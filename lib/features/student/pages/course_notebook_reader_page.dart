@@ -69,45 +69,44 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
               ),
               child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(widget.item.titleFor(widget.locale.languageCode),
-                  style: const TextStyle(fontSize: 22, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
-                const Divider(height: 28, color: Color(0xFF16A34A)),
-                for (final block in blocks) ...[
-                  if (block['type'] == 'text')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: RichLessonText(
-                        text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                        style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(widget.item.titleFor(widget.locale.languageCode),
+                      style: const TextStyle(fontSize: 22, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
+                    const Divider(height: 28, color: Color(0xFF16A34A)),
+                    for (final block in blocks) ...[
+                      if (block['type'] == 'text')
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: RichLessonText(
+                            text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
+                            style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
+                          ),
+                        ),
+                      if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
+                        FutureBuilder<String?>(
+                          future: _imageUrl(block['storage_path'].toString()),
+                          builder: (context, snapshot) => snapshot.data == null
+                              ? const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator()))
+                              : Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: InteractiveViewer(
+                                    child: Image.network(snapshot.data!, fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                  ),
+                                ),
+                        ),
+                    ],
+                    const SizedBox(height: 18),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Text('${_en ? 'Page' : 'Page'} $number / ${_pages.length}',
+                        style: const TextStyle(fontSize: 10, color: Colors.black45)),
                     ),
-                  if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                    FutureBuilder<String?>(
-                      future: _imageUrl(block['storage_path'].toString()),
-                      builder: (context, snapshot) => snapshot.data == null
-                          ? const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator()))
-                          : Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: InteractiveViewer(
-                                child: Image.network(snapshot.data!, fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
-                              ),
-                            ),
-                    ),
-                ],
-                const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Text('${_en ? 'Page' : 'Page'} $number / ${_pages.length}',
-                    style: const TextStyle(fontSize: 10, color: Colors.black45)),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
+              ),
             ),
           ),
         ),
