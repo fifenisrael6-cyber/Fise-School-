@@ -277,6 +277,7 @@ class OfflineRepository {
       'status': course.status,
       'smart_lesson_enabled': course.smartLessonEnabled,
       'minimum_exercise_score': course.minimumExerciseScore,
+      'pages_json': course.pages,
       'published_at':
           course.publishedAt?.toIso8601String(),
     };
