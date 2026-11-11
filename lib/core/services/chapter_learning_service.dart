@@ -284,7 +284,7 @@ class ChapterLearningService {
             'body_text_en': bodyEn,
             'pages_json': [
               {
-                'id': 'legacy-lesson-page-1',
+                'id': 'legacy-page-1',
                 'position': 1,
                 'format': 'A4',
                 'blocks': [
