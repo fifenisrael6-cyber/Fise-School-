@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/offline/notebook_image_cache.dart';
 import '../../../models/chapter_learning_content.dart';
 
 /// Lecteur de cahier : une page indépendante à la fois, avec navigation horizontale.
@@ -38,11 +41,16 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     ];
   }
 
-  Future<String?> _imageUrl(String path) async {
+  Future<Object?> _resolveImage(String path) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      final cached = await NotebookImageCache.getCached(userId: userId, storagePath: path);
+      if (cached != null) return cached;
+      final downloaded = await NotebookImageCache.download(userId: userId, storagePath: path);
+      if (downloaded != null) return downloaded;
+    }
     try {
-      return await Supabase.instance.client.storage
-          .from('chapter-content')
-          .createSignedUrl(path, 900);
+      return await Supabase.instance.client.storage.from('chapter-content').createSignedUrl(path, 900);
     } catch (_) {
       return null;
     }
@@ -87,15 +95,17 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                           ),
                         ),
                       if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                        FutureBuilder<String?>(
-                          future: _imageUrl(block['storage_path'].toString()),
+                        FutureBuilder<Object?>(
+                          future: _resolveImage(block['storage_path'].toString()),
                           builder: (context, snapshot) => snapshot.data == null
                               ? const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator()))
                               : Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   child: InteractiveViewer(
-                                    child: Image.network(snapshot.data!, fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                    child: snapshot.data is File
+                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
+                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
+                                            errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
                                   ),
                                 ),
                         ),
@@ -200,7 +210,14 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
           {'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
         ];
 
-  Future<String?> _imageUrl(String path) async {
+  Future<Object?> _resolveImage(String path) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      final cached = await NotebookImageCache.getCached(userId: userId, storagePath: path);
+      if (cached != null) return cached;
+      final downloaded = await NotebookImageCache.download(userId: userId, storagePath: path);
+      if (downloaded != null) return downloaded;
+    }
     try {
       return await Supabase.instance.client.storage.from('chapter-content').createSignedUrl(path, 900);
     } catch (_) {
@@ -242,13 +259,13 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
                           ),
                         ),
                       if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                        FutureBuilder<String?>(
-                          future: _imageUrl(block['storage_path'].toString()),
+                        FutureBuilder<Object?>(
+                          future: _resolveImage(block['storage_path'].toString()),
                           builder: (context, snapshot) => snapshot.data == null
                               ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
                               : Padding(
                                   padding: const EdgeInsets.symmetric(vertical: 10),
-                                  child: Image.network(snapshot.data!, fit: BoxFit.contain),
+                                  child: snapshot.data is File ? Image.file(snapshot.data as File, fit: BoxFit.contain) : Image.network(snapshot.data.toString(), fit: BoxFit.contain),
                                 ),
                         ),
                     ],
