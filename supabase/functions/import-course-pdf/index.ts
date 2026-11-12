@@ -236,7 +236,6 @@ ${extracted}`;
               source_pdf_path: sourcePdfPath,
               source_page_start: chapter.source_page_start,
               source_page_end: chapter.source_page_end,
-              is_published: false,
             }).eq("id", duplicate[0].id);
             if (replaceError) throw replaceError;
             report.push({ chapter: title, curriculum: curriculum.title_fr, status: "replaced", content_item_id: duplicate[0].id });
