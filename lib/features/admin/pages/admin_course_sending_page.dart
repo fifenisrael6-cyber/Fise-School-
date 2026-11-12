@@ -398,8 +398,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
 
             // Delete older course PDFs only after the replacement is saved.
             for (final old in oldResources.where((resource) =>
-                resource.resourceType.toLowerCase() == 'pdf' &&
-                resource.lessonId == null)) {
+                resource.resourceType.toLowerCase() == 'pdf')) {
               try { await _resources.deleteResource(old); } catch (_) {}
             }
             completed++;
@@ -487,8 +486,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
         status: row['status']?.toString() ?? 'draft',
       );
       for (final old in oldResources.where((resource) =>
-          resource.resourceType.toLowerCase() == 'pdf' &&
-          resource.lessonId == null)) {
+          resource.resourceType.toLowerCase() == 'pdf')) {
         try { await _resources.deleteResource(old); } catch (_) {}
       }
       await _loadCourses();
