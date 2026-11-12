@@ -360,7 +360,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     ));
   }
 
-  Widget _buildPage(Map<String, dynamic> page, int number) {
+  Widget _buildPage(Map<String, dynamic> page, int number, int totalPages) {
     final rawBlocks = page['blocks'];
     final blocks = rawBlocks is List
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
@@ -471,7 +471,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                     const SizedBox(height: 18),
                     Align(
                       alignment: Alignment.bottomRight,
-                      child: Text('${_en ? 'Page' : 'Page'} $number / ${_pages.length}',
+                      child: Text('${_en ? 'Page' : 'Page'} $number / $totalPages',
                         style: const TextStyle(fontSize: 10, color: Colors.black45)),
                     ),
                   ],
@@ -561,7 +561,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                     setState(() => _index = index);
                     unawaited(_saveReaderState());
                   },
-                  itemBuilder: (context, index) => _buildPage(pages[index], index + 1),
+                  itemBuilder: (context, index) => _buildPage(pages[index], index + 1, pages.length),
                 ),
               ),
               SafeArea(
