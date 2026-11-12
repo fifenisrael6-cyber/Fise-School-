@@ -31,16 +31,35 @@ class CoursePdfPageService {
       await document.close();
       throw const FormatException('Le document PDF ne contient aucune page.');
     }
-    var uploaded = 0;
+    final sourceStart = (course['source_page_start'] as num?)?.toInt() ?? 1;
+    final sourceEnd = (course['source_page_end'] as num?)?.toInt() ?? document.pagesCount;
+    if (sourceStart < 1 ||
+        sourceEnd < sourceStart ||
+        sourceEnd > document.pagesCount) {
+      await document.close();
+      throw FormatException(
+        'Intervalle PDF invalide : pages ' +
+            sourceStart.toString() +
+            ' à ' +
+            sourceEnd.toString() +
+            ' sur ' +
+            document.pagesCount.toString() +
+            '.',
+      );
+    }
+    final selectedPageCount = sourceEnd - sourceStart + 1;
     try {
       final generation = DateTime.now().microsecondsSinceEpoch.toString();
       final updatedAt = DateTime.now().toUtc().toIso8601String();
       final pageRows = <Map<String, dynamic>>[];
 
-      // Render and upload every page first. The database manifest is changed
-      // only after the complete PDF has been rendered and stored successfully.
-      for (var pageNumber = 1; pageNumber <= document.pagesCount; pageNumber++) {
-        final page = await document.getPage(pageNumber);
+      // Render only the original pages belonging to this lesson. Store them
+      // with local numbering (1..N) while retaining the original PDF untouched.
+      for (var sourcePageNumber = sourceStart;
+          sourcePageNumber <= sourceEnd;
+          sourcePageNumber++) {
+        final pageNumber = sourcePageNumber - sourceStart + 1;
+        final page = await document.getPage(sourcePageNumber);
         try {
           // PDF points use 72 dpi. Rendering at 150 dpi preserves legibility.
           final rendered = await page.render(
@@ -80,7 +99,7 @@ class CoursePdfPageService {
       await _client.from('course_pages')
           .delete()
           .eq('course_id', courseId)
-          .gt('page_number', document.pagesCount);
+          .gt('page_number', selectedPageCount);
       uploaded = pageRows.length;
       return uploaded;
     } finally {
