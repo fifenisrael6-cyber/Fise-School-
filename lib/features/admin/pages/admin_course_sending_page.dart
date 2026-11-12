@@ -602,7 +602,6 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
                     onSelected: (action) {
-                      if (action == 'edit') _editCourse(row);
                       if (action == 'pages') _editCoursePages(row);
                       if (action == 'delete') _deleteCourse(row);
                     },
