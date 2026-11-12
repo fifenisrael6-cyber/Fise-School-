@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
+import '../../../core/services/course_pdf_page_service.dart';
 import 'school_classes_page.dart';
 import 'admin_chapter_content_page.dart';
 import '../../../models/pedagogy.dart';
@@ -429,7 +430,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                           subtitle: Text('\${resource.resourceType.toUpperCase()} • \${resource.indexStatus}'),
                           trailing: PopupMenuButton<String>(
                             onSelected: (action) async {
-                              if (action == 'replace') {
+                              if (action == 'regenerate_pages') {
+                                await _regenerateResourcePages(resource);
+                              } else if (action == 'replace') {
                                 await _replaceResource(resource);
                                 if (!mounted || !sheetContext.mounted) return;
                                 final latest = await _resources.listForCourse(course['id'].toString());
@@ -467,6 +470,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                               }
                             },
                             itemBuilder: (_) => [
+                              if (resource.resourceType == 'pdf')
+                                PopupMenuItem(
+                                  value: 'regenerate_pages',
+                                  child: Text(_fr ? 'Régénérer les pages du cours' : 'Regenerate course pages'),
+                                ),
                               PopupMenuItem(value: 'replace', child: Text(_fr ? 'Remplacer par un autre document' : 'Replace with another document')),
                               PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer le document' : 'Delete document')),
                             ],
@@ -495,6 +503,26 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       ),
     );
     if (mounted) await _load();
+  }
+
+  Future<void> _regenerateResourcePages(CourseResource resource) async {
+    try {
+      _snack(_fr ? 'Préparation des pages du cours…' : 'Preparing course pages…');
+      final count = await CoursePdfPageService(_client).regenerate({
+        'course_id': resource.courseId,
+        'storage_path': resource.storagePath,
+        'source_bucket': 'course-resources',
+      });
+      if (!mounted) return;
+      _snack(_fr
+          ? 'Conversion terminée : $count page(s) prêtes pour les élèves.'
+          : 'Conversion complete: $count page(s) ready for students.');
+    } catch (error) {
+      if (!mounted) return;
+      _snack(_fr
+          ? 'Conversion impossible : $error'
+          : 'Page conversion failed: $error');
+    }
   }
 
   Future<void> _replaceResource(CourseResource resource) async {
