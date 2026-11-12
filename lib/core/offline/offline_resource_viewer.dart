@@ -76,7 +76,7 @@ class _OfflineResourceViewerState extends State<OfflineResourceViewer> {
   @override
   Widget build(BuildContext context) {
     final path = widget.localPath;
-    final title = widget.resource.labelFor(widget.locale.languageCode).replaceFirst(RegExp(r'\\.pdf
+    final title = widget.resource.labelFor(widget.locale.languageCode).replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), '');
     return Scaffold(
       appBar: AppBar(
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
