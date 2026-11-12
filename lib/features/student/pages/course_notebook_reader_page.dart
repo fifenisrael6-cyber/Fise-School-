@@ -47,7 +47,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       if (!mounted || saved == null) return;
       final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 16;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
-      final target = savedPage.clamp(0, _pages.length - 1);
+      final target = savedPage.clamp(0, _pages.length - 1).toInt();
       setState(() => _fontSize = savedSize.clamp(14, 28).toDouble());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
@@ -167,7 +167,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       setState(() => _pdfPages = pages);
       final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
       final page = ((saved?['page_number'] as num?)?.toInt() ?? 0)
-          .clamp(0, pages.length - 1);
+          .clamp(0, pages.length - 1)
+          .toInt();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
           _controller.jumpToPage(page);
@@ -349,7 +350,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       }
     }
     if (!mounted || providers.isEmpty) return;
-    final selectedIndex = paths.indexOf(selectedPath).clamp(0, providers.length - 1);
+    final selectedIndex = paths.indexOf(selectedPath).clamp(0, providers.length - 1).toInt();
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => _CourseImageFullscreenPage(
         images: providers,
