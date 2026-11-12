@@ -124,8 +124,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       }
       if (!mounted) return;
       setState(() => _pdfPages = pages);
-      final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
-      if (userId != null) {
+      {
         final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
         final page = ((saved?['page_number'] as num?)?.toInt() ?? 0)
             .clamp(0, pages.length - 1);
