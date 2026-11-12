@@ -87,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -134,6 +134,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 11) {
             await _createCourseReaderTables();
           }
+          if (from < 12) {
+            await _addCoursePageCacheSourceTimestampColumn();
+          }
         },
       );
 
@@ -155,9 +158,20 @@ class AppDatabase extends _$AppDatabase {
         page_number INTEGER NOT NULL,
         image_bytes BLOB NOT NULL,
         updated_at TEXT NOT NULL,
+        source_updated_at TEXT,
         PRIMARY KEY(user_id, course_id, page_number)
       )
     ''');
+  }
+
+  Future<void> _addCoursePageCacheSourceTimestampColumn() async {
+    try {
+      await customStatement(
+        'ALTER TABLE course_page_cache ADD COLUMN source_updated_at TEXT',
+      );
+    } catch (_) {
+      // The column already exists on newly created local databases.
+    }
   }
 
   Future<Map<String, dynamic>?> getCourseReaderState(
@@ -195,17 +209,28 @@ class AppDatabase extends _$AppDatabase {
     return rows.isEmpty ? null : rows.first.read<Uint8List>('image_bytes');
   }
 
+  Future<String?> getCachedCoursePageImageUpdatedAt(
+    String userId, String courseId, int pageNumber,
+  ) async {
+    final rows = await customSelect(
+      'SELECT source_updated_at FROM course_page_cache WHERE user_id=? AND course_id=? AND page_number=? LIMIT 1',
+      variables: [Variable(userId), Variable(courseId), Variable(pageNumber)],
+    ).get();
+    return rows.isEmpty ? null : rows.first.readNullable<String>('source_updated_at');
+  }
+
   Future<List<Map<String, dynamic>>> getCachedCoursePages(
     String userId,
     String courseId,
   ) async {
     final rows = await customSelect(
-      'SELECT page_number, image_bytes FROM course_page_cache WHERE user_id=? AND course_id=? ORDER BY page_number',
+      'SELECT page_number, image_bytes, source_updated_at FROM course_page_cache WHERE user_id=? AND course_id=? ORDER BY page_number',
       variables: [Variable(userId), Variable(courseId)],
     ).get();
     return rows.map((row) => <String, dynamic>{
       'page_number': row.read<int>('page_number'),
       'image_bytes': row.read<Uint8List>('image_bytes'),
+      'source_updated_at': row.readNullable<String>('source_updated_at'),
     }).toList(growable: false);
   }
 
@@ -214,12 +239,14 @@ class AppDatabase extends _$AppDatabase {
     required String courseId,
     required int pageNumber,
     required Uint8List bytes,
+    String? sourceUpdatedAt,
   }) => customStatement(
-    '''INSERT INTO course_page_cache(user_id,course_id,page_number,image_bytes,updated_at)
-       VALUES(?,?,?,?,?)
+    '''INSERT INTO course_page_cache(user_id,course_id,page_number,image_bytes,updated_at,source_updated_at)
+       VALUES(?,?,?,?,?,?)
        ON CONFLICT(user_id,course_id,page_number) DO UPDATE SET
-       image_bytes=excluded.image_bytes,updated_at=excluded.updated_at''',
-    [userId, courseId, pageNumber, bytes, DateTime.now().toUtc().toIso8601String()],
+       image_bytes=excluded.image_bytes,updated_at=excluded.updated_at,
+       source_updated_at=excluded.source_updated_at''',
+    [userId, courseId, pageNumber, bytes, DateTime.now().toUtc().toIso8601String(), sourceUpdatedAt],
   );
 
   Future<void> _createAiConversationCacheTable() async {
