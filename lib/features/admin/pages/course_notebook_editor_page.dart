@@ -443,7 +443,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
               Expanded(
                 child: PageView.builder(
                   controller: _previewController,
-                  itemCount: _pages.length,
+                  itemCount: _previewPages.length,
                   onPageChanged: (index) => setState(() => _previewIndex = index),
                   itemBuilder: (context, index) => _pagePreview(index),
                 ),
