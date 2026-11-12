@@ -148,9 +148,14 @@ class NotebookPagePagination {
 
       // Split an oversized paragraph at word boundaries using actual rendered
       // line heights. A single unusually long token remains intact.
-      final words = paragraph.split(RegExp(r'\s+'));
+      // Keep inline and display LaTeX expressions atomic. Splitting a
+      // formula between pages would make the mathematical notation invalid.
+      final tokens = RegExp(r'\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\S+')
+          .allMatches(paragraph)
+          .map((match) => match.group(0)!)
+          .toList(growable: false);
       var chunk = '';
-      for (final word in words) {
+      for (final word in tokens) {
         final next = chunk.isEmpty ? word : '$chunk $word';
         if (chunk.isNotEmpty && !_fits(next, fontSize, contentWidth, contentHeight)) {
           pages.add(chunk.trim());
