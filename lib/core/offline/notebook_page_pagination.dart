@@ -179,7 +179,7 @@ class NotebookPagePagination {
       ),
       textDirection: TextDirection.ltr,
       textScaler: TextScaler.noScaling,
-    )..layout(maxWidth: contentWidth.clamp(120.0, 1200.0));
+    )..layout(maxWidth: contentWidth.clamp(120.0, 1200.0).toDouble());
     return painter.height <= contentHeight.clamp(120.0, 1800.0);
   }
 }
