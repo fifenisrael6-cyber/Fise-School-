@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
-import '../../../models/pedagogy.dart';
 import 'course_notebook_editor_page.dart';
 
 /// Espace dédié à l'envoi de cours par l'administrateur.
