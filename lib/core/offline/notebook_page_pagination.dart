@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 class NotebookPagePagination {
   static const double _contentWidth = 660;
   static const double _contentHeight = 900;
-  static const double _lineHeight = 1.65;
+  static const double _lineHeight = 1.75;
 
   static List<Map<String, dynamic>> expandLegacyPages(
     List<Map<String, dynamic>> pages, {
