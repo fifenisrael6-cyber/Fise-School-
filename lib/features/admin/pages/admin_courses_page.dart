@@ -331,6 +331,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             'teacher_id': _client.auth.currentUser?.id,
                             'curriculum_id': selectedCurriculum!['id'].toString(),
                             'chapter_id': selectedChapter!['id'].toString(),
+                            'chapter_ids': [selectedChapter!['id'].toString()],
                             'publish': published,
                           };
                           final navigator = Navigator.of(sheetContext);
