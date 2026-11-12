@@ -491,9 +491,35 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     super.dispose();
   }
 
+  List<Map<String, dynamic>> _pagesForLayout(double width, double height) {
+    if (_pdfPages.isNotEmpty) return _pdfPages;
+    final source = widget.item.pages.isNotEmpty
+        ? widget.item.pages
+        : [
+            {
+              'id': 'legacy-page-1',
+              'position': 1,
+              'format': 'A4',
+              'blocks': [
+                {
+                  'type': 'text',
+                  'text_fr': widget.item.bodyFor('fr') ?? '',
+                  'text_en': widget.item.bodyFor('en') ?? widget.item.bodyFor('fr') ?? '',
+                },
+              ],
+            },
+          ];
+    final pageHeight = width * 297 / 210;
+    return NotebookPagePagination.expandLegacyPages(
+      source,
+      fontSize: _fontSize,
+      contentWidth: width - 60,
+      contentHeight: pageHeight - height,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pages = _pages;
     return Scaffold(
       backgroundColor: const Color(0xFFE9EEE9),
       appBar: AppBar(
@@ -502,41 +528,57 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         title: Text(widget.item.titleFor(widget.locale.languageCode)),
         actions: [TextButton(onPressed: _showFontControls, child: const Text('Aa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)))],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: pages.length,
-              onPageChanged: (index) {
-                setState(() => _index = index);
-                unawaited(_saveReaderState());
-              },
-              itemBuilder: (context, index) => _buildPage(pages[index], index + 1),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    onPressed: _index == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                    icon: const Icon(Icons.chevron_left_rounded),
-                  ),
-                  Text('${_en ? 'Page' : 'Page'} ${_index + 1} / ${pages.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
-                  IconButton(
-                    onPressed: _index >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                    icon: const Icon(Icons.chevron_right_rounded),
-                  ),
-                ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth - 28;
+          final heightLimitedWidth = (constraints.maxHeight - 72) * 210 / 297;
+          final pageWidth = (availableWidth < heightLimitedWidth
+              ? availableWidth
+              : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
+          final pageHeight = pageWidth * 297 / 210;
+          const fixedVerticalSpace = 34.0 + 28.0 + 58.0 + 20.0;
+          final pages = _pagesForLayout(
+            pageWidth,
+            pageHeight - fixedVerticalSpace,
+          );
+          final safeIndex = _index.clamp(0, pages.length - 1).toInt();
+          return Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: pages.length,
+                  onPageChanged: (index) {
+                    setState(() => _index = index);
+                    unawaited(_saveReaderState());
+                  },
+                  itemBuilder: (context, index) => _buildPage(pages[index], index + 1),
+                ),
               ),
-            ),
-          ),
-        ],
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed: safeIndex == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
+                        icon: const Icon(Icons.chevron_left_rounded),
+                      ),
+                      Text('${_en ? 'Page' : 'Page'} ${safeIndex + 1} / ${pages.length}',
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+                      IconButton(
+                        onPressed: safeIndex >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
+                        icon: const Icon(Icons.chevron_right_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
