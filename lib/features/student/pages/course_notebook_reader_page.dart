@@ -542,6 +542,16 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             pageHeight - fixedVerticalSpace,
           );
           final safeIndex = _index.clamp(0, pages.length - 1).toInt();
+          if (_controller.hasClients &&
+              _controller.page != null &&
+              _controller.page!.round() != safeIndex) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _controller.hasClients &&
+                  (_controller.page?.round() ?? safeIndex) != safeIndex) {
+                _controller.jumpToPage(safeIndex);
+              }
+            });
+          }
           return Column(
             children: [
               Expanded(
