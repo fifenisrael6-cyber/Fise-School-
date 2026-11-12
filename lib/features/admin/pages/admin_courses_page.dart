@@ -21,7 +21,6 @@ class AdminCoursesPage extends StatefulWidget {
 
 class _AdminCoursesPageState extends State<AdminCoursesPage> {
   final SupabaseClient _client = Supabase.instance.client;
-  final CourseService _courses = CourseService();
   final ResourceService _resources = ResourceService();
   final ImagePicker _picker = ImagePicker();
 
