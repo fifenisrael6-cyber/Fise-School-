@@ -401,32 +401,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           );
           final data = result.data;
           if (result.status >= 200 && result.status < 300 && data is Map && data['success'] == true) {
-            final reportRows = (data['report'] as List? ?? const [])
-                .whereType<Map>()
-                .map((row) => Map<String, dynamic>.from(row))
-                .toList(growable: false);
-            final itemIds = reportRows
-                .map((row) => row['content_item_id']?.toString() ?? '')
-                .where((id) => id.isNotEmpty)
-                .toSet()
-                .toList(growable: false);
-            var preparedPages = 0;
-            if (itemIds.isNotEmpty) {
-              final importedItems = await _client
-                  .from('chapter_content_items')
-                  .select('id,source_pdf_path,source_page_start,source_page_end')
-                  .inFilter('id', itemIds);
-              for (final importedItem in importedItems) {
-                final sourcePdfPath =
-                    (importedItem['source_pdf_path'] as String? ?? '').trim();
-                if (sourcePdfPath.isEmpty) continue;
-                preparedPages += await CoursePdfPageService(_client).regenerate({
-                  ...Map<String, dynamic>.from(importedItem),
-                  'storage_path': sourcePdfPath,
-                  'source_bucket': 'chapter-content',
-                });
-              }
-            }
+            final preparedPages = await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
             final imported = data['imported'] ?? 0;
             final existing = data['already_exists'] ?? 0;
             ScaffoldMessenger.of(context).showSnackBar(
@@ -597,6 +572,86 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       _snack(_fr
           ? 'Conversion impossible : $error'
           : 'Page conversion failed: $error');
+    }
+  }
+
+  Future<int> _prepareImportedChapterPages(Map<String, dynamic> data) async {
+    final reportRows = (data['report'] as List? ?? const [])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+    final itemIds = reportRows
+        .map((row) => row['content_item_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    var preparedPages = 0;
+    if (itemIds.isNotEmpty) {
+      final importedItems = await _client
+          .from('chapter_content_items')
+          .select('id,source_pdf_path,source_page_start,source_page_end')
+          .inFilter('id', itemIds);
+      for (final importedItem in importedItems) {
+        final sourcePdfPath =
+            (importedItem['source_pdf_path'] as String? ?? '').trim();
+        if (sourcePdfPath.isEmpty) continue;
+        preparedPages += await CoursePdfPageService(_client).regenerate({
+          ...Map<String, dynamic>.from(importedItem),
+          'storage_path': sourcePdfPath,
+          'source_bucket': 'chapter-content',
+        });
+      }
+    }
+    return preparedPages;
+  }
+
+  Future<void> _convertResourceToA4(CourseResource resource) async {
+    if (resource.resourceType != 'pdf') return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Convertir le PDF en cours A4 ?' : 'Convert PDF to A4 lessons?'),
+        content: Text(_fr
+            ? 'Le PDF sera relu. Les cours correspondants seront actualisés en conservant leur état publié/masqué. Les pages originales, formules et illustrations seront conservées.'
+            : 'The PDF will be reprocessed. Matching lessons will be updated while keeping their published/hidden state. Original pages, formulas and illustrations will be preserved.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Convertir' : 'Convert'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      _snack(_fr ? 'Analyse du PDF et préparation des pages A4…' : 'Analyzing PDF and preparing A4 pages…');
+      final response = await _client.functions.invoke(
+        'import-course-pdf',
+        body: {'resource_id': resource.id, 'replace_existing': true},
+      );
+      final data = response.data;
+      if (response.status < 200 ||
+          response.status >= 300 ||
+          data is! Map ||
+          data['success'] != true) {
+        final message = data is Map
+            ? (data['error']?.toString() ?? 'Erreur inconnue.')
+            : 'Réponse serveur invalide.';
+        throw StateError(message);
+      }
+      final preparedPages =
+          await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+      final imported = data['imported'] ?? 0;
+      final replaced = data['replaced'] ?? 0;
+      _snack(_fr
+          ? 'Conversion terminée : $imported nouveau(x) cours, $replaced actualisé(s), $preparedPages page(s) A4.'
+          : 'Conversion complete: $imported new lesson(s), $replaced updated, $preparedPages A4 page(s).');
+    } catch (error) {
+      _snack(_fr ? 'Conversion PDF impossible : $error' : 'PDF conversion failed: $error');
     }
   }
 
