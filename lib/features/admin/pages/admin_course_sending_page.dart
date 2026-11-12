@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
@@ -39,6 +40,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
   bool _loadingChoices = false;
   bool _saving = false;
   bool _publish = true;
+  PlatformFile? _selectedPdf;
   String _filter = 'all';
   String? _error;
 
@@ -281,34 +283,559 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
     }
   }
 
-  Future<void> _openNotebookEditor() async {
-    if (_chapterIds.isEmpty) {
-      _showMessage(_t('Sélectionnez au moins un chapitre.', 'Select at least one chapter.'));
+  Future<PlatformFile?> _pickCoursePdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.length < 5 ||
+        String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+      _showMessage(_t('Le fichier choisi n’est pas un PDF valide.',
+          'The selected file is not a valid PDF.'));
+      return null;
+    }
+    return file;
+  }
+
+  String _pdfCourseTitle(PlatformFile file) {
+    final title = file.name.replaceFirst(RegExp(r'\\.pdf
+
+  Future<void> _loadCourses() async {
+    final rows = await _db
+        .from('courses')
+        .select('id,title_fr,title_en,description_fr,description_en,content_fr,content_en,status,created_at,class_id,subject_id,curriculum_id,chapter_id,teacher_id,smart_lesson_enabled,minimum_exercise_score,pages_json,school_classes(display_name,name),subjects(name_fr,name_en)')
+        .order('updated_at', ascending: false);
+    if (!mounted) return;
+    setState(() => _courseRows = List<Map<String, dynamic>>.from(rows));
+  }
+
+  Future<void> _deleteCourse(Map<String, dynamic> row) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_t('Supprimer ce cours ?', 'Delete this course?')),
+        content: Text(_t(
+          'Le cours, ses documents et ses leçons associées seront supprimés. Cette action est définitive.',
+          'The course, its files and associated lessons will be deleted. This action cannot be undone.',
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(_t('Annuler', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_t('Supprimer', 'Delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final resources = await _resources.listForCourse(row['id'].toString());
+      for (final resource in resources) {
+        await _resources.deleteResource(resource);
+      }
+      await _courses.deleteCourse(row['id'].toString());
+      await _loadCourses();
+      _showMessage(_t('Cours supprimé.', 'Course deleted.'));
+    } catch (e) {
+      _showMessage(_t('Suppression impossible : ', 'Unable to delete course: ') + e.toString());
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+    );
+  }
+
+  Widget _sectionTitle(String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSendingForm() {
+    final reference = _referenceClass;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _sectionTitle(
+              _t('1. Choisir le programme', '1. Choose the programme'),
+              _t('La salle de référence détermine les matières et le programme compatibles.', 'The reference classroom determines compatible subjects and curriculum.'),
+            ),
+            DropdownButtonFormField<String>(
+              key: ValueKey(_referenceClassId),
+              initialValue: _referenceClassId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: _t('Salle de référence', 'Reference classroom')),
+              items: _classes.map((item) => DropdownMenuItem<String>(
+                value: item['id'].toString(),
+                child: Text(_className(item), overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: _saving ? null : _onReferenceClassChanged,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey(_subjectId),
+              initialValue: _subjectId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: _t('Matière', 'Subject')),
+              items: _subjects.map((item) => DropdownMenuItem<String>(
+                value: item['id'].toString(),
+                child: Text(_subjectName(item), overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: _saving ? null : _onSubjectChanged,
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              key: ValueKey(_curriculumId),
+              initialValue: _curriculumId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: _t('Programme', 'Curriculum')),
+              items: _curricula.map((item) => DropdownMenuItem<String>(
+                value: item['id'].toString(),
+                child: Text(_curriculumName(item), overflow: TextOverflow.ellipsis),
+              )).toList(),
+              onChanged: _saving ? null : _onCurriculumChanged,
+            ),
+            if (_loadingChoices) const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            const SizedBox(height: 16),
+            _sectionTitle(
+              _t('2. Choisir les chapitres', '2. Choose chapters'),
+              _t('Plusieurs chapitres peuvent recevoir le même contenu.', 'You can send the same content to several chapters.'),
+            ),
+            if (_chapters.isEmpty)
+              Text(_t('Aucun chapitre actif dans ce programme.', 'No active chapters in this curriculum.'))
+            else
+              ..._chapters.map((chapter) {
+                final id = chapter['id'].toString();
+                return CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _chapterIds.contains(id),
+                  title: Text(_chapterName(chapter)),
+                  onChanged: _saving ? null : (checked) {
+                    setState(() {
+                      if (checked == true) {
+                        _chapterIds.add(id);
+                      } else {
+                        _chapterIds.remove(id);
+                      }
+                    });
+                  },
+                );
+              }),
+            const Divider(height: 28),
+            _sectionTitle(
+              _t('3. Choisir les salles destinataires', '3. Choose target classrooms'),
+              _t('Seules les salles du même programme et auxquelles la matière est affectée sont proposées.', 'Only classrooms with the same curriculum context and assigned subject are listed.'),
+            ),
+            if (_compatibleClasses.isEmpty)
+              Text(_t('Aucune salle compatible trouvée.', 'No compatible classroom found.'))
+            else
+              ..._compatibleClasses.map((item) {
+                final id = item['id'].toString();
+                return CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: _targetClassIds.contains(id),
+                  title: Text(_className(item)),
+                  onChanged: _saving ? null : (checked) {
+                    setState(() {
+                      if (checked == true) {
+                        _targetClassIds.add(id);
+                      } else {
+                        _targetClassIds.remove(id);
+                      }
+                    });
+                  },
+                );
+              }),
+            const Divider(height: 28),
+            _sectionTitle(
+              _t('4. Choisir le document du cours', '4. Choose the course document'),
+              _t('Un seul document est envoyé pour chaque combinaison salle et chapitre sélectionnée.',
+                  'One document is sent for each selected classroom and chapter combination.'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : () async {
+                final file = await _pickCoursePdf();
+                if (file != null && mounted) setState(() => _selectedPdf = file);
+              },
+              icon: const Icon(Icons.upload_file_rounded),
+              label: Text(_t('Sélectionner le document du cours', 'Select course document')),
+            ),
+            if (_selectedPdf != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: Row(children: [
+                  const Icon(Icons.description_outlined, color: Color(0xFF166534)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_selectedPdf!.name, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                    tooltip: _t('Retirer', 'Remove'),
+                    onPressed: _saving ? null : () => setState(() => _selectedPdf = null),
+                    icon: const Icon(Icons.close),
+                  ),
+                ]),
+              ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _publish,
+              onChanged: _saving ? null : (value) => setState(() => _publish = value),
+              title: Text(_t('Publier immédiatement chez les élèves', 'Publish immediately to students')),
+              subtitle: Text(_t('Désactivez pour enregistrer le cours en brouillon.', 'Turn off to save the course as a draft.')),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _saving || reference == null || _chapterIds.isEmpty ||
+                      _targetClassIds.isEmpty || _selectedPdf == null
+                  ? null
+                  : _sendPdfCourse,
+              icon: const Icon(Icons.send_rounded),
+              label: Text(_t('Envoyer le cours aux élèves', 'Send course to students')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editCoursePages(Map<String, dynamic> row) async {
+    final chapterId = row['chapter_id']?.toString() ?? '';
+    if (chapterId.isEmpty) {
+      _showMessage(_t('Ce cours doit être associé à un chapitre avant de créer ses pages.', 'This course must be linked to a chapter before adding pages.'));
       return;
     }
-    final selected = _chapters.where((item) => _chapterIds.contains(item['id']?.toString())).toList();
-    if (selected.isEmpty) return;
-    final chapter = selected.first;
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CourseNotebookEditorPage(
           locale: widget.locale,
-          chapterId: chapter['id'].toString(),
+          chapterId: chapterId,
+          existingCourse: row,
           courseContext: {
-            'class_ids': _targetClassIds.toList(growable: false),
-            'subject_id': _subjectId,
-            'teacher_id': _db.auth.currentUser?.id,
-            'curriculum_id': _curriculumId,
-            'chapter_id': chapter['id'].toString(),
-            'chapter_ids': selected.map((item) => item['id'].toString()).toList(growable: false),
-            'publish': _publish,
+            'class_ids': [row['class_id']?.toString() ?? ''],
+            'subject_id': row['subject_id'],
+            'teacher_id': row['teacher_id'],
+            'curriculum_id': row['curriculum_id'],
+            'chapter_id': chapterId,
+            'chapter_ids': [chapterId],
           },
         ),
       ),
     );
-    if (saved == true && mounted) {
+    if (saved == true && mounted) await _loadCourses();
+  }
+
+  Widget _buildExistingCourses() {
+    final visible = _courseRows.where((row) {
+      if (_filter == 'published') return row['status'] == 'published';
+      if (_filter == 'draft') return row['status'] == 'draft';
+      if (_filter == 'archived') return row['status'] == 'archived';
+      return true;
+    }).toList();
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              Expanded(child: Text(_t('Cours déjà envoyés', 'Previously sent courses'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+              IconButton(
+                tooltip: _t('Actualiser', 'Refresh'),
+                onPressed: _saving ? null : _loadCourses,
+                icon: const Icon(Icons.refresh),
+              ),
+            ]),
+            Wrap(spacing: 8, children: [
+              ChoiceChip(label: Text(_t('Tous', 'All')), selected: _filter == 'all', onSelected: (_) => setState(() => _filter = 'all')),
+              ChoiceChip(label: Text(_t('Publiés', 'Published')), selected: _filter == 'published', onSelected: (_) => setState(() => _filter = 'published')),
+              ChoiceChip(label: Text(_t('Brouillons', 'Drafts')), selected: _filter == 'draft', onSelected: (_) => setState(() => _filter = 'draft')),
+              ChoiceChip(label: Text(_t('Archivés', 'Archived')), selected: _filter == 'archived', onSelected: (_) => setState(() => _filter = 'archived')),
+            ]),
+            const SizedBox(height: 8),
+            if (visible.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Text(_t('Aucun cours dans cette catégorie.', 'No courses in this category.')),
+              )
+            else
+              ...visible.map((row) {
+                final rawClass = row['school_classes'];
+                final rawSubject = row['subjects'];
+                final schoolClass = rawClass is Map ? Map<String, dynamic>.from(rawClass) : <String, dynamic>{};
+                final subject = rawSubject is Map ? Map<String, dynamic>.from(rawSubject) : <String, dynamic>{};
+                final title = _fr
+                    ? ((row['title_fr'] ?? row['title_en'])?.toString() ?? '')
+                    : ((row['title_en'] ?? row['title_fr'])?.toString() ?? '');
+                final status = row['status']?.toString() ?? 'draft';
+                final statusLabel = status == 'published'
+                    ? _t('Publié', 'Published')
+                    : status == 'archived'
+                        ? _t('Archivé', 'Archived')
+                        : _t('Brouillon', 'Draft');
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Icon(status == 'published' ? Icons.menu_book : Icons.edit_note),
+                  ),
+                  title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('${schoolClass['display_name'] ?? schoolClass['name'] ?? ''} • ${_subjectName(subject)}\\n$statusLabel'),
+                  isThreeLine: true,
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (action) {
+                      if (action == 'replace') _replaceCoursePdf(row);
+                      if (action == 'pages') _editCoursePages(row);
+                      if (action == 'delete') _deleteCourse(row);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'replace', child: Text(_t('Remplacer le document du cours', 'Replace course document'))),
+                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty &&
+                          row['pages_json'] is List && (row['pages_json'] as List).isNotEmpty)
+                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier les anciennes pages A4', 'Edit legacy A4 pages'))),
+                      PopupMenuItem(value: 'delete', child: Text(_t('Supprimer', 'Delete'))),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_t('Envoi des cours', 'Send courses')),
+        actions: [
+          IconButton(
+            tooltip: _t('Actualiser', 'Refresh'),
+            onPressed: _loading || _saving ? null : _loadPage,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(onPressed: _loadPage, icon: const Icon(Icons.refresh), label: Text(_t('Réessayer', 'Retry'))),
+                    ]),
+                  ),
+                )
+              : _classes.isEmpty
+                  ? Center(child: Text(_t('Créez d’abord une salle active.', 'Create an active classroom first.')))
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(children: [
+                              const Icon(Icons.send_rounded, size: 30),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(
+                                _t(
+                                  'Choisissez plusieurs chapitres et plusieurs salles, rédigez ou importez le cours, puis publiez-le pour les élèves concernés.',
+                                  'Choose multiple chapters and classrooms, write or import the course, then publish it to the selected students.',
+                                ),
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              )),
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _buildSendingForm(),
+                        const SizedBox(height: 20),
+                        _buildExistingCourses(),
+                      ],
+                    ),
+    );
+  }
+}
+, caseSensitive: false), '').trim();
+    return title.isEmpty ? _t('Cours', 'Course') : title;
+  }
+
+  Future<void> _sendPdfCourse() async {
+    final reference = _referenceClass;
+    final subjectId = _subjectId;
+    final curriculumId = _curriculumId;
+    final file = _selectedPdf;
+    if (reference == null || subjectId == null || curriculumId == null ||
+        _chapterIds.isEmpty || _targetClassIds.isEmpty || file == null) {
+      _showMessage(_t('Choisissez le PDF, au moins une salle et un chapitre.',
+          'Choose a PDF, at least one classroom and one chapter.'));
+      return;
+    }
+
+    final teacherId = _db.auth.currentUser?.id;
+    if (teacherId == null) {
+      _showMessage(_t('Session administrateur absente.', 'Administrator session is missing.'));
+      return;
+    }
+
+    setState(() => _saving = true);
+    var completed = 0;
+    try {
+      final title = _pdfCourseTitle(file);
+      for (final classId in _targetClassIds.toList(growable: false)) {
+        for (final chapterId in _chapterIds.toList(growable: false)) {
+          final existingRows = _courseRows.where((row) =>
+              row['class_id']?.toString() == classId &&
+              row['subject_id']?.toString() == subjectId &&
+              row['chapter_id']?.toString() == chapterId).toList();
+          final existing = existingRows.isEmpty ? null : existingRows.first;
+
+          // Create a draft shell only when this classroom/chapter has no course yet.
+          final course = await _courses.saveCourse(
+            id: existing?['id']?.toString(),
+            curriculumId: curriculumId,
+            chapterId: chapterId,
+            subjectId: subjectId,
+            teacherId: teacherId,
+            classId: classId,
+            titleFr: (existing?['title_fr']?.toString().trim().isNotEmpty == true)
+                ? existing!['title_fr'].toString()
+                : title,
+            titleEn: (existing?['title_en']?.toString().trim().isNotEmpty == true)
+                ? existing!['title_en'].toString()
+                : title,
+            descriptionFr: existing?['description_fr']?.toString(),
+            descriptionEn: existing?['description_en']?.toString(),
+            contentFr: '',
+            contentEn: '',
+            smartLessonEnabled: existing?['smart_lesson_enabled'] as bool? ?? true,
+            minimumExerciseScore:
+                (existing?['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+            status: 'draft',
+          );
+
+          final oldResources = await _resources.listForCourse(course.id);
+          CourseResource? uploaded;
+          try {
+            uploaded = await _resources.uploadResource(
+              courseId: course.id,
+              file: file,
+              resourceType: 'pdf',
+              position: 0,
+              titleFr: title,
+              titleEn: title,
+            );
+            // The course stores one PDF only. Other resource types are untouched.
+            for (final old in oldResources.where((resource) =>
+                resource.resourceType.toLowerCase() == 'pdf' &&
+                resource.lessonId == null)) {
+              await _resources.deleteResource(old);
+            }
+            if (_publish) {
+              await _courses.publishCourse(course.id);
+            }
+            completed++;
+          } catch (_) {
+            if (uploaded != null) {
+              try { await _resources.deleteResource(uploaded); } catch (_) {}
+            }
+            rethrow;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() => _selectedPdf = null);
       await _loadCourses();
-      _showMessage(_t('Cahier enregistré dans le chapitre sélectionné.', 'Notebook saved in the selected chapter.'));
+      _showMessage(_t('$completed cours enregistré(s) avec le document choisi.',
+          '$completed course(s) saved with the selected document.'));
+    } catch (error) {
+      _showMessage(_t('Envoi du cours impossible : ', 'Course upload failed: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _replaceCoursePdf(Map<String, dynamic> row) async {
+    final file = await _pickCoursePdf();
+    if (file == null) return;
+    final courseId = row['id']?.toString() ?? '';
+    final teacherId = _db.auth.currentUser?.id;
+    if (courseId.isEmpty || teacherId == null) return;
+
+    setState(() => _saving = true);
+    CourseResource? uploaded;
+    try {
+      final oldResources = await _resources.listForCourse(courseId);
+      final title = _pdfCourseTitle(file);
+      uploaded = await _resources.uploadResource(
+        courseId: courseId,
+        file: file,
+        resourceType: 'pdf',
+        position: 0,
+        titleFr: title,
+        titleEn: title,
+      );
+      await _courses.saveCourse(
+        id: courseId,
+        curriculumId: row['curriculum_id']?.toString(),
+        chapterId: row['chapter_id']?.toString(),
+        subjectId: row['subject_id'].toString(),
+        teacherId: row['teacher_id']?.toString() ?? teacherId,
+        classId: row['class_id'].toString(),
+        titleFr: row['title_fr']?.toString() ?? title,
+        titleEn: row['title_en']?.toString() ?? title,
+        descriptionFr: row['description_fr']?.toString(),
+        descriptionEn: row['description_en']?.toString(),
+        contentFr: '',
+        contentEn: '',
+        smartLessonEnabled: row['smart_lesson_enabled'] as bool? ?? true,
+        minimumExerciseScore:
+            (row['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+        status: row['status']?.toString() ?? 'draft',
+      );
+      for (final old in oldResources.where((resource) =>
+          resource.resourceType.toLowerCase() == 'pdf' &&
+          resource.lessonId == null)) {
+        await _resources.deleteResource(old);
+      }
+      await _loadCourses();
+      _showMessage(_t('Document du cours remplacé.', 'Course document replaced.'));
+    } catch (error) {
+      if (uploaded != null) {
+        try { await _resources.deleteResource(uploaded); } catch (_) {}
+      }
+      _showMessage(_t('Remplacement impossible : ', 'Replacement failed: ') + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
