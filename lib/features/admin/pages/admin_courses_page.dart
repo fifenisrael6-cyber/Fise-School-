@@ -711,7 +711,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               : 'Document replaced, but re-import failed: $message');
           return;
         }
-        _snack(_fr ? 'PDF remplacé et contenus correspondants actualisés.' : 'PDF replaced and matching lesson content updated.');
+        final preparedPages =
+            await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+        _snack(_fr
+            ? 'PDF remplacé : contenus actualisés et $preparedPages page(s) A4 préparée(s).'
+            : 'PDF replaced: lessons updated and $preparedPages A4 page(s) prepared.');
       } else {
         _snack(_fr ? 'Document remplacé.' : 'Document replaced.');
       }
