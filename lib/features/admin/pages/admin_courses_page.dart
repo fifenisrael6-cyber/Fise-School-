@@ -482,6 +482,8 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                             onSelected: (action) async {
                               if (action == 'regenerate_pages') {
                                 await _regenerateResourcePages(resource);
+                              } else if (action == 'convert_a4') {
+                                await _convertResourceToA4(resource);
                               } else if (action == 'replace') {
                                 await _replaceResource(resource);
                                 if (!mounted || !sheetContext.mounted) return;
@@ -520,11 +522,16 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                               }
                             },
                             itemBuilder: (_) => [
-                              if (resource.resourceType == 'pdf')
+                              if (resource.resourceType == 'pdf') ...[
+                                PopupMenuItem(
+                                  value: 'convert_a4',
+                                  child: Text(_fr ? 'Convertir / actualiser en cahier A4' : 'Convert / refresh as A4 notebook'),
+                                ),
                                 PopupMenuItem(
                                   value: 'regenerate_pages',
                                   child: Text(_fr ? 'Régénérer les pages du cours' : 'Regenerate course pages'),
                                 ),
+                              ],
                               PopupMenuItem(value: 'replace', child: Text(_fr ? 'Remplacer par un autre document' : 'Replace with another document')),
                               PopupMenuItem(value: 'delete', child: Text(_fr ? 'Supprimer le document' : 'Delete document')),
                             ],
