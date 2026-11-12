@@ -647,3 +647,258 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
 }
+
+class _CourseImageFullscreenPage extends StatefulWidget {
+  const _CourseImageFullscreenPage({
+    required this.images,
+    required this.heroTags,
+    required this.initialIndex,
+  });
+
+  final List<ImageProvider<Object>> images;
+  final List<String> heroTags;
+  final int initialIndex;
+
+  @override
+  State<_CourseImageFullscreenPage> createState() => _CourseImageFullscreenPageState();
+}
+
+class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> {
+  late final PageController _controller =
+      PageController(initialPage: widget.initialIndex);
+  final TransformationController _zoomController = TransformationController();
+  bool _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _zoomController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    body: GestureDetector(
+      onVerticalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) > 350) Navigator.of(context).pop();
+      },
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: widget.images.length,
+            itemBuilder: (context, index) => Center(
+              child: Hero(
+                tag: widget.heroTags[index],
+                child: GestureDetector(
+                  onDoubleTap: () {
+                    setState(() {
+                      _zoomed = !_zoomed;
+                      _zoomController.value = _zoomed
+                          ? (Matrix4.identity()..scale(2.0))
+                          : Matrix4.identity();
+                    });
+                  },
+                  child: InteractiveViewer(
+                    transformationController: _zoomController,
+                    minScale: 1,
+                    maxScale: 5,
+                    child: Image(
+                      image: widget.images[index],
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 8,
+            right: 12,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+            ),
+          ),
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: MediaQuery.paddingOf(context).bottom + 18,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  'Balayer pour changer d’image',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Lecteur A4 des cours stockés dans la table historique `courses`.
+class CourseRecordNotebookReaderPage extends StatefulWidget {
+  const CourseRecordNotebookReaderPage({
+    super.key,
+    required this.title,
+    required this.pages,
+    required this.fallbackText,
+    required this.locale,
+  });
+
+  final String title;
+  final List<Map<String, dynamic>> pages;
+  final String fallbackText;
+  final Locale locale;
+
+  @override
+  State<CourseRecordNotebookReaderPage> createState() => _CourseRecordNotebookReaderPageState();
+}
+
+class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookReaderPage> {
+  final PageController _controller = PageController();
+  int _index = 0;
+  bool get _en => widget.locale.languageCode == 'en';
+
+  List<Map<String, dynamic>> get _pages => widget.pages.isNotEmpty
+      ? NotebookPagePagination.expandLegacyPages(widget.pages)
+      : [
+          {'id': 'legacy-page-1', 'position': 1, 'format': 'A4', 'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
+        ];
+
+  Future<Object?> _resolveImage(String path) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      final cached = await NotebookImageCache.getCached(userId: userId, storagePath: path);
+      if (cached != null) return cached;
+      final downloaded = await NotebookImageCache.download(userId: userId, storagePath: path);
+      if (downloaded != null) return downloaded;
+    }
+    try {
+      return await Supabase.instance.client.storage.from('chapter-content').createSignedUrl(path, 900);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _page(Map<String, dynamic> page, int number) {
+    final raw = page['blocks'];
+    final blocks = raw is List
+        ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+        : <Map<String, dynamic>>[];
+    return LayoutBuilder(builder: (context, constraints) {
+      final availableWidth = constraints.maxWidth - 28;
+      final heightLimitedWidth = (constraints.maxHeight - 28) * 210 / 297;
+      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
+      return Center(
+        child: SizedBox(
+          width: width,
+          child: AspectRatio(
+            aspectRatio: 210 / 297,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
+              color: Colors.white,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(widget.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
+                    const Divider(height: 28, color: Color(0xFF16A34A)),
+                    for (final block in blocks) ...[
+                      if (block['type'] == 'text')
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 14),
+                          child: RichLessonText(
+                            text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
+                            style: const TextStyle(fontSize: 18, height: 1.8, color: Color(0xFF1E293B)),
+                          ),
+                        ),
+                      if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
+                        FutureBuilder<Object?>(
+                          future: _resolveImage(block['storage_path'].toString()),
+                          builder: (context, snapshot) => snapshot.data == null
+                              ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+                              : Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  child: snapshot.data is File ? Image.file(snapshot.data as File, fit: BoxFit.contain) : Image.network(snapshot.data.toString(), fit: BoxFit.contain),
+                                ),
+                        ),
+                    ],
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Text('${_en ? 'Page' : 'Page'} $number / ${_pages.length}',
+                        style: const TextStyle(fontSize: 10, color: Colors.black45)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = _pages;
+    return Scaffold(
+      backgroundColor: const Color(0xFFE9EEE9),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF166534),
+        foregroundColor: Colors.white,
+        title: Text(widget.title),
+      ),
+      body: Column(children: [
+        Expanded(
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: pages.length,
+            onPageChanged: (index) => setState(() => _index = index),
+            itemBuilder: (context, index) => _page(pages[index], index + 1),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: _index == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
+                Text('${_en ? 'Page' : 'Page'} ${_index + 1} / ${pages.length}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+                IconButton(
+                  onPressed: _index >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
