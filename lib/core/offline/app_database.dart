@@ -195,6 +195,20 @@ class AppDatabase extends _$AppDatabase {
     return rows.isEmpty ? null : rows.first.read<Uint8List>('image_bytes');
   }
 
+  Future<List<Map<String, dynamic>>> getCachedCoursePages(
+    String userId,
+    String courseId,
+  ) async {
+    final rows = await customSelect(
+      'SELECT page_number, image_bytes FROM course_page_cache WHERE user_id=? AND course_id=? ORDER BY page_number',
+      variables: [Variable(userId), Variable(courseId)],
+    ).get();
+    return rows.map((row) => <String, dynamic>{
+      'page_number': row.read<int>('page_number'),
+      'image_bytes': row.read<Uint8List>('image_bytes'),
+    }).toList(growable: false);
+  }
+
   Future<void> cacheCoursePageImage({
     required String userId,
     required String courseId,
