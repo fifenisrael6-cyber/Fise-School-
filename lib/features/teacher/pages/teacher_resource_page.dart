@@ -5,7 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/offline/offline_resource_viewer.dart' show OfflineResourceViewer;
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/smart_course_service.dart';
 import '../../../models/pedagogy.dart';

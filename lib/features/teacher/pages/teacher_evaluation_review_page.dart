@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/offline/offline_resource_viewer.dart' show OfflineResourceViewer;
 import '../../../core/services/evaluation_service.dart';
 import '../../../models/evaluation.dart';
 import '../../../models/pedagogy.dart';
