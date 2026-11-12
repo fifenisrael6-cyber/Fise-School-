@@ -1121,11 +1121,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final content = code == 'en' && contentEn.isNotEmpty
         ? contentEn
         : (contentFr.isNotEmpty ? contentFr : contentEn);
-    final descriptionEn = course.descriptionEn?.trim() ?? '';
-    final descriptionFr = course.descriptionFr?.trim() ?? '';
-    final description = code == 'en' && descriptionEn.isNotEmpty
-        ? descriptionEn
-        : (descriptionFr.isNotEmpty ? descriptionFr : descriptionEn);
 
     return _bubble(
       date: course.publishedAt ?? DateTime.now(),
@@ -1144,14 +1139,13 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
               ),
             ],
           ),
-          if (description != null && description.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _formattedCourseBody(description),
-          ],
-          if (content != null && content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _formattedCourseBody(content),
-          ],
+          const SizedBox(height: 8),
+          Text(
+            _fr
+                ? 'Cours complet avec formules, tableaux et illustrations. Appuyez sur « Ouvrir le cours » pour le lire.'
+                : 'Complete course with formulas, tables and illustrations. Tap “Open course” to read it.',
+            style: const TextStyle(color: Colors.black54, fontSize: 13, height: 1.4),
+          ),
           if (showResources) FutureBuilder<List<CourseResource>>(
             future: _loadResources(course.id),
             builder: (context, snapshot) {
@@ -1227,11 +1221,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             child: TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => CourseDetailPage(
+                MaterialPageRoute<void>(
+                  builder: (_) => CourseRecordNotebookReaderPage(
+                    title: course.labelFor(code),
+                    pages: course.pages,
+                    fallbackText: content,
                     locale: widget.locale,
-                    profile: widget.profile,
-                    course: course,
                   ),
                 ),
               ),
