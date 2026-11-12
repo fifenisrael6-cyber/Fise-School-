@@ -22,6 +22,7 @@ class PushService {
 
   static bool _ready = false;
   static bool _listening = false;
+  static String? _registeredUserId;
   static String? _token;
   static void Function(Map<String, String> data)? notificationTapHandler;
 
@@ -47,32 +48,32 @@ class PushService {
 
   static Future<void> registerForUser(String userId) async {
     if (!_ready) {
+      debugPrint(
+        'Push Fise School indisponible : Firebase n’est pas initialisé. '
+        'Vérifier android/app/google-services.json et le secret GitHub '
+        'GOOGLE_SERVICES_JSON, puis reconstruire l’APK.',
+      );
+      return;
+    }
+    if (_registeredUserId == userId && _token != null) {
       return;
     }
     try {
       final messaging = FirebaseMessaging.instance;
-      final settings = await messaging.requestPermission();
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        return;
-      }
-
-      final token = await messaging.getToken();
-      if (token == null) {
-        return;
-      }
-      _token = token;
-      await _save(token);
-
+      // Install listeners before requesting the token so a temporary token
+      // retrieval failure does not disable token refresh or notification taps.
       if (!_listening) {
         _listening = true;
         messaging.onTokenRefresh.listen((fresh) async {
           _token = fresh;
           await _save(fresh);
+        }, onError: (Object error) {
+          debugPrint('Actualisation du jeton push impossible : $error');
         });
         FirebaseMessaging.onMessage.listen(_showForegroundBanner);
         FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpen);
-        // If Android launched the app from a terminated state, route after the
-        // authenticated shell has had a chance to register its handler.
+        // Android can start the app directly from a notification while it was
+        // terminated. The handler is installed by FiseSchoolApp at startup.
         final initialMessage = await messaging.getInitialMessage();
         if (initialMessage != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,6 +81,29 @@ class PushService {
           });
         }
       }
+
+      await messaging.setAutoInitEnabled(true);
+      final settings = await messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        debugPrint(
+          'Notifications push refusées sur cet appareil. '
+          'Autoriser les notifications dans les paramètres Android.',
+        );
+        return;
+      }
+
+      final token = await messaging.getToken();
+      if (token == null || token.trim().isEmpty) {
+        debugPrint(
+          'Firebase n’a retourné aucun jeton FCM. Vérifier le projet Firebase '
+          'et google-services.json dans l’APK installé.',
+        );
+        return;
+      }
+      _token = token;
+      await _save(token);
+      _registeredUserId = userId;
+      debugPrint('Jeton push Fise School enregistré pour le compte connecté.');
     } catch (e) {
       debugPrint('Enregistrement push impossible : $e');
     }
