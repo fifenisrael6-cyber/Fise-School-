@@ -33,6 +33,12 @@ class CoursePdfPageService {
     }
     var uploaded = 0;
     try {
+      final generation = DateTime.now().microsecondsSinceEpoch.toString();
+      final updatedAt = DateTime.now().toUtc().toIso8601String();
+      final pageRows = <Map<String, dynamic>>[];
+
+      // Render and upload every page first. The database manifest is changed
+      // only after the complete PDF has been rendered and stored successfully.
       for (var pageNumber = 1; pageNumber <= document.pagesCount; pageNumber++) {
         final page = await document.getPage(pageNumber);
         try {
@@ -45,31 +51,37 @@ class CoursePdfPageService {
           if (rendered == null || rendered.bytes.isEmpty) {
             throw StateError('Le rendu de la page $pageNumber est vide.');
           }
-          final path = '$courseId/page-${pageNumber.toString().padLeft(4, '0')}.png';
+          final path = '$courseId/$generation/page-${pageNumber.toString().padLeft(4, '0')}.png';
           await _client.storage.from(_pagesBucket).uploadBinary(
             path,
             rendered.bytes,
             fileOptions: const FileOptions(
               contentType: 'image/png',
-              upsert: true,
+              upsert: false,
             ),
           );
-          await _client.from('course_pages').upsert({
+          pageRows.add({
             'course_id': courseId,
             'page_number': pageNumber,
-            // Private bucket object path, not a short-lived signed URL.
             'image_url': path,
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          }, onConflict: 'course_id,page_number');
-          uploaded++;
+            'updated_at': updatedAt,
+          });
         } finally {
           await page.close();
         }
       }
+
+      // Publish the new page set in one database upsert. Old pages remain
+      // readable if any rendering or upload step above fails.
+      await _client.from('course_pages').upsert(
+        pageRows,
+        onConflict: 'course_id,page_number',
+      );
       await _client.from('course_pages')
           .delete()
           .eq('course_id', courseId)
           .gt('page_number', document.pagesCount);
+      uploaded = pageRows.length;
       return uploaded;
     } finally {
       await document.close();
