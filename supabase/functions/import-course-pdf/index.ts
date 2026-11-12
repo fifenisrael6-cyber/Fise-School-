@@ -42,7 +42,7 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
         .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
       .join("\n");
-    if (line) pages.push(line);
+    pages.push(`[PAGE ${n}]\n${line}`);
   }
   return pages.join("\n\n").trim();
 }
@@ -118,6 +118,8 @@ serve(async (req) => {
     if (downloadError || !file) throw new Error(downloadError?.message ?? "Téléchargement du PDF impossible.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     let extracted = await extractPdf(bytes);
+    const sourcePageCount = (extracted.match(/\[PAGE \d+\]/g) ?? []).length;
+    if (sourcePageCount === 0) throw new Error("Impossible de déterminer le nombre de pages du PDF.");
     if (extracted.length < 250) {
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -152,14 +154,39 @@ RÈGLES ABSOLUES :
 - Conserve tous les exercices et questions ; ne fabrique pas de corrigés.
 - N'ajoute pas artificiellement des objectifs ou rubriques absentes de la source.
 - Le rendu final doit être agréable sur téléphone : paragraphes aérés, titres clairs, pas de HTML ni de bloc de code.
+- Pour chaque chapitre, repère les numéros des pages PDF qui contiennent son contenu, ses exemples, ses tableaux et ses illustrations. Les marqueurs [PAGE n] indiquent les pages originales. Si un chapitre commence au milieu d'une page, inclue cette page. Si plusieurs chapitres apparaissent sur la même page, cette page peut être attribuée aux deux.
+- Ne transforme pas les formules en texte brut : conserve-les en LaTeX avec les fractions, racines, exposants, intégrales, matrices et systèmes correctement structurés.
+- Ne prétends pas extraire une image séparée : le PDF original sera aussi conservé et ses pages seront rendues en images haute résolution pour préserver exactement les figures et schémas.
 
-Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure"}]}. Tous les chapitres réellement présents doivent être restitués ; ne fixe aucune limite artificielle de nombre de chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
+Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"titre fidèle en français","title_en":"faithful English title","content_fr":"cours complet et structuré en français avec Markdown","content_en":"faithful English translation preserving the same structure","source_page_start":1,"source_page_end":3}]}. Tous les chapitres réellement présents doivent être restitués ; ne fixe aucune limite artificielle de nombre de chapitres. Matière connue : ${subjectResult.data.name_fr}. Salle source : ${sourceClass.display_name ?? sourceClass.name}.
 
 TEXTE EXTRAIT DU PDF (texte intégral, sans troncature) :
 ${extracted}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
-    const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim()) : [];
+    const chapters = Array.isArray(parsed.chapters)
+      ? parsed.chapters
+          .filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim())
+          .map((c: any) => {
+            const start = Number(c.source_page_start);
+            const end = Number(c.source_page_end);
+            const validStart = Number.isInteger(start) && start >= 1 && start <= sourcePageCount ? start : 1;
+            const validEnd = Number.isInteger(end) && end >= validStart && end <= sourcePageCount
+              ? end
+              : sourcePageCount;
+            return { ...c, source_page_start: validStart, source_page_end: validEnd };
+          })
+      : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié dans le PDF.");
+
+    const safeSourceName = String(resource.file_name ?? "cours.pdf")
+      .replace(/[^A-Za-z0-9._-]/g, "_");
+    const sourcePdfPath = `imported-pdfs/${resourceId}/${Date.now()}_${safeSourceName}`;
+    const { error: sourceUploadError } = await db.storage.from("chapter-content").upload(
+      sourcePdfPath,
+      bytes,
+      { contentType: "application/pdf", upsert: false },
+    );
+    if (sourceUploadError) throw sourceUploadError;
 
     const { data: curricula, error: curriculaError } = await db.from("curricula")
       .select("id,title_fr,subsystem,sector,exam_level_id,series_id,specialty_id,is_catalog_container")
@@ -206,10 +233,13 @@ ${extracted}`;
               title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
               body_text_fr: bodyText,
               body_text_en: String(chapter.content_en ?? "").trim() || bodyText,
+              source_pdf_path: sourcePdfPath,
+              source_page_start: chapter.source_page_start,
+              source_page_end: chapter.source_page_end,
               is_published: false,
             }).eq("id", duplicate[0].id);
             if (replaceError) throw replaceError;
-            report.push({ chapter: title, curriculum: curriculum.title_fr, status: "replaced" });
+            report.push({ chapter: title, curriculum: curriculum.title_fr, status: "replaced", content_item_id: duplicate[0].id });
           } else {
             report.push({ chapter: title, curriculum: curriculum.title_fr, status: "already_exists" });
           }
@@ -217,8 +247,11 @@ ${extracted}`;
         }
         const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
           chapter_id: target.id, content_type: "course", title_fr: title, title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
-          body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText, position: 0,
-          is_published: false, created_by: authData.user.id, folder_key: "course",
+          body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText,
+          source_pdf_path: sourcePdfPath,
+          source_page_start: chapter.source_page_start,
+          source_page_end: chapter.source_page_end,
+          position: 0, is_published: false, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
         report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
