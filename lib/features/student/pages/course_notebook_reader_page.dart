@@ -38,6 +38,17 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
   bool get _en => widget.locale.languageCode == 'en';
 
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_initializeReader());
+  }
+
+  Future<void> _initializeReader() async {
+    await _restoreReaderState();
+    await _loadCoursePages();
+  }
+
   Future<void> _restoreReaderState() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     _userId = userId;
@@ -61,6 +72,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
+    final hasPdfSource = (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
+    if (widget.item.pageCourseId == null && !hasPdfSource) return;
     final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
