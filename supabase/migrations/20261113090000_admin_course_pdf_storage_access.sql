@@ -51,7 +51,18 @@ USING (
     )
   )
 )
-WITH CHECK (bucket_id = 'course-resources');
+WITH CHECK (
+  bucket_id = 'course-resources'
+  AND (
+    public.is_catalog_admin()
+    OR EXISTS (
+      SELECT 1
+      FROM public.courses c
+      WHERE c.id = ((storage.foldername(name))[1])::uuid
+        AND c.teacher_id = auth.uid()
+    )
+  )
+);
 
 DROP POLICY IF EXISTS "course owners delete resources storage"
   ON storage.objects;
