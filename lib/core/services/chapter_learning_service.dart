@@ -360,6 +360,7 @@ class ChapterLearningService {
                     ? resource['title_en'].toString()
                     : fileName),
             'storage_path': 'legacy-course-resource:$storagePath',
+            if (isPdfCourse) 'source_pdf_path': 'legacy-course-resource:$storagePath',
             if (isPdfCourse) 'page_course_id': resource['course_id']?.toString(),
             'folder_key': isPdfCourse ? 'course' : type,
             'position': (resource['position'] as num?)?.toInt() ?? 0,
@@ -515,9 +516,15 @@ class ChapterLearningService {
     if (!await ConnectivityService().isOnline()) {
       throw const SocketException('Le PDF original n’est pas encore disponible hors connexion.');
     }
+    const legacyPrefix = 'legacy-course-resource:';
+    final isLegacyResource = source.startsWith(legacyPrefix);
+    final storagePath = isLegacyResource
+        ? source.substring(legacyPrefix.length)
+        : source;
+    final sourceBucket = isLegacyResource ? 'course-resources' : 'chapter-content';
     final url = await _client.storage
-        .from('chapter-content')
-        .createSignedUrl(source, 900);
+        .from(sourceBucket)
+        .createSignedUrl(storagePath, 900);
     final response = await http
         .get(Uri.parse(url))
         .timeout(const Duration(seconds: 45));
