@@ -535,7 +535,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               ? availableWidth
               : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
           final pageHeight = pageWidth * 297 / 210;
-          const fixedVerticalSpace = 34.0 + 28.0 + 58.0 + 20.0;
+          const fixedVerticalSpace = 34.0 + 28.0 + 58.0 + 20.0 + 25.0;
           final pages = _pagesForLayout(
             pageWidth,
             pageHeight - fixedVerticalSpace,
