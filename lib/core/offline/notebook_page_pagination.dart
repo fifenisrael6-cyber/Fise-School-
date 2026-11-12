@@ -13,7 +13,8 @@ class NotebookPagePagination {
     final targetCharactersPerPage =
         (_baseCharactersPerPage * 16 / normalizedFontSize)
             .round()
-            .clamp(900, 2400);
+            .clamp(900, 2400)
+            .toInt();
 
     final result = <Map<String, dynamic>>[];
 
