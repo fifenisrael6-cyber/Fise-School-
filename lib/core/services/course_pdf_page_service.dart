@@ -59,6 +59,7 @@ class CoursePdfPageService {
             'page_number': pageNumber,
             // Private bucket object path, not a short-lived signed URL.
             'image_url': path,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
           }, onConflict: 'course_id,page_number');
           uploaded++;
         } finally {
