@@ -514,7 +514,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       source,
       fontSize: _fontSize,
       contentWidth: width - 60,
-      contentHeight: pageHeight - height,
+      contentHeight: height,
     );
   }
 
