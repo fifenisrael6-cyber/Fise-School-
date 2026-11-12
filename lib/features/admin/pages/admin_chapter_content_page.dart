@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
-import 'course_notebook_editor_page.dart';
 import '../../../core/services/course_pdf_page_service.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
@@ -500,7 +499,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
 
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Créer un cours A4 / ajouter une ressource','Create A4 course / add resource')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
+  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Importer le cours du chapitre','Upload chapter course')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
     DropdownButtonFormField<Map<String,dynamic>>(value:schoolClass,isExpanded:true,decoration:InputDecoration(labelText:t('1. Classe','1. Class')),items:classes.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'display_name','display_name')))).toList(),onChanged:chooseClass),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:subject,isExpanded:true,decoration:InputDecoration(labelText:t('2. Matière','2. Subject')),items:subjects.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'name_fr','name_en')))).toList(),onChanged:chooseSubject),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:curriculum,isExpanded:true,decoration:InputDecoration(labelText:t('3. Programme','3. Curriculum')),items:curricula.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'title_fr','title_en')))).toList(),onChanged:chooseCurriculum),
