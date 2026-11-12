@@ -9,23 +9,28 @@ class CoursePdfPageService {
   CoursePdfPageService(this._client);
 
   final SupabaseClient _client;
-  static const String _sourceBucket = 'chapter-content';
+  static const String _defaultSourceBucket = 'chapter-content';
   static const String _pagesBucket = 'course-pages';
 
   Future<int> regenerate(Map<String, dynamic> course) async {
-    final courseId = course['id']?.toString() ?? '';
-    final sourcePath = course['source_pdf_path']?.toString().trim() ?? '';
+    final courseId = (course['course_id'] ?? course['id'])?.toString() ?? '';
+    final sourcePath = (course['storage_path'] ?? course['source_pdf_path'])?.toString().trim() ?? '';
+    final sourceBucket = course['source_bucket']?.toString() ?? _defaultSourceBucket;
     if (courseId.isEmpty || sourcePath.isEmpty) {
       throw StateError('Le cours ne possède pas de PDF source.');
     }
 
-    final pdfBytes = await _client.storage.from(_sourceBucket).download(sourcePath);
+    final pdfBytes = await _client.storage.from(sourceBucket).download(sourcePath);
     if (pdfBytes.length < 5 ||
         String.fromCharCodes(pdfBytes.take(5)) != '%PDF-') {
       throw const FormatException('Le fichier source téléchargé ne possède pas une signature PDF valide.');
     }
 
     final document = await PdfDocument.openData(Uint8List.fromList(pdfBytes));
+    if (document.pagesCount <= 0) {
+      await document.close();
+      throw const FormatException('Le document PDF ne contient aucune page.');
+    }
     var uploaded = 0;
     try {
       for (var pageNumber = 1; pageNumber <= document.pagesCount; pageNumber++) {
