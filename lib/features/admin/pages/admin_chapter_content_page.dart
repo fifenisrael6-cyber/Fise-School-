@@ -108,185 +108,19 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> deleteChapter(Map<String,dynamic> ch) async {if(!await confirm(t('Supprimer ce chapitre et son contenu ?','Delete this chapter and its content?')))return;try{await db.from('course_chapters').delete().eq('id',ch['id']);if(chapter?['id']==ch['id'])chapter=null;await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
   Future<void> toggleChapter(Map<String,dynamic> ch) async {try{await db.from('course_chapters').update({'is_active':!(ch['is_active'] as bool? ?? true)}).eq('id',ch['id']);await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
   Future<void> addContent() async {
-    if (chapter == null) return;
-    final targetChapterId = chapter!['id'].toString();
-    final titleFr = TextEditingController();
-    final titleEn = TextEditingController();
-    final bodyFr = TextEditingController();
-    final bodyEn = TextEditingController();
-    final url = TextEditingController();
-    final type = ValueNotifier<String>('course');
-    final published = ValueNotifier<bool>(false);
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: Text(t('Ajouter un contenu','Add content')),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ValueListenableBuilder<String>(valueListenable: type, builder: (_, v, __) =>
-          DropdownButtonFormField<String>(
-            initialValue: v,
-            items: [
-              DropdownMenuItem(value: 'course', child: Text(t('Cours écrit','Written course'))),
-              const DropdownMenuItem(value: 'video', child: Text('Vidéo')),
-              const DropdownMenuItem(value: 'pdf', child: Text('PDF → leçons natives (IA)')),
-              const DropdownMenuItem(value: 'image', child: Text('Image depuis le téléphone')),
-              const DropdownMenuItem(value: 'audio', child: Text('Audio depuis le téléphone')),
-            ],
-            onChanged: (next) { if (next != null) type.value = next; },
-          )),
-        TextField(controller: titleFr, decoration: const InputDecoration(labelText: 'Titre français')),
-        ExpansionTile(title:Text(t('Traduction anglaise (facultative)','English translation (optional)')),children:[TextField(controller:titleEn,decoration:const InputDecoration(labelText:'English title'))]),
-        ValueListenableBuilder<String>(valueListenable: type, builder: (_, v, __) => Column(children: [
-          if (v == 'course') ...[
-            TextField(controller: bodyFr, maxLines: 14, decoration: const InputDecoration(labelText: 'Cours complet en français')),
-            ExpansionTile(title:Text(t('Traduction anglaise du cours (facultative)','Optional English lesson translation')),children:[TextField(controller:bodyEn,maxLines:8,decoration:const InputDecoration(labelText:'English lesson'))]),
-          ],
-          if (v == 'video') TextField(controller: url, decoration: const InputDecoration(labelText: 'Lien vidéo direct MP4 ou YouTube/Vimeo')),
-          if (v == 'pdf' || v == 'image' || v == 'audio') Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(v == 'pdf'
-                ? t('Le PDF sera converti en leçons natives. Les leçons seront créées en brouillon pour vérification avant publication.','Choose a PDF to convert into native lessons. Imported lessons remain drafts until you review and publish them.')
-                : v == 'image'
-                    ? t('L’image sera choisie sur le téléphone après validation.','Choose the image from your phone after confirming.')
-                    : t('Le fichier audio sera choisi sur le téléphone après validation.','Choose the audio file from your phone after confirming.')),
-          ),
-        ])),
-        ValueListenableBuilder<bool>(valueListenable: published, builder: (_, v, __) =>
-          SwitchListTile(value: v, title: Text(t('Publier pour les élèves','Publish for students')),
-            onChanged: (next) => published.value = next)),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(t('Annuler','Cancel'))),
-        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(t('Enregistrer','Save'))),
-      ],
-    ));
-    if (ok != true) return;
-    if (titleFr.text.trim().isEmpty) {
-      toast(t('Le titre français est obligatoire.','The French title is required.')); return;
-    }
-    String? storagePath;
-    try {
-      if (type.value == 'course' && bodyFr.text.trim().isEmpty) {
-        toast(t('Le contenu du cours en français est obligatoire.','French lesson content is required.')); return;
-      }
-      if (type.value == 'video' && url.text.trim().isEmpty) {
-        toast(t('Le lien vidéo est obligatoire.','A video URL is required.')); return;
-      }
-      if (type.value == 'pdf' || type.value == 'image' || type.value == 'audio') {
-        final extensions = type.value == 'pdf'
-            ? ['pdf']
-            : type.value == 'image'
-                ? ['jpg', 'jpeg', 'png', 'webp']
-                : ['mp3', 'm4a', 'aac', 'wav', 'ogg'];
-        final picked = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: extensions, withData: true,
-        );
-        if (picked == null || picked.files.isEmpty) return;
-        final file = picked.files.single;
-        final bytes = file.bytes;
-        if (bytes == null || bytes.isEmpty) {
-          toast(t('Impossible de lire ce fichier.','Unable to read this file.')); return;
-        }
-        if (type.value == 'pdf' && bytes.length > 25 * 1024 * 1024) {
-          toast(t('Le PDF dépasse la limite de 25 Mo. Divise-le en plusieurs fichiers.',
-              'The PDF exceeds the 25 MB limit. Split it into smaller files.'));
-          return;
-        }
-        if (type.value == 'pdf' &&
-            (bytes.length < 5 ||
-             String.fromCharCodes(bytes.take(5)) != '%PDF-')) {
-          toast(t('Le fichier sélectionné n’est pas un PDF valide.',
-              'The selected file is not a valid PDF.'));
-          return;
-        }
-        final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-        storagePath = chapter!['id'].toString() + '/' + DateTime.now().millisecondsSinceEpoch.toString() + '_' + safeName;
-        final ext = p.extension(file.name).toLowerCase();
-        final mimeType = type.value == 'pdf'
-            ? 'application/pdf'
-            : type.value == 'image'
-                ? (ext == '.png' ? 'image/png' : ext == '.webp' ? 'image/webp' : 'image/jpeg')
-                : (ext == '.wav' ? 'audio/wav' : ext == '.ogg' ? 'audio/ogg' : ext == '.m4a' ? 'audio/mp4' : 'audio/mpeg');
-        await db.storage.from('chapter-content').uploadBinary(
-          storagePath, bytes,
-          fileOptions: FileOptions(contentType: mimeType, upsert: false),
-        );
-      }
-      final existing = await db.from('chapter_content_items').select('id').eq('chapter_id', chapter!['id']);
-      final inserted = await db.from('chapter_content_items').insert({
-        'chapter_id': chapter!['id'],
-        'content_type': type.value,
-        'title_fr': titleFr.text.trim(),
-        'title_en': titleEn.text.trim().isEmpty ? titleFr.text.trim() : titleEn.text.trim(),
-        'body_text_fr': type.value == 'course' ? bodyFr.text.trim() : null,
-        'body_text_en': type.value == 'course' ? (bodyEn.text.trim().isEmpty ? bodyFr.text.trim() : bodyEn.text.trim()) : null,
-        'external_url': type.value == 'video' ? url.text.trim() : null,
-        'storage_path': storagePath,
-        'position': existing.length + 1,
-        'is_published': published.value,
-        'created_by': db.auth.currentUser?.id,
-      }).select('id').single();
-
-      if (type.value == 'pdf') {
-        toast(t('PDF envoyé. Extraction et organisation des leçons en cours…',
-            'PDF uploaded. Extracting and organizing lessons…'));
-        try {
-          final result = await db.functions.invoke(
-            'import-chapter-pdf',
-            body: {'content_item_id': inserted['id']},
-          );
-          final data = result.data;
-          if (result.status >= 200 && result.status < 300 &&
-              data is Map && data['success'] == true) {
-            final imported = data['imported'] ?? 0;
-            final existingCount = data['already_exists'] ?? 0;
-            final targetRooms = data['target_rooms'] is List
-                ? (data['target_rooms'] as List)
-                    .whereType<Map>()
-                    .map((room) => room['name']?.toString() ?? '')
-                    .where((name) => name.trim().isNotEmpty)
-                    .toList(growable: false)
-                : const <String>[];
-            final roomSummary = targetRooms.isEmpty
-                ? t('aucune salle correspondante détectée', 'no matching classroom detected')
-                : targetRooms.take(3).join(', ') +
-                    (targetRooms.length > 3 ? ' +${targetRooms.length - 3}' : '');
-            final linkedChapters = (data['report'] is List)
-                ? (data['report'] as List).fold<int>(0, (sum, row) =>
-                    sum + ((row is Map ? row['linked_chapters'] as num? : null)?.toInt() ?? 0))
-                : 0;
-            toast(t(
-              'Analyse terminée : $imported leçon(s) créée(s), $existingCount déjà existante(s). Salles concernées : $roomSummary. $linkedChapters liaison(s) de chapitre. Les leçons restent en brouillon : vérifiez puis publiez-les.',
-              'Analysis complete: $imported lesson(s) created, $existingCount already existed. Matching classrooms: $roomSummary. $linkedChapters chapter link(s). Lessons remain drafts until reviewed and published.',
-            ));
-          } else {
-            final message = data is Map
-                ? (data['error']?.toString() ?? 'Erreur d’analyse inconnue.')
-                : 'Réponse du serveur invalide.';
-            toast(t('PDF conservé, mais conversion échouée : $message',
-                'PDF saved, but conversion failed: $message'));
-          }
-        } catch (importError) {
-          toast(t('PDF conservé dans Supabase, mais conversion échouée : $importError',
-              'PDF saved in Supabase, but conversion failed: $importError'));
-        }
-      }
-
+    final selectedChapter = chapter;
+    if (selectedChapter == null) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CourseNotebookEditorPage(
+          locale: widget.locale,
+          chapterId: selectedChapter['id'].toString(),
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
       await chooseCurriculum(curriculum);
-      if (type.value == 'course' && published.value) {
-        try {
-          await db.functions.invoke('chapter-quiz', body: {'chapter_id': targetChapterId});
-          toast(t('Cours publié et QCM généré par l’IA.', 'Course published and AI quiz generated.'));
-        } catch (quizError) {
-          toast(t('Cours publié. QCM IA non généré : $quizError',
-                  'Course published. AI quiz was not generated: $quizError'));
-        }
-      } else {
-        toast(t('Contenu ajouté.', 'Content added.'));
-      }
-    } catch (e) {
-      if (storagePath != null) {
-        try { await db.storage.from('chapter-content').remove([storagePath]); } catch (_) {}
-      }
-      toast(e.toString());
+      toast(t('Cours créé dans le cahier A4.', 'Course created in the A4 notebook.'));
     }
   }
 
@@ -344,6 +178,24 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> editContent(Map<String, dynamic> item) async {
     final targetChapterId = chapter?['id']?.toString();
     final type = item['content_type'] as String? ?? 'course';
+    if (type == 'course') {
+      final chapterId = item['chapter_id']?.toString() ?? targetChapterId ?? '';
+      if (chapterId.isEmpty) {
+        toast(t('Ce cours doit être associé à un chapitre.', 'This course must be linked to a chapter.'));
+        return;
+      }
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => CourseNotebookEditorPage(
+            locale: widget.locale,
+            chapterId: chapterId,
+            existingItem: item,
+          ),
+        ),
+      );
+      if (saved == true && mounted) await chooseCurriculum(curriculum);
+      return;
+    }
     final titleFr = TextEditingController(text: item['title_fr'] as String? ?? '');
     final titleEn = TextEditingController(text: item['title_en'] as String? ?? '');
     final bodyFr = TextEditingController(text: item['body_text_fr'] as String? ?? '');
@@ -528,7 +380,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
 
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Ajouter un contenu','Add content')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
+  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Créer un cours A4 / ajouter une ressource','Create A4 course / add resource')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
     DropdownButtonFormField<Map<String,dynamic>>(value:schoolClass,isExpanded:true,decoration:InputDecoration(labelText:t('1. Classe','1. Class')),items:classes.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'display_name','display_name')))).toList(),onChanged:chooseClass),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:subject,isExpanded:true,decoration:InputDecoration(labelText:t('2. Matière','2. Subject')),items:subjects.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'name_fr','name_en')))).toList(),onChanged:chooseSubject),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:curriculum,isExpanded:true,decoration:InputDecoration(labelText:t('3. Programme','3. Curriculum')),items:curricula.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'title_fr','title_en')))).toList(),onChanged:chooseCurriculum),
@@ -550,22 +402,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         label:Text(t('Gérer exercices et quiz','Manage exercises and quizzes')),
       ),
       const SizedBox(height: 8),
-      FilledButton.icon(
-        onPressed: () async {
-          final saved = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => CourseNotebookEditorPage(
-                locale: widget.locale,
-                chapterId: chapter!['id'].toString(),
-              ),
-            ),
-          );
-          if (saved == true && mounted) setState(() {});
-        },
-        icon: const Icon(Icons.menu_book_rounded),
-        label: Text(t('Créer un cours en pages A4', 'Create an A4 page-based course')),
-      ),
-      FutureBuilder<List<Map<String,dynamic>>>(
+FutureBuilder<List<Map<String,dynamic>>>(
         future:db.from('chapter_content_items').select().eq('chapter_id',chapter!['id']).order('position').then((rows)=>rows.map((r)=>Map<String,dynamic>.from(r)).toList()),
         builder:(context,snapshot){
           if(snapshot.connectionState==ConnectionState.waiting)return const Padding(padding:EdgeInsets.all(16),child:Center(child:CircularProgressIndicator()));
