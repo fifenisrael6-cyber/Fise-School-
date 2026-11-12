@@ -73,7 +73,7 @@ class RichLessonText extends StatelessWidget {
 
   Widget _buildSemanticParagraph(String raw) {
     final match = RegExp(
-      r'^\*\*(Définition|Propriété|Théorème|Démonstration|Exemple|Application|À retenir|Remarque|Attention)\s*:?\*\*\s*(.*)
+      r'^\*{0,2}(Définition|Propriété|Théorème|Démonstration|Exemple|Application|À retenir|Remarque|Attention)\*{0,2}\s*:?\s*(.*)
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 6),
       child: Row(
