@@ -17,6 +17,7 @@ import 'course_detail_page.dart';
 import 'daily_lesson_page.dart';
 import 'chapter_quiz_page.dart';
 import 'chapter_folder_page.dart';
+import 'course_notebook_reader_page.dart';
 import '../widgets/chapter_folder_card.dart';
 
 class _FeedItem {
@@ -573,11 +574,41 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                 count: lessonItems.length,
                 icon: Icons.menu_book_rounded,
                 countLabel: _fr ? 'élément(s)' : 'item(s)',
-                onTap: () => openFolder(
-                  _fr ? 'Cours' : 'Lessons',
-                  lessonItems,
-                  _fr ? 'Aucun cours publié dans ce chapitre.' : 'No published lessons in this chapter.',
-                ),
+                onTap: () {
+                  // A single published chapter lesson opens directly as a
+                  // notebook. Keep the list only when the student has a choice.
+                  if (coursePosts.length == 1 &&
+                      coursePosts.first.chapterContent != null) {
+                    final lesson = coursePosts.first.chapterContent!;
+                    final rawPages = lesson['pages_json'];
+                    final pages = rawPages is List
+                        ? rawPages
+                            .whereType<Map>()
+                            .map((page) => Map<String, dynamic>.from(page))
+                            .toList(growable: false)
+                        : const <Map<String, dynamic>>[];
+                    Navigator.push(context, MaterialPageRoute<void>(
+                      builder: (_) => CourseRecordNotebookReaderPage(
+                        title: (lesson[_fr ? 'title_fr' : 'title_en'] ??
+                                lesson['title_fr'] ??
+                                (_fr ? 'Cours' : 'Course'))
+                            .toString(),
+                        pages: pages,
+                        fallbackText: (lesson[_fr ? 'body_text_fr' : 'body_text_en'] ??
+                                lesson['body_text_fr'] ??
+                                '')
+                            .toString(),
+                        locale: widget.locale,
+                      ),
+                    ));
+                    return;
+                  }
+                  openFolder(
+                    _fr ? 'Cours' : 'Lessons',
+                    lessonItems,
+                    _fr ? 'Aucun cours publié dans ce chapitre.' : 'No published lessons in this chapter.',
+                  );
+                },
               ),
                     ChapterFolderCard(
                 title: 'Photos',
