@@ -151,7 +151,7 @@ class NotebookPagePagination {
       var chunk = '';
       for (final word in words) {
         final next = chunk.isEmpty ? word : '$chunk $word';
-        if (chunk.isNotEmpty && !_fits(next, fontSize)) {
+        if (chunk.isNotEmpty && !_fits(next, fontSize, contentWidth, contentHeight)) {
           pages.add(chunk.trim());
           chunk = word;
         } else {
