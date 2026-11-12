@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/offline/course_offline_service.dart';
-import '../../../core/offline/offline_resource_viewer.dart';
+import '../../../core/offline/offline_resource_viewer.dart' show OfflineResourceViewer;
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../ai/pages/ai_page.dart';
