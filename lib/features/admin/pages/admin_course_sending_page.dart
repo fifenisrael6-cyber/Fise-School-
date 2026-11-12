@@ -339,32 +339,27 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
               row['subject_id']?.toString() == subjectId &&
               row['chapter_id']?.toString() == chapterId).toList();
           final existing = matches.isEmpty ? null : matches.first;
+          final oldResources = existing == null
+              ? <CourseResource>[]
+              : await _resources.listForCourse(existing['id'].toString());
 
-          final course = await _courses.saveCourse(
-            id: existing?['id']?.toString(),
-            curriculumId: curriculumId,
-            chapterId: chapterId,
-            subjectId: subjectId,
-            teacherId: existing?['teacher_id']?.toString() ?? currentUserId,
-            classId: classId,
-            titleFr: existing?['title_fr']?.toString().trim().isNotEmpty == true
-                ? existing!['title_fr'].toString()
-                : title,
-            titleEn: existing?['title_en']?.toString().trim().isNotEmpty == true
-                ? existing!['title_en'].toString()
-                : title,
-            descriptionFr: existing?['description_fr']?.toString(),
-            descriptionEn: existing?['description_en']?.toString(),
-            contentFr: '',
-            contentEn: '',
-            smartLessonEnabled: existing?['smart_lesson_enabled'] as bool? ?? true,
-            minimumExerciseScore:
-                (existing?['minimum_exercise_score'] as num?)?.toInt() ?? 50,
-            status: 'draft',
-          );
+          final course = existing == null
+              ? await _courses.saveCourse(
+                  curriculumId: curriculumId,
+                  chapterId: chapterId,
+                  subjectId: subjectId,
+                  teacherId: currentUserId,
+                  classId: classId,
+                  titleFr: title,
+                  titleEn: title,
+                  contentFr: '',
+                  contentEn: '',
+                  status: 'draft',
+                )
+              : await _courses.getCourse(existing['id'].toString());
 
-          final oldResources = await _resources.listForCourse(course.id);
           CourseResource? uploaded;
+          var courseUpdated = false;
           try {
             uploaded = await _resources.uploadResource(
               courseId: course.id,
@@ -374,12 +369,39 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
               titleFr: title,
               titleEn: title,
             );
+
+            await _courses.saveCourse(
+              id: course.id,
+              curriculumId: curriculumId,
+              chapterId: chapterId,
+              subjectId: subjectId,
+              teacherId: existing?['teacher_id']?.toString() ?? currentUserId,
+              classId: classId,
+              titleFr: existing?['title_fr']?.toString().trim().isNotEmpty == true
+                  ? existing!['title_fr'].toString()
+                  : title,
+              titleEn: existing?['title_en']?.toString().trim().isNotEmpty == true
+                  ? existing!['title_en'].toString()
+                  : title,
+              descriptionFr: existing?['description_fr']?.toString(),
+              descriptionEn: existing?['description_en']?.toString(),
+              contentFr: '',
+              contentEn: '',
+              smartLessonEnabled: existing?['smart_lesson_enabled'] as bool? ?? true,
+              minimumExerciseScore:
+                  (existing?['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+              status: 'draft',
+            );
+            courseUpdated = true;
+
+            if (_publish) await _courses.publishCourse(course.id);
+
+            // Delete older course PDFs only after the replacement is saved.
             for (final old in oldResources.where((resource) =>
                 resource.resourceType.toLowerCase() == 'pdf' &&
                 resource.lessonId == null)) {
-              await _resources.deleteResource(old);
+              try { await _resources.deleteResource(old); } catch (_) {}
             }
-            if (_publish) await _courses.publishCourse(course.id);
             completed++;
           } catch (_) {
             if (uploaded != null) {
@@ -387,6 +409,27 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             }
             if (existing == null) {
               try { await _courses.deleteCourse(course.id); } catch (_) {}
+            } else if (courseUpdated) {
+              try {
+                await _courses.saveCourse(
+                  id: course.id,
+                  curriculumId: existing['curriculum_id']?.toString(),
+                  chapterId: existing['chapter_id']?.toString(),
+                  subjectId: existing['subject_id'].toString(),
+                  teacherId: existing['teacher_id']?.toString() ?? currentUserId,
+                  classId: existing['class_id'].toString(),
+                  titleFr: existing['title_fr']?.toString() ?? title,
+                  titleEn: existing['title_en']?.toString() ?? title,
+                  descriptionFr: existing['description_fr']?.toString(),
+                  descriptionEn: existing['description_en']?.toString(),
+                  contentFr: existing['content_fr']?.toString(),
+                  contentEn: existing['content_en']?.toString(),
+                  smartLessonEnabled: existing['smart_lesson_enabled'] as bool? ?? true,
+                  minimumExerciseScore:
+                      (existing['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+                  status: existing['status']?.toString() ?? 'draft',
+                );
+              } catch (_) {}
             }
             rethrow;
           }
@@ -405,7 +448,6 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
       if (mounted) setState(() => _saving = false);
     }
   }
-
   Future<void> _replaceCoursePdf(Map<String, dynamic> row) async {
     final file = await _pickCoursePdf();
     if (file == null) return;
@@ -447,7 +489,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
       for (final old in oldResources.where((resource) =>
           resource.resourceType.toLowerCase() == 'pdf' &&
           resource.lessonId == null)) {
-        await _resources.deleteResource(old);
+        try { await _resources.deleteResource(old); } catch (_) {}
       }
       await _loadCourses();
       _showMessage(_t('Document du cours remplacé.', 'Course document replaced.'));
