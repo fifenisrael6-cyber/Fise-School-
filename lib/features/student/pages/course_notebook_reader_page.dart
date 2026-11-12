@@ -529,7 +529,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     return NotebookPagePagination.expandLegacyPages(
       source,
       fontSize: _fontSize,
-      contentWidth: width - 60,
+      contentWidth: width,
       contentHeight: height,
     );
   }
@@ -558,9 +558,11 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final pageHorizontalPadding =
+              constraints.maxWidth < 420 ? 40.0 : 56.0;
           final pages = _pagesForLayout(
-            constraints.maxWidth - 40,
-            constraints.maxHeight - 106,
+            constraints.maxWidth - pageHorizontalPadding,
+            constraints.maxHeight - 210,
           );
           final safeIndex = _index.clamp(0, pages.length - 1).toInt();
           if (_controller.hasClients &&
@@ -586,6 +588,19 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 },
                 itemBuilder: (context, index) =>
                     _buildPage(pages[index], index + 1, pages.length),
+              ),
+              Positioned(
+                top: 8,
+                left: 10,
+                child: Material(
+                  color: const Color(0xCC166534),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: _en ? 'Back' : 'Retour',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  ),
+                ),
               ),
               Positioned(
                 top: 8,
