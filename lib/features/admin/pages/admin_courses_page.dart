@@ -401,13 +401,39 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           );
           final data = result.data;
           if (result.status >= 200 && result.status < 300 && data is Map && data['success'] == true) {
+            final reportRows = (data['report'] as List? ?? const [])
+                .whereType<Map>()
+                .map((row) => Map<String, dynamic>.from(row))
+                .toList(growable: false);
+            final itemIds = reportRows
+                .map((row) => row['content_item_id']?.toString() ?? '')
+                .where((id) => id.isNotEmpty)
+                .toSet()
+                .toList(growable: false);
+            var preparedPages = 0;
+            if (itemIds.isNotEmpty) {
+              final importedItems = await _client
+                  .from('chapter_content_items')
+                  .select('id,source_pdf_path,source_page_start,source_page_end')
+                  .inFilter('id', itemIds);
+              for (final importedItem in importedItems) {
+                final sourcePdfPath =
+                    (importedItem['source_pdf_path'] as String? ?? '').trim();
+                if (sourcePdfPath.isEmpty) continue;
+                preparedPages += await CoursePdfPageService(_client).regenerate({
+                  ...Map<String, dynamic>.from(importedItem),
+                  'storage_path': sourcePdfPath,
+                  'source_bucket': 'chapter-content',
+                });
+              }
+            }
             final imported = data['imported'] ?? 0;
             final existing = data['already_exists'] ?? 0;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(_fr
-                    ? 'Extraction terminée : $imported chapitre(s) préparé(s), $existing déjà présent(s). Les nouveaux cours sont en brouillon.'
-                    : 'Extraction complete: $imported chapter(s) prepared, $existing already existed. New lessons are drafts.'),
+                    ? 'Extraction terminée : $imported chapitre(s) préparé(s), $existing déjà présent(s), $preparedPages page(s) A4 rendue(s). Les nouveaux cours sont en brouillon.'
+                    : 'Extraction complete: $imported chapter(s) prepared, $existing already existed, $preparedPages A4 page(s) rendered. New lessons are drafts.'),
                 duration: const Duration(seconds: 8),
                 action: SnackBarAction(
                   label: _fr ? 'Ouvrir les cours écrits' : 'Open written lessons',
