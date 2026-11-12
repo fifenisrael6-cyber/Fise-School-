@@ -380,6 +380,20 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     final blocks = rawBlocks is List
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
+    if (blocks.length == 1 &&
+        blocks.first['type'] == 'raster' &&
+        blocks.first['bytes'] is Uint8List) {
+      return ColoredBox(
+        color: Colors.white,
+        child: SizedBox.expand(
+          child: Image.memory(
+            blocks.first['bytes'] as Uint8List,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+          ),
+        ),
+      );
+    }
     return LayoutBuilder(builder: (context, constraints) {
       final horizontalPadding = constraints.maxWidth < 420 ? 20.0 : 28.0;
       return Container(
