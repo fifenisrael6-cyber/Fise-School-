@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:pdfx/pdfx.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Converts an administrator-selected chapter PDF into private PNG pages.
-/// The original PDF remains untouched in the chapter-content bucket.
+/// Converts an administrator-selected course PDF into private PNG pages.
+/// The source PDF remains untouched in its original Storage bucket.
 class CoursePdfPageService {
   CoursePdfPageService(this._client);
 
