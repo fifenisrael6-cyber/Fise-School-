@@ -220,40 +220,53 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         final contextData = widget.courseContext!;
         final classIds = (contextData['class_ids'] as List? ?? const [])
             .map((value) => value.toString()).where((value) => value.isNotEmpty).toList();
-        if (classIds.isEmpty) throw StateError(_t('Aucune salle destinataire sélectionnée.', 'No target classroom selected.'));
-        for (final classId in classIds) {
-          final values = <String, dynamic>{
-            'curriculum_id': contextData['curriculum_id'],
-            'chapter_id': contextData['chapter_id'],
-            'subject_id': contextData['subject_id'],
-            'teacher_id': contextData['teacher_id'],
-            'class_id': classId,
-            'title_fr': _titleFr.text.trim(),
-            'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
-            'content_fr': plainText,
-            'content_en': plainTextEn,
-            'pages_json': pages,
-            'status': _published ? 'published' : 'draft',
-            'published_at': _published ? DateTime.now().toIso8601String() : null,
-          };
-          final existingId = widget.existingCourse != null &&
-                  widget.existingCourse!['class_id']?.toString() == classId
-              ? widget.existingCourse!['id']?.toString()
-              : null;
-          if (existingId != null) {
-            await _db.from('courses').update(values).eq('id', existingId);
-          } else {
-            final matches = await _db.from('courses').select('id')
-                .eq('class_id', classId)
-                .eq('subject_id', contextData['subject_id'])
-                .eq('chapter_id', contextData['chapter_id'])
-                .eq('title_fr', _titleFr.text.trim())
-                .neq('status', 'archived')
-                .limit(1);
-            if (matches.isEmpty) {
-              await _db.from('courses').insert(values);
+        final chapterIds = (contextData['chapter_ids'] as List? ??
+                [contextData['chapter_id']])
+            .map((value) => value.toString())
+            .where((value) => value.isNotEmpty)
+            .toList();
+        if (classIds.isEmpty) {
+          throw StateError(_t('Aucune salle destinataire sélectionnée.', 'No target classroom selected.'));
+        }
+        if (chapterIds.isEmpty) {
+          throw StateError(_t('Aucun chapitre sélectionné.', 'No chapter selected.'));
+        }
+        for (final chapterId in chapterIds) {
+          for (final classId in classIds) {
+            final values = <String, dynamic>{
+              'curriculum_id': contextData['curriculum_id'],
+              'chapter_id': chapterId,
+              'subject_id': contextData['subject_id'],
+              'teacher_id': contextData['teacher_id'],
+              'class_id': classId,
+              'title_fr': _titleFr.text.trim(),
+              'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
+              'content_fr': plainText,
+              'content_en': plainTextEn,
+              'pages_json': pages,
+              'status': _published ? 'published' : 'draft',
+              'published_at': _published ? DateTime.now().toIso8601String() : null,
+            };
+            final existingId = widget.existingCourse != null &&
+                    widget.existingCourse!['class_id']?.toString() == classId &&
+                    widget.existingCourse!['chapter_id']?.toString() == chapterId
+                ? widget.existingCourse!['id']?.toString()
+                : null;
+            if (existingId != null) {
+              await _db.from('courses').update(values).eq('id', existingId);
             } else {
-              await _db.from('courses').update(values).eq('id', matches.first['id']);
+              final matches = await _db.from('courses').select('id')
+                  .eq('class_id', classId)
+                  .eq('subject_id', contextData['subject_id'])
+                  .eq('chapter_id', chapterId)
+                  .eq('title_fr', _titleFr.text.trim())
+                  .neq('status', 'archived')
+                  .limit(1);
+              if (matches.isEmpty) {
+                await _db.from('courses').insert(values);
+              } else {
+                await _db.from('courses').update(values).eq('id', matches.first['id']);
+              }
             }
           }
         }
