@@ -13,6 +13,8 @@ class NotebookPagePagination {
   static List<Map<String, dynamic>> expandLegacyPages(
     List<Map<String, dynamic>> pages, {
     double fontSize = 16,
+    double contentWidth = _contentWidth,
+    double contentHeight = _contentHeight,
   }) {
     final safeFontSize = fontSize.clamp(14.0, 30.0).toDouble();
     final result = <Map<String, dynamic>>[];
@@ -49,8 +51,8 @@ class NotebookPagePagination {
 
         final french = (block['text_fr'] ?? block['text'] ?? '').toString();
         final english = (block['text_en'] ?? french).toString();
-        final frenchChunks = _splitText(french, safeFontSize);
-        final englishChunks = _splitText(english, safeFontSize);
+        final frenchChunks = _splitText(french, safeFontSize, contentWidth, contentHeight);
+        final englishChunks = _splitText(english, safeFontSize, contentWidth, contentHeight);
         final count = frenchChunks.length > englishChunks.length
             ? frenchChunks.length
             : englishChunks.length;
@@ -91,7 +93,12 @@ class NotebookPagePagination {
     return result;
   }
 
-  static List<String> _splitText(String text, double fontSize) {
+  static List<String> _splitText(
+    String text,
+    double fontSize,
+    double contentWidth,
+    double contentHeight,
+  ) {
     if (text.trim().isEmpty) return const <String>[];
 
     final paragraphs = text
@@ -110,13 +117,13 @@ class NotebookPagePagination {
       if (paragraph.isEmpty) continue;
 
       final candidate = current.isEmpty ? paragraph : '$current\n\n$paragraph';
-      if (_fits(candidate, fontSize)) {
+      if (_fits(candidate, fontSize, contentWidth, contentHeight)) {
         current = candidate;
         continue;
       }
 
       flush();
-      if (_fits(paragraph, fontSize)) {
+      if (_fits(paragraph, fontSize, contentWidth, contentHeight)) {
         current = paragraph;
         continue;
       }
@@ -127,7 +134,7 @@ class NotebookPagePagination {
         var tableChunk = '';
         for (final line in lines) {
           final next = tableChunk.isEmpty ? line : '$tableChunk\n$line';
-          if (tableChunk.isNotEmpty && !_fits(next, fontSize)) {
+          if (tableChunk.isNotEmpty && !_fits(next, fontSize, contentWidth, contentHeight)) {
             pages.add(tableChunk.trim());
             tableChunk = line;
           } else {
@@ -158,7 +165,12 @@ class NotebookPagePagination {
     return pages.isEmpty ? <String>[text.trim()] : pages;
   }
 
-  static bool _fits(String text, double fontSize) {
+  static bool _fits(
+    String text,
+    double fontSize,
+    double contentWidth,
+    double contentHeight,
+  ) {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
@@ -166,7 +178,7 @@ class NotebookPagePagination {
       ),
       textDirection: TextDirection.ltr,
       textScaler: TextScaler.noScaling,
-    )..layout(maxWidth: _contentWidth);
-    return painter.height <= _contentHeight;
+    )..layout(maxWidth: contentWidth.clamp(120.0, 1200.0));
+    return painter.height <= contentHeight.clamp(120.0, 1800.0);
   }
 }
