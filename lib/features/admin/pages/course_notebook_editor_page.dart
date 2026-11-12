@@ -74,48 +74,34 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
             .whereType<Map>()
             .map((raw) => Map<String, dynamic>.from(raw))
             .toList(growable: false);
-        for (final page in NotebookPagePagination.expandLegacyPages(savedPages)) {
+        final french = <String>[];
+        final english = <String>[];
+        final images = <Map<String, dynamic>>[];
+        for (final page in savedPages) {
           final blocks = page['blocks'];
-          String text = '';
-          String textEn = '';
-          final images = <Map<String, dynamic>>[];
-          if (blocks is List) {
-            for (final rawBlock in blocks.whereType<Map>()) {
-              final block = Map<String, dynamic>.from(rawBlock);
-              if (block['type'] == 'text') {
-                text = (block['text_fr'] ?? block['text'] ?? '').toString();
-                textEn = (block['text_en'] ?? text).toString();
-              } else if (block['type'] == 'image') {
-                images.add(block);
-              }
+          if (blocks is! List) continue;
+          for (final rawBlock in blocks.whereType<Map>()) {
+            final block = Map<String, dynamic>.from(rawBlock);
+            if (block['type'] == 'text') {
+              final fr = (block['text_fr'] ?? block['text'] ?? '').toString().trim();
+              final en = (block['text_en'] ?? fr).toString().trim();
+              if (fr.isNotEmpty) french.add(fr);
+              if (en.isNotEmpty) english.add(en);
+            } else if (block['type'] == 'image') {
+              images.add(block);
             }
           }
-          _pages.add(_NotebookPage(text: text, textEn: textEn, images: images));
         }
+        _pages.add(_NotebookPage(
+          text: french.join('\\n\\n'),
+          textEn: english.join('\\n\\n'),
+          images: images,
+        ));
       }
       if (_pages.isEmpty) {
         final legacyFr = (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString();
         final legacyEn = (item['body_text_en'] ?? item['content_en'] ?? item['body_text_fr'] ?? item['content_fr'] ?? '').toString();
-        final legacyPages = NotebookPagePagination.expandLegacyPages([
-          {
-            'id': 'legacy-page-1',
-            'position': 1,
-            'blocks': [
-              {'type': 'text', 'text_fr': legacyFr, 'text_en': legacyEn},
-            ],
-          },
-        ]);
-        for (final legacyPage in legacyPages) {
-          final blocks = legacyPage['blocks'] as List? ?? const [];
-          final textBlock = blocks.whereType<Map>().cast<Map>().firstWhere(
-            (block) => block['type'] == 'text',
-            orElse: () => <String, dynamic>{},
-          );
-          _pages.add(_NotebookPage(
-            text: (textBlock['text_fr'] ?? '').toString(),
-            textEn: (textBlock['text_en'] ?? '').toString(),
-          ));
-        }
+        _pages.add(_NotebookPage(text: legacyFr, textEn: legacyEn));
       }
     } else {
       _published = widget.courseContext?['publish'] == true;
@@ -132,13 +118,6 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       page.dispose();
     }
     super.dispose();
-  }
-
-  void _addPage() {
-    setState(() {
-      _pages.add(_NotebookPage());
-      _previewIndex = _pages.length - 1;
-    });
   }
 
   Future<void> _addImage(int pageIndex) async {
@@ -185,29 +164,33 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
   }
 
   List<Map<String, dynamic>> _serializePages() {
-    return [
-      for (var index = 0; index < _pages.length; index++)
+    final page = _pages.first;
+    final french = page.text.text.trim();
+    final english = page.textEn.text.trim().isEmpty
+        ? french
+        : page.textEn.text.trim();
+    return NotebookPagePagination.expandLegacyPages(
+      [
         {
-          'id': 'page-${index + 1}',
-          'position': index + 1,
+          'id': 'course-content',
+          'position': 1,
           'format': 'A4',
           'blocks': [
-            if (_pages[index].text.text.trim().isNotEmpty ||
-                _pages[index].textEn.text.trim().isNotEmpty)
+            if (french.isNotEmpty || english.isNotEmpty)
               {
                 'type': 'text',
-                'text_fr': _pages[index].text.text.trim().isEmpty
-                    ? _pages[index].textEn.text.trim()
-                    : _pages[index].text.text.trim(),
-                'text_en': _pages[index].textEn.text.trim().isEmpty
-                    ? _pages[index].text.text.trim()
-                    : _pages[index].textEn.text.trim(),
+                'text_fr': french.isEmpty ? english : french,
+                'text_en': english.isEmpty ? french : english,
               },
-            ..._pages[index].images,
+            ...page.images,
           ],
         },
-    ];
+      ],
+      fontSize: 18,
+    );
   }
+
+  List<Map<String, dynamic>> get _previewPages => _serializePages();
 
   Future<void> _save() async {
     if (_saving) return;
@@ -317,10 +300,19 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
   }
 
   Widget _pagePreview(int index) {
-    final page = _pages[index];
-    final previewText = _fr || page.textEn.text.trim().isEmpty
-        ? page.text.text
-        : page.textEn.text;
+    final blocks = _previewPages[index]['blocks'] as List? ?? const [];
+    String previewText = '';
+    final images = <Map<String, dynamic>>[];
+    for (final rawBlock in blocks.whereType<Map>()) {
+      final block = Map<String, dynamic>.from(rawBlock);
+      if (block['type'] == 'text') {
+        previewText = (_fr
+            ? (block['text_fr'] ?? block['text'] ?? '')
+            : (block['text_en'] ?? block['text_fr'] ?? block['text'] ?? '')).toString();
+      } else if (block['type'] == 'image') {
+        images.add(block);
+      }
+    }
     return LayoutBuilder(builder: (context, constraints) {
       final availableWidth = constraints.maxWidth - 32;
       final heightLimitedWidth = (constraints.maxHeight - 32) * 210 / 297;
@@ -345,7 +337,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                     const Divider(height: 26, color: Color(0xFF16A34A)),
                     if (previewText.trim().isNotEmpty)
                       RichLessonText(text: previewText, style: const TextStyle(fontSize: 14, height: 1.65, color: Color(0xFF1E293B))),
-                    for (final image in page.images)
+                    for (final image in images)
                       if ((image['storage_path'] ?? '').toString().isNotEmpty)
                         FutureBuilder<String?>(
                           future: _imageUrl(image['storage_path'].toString()),
@@ -380,44 +372,18 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Expanded(child: Text('${_t('PAGE', 'PAGE')} ${index + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)))),
-              IconButton(
-                tooltip: _t('Monter la page', 'Move page up'),
-                onPressed: index == 0 ? null : () => setState(() {
-                  final previous = _pages[index - 1];
-                  _pages[index - 1] = _pages[index];
-                  _pages[index] = previous;
-                }),
-                icon: const Icon(Icons.arrow_upward_rounded, size: 19),
-              ),
-              IconButton(
-                tooltip: _t('Descendre la page', 'Move page down'),
-                onPressed: index == _pages.length - 1 ? null : () => setState(() {
-                  final next = _pages[index + 1];
-                  _pages[index + 1] = _pages[index];
-                  _pages[index] = next;
-                }),
-                icon: const Icon(Icons.arrow_downward_rounded, size: 19),
-              ),
-              IconButton(
-                tooltip: _t('Supprimer la page', 'Delete page'),
-                onPressed: _pages.length == 1 ? null : () {
-                  setState(() {
-                    _pages.removeAt(index).dispose();
-                    if (_previewIndex >= _pages.length) _previewIndex = _pages.length - 1;
-                  });
-                },
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ]),
+            Text(
+              _t('Rédaction continue — les pages A4 sont créées automatiquement',
+                 'Continuous writing — A4 pages are created automatically'),
+              style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)),
+            ),
             TextField(
               controller: page.text,
               minLines: 7,
               maxLines: 18,
               decoration: InputDecoration(
-                labelText: _t('Texte français de cette page', 'French text on this page'),
-                hintText: _t('Rédige le contenu de la page…', 'Write this page…'),
+                labelText: _t('Cours complet en français', 'Complete course in French'),
+                hintText: _t('Rédige le cours sans créer manuellement les pages…', 'Write the course without creating pages manually…'),
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -484,7 +450,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
               ),
               Padding(
                 padding: const EdgeInsets.all(10),
-                child: Text('${_t('Page', 'Page')} ${_previewIndex + 1} / ${_pages.length}'),
+                child: Text('${_t('Page', 'Page')} ${_previewIndex + 1} / ${_previewPages.length}'),
               ),
             ])
           : ListView(
