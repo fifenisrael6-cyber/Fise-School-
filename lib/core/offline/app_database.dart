@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
@@ -86,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -99,6 +100,7 @@ class AppDatabase extends _$AppDatabase {
           await _createOfflineCatalogCacheTable();
           await _createMessageConversationPreferences();
           await _createAiConversationCacheTable();
+          await _createCourseReaderTables();
         },
         onUpgrade: (Migrator m, int from, int to) async {
           if (from < 2) {
@@ -129,8 +131,123 @@ class AppDatabase extends _$AppDatabase {
           if (from < 10) {
             await _addMessageSenderAvatarPathColumn();
           }
+          if (from < 11) {
+            await _createCourseReaderTables();
+          }
+          if (from < 12) {
+            await _addCoursePageCacheSourceTimestampColumn();
+          }
         },
       );
+
+  Future<void> _createCourseReaderTables() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS course_reader_state (
+        user_id TEXT NOT NULL,
+        course_id TEXT NOT NULL,
+        page_number INTEGER NOT NULL DEFAULT 0,
+        font_size REAL NOT NULL DEFAULT 16,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, course_id)
+      )
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS course_page_cache (
+        user_id TEXT NOT NULL,
+        course_id TEXT NOT NULL,
+        page_number INTEGER NOT NULL,
+        image_bytes BLOB NOT NULL,
+        updated_at TEXT NOT NULL,
+        source_updated_at TEXT,
+        PRIMARY KEY(user_id, course_id, page_number)
+      )
+    ''');
+  }
+
+  Future<void> _addCoursePageCacheSourceTimestampColumn() async {
+    try {
+      await customStatement(
+        'ALTER TABLE course_page_cache ADD COLUMN source_updated_at TEXT',
+      );
+    } catch (_) {
+      // The column already exists on newly created local databases.
+    }
+  }
+
+  Future<Map<String, dynamic>?> getCourseReaderState(
+    String userId, String courseId,
+  ) async {
+    final rows = await customSelect(
+      'SELECT page_number, font_size FROM course_reader_state WHERE user_id=? AND course_id=? LIMIT 1',
+      variables: [Variable(userId), Variable(courseId)],
+    ).get();
+    if (rows.isEmpty) return null;
+    return {
+      'page_number': rows.first.read<int>('page_number'),
+      'font_size': rows.first.read<double>('font_size'),
+    };
+  }
+
+  Future<void> saveCourseReaderState({
+    required String userId,
+    required String courseId,
+    required int pageNumber,
+    required double fontSize,
+  }) => customStatement(
+    '''INSERT INTO course_reader_state(user_id,course_id,page_number,font_size,updated_at)
+       VALUES(?,?,?,?,?)
+       ON CONFLICT(user_id,course_id) DO UPDATE SET
+       page_number=excluded.page_number,font_size=excluded.font_size,updated_at=excluded.updated_at''',
+    [userId, courseId, pageNumber, fontSize, DateTime.now().toUtc().toIso8601String()],
+  );
+
+  Future<Uint8List?> getCachedCoursePageImage(String userId, String courseId, int pageNumber) async {
+    final rows = await customSelect(
+      'SELECT image_bytes FROM course_page_cache WHERE user_id=? AND course_id=? AND page_number=? LIMIT 1',
+      variables: [Variable(userId), Variable(courseId), Variable(pageNumber)],
+    ).get();
+    return rows.isEmpty ? null : rows.first.read<Uint8List>('image_bytes');
+  }
+
+  Future<String?> getCachedCoursePageImageUpdatedAt(
+    String userId, String courseId, int pageNumber,
+  ) async {
+    final rows = await customSelect(
+      'SELECT source_updated_at FROM course_page_cache WHERE user_id=? AND course_id=? AND page_number=? LIMIT 1',
+      variables: [Variable(userId), Variable(courseId), Variable(pageNumber)],
+    ).get();
+    return rows.isEmpty ? null : rows.first.readNullable<String>('source_updated_at');
+  }
+
+  Future<List<Map<String, dynamic>>> getCachedCoursePages(
+    String userId,
+    String courseId,
+  ) async {
+    final rows = await customSelect(
+      'SELECT page_number, image_bytes, source_updated_at FROM course_page_cache WHERE user_id=? AND course_id=? ORDER BY page_number',
+      variables: [Variable(userId), Variable(courseId)],
+    ).get();
+    return rows.map((row) => <String, dynamic>{
+      'page_number': row.read<int>('page_number'),
+      'image_bytes': row.read<Uint8List>('image_bytes'),
+      'source_updated_at': row.readNullable<String>('source_updated_at'),
+    }).toList(growable: false);
+  }
+
+  Future<void> cacheCoursePageImage({
+    required String userId,
+    required String courseId,
+    required int pageNumber,
+    required Uint8List bytes,
+    String? sourceUpdatedAt,
+  }) => customStatement(
+    '''INSERT INTO course_page_cache(user_id,course_id,page_number,image_bytes,updated_at,source_updated_at)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(user_id,course_id,page_number) DO UPDATE SET
+       image_bytes=excluded.image_bytes,updated_at=excluded.updated_at,
+       source_updated_at=excluded.source_updated_at''',
+    [userId, courseId, pageNumber, bytes, DateTime.now().toUtc().toIso8601String(), sourceUpdatedAt],
+  );
 
   Future<void> _createAiConversationCacheTable() async {
     await customStatement('''

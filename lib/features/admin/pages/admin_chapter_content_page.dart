@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
 import 'course_notebook_editor_page.dart';
+import '../../../core/services/course_pdf_page_service.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
 class AdminChapterContentPage extends StatefulWidget {
@@ -289,6 +290,19 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     }
   }
 
+  Future<void> regenerateCoursePages(Map<String, dynamic> item) async {
+    try {
+      toast(t('Régénération des pages en cours…', 'Regenerating course pages…'));
+      final count = await CoursePdfPageService(db).regenerate(item);
+      toast(t('Régénération terminée : $count page(s).',
+          'Regeneration complete: $count page(s).'));
+      if (mounted) setState(() {});
+    } catch (error) {
+      toast(t('Régénération impossible : $error',
+          'Could not regenerate pages: $error'));
+    }
+  }
+
   Future<void> restoreCourseFromPdf(Map<String, dynamic> item) async {
     if (item['content_type'] != 'pdf' ||
         (item['storage_path'] as String? ?? '').isEmpty) {
@@ -468,6 +482,19 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
     try {
+      if (willPublish &&
+          item['content_type'] == 'course' &&
+          (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty) {
+        try {
+          final count = await CoursePdfPageService(db).regenerate(item);
+          toast(t('Pages du cours préparées : $count page(s).',
+              'Course pages prepared: $count page(s).'));
+        } catch (pageError) {
+          toast(t('Publication bloquée : conversion des pages impossible. $pageError',
+              'Publication blocked: page conversion failed. $pageError'));
+          return;
+        }
+      }
       await db.from('chapter_content_items')
           .update({'is_published': willPublish})
           .eq('id', item['id']);
@@ -550,11 +577,14 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             title:Text((item['title_fr'] as String?)??''),
             subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='edit')editContent(item);if(v=='pages')Navigator.of(context).push(MaterialPageRoute(builder:(_)=>CourseNotebookEditorPage(locale:widget.locale,chapterId:chapter!['id'].toString(),existingItem:item))).then((saved){if(saved==true&&mounted)setState((){});});if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='pages')Navigator.of(context).push(MaterialPageRoute(builder:(_)=>CourseNotebookEditorPage(locale:widget.locale,chapterId:chapter!['id'].toString(),existingItem:item))).then((saved){if(saved==true&&mounted)setState((){});});if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
+                if (item['content_type'] == 'course' &&
+                    (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty)
+                  PopupMenuItem(value:'regenerate',child:Text(t('Régénérer les pages','Regenerate pages'))),
                 if (item['content_type'] == 'course')
                   PopupMenuItem(value:'pages',child:Text(t('Modifier les pages du cahier','Edit notebook pages'))),
                 PopupMenuItem(value:'toggle',child:Text(t('Masquer / publier','Hide / publish'))),

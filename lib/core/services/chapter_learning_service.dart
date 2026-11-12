@@ -242,6 +242,10 @@ class ChapterLearningService {
     }
 
     final courseIds = courses.map((row) => row['id'].toString()).toList();
+    final coursesById = <String, Map<String, dynamic>>{
+      for (final course in courses)
+        course['id'].toString(): course,
+    };
     for (final course in courses) {
       final bodyFr = course['content_fr']?.toString();
       final bodyEn = course['content_en']?.toString();
@@ -338,17 +342,26 @@ class ChapterLearningService {
             // Keep unknown document types out of PDF/image/audio/video readers.
             continue;
           }
+          final parentCourse = coursesById[resource['course_id']?.toString()];
+          final isPdfCourse = type == 'pdf';
           content.add({
             'id': 'legacy-resource-${resource['id']}',
             'chapter_id': chapterId,
-            'content_type': type,
-            'title_fr': resource['title_fr']?.toString().trim().isNotEmpty == true
-                ? resource['title_fr'].toString()
-                : fileName,
-            'title_en': resource['title_en']?.toString().trim().isNotEmpty == true
-                ? resource['title_en'].toString()
-                : fileName,
+            // Legacy PDFs become course pages; students never see a PDF folder.
+            'content_type': isPdfCourse ? 'course' : type,
+            'title_fr': isPdfCourse
+                ? (parentCourse?['title_fr']?.toString() ?? 'Cours')
+                : (resource['title_fr']?.toString().trim().isNotEmpty == true
+                    ? resource['title_fr'].toString()
+                    : fileName),
+            'title_en': isPdfCourse
+                ? (parentCourse?['title_en']?.toString() ?? parentCourse?['title_fr']?.toString() ?? 'Course')
+                : (resource['title_en']?.toString().trim().isNotEmpty == true
+                    ? resource['title_en'].toString()
+                    : fileName),
             'storage_path': 'legacy-course-resource:$storagePath',
+            if (isPdfCourse) 'page_course_id': resource['course_id']?.toString(),
+            'folder_key': isPdfCourse ? 'course' : type,
             'position': (resource['position'] as num?)?.toInt() ?? 0,
             'is_published': true,
           });
