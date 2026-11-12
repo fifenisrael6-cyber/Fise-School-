@@ -187,7 +187,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
       final rows = await Supabase.instance.client
           .from('course_pages')
-          .select('image_url')
+          .select('image_url,updated_at')
           .eq('course_id', pageCourseId)
           .eq('page_number', pageNumber)
           .limit(1);
