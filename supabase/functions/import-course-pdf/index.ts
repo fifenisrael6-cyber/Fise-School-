@@ -61,7 +61,7 @@ async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Pr
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
-      generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+      generationConfig: { responseMimeType: "application/json" },
     }),
   });
   const data = await response.json();
@@ -128,7 +128,7 @@ serve(async (req) => {
         body: JSON.stringify({ contents: [{ role: "user", parts: [
           { text: "Transcris fidèlement tout le texte de ce PDF scolaire en français. Conserve les titres, les formules, les tableaux sous forme textuelle et les exemples. Ne résume pas et n'invente rien." },
           { inline_data: { mime_type: "application/pdf", data: btoa(binary) } },
-        ] }], generationConfig: { temperature: 0 } }),
+        ] }], generationConfig: {} }),
       });
       const scannedData = await scanned.json();
       if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
