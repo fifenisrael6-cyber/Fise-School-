@@ -1116,6 +1116,11 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
 
   Widget _coursePost(Course course, {bool showResources = true}) {
     final code = widget.locale.languageCode;
+    final contentEn = course.contentEn?.trim() ?? '';
+    final contentFr = course.contentFr?.trim() ?? '';
+    final content = code == 'en' && contentEn.isNotEmpty
+        ? contentEn
+        : (contentFr.isNotEmpty ? contentFr : contentEn);
 
     return _bubble(
       date: course.publishedAt ?? DateTime.now(),
@@ -1216,11 +1221,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
             child: TextButton.icon(
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => CourseDetailPage(
+                MaterialPageRoute<void>(
+                  builder: (_) => CourseRecordNotebookReaderPage(
+                    title: course.labelFor(code),
+                    pages: course.pages,
+                    fallbackText: content,
                     locale: widget.locale,
-                    profile: widget.profile,
-                    course: course,
                   ),
                 ),
               ),
