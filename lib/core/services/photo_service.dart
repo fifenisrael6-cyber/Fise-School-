@@ -90,7 +90,9 @@ class PhotoService {
       case 'webm':
         return 'video/webm';
       case 'mp3':
+        return 'audio/mpeg';
       case 'm4a':
+        return 'audio/mp4';
       case 'aac':
         return 'audio/aac';
       case 'txt':
