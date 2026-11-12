@@ -194,6 +194,45 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
 
   List<Map<String, dynamic>> get _previewPages => _serializePages();
 
+  Future<List<Map<String, dynamic>>> _pagesForChapter(
+    List<Map<String, dynamic>> source,
+    String targetChapterId,
+  ) async {
+    if (targetChapterId == widget.chapterId) return source;
+    final result = <Map<String, dynamic>>[];
+    for (final page in source) {
+      final blocks = <Map<String, dynamic>>[];
+      final rawBlocks = page['blocks'];
+      if (rawBlocks is List) {
+        for (final rawBlock in rawBlocks.whereType<Map>()) {
+          final block = Map<String, dynamic>.from(rawBlock);
+          final oldPath = block['storage_path']?.toString() ?? '';
+          if (block['type'] == 'image' &&
+              oldPath.startsWith('${widget.chapterId}/')) {
+            final bytes = await _db.storage.from('chapter-content').download(oldPath);
+            final fileName = oldPath.split('/').last;
+            final newPath = '$targetChapterId/notebook/${DateTime.now().microsecondsSinceEpoch}_$fileName';
+            final extension = fileName.split('.').last.toLowerCase();
+            final mime = extension == 'png'
+                ? 'image/png'
+                : extension == 'webp'
+                    ? 'image/webp'
+                    : 'image/jpeg';
+            await _db.storage.from('chapter-content').uploadBinary(
+              newPath,
+              bytes,
+              fileOptions: FileOptions(contentType: mime, upsert: false),
+            );
+            block['storage_path'] = newPath;
+          }
+          blocks.add(block);
+        }
+      }
+      result.add({...page, 'blocks': blocks});
+    }
+    return result;
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (_titleFr.text.trim().isEmpty) {
@@ -231,7 +270,12 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         if (chapterIds.isEmpty) {
           throw StateError(_t('Aucun chapitre sélectionné.', 'No chapter selected.'));
         }
+        final pagesByChapter = <String, List<Map<String, dynamic>>>{};
         for (final chapterId in chapterIds) {
+          pagesByChapter[chapterId] = await _pagesForChapter(pages, chapterId);
+        }
+        for (final chapterId in chapterIds) {
+          final chapterPages = pagesByChapter[chapterId]!;
           for (final classId in classIds) {
             final values = <String, dynamic>{
               'curriculum_id': contextData['curriculum_id'],
@@ -243,7 +287,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
               'title_en': _titleEn.text.trim().isEmpty ? _titleFr.text.trim() : _titleEn.text.trim(),
               'content_fr': plainText,
               'content_en': plainTextEn,
-              'pages_json': pages,
+              'pages_json': chapterPages,
               'status': _published ? 'published' : 'draft',
               'published_at': _published ? DateTime.now().toIso8601String() : null,
             };
