@@ -107,7 +107,43 @@ class NotebookPagePagination {
       if (paragraph.isEmpty) continue;
 
       // Never cut a displayed equation or a Markdown table in the middle.
-      final containsMath = paragraph.contains(r'$$') ||
+      final containsMath = paragraph.contains(r'
+          paragraph.contains(r'\[') ||
+          paragraph.contains(r'\begin{');
+      final containsTable = paragraph
+          .split('\n')
+          .any((line) => line.trimLeft().startsWith('|'));
+
+      if (paragraph.length > targetCharactersPerPage &&
+          !containsMath &&
+          !containsTable) {
+        flush();
+        final words = paragraph.split(RegExp(r'\s+'));
+        var longChunk = '';
+        for (final word in words) {
+          if (longChunk.isNotEmpty &&
+              longChunk.length + word.length + 1 > targetCharactersPerPage) {
+            result.add(longChunk);
+            longChunk = '';
+          }
+          longChunk = longChunk.isEmpty ? word : '$longChunk $word';
+        }
+        if (longChunk.isNotEmpty) result.add(longChunk);
+        continue;
+      }
+
+      if (current.isNotEmpty &&
+          current.length + paragraph.length + 2 > targetCharactersPerPage) {
+        flush();
+      }
+      current = current.isEmpty ? paragraph : '$current\n\n$paragraph';
+    }
+
+    flush();
+    return result.isEmpty ? <String>[text.trim()] : result;
+  }
+}
+) ||
           paragraph.contains(r'\(') ||
           paragraph.contains(r'\[') ||
           paragraph.contains(r'\begin{');
