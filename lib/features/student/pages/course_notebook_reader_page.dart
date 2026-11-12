@@ -30,7 +30,7 @@ class CourseNotebookReaderPage extends StatefulWidget {
 class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   final PageController _controller = PageController();
   int _index = 0;
-  double _fontSize = 16;
+  double _fontSize = 20;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
   List<Map<String, dynamic>> _pdfPages = const [];
@@ -45,10 +45,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
       if (!mounted || saved == null) return;
-      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 16;
+      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 20;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
       final target = savedPage.clamp(0, _pages.length - 1).toInt();
-      setState(() => _fontSize = savedSize.clamp(14, 28).toDouble());
+      setState(() => _fontSize = savedSize.clamp(18, 30).toDouble());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
           _controller.jumpToPage(target);
@@ -263,13 +263,13 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 Text(_en ? 'Text size' : 'Taille du texte',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                 Row(children: [
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(14, 28).toDouble()), child: const Text('A−')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(18, 30).toDouble()), child: const Text('A−')),
                   Expanded(child: Slider(
-                    min: 14, max: 28, divisions: 14, value: selected,
+                    min: 18, max: 30, divisions: 12, value: selected,
                     label: selected.round().toString(),
                     onChanged: (value) => updateSheet(() => selected = value),
                   )),
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(14, 28).toDouble()), child: const Text('A+')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(18, 30).toDouble()), child: const Text('A+')),
                 ]),
                 Text('${selected.round()} pt'),
                 FilledButton(
@@ -387,7 +387,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(widget.item.titleFor(widget.locale.languageCode),
-                      style: const TextStyle(fontSize: 22, height: 1.25, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
+                      style: const TextStyle(fontSize: 25, height: 1.3, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
                     const Divider(height: 28, color: Color(0xFF16A34A)),
                     for (final block in blocks) ...[
                       if (block['type'] == 'text')
@@ -719,7 +719,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
                           padding: const EdgeInsets.only(bottom: 14),
                           child: RichLessonText(
                             text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                            style: const TextStyle(fontSize: 15.5, height: 1.75, color: Color(0xFF1E293B)),
+                            style: const TextStyle(fontSize: 18, height: 1.8, color: Color(0xFF1E293B)),
                           ),
                         ),
                       if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
