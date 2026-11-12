@@ -64,12 +64,24 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) return;
+      final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
       final rows = await Supabase.instance.client
           .from('course_pages')
           .select('page_number,image_url')
-          .eq('course_id', widget.item.id)
+          .eq('course_id', pageCourseId)
           .order('page_number');
-      if (rows.isEmpty) return;
+      if (rows.isEmpty) {
+        if (widget.item.pageCourseId != null && mounted) {
+          setState(() => _pdfPages = [
+            {
+              'id': 'course-pages-pending',
+              'position': 1,
+              'blocks': [{'type': 'raster-pending'}],
+            },
+          ]);
+        }
+        return;
+      }
       final pages = <Map<String, dynamic>>[];
       for (final row in rows) {
         final number = (row['page_number'] as num).toInt();
@@ -77,7 +89,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         Uint8List? bytes;
         try {
           if (!forceRetry) {
-            bytes = await _localDb.getCachedCoursePageImage(userId, widget.item.id, number);
+            bytes = await _localDb.getCachedCoursePageImage(userId, pageCourseId, number);
           }
           if (bytes == null) {
             try {
@@ -90,7 +102,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             }
             await _localDb.cacheCoursePageImage(
               userId: userId,
-              courseId: widget.item.id,
+              courseId: pageCourseId,
               pageNumber: number,
               bytes: bytes,
             );
@@ -133,10 +145,11 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
       if (userId == null) throw StateError('Session utilisateur absente.');
+      final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
       final rows = await Supabase.instance.client
           .from('course_pages')
           .select('image_url')
-          .eq('course_id', widget.item.id)
+          .eq('course_id', pageCourseId)
           .eq('page_number', pageNumber)
           .limit(1);
       if (rows.isEmpty) throw StateError('Page introuvable.');
@@ -145,7 +158,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           .from('course-pages').download(path);
       await _localDb.cacheCoursePageImage(
         userId: userId,
-        courseId: widget.item.id,
+        courseId: pageCourseId,
         pageNumber: pageNumber,
         bytes: bytes,
       );
@@ -338,6 +351,19 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
+                        ),
+                      if (block['type'] == 'raster-pending')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Center(
+                            child: Text(
+                              _en
+                                  ? 'Course pages are being prepared by the administrator.'
+                                  : 'Les pages de ce cours doivent être préparées par l’administrateur.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Color(0xFF475569)),
+                            ),
+                          ),
                         ),
                       if (block['type'] == 'raster-error')
                         Padding(
