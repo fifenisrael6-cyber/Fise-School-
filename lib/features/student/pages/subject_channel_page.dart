@@ -415,13 +415,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final cacheKey = items
         .map((item) => item.course?.id ?? item.chapterContent?['id']?.toString() ?? '')
         .join('|');
-    final coursePosts = items.where((item) =>
-        item.chapterContent != null ||
-        (item.course != null &&
-            (((item.course!.contentFr ?? '').trim().isNotEmpty) ||
-             ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
-             ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
-             ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
+    // A PDF-only course is intentionally stored with empty content/description:
+    // its title and attached document are the lesson. Do not hide that course
+    // from the Cours folder just because it has no rich-text body.
+    final coursePosts = items
+        .where((item) => item.chapterContent != null || item.course != null)
+        .toList();
     final mediaFuture = _chapterMediaFutures.putIfAbsent(
       cacheKey,
       () => _loadChapterMedia(items),
