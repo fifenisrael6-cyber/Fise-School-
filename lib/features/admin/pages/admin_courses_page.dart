@@ -8,6 +8,7 @@ import '../../../core/services/pedagogy_service.dart';
 import '../../../core/services/course_pdf_page_service.dart';
 import 'school_classes_page.dart';
 import 'admin_chapter_content_page.dart';
+import 'course_notebook_editor_page.dart';
 import '../../../models/pedagogy.dart';
 
 class AdminCoursesPage extends StatefulWidget {
@@ -137,11 +138,13 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
 
   Future<void> _createCourse() async {
     final classes = List<Map<String, dynamic>>.from(
-      await _client.from('school_classes').select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active').eq('is_active', true).order('display_name'),
+      await _client
+          .from('school_classes')
+          .select('id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id,is_active')
+          .eq('is_active', true)
+          .order('display_name'),
     );
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     if (classes.isEmpty) {
       _snack(_fr ? 'Créez d’abord une salle active.' : 'Create an active classroom first.');
       return;
@@ -154,28 +157,39 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     Map<String, dynamic>? selectedCurriculum;
     List<Map<String, dynamic>> chapters = [];
     Map<String, dynamic>? selectedChapter;
-
-    final titleFr = TextEditingController();
-    final descFr = TextEditingController();
-    final descEn = TextEditingController();
-    final contentFr = TextEditingController();
-    final contentEn = TextEditingController();
     bool published = true;
-    bool saving = false;
+    bool opening = false;
 
     Future<void> loadSubjects(StateSetter setDialog) async {
-      final rows = await _client.from('class_subjects').select('subject_id,subjects(id,name_fr,name_en,code)').eq('class_id', selectedClass!['id']).eq('is_active', true).order('position');
+      final rows = await _client
+          .from('class_subjects')
+          .select('subject_id,subjects(id,name_fr,name_en,code)')
+          .eq('class_id', selectedClass!['id'])
+          .eq('is_active', true)
+          .order('position');
       subjects = List<Map<String, dynamic>>.from(rows);
-      selectedSubject = subjects.isEmpty ? null : subjects.first['subjects'] as Map<String, dynamic>;
+      selectedSubject = subjects.isEmpty
+          ? null
+          : Map<String, dynamic>.from(subjects.first['subjects'] as Map);
       curricula = [];
       chapters = [];
       selectedCurriculum = null;
       selectedChapter = null;
       if (selectedSubject != null) {
-        curricula = await _curriculaForClass(selectedSubject!['id'].toString(), selectedClass!);
+        curricula = await _curriculaForClass(
+          selectedSubject!['id'].toString(),
+          selectedClass!,
+        );
         selectedCurriculum = curricula.isEmpty ? null : curricula.first;
         if (selectedCurriculum != null) {
-          chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position'));
+          chapters = List<Map<String, dynamic>>.from(
+            await _client
+                .from('course_chapters')
+                .select()
+                .eq('curriculum_id', selectedCurriculum!['id'])
+                .eq('is_active', true)
+                .order('position'),
+          );
           selectedChapter = chapters.isEmpty ? null : chapters.first;
         }
       }
@@ -183,130 +197,165 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     }
 
     await loadSubjects((_) {});
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setDialog) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(_fr ? 'Créer un contenu pédagogique' : 'Create educational content', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      initialValue: selectedClass,
-                      decoration: InputDecoration(labelText: _fr ? 'Salle de classe' : 'Classroom'),
-                      items: classes.map((c) => DropdownMenuItem(value: c, child: Text(c['display_name']?.toString() ?? c['name']?.toString() ?? ''))).toList(),
-                      onChanged: saving ? null : (value) async { selectedClass = value; await loadSubjects(setDialog); },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      initialValue: selectedSubject,
-                      decoration: InputDecoration(labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom'),
-                      items: subjects.map((s) { final m = Map<String, dynamic>.from(s['subjects'] as Map); return DropdownMenuItem(value: m, child: Text(_nestedName(m, 'name_fr', 'name_en'))); }).toList(),
-                      onChanged: saving ? null : (value) async {
-                        selectedSubject = value; selectedCurriculum = null; selectedChapter = null; chapters = [];
-                        if (value != null) { curricula = await _curriculaForClass(value['id'].toString(), selectedClass!); selectedCurriculum = curricula.isEmpty ? null : curricula.first; if (selectedCurriculum != null) { chapters = List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', selectedCurriculum!['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; } }
-                        setDialog(() {});
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      initialValue: selectedCurriculum,
-                      decoration: InputDecoration(labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *'),
-                      items: curricula.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
-                      onChanged: saving ? null : (value) async { selectedCurriculum = value; selectedChapter = null; chapters = value == null ? [] : List<Map<String, dynamic>>.from(await _client.from('course_chapters').select().eq('curriculum_id', value['id']).eq('is_active', true).order('position')); selectedChapter = chapters.isEmpty ? null : chapters.first; setDialog(() {}); },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      initialValue: selectedChapter,
-                      decoration: InputDecoration(labelText: _fr ? 'Chapitre *' : 'Chapter *'),
-                      items: chapters.map((c) => DropdownMenuItem(value: c, child: Text(_nestedName(c, 'title_fr', 'title_en')))).toList(),
-                      onChanged: saving ? null : (value) => setDialog(() => selectedChapter = value),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(controller: titleFr, decoration: InputDecoration(labelText: 'Titre français *')),
-                    const SizedBox(height: 10),
-                    TextField(controller: descFr, maxLines: 2, decoration: InputDecoration(labelText: _fr ? 'Description' : 'Description')),
-                    const SizedBox(height: 10),
-                    TextField(controller: contentFr, maxLines: 6, decoration: InputDecoration(labelText: _fr ? 'Contenu du cours (français)' : 'Course content (French)')),
-                    const SizedBox(height: 10),
-                    SwitchListTile(value: published, onChanged: saving ? null : (v) => setDialog(() => published = v), title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'), contentPadding: EdgeInsets.zero),
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
-                      onPressed: saving || selectedSubject == null || selectedCurriculum == null || selectedChapter == null || titleFr.text.trim().isEmpty ? null : () async {
-                        setDialog(() => saving = true);
-                        try {
-                          await _courses.saveCourse(
-                            curriculumId: selectedCurriculum!['id'].toString(),
-                            chapterId: selectedChapter!['id'].toString(),
-                            subjectId: selectedSubject!['id'].toString(),
-                            teacherId: _client.auth.currentUser!.id,
-                            classId: selectedClass!['id'].toString(),
-                            titleFr: titleFr.text,
-                            titleEn: titleFr.text.trim(),
-                            descriptionFr: descFr.text,
-                            descriptionEn: null,
-                            contentFr: contentFr.text,
-                            contentEn: null,
-                            status: published ? 'published' : 'draft',
-                          );
-                          if (sheetContext.mounted) {
-                            Navigator.pop(sheetContext);
-                          }
-                          await _load();
-                        } on PostgrestException catch (e) {
-                          setDialog(() => saving = false);
-                          if (!sheetContext.mounted) {
-                            return;
-                          }
-                          final message = e.code == 'P0001' &&
-                                  e.message.toLowerCase().contains('curriculum is not active')
-                              ? (_fr
-                                  ? 'Le programme sélectionné est inactif. Choisissez un programme actif ou créez le cours sans programme.'
-                                  : 'The selected curriculum is inactive. Choose an active curriculum or create the course without a curriculum.')
-                              : (_fr
-                                  ? 'Impossible de créer le cours : ' + e.message
-                                  : 'Unable to create the course: ' + e.message);
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
-                            SnackBar(content: Text(message)),
-                          );
-                        } catch (e) {
-                          setDialog(() => saving = false);
-                          if (sheetContext.mounted) {
-                            ScaffoldMessenger.of(sheetContext).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _fr
-                                      ? 'Impossible de créer le cours.'
-                                      : 'Unable to create the course.',
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.publish_rounded),
-                      label: Text(_fr ? 'Créer le cours' : 'Create course'),
-                    ),
-                  ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setDialog) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _fr ? 'Créer un cours en cahier A4' : 'Create an A4 notebook course',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-            );
-          },
-        );
-      },
+                const SizedBox(height: 16),
+                DropdownButtonFormField<Map<String, dynamic>>(
+                  initialValue: selectedClass,
+                  decoration: InputDecoration(
+                    labelText: _fr ? 'Salle de classe' : 'Classroom',
+                  ),
+                  items: classes.map((c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(c['display_name']?.toString() ??
+                        c['name']?.toString() ?? ''),
+                  )).toList(),
+                  onChanged: opening ? null : (value) async {
+                    selectedClass = value;
+                    if (value != null) await loadSubjects(setDialog);
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<Map<String, dynamic>>(
+                  initialValue: selectedSubject,
+                  decoration: InputDecoration(
+                    labelText: _fr ? 'Matière de cette salle' : 'Subject in this classroom',
+                  ),
+                  items: subjects.map((row) {
+                    final item = Map<String, dynamic>.from(row['subjects'] as Map);
+                    return DropdownMenuItem(
+                      value: item,
+                      child: Text(_nestedName(item, 'name_fr', 'name_en')),
+                    );
+                  }).toList(),
+                  onChanged: opening ? null : (value) async {
+                    selectedSubject = value;
+                    selectedCurriculum = null;
+                    selectedChapter = null;
+                    chapters = [];
+                    curricula = value == null
+                        ? []
+                        : await _curriculaForClass(value['id'].toString(), selectedClass!);
+                    selectedCurriculum = curricula.isEmpty ? null : curricula.first;
+                    if (selectedCurriculum != null) {
+                      chapters = List<Map<String, dynamic>>.from(
+                        await _client
+                            .from('course_chapters')
+                            .select()
+                            .eq('curriculum_id', selectedCurriculum!['id'])
+                            .eq('is_active', true)
+                            .order('position'),
+                      );
+                      selectedChapter = chapters.isEmpty ? null : chapters.first;
+                    }
+                    setDialog(() {});
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<Map<String, dynamic>>(
+                  initialValue: selectedCurriculum,
+                  decoration: InputDecoration(
+                    labelText: _fr ? 'Programme de cette salle *' : 'Class curriculum *',
+                  ),
+                  items: curricula.map((item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(_nestedName(item, 'title_fr', 'title_en')),
+                  )).toList(),
+                  onChanged: opening ? null : (value) async {
+                    selectedCurriculum = value;
+                    selectedChapter = null;
+                    chapters = value == null
+                        ? []
+                        : List<Map<String, dynamic>>.from(
+                            await _client
+                                .from('course_chapters')
+                                .select()
+                                .eq('curriculum_id', value['id'])
+                                .eq('is_active', true)
+                                .order('position'),
+                          );
+                    selectedChapter = chapters.isEmpty ? null : chapters.first;
+                    setDialog(() {});
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<Map<String, dynamic>>(
+                  initialValue: selectedChapter,
+                  decoration: InputDecoration(
+                    labelText: _fr ? 'Chapitre *' : 'Chapter *',
+                  ),
+                  items: chapters.map((item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(_nestedName(item, 'title_fr', 'title_en')),
+                  )).toList(),
+                  onChanged: opening ? null : (value) => setDialog(() => selectedChapter = value),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  value: published,
+                  onChanged: opening ? null : (value) => setDialog(() => published = value),
+                  title: Text(_fr ? 'Publier immédiatement' : 'Publish immediately'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: opening ||
+                          selectedClass == null ||
+                          selectedSubject == null ||
+                          selectedCurriculum == null ||
+                          selectedChapter == null
+                      ? null
+                      : () async {
+                          setDialog(() => opening = true);
+                          final courseContext = <String, dynamic>{
+                            'class_ids': [selectedClass!['id'].toString()],
+                            'subject_id': selectedSubject!['id'].toString(),
+                            'teacher_id': _client.auth.currentUser?.id,
+                            'curriculum_id': selectedCurriculum!['id'].toString(),
+                            'chapter_id': selectedChapter!['id'].toString(),
+                            'publish': published,
+                          };
+                          final navigator = Navigator.of(sheetContext);
+                          navigator.pop();
+                          final saved = await navigator.push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) => CourseNotebookEditorPage(
+                                locale: widget.locale,
+                                chapterId: selectedChapter!['id'].toString(),
+                                courseContext: courseContext,
+                              ),
+                            ),
+                          );
+                          if (saved == true && mounted) await _load();
+                        },
+                  icon: const Icon(Icons.menu_book_rounded),
+                  label: Text(_fr ? 'Ouvrir le cahier et rédiger' : 'Open notebook and write'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
-    titleFr.dispose(); descFr.dispose(); descEn.dispose(); contentFr.dispose(); contentEn.dispose();
   }
 
   Future<void> _addResource(Map<String, dynamic> course) async {
