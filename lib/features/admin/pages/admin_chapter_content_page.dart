@@ -157,10 +157,38 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       final data = result.data;
       if (result.status >= 200 && result.status < 300 &&
           data is Map && data['success'] == true) {
+        final reportRows = (data['report'] as List? ?? const [])
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+        final itemIds = reportRows
+            .map((row) => row['content_item_id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(growable: false);
+
+        var rasterizedPages = 0;
+        if (itemIds.isNotEmpty) {
+          final restoredItems = await db
+              .from('chapter_content_items')
+              .select('id,source_pdf_path,source_page_start,source_page_end')
+              .inFilter('id', itemIds);
+          for (final restored in restoredItems) {
+            final sourcePdfPath =
+                (restored['source_pdf_path'] as String? ?? '').trim();
+            if (sourcePdfPath.isEmpty) continue;
+            rasterizedPages += await CoursePdfPageService(db).regenerate({
+              ...Map<String, dynamic>.from(restored),
+              'storage_path': sourcePdfPath,
+              'source_bucket': 'chapter-content',
+            });
+          }
+        }
+
         final count = data['restored'] ?? 0;
         toast(t(
-          'Restauration terminée : $count cours actualisé(s). Les anciens cours restent publiés comme avant.',
-          'Restoration complete: $count lesson(s) updated. Existing publication settings were preserved.',
+          'Restauration terminée : $count cours actualisé(s), $rasterizedPages page(s) A4 préparée(s). Les PDF originaux, schémas et formules sont conservés.',
+          'Restoration complete: $count lesson(s) updated and $rasterizedPages A4 page(s) prepared. Original PDFs, diagrams and formulas are preserved.',
         ));
         if (mounted) setState(() {});
       } else {
