@@ -92,11 +92,13 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
             }
           }
         }
-        _pages.add(_NotebookPage(
-          text: french.join('\\n\\n'),
-          textEn: english.join('\\n\\n'),
-          images: images,
-        ));
+        if (french.isNotEmpty || english.isNotEmpty || images.isNotEmpty) {
+          _pages.add(_NotebookPage(
+            text: french.join('\\n\\n'),
+            textEn: english.join('\\n\\n'),
+            images: images,
+          ));
+        }
       }
       if (_pages.isEmpty) {
         final legacyFr = (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString();
