@@ -470,7 +470,6 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                 ),
                 const SizedBox(height: 12),
                 for (var index = 0; index < _pages.length; index++) _buildPageEditor(index),
-                OutlinedButton.icon(onPressed: _addPage, icon: const Icon(Icons.add), label: Text(_t('Ajouter une page', 'Add page'))),
                 SwitchListTile(
                   value: _published,
                   onChanged: (value) => setState(() => _published = value),
