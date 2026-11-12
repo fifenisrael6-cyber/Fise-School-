@@ -25,6 +25,7 @@ class ChapterLearningContentItem {
     this.externalUrl,
     this.storagePath,
     this.sourcePdfPath,
+    this.pageCourseId,
     this.sourcePageStart,
     this.sourcePageEnd,
     this.storedFolderKey,
@@ -45,6 +46,8 @@ class ChapterLearningContentItem {
 
   /// Original PDF source and the page interval represented by this lesson.
   final String? sourcePdfPath;
+  /// Legacy courses.id used to locate raster pages created from course_resources.
+  final String? pageCourseId;
   final int? sourcePageStart;
   final int? sourcePageEnd;
   final String? storedFolderKey;
@@ -98,6 +101,7 @@ class ChapterLearningContentItem {
       externalUrl: map['external_url'] as String?,
       storagePath: map['storage_path'] as String?,
       sourcePdfPath: map['source_pdf_path'] as String?,
+      pageCourseId: map['page_course_id'] as String?,
       sourcePageStart: _asNullableInt(map['source_page_start']),
       sourcePageEnd: _asNullableInt(map['source_page_end']),
       storedFolderKey: map['folder_key'] as String?,
