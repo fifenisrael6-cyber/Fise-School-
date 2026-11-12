@@ -71,7 +71,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       try {
         final remoteRows = await Supabase.instance.client
             .from('course_pages')
-            .select('page_number,image_url')
+            .select('page_number,image_url,updated_at')
             .eq('course_id', pageCourseId)
             .order('page_number');
         rows = remoteRows
@@ -113,6 +113,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       for (final row in rows) {
         final number = (row['page_number'] as num).toInt();
         final path = row['image_url']?.toString() ?? '';
+        final sourceUpdatedAt = (row['updated_at'] ?? row['source_updated_at'])?.toString();
         Uint8List? bytes;
         try {
           if (!forceRetry || !remoteAvailable) {
@@ -132,6 +133,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               courseId: pageCourseId,
               pageNumber: number,
               bytes: bytes,
+              sourceUpdatedAt: sourceUpdatedAt,
             );
           }
           if (bytes == null || bytes.isEmpty) {
@@ -198,6 +200,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         courseId: pageCourseId,
         pageNumber: pageNumber,
         bytes: bytes,
+        sourceUpdatedAt: rows.first['updated_at']?.toString(),
       );
       if (!mounted) return;
       setState(() {
