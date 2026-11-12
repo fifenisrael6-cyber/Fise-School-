@@ -1,21 +1,20 @@
-/// Pagination adaptative des pages de cahier.
+import 'package:flutter/material.dart';
+
+/// Pagination automatique des cours au format A4.
 ///
-/// Les blocs non textuels (images, tableaux dédiés, formules et médias)
-/// restent dans le même ordre. Seuls les blocs texte trop longs sont répartis.
+/// La hauteur des paragraphes est mesurée avec TextPainter (métriques Flutter)
+/// au lieu d'une limite arbitraire de caractères. Les blocs non textuels
+/// conservent leur ordre de lecture.
 class NotebookPagePagination {
-  static const int _baseCharactersPerPage = 2100;
+  static const double _contentWidth = 660;
+  static const double _contentHeight = 900;
+  static const double _lineHeight = 1.65;
 
   static List<Map<String, dynamic>> expandLegacyPages(
     List<Map<String, dynamic>> pages, {
     double fontSize = 16,
   }) {
-    final normalizedFontSize = fontSize.clamp(14.0, 28.0);
-    final targetCharactersPerPage =
-        (_baseCharactersPerPage * 16 / normalizedFontSize)
-            .round()
-            .clamp(900, 2400)
-            .toInt();
-
+    final safeFontSize = fontSize.clamp(14.0, 30.0).toDouble();
     final result = <Map<String, dynamic>>[];
 
     for (var pageIndex = 0; pageIndex < pages.length; pageIndex++) {
@@ -32,9 +31,9 @@ class NotebookPagePagination {
       void flushPage() {
         if (currentBlocks.isEmpty) return;
         final sourceId = sourcePage['id']?.toString() ??
-            'page-' + (pageIndex + 1).toString();
+            'page-${pageIndex + 1}';
         result.add({
-          'id': sourceId + '-reflow-' + (result.length + 1).toString(),
+          'id': '$sourceId-reflow-${result.length + 1}',
           'position': result.length + 1,
           'format': sourcePage['format'] ?? 'A4',
           'blocks': currentBlocks,
@@ -44,21 +43,22 @@ class NotebookPagePagination {
 
       for (final block in blocks) {
         if (block['type'] != 'text') {
-          // Keep every non-text block anchored in its original reading order.
           currentBlocks.add(block);
           continue;
         }
 
         final french = (block['text_fr'] ?? block['text'] ?? '').toString();
         final english = (block['text_en'] ?? french).toString();
-        final frenchChunks = _splitText(french, targetCharactersPerPage);
-        final englishChunks = _splitText(english, targetCharactersPerPage);
+        final frenchChunks = _splitText(french, safeFontSize);
+        final englishChunks = _splitText(english, safeFontSize);
         final count = frenchChunks.length > englishChunks.length
             ? frenchChunks.length
             : englishChunks.length;
 
         if (count <= 1) {
-          currentBlocks.add(block);
+          if (french.trim().isNotEmpty || english.trim().isNotEmpty) {
+            currentBlocks.add(block);
+          }
           continue;
         }
 
@@ -91,17 +91,17 @@ class NotebookPagePagination {
     return result;
   }
 
-  static List<String> _splitText(String text, int targetCharactersPerPage) {
+  static List<String> _splitText(String text, double fontSize) {
     if (text.trim().isEmpty) return const <String>[];
 
     final paragraphs = text
         .replaceAll('\r\n', '\n')
         .split(RegExp(r'\n\s*\n'));
-    final result = <String>[];
+    final pages = <String>[];
     var current = '';
 
     void flush() {
-      if (current.trim().isNotEmpty) result.add(current.trim());
+      if (current.trim().isNotEmpty) pages.add(current.trim());
       current = '';
     }
 
@@ -109,41 +109,64 @@ class NotebookPagePagination {
       final paragraph = rawParagraph.trim();
       if (paragraph.isEmpty) continue;
 
-      // Keep mathematical expressions and Markdown tables intact.
-      final containsMath = paragraph.contains(String.fromCharCode(36)) ||
-          paragraph.contains(r'\(') ||
-          paragraph.contains(r'\[') ||
-          paragraph.contains(r'\begin{');
-      final containsTable = paragraph
-          .split('\n')
-          .any((line) => line.trimLeft().startsWith('|'));
-
-      if (paragraph.length > targetCharactersPerPage &&
-          !containsMath &&
-          !containsTable) {
-        flush();
-        final words = paragraph.split(RegExp(r'\s+'));
-        var longChunk = '';
-        for (final word in words) {
-          if (longChunk.isNotEmpty &&
-              longChunk.length + word.length + 1 > targetCharactersPerPage) {
-            result.add(longChunk);
-            longChunk = '';
-          }
-          longChunk = longChunk.isEmpty ? word : '$longChunk $word';
-        }
-        if (longChunk.isNotEmpty) result.add(longChunk);
+      final candidate = current.isEmpty ? paragraph : '$current\n\n$paragraph';
+      if (_fits(candidate, fontSize)) {
+        current = candidate;
         continue;
       }
 
-      if (current.isNotEmpty &&
-          current.length + paragraph.length + 2 > targetCharactersPerPage) {
-        flush();
+      flush();
+      if (_fits(paragraph, fontSize)) {
+        current = paragraph;
+        continue;
       }
-      current = current.isEmpty ? paragraph : '$current\n\n$paragraph';
+
+      // Long tables are split only between rows, never inside a row.
+      final lines = paragraph.split('\n');
+      if (lines.length > 1 && lines.any((line) => line.trimLeft().startsWith('|'))) {
+        var tableChunk = '';
+        for (final line in lines) {
+          final next = tableChunk.isEmpty ? line : '$tableChunk\n$line';
+          if (tableChunk.isNotEmpty && !_fits(next, fontSize)) {
+            pages.add(tableChunk.trim());
+            tableChunk = line;
+          } else {
+            tableChunk = next;
+          }
+        }
+        if (tableChunk.trim().isNotEmpty) current = tableChunk.trim();
+        continue;
+      }
+
+      // Split an oversized paragraph at word boundaries using actual rendered
+      // line heights. A single unusually long token remains intact.
+      final words = paragraph.split(RegExp(r'\s+'));
+      var chunk = '';
+      for (final word in words) {
+        final next = chunk.isEmpty ? word : '$chunk $word';
+        if (chunk.isNotEmpty && !_fits(next, fontSize)) {
+          pages.add(chunk.trim());
+          chunk = word;
+        } else {
+          chunk = next;
+        }
+      }
+      if (chunk.trim().isNotEmpty) current = chunk.trim();
     }
 
     flush();
-    return result.isEmpty ? <String>[text.trim()] : result;
+    return pages.isEmpty ? <String>[text.trim()] : pages;
+  }
+
+  static bool _fits(String text, double fontSize) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: fontSize, height: _lineHeight),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.noScaling,
+    )..layout(maxWidth: _contentWidth);
+    return painter.height <= _contentHeight;
   }
 }
