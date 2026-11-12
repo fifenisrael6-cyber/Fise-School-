@@ -516,6 +516,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   : _coursePost(item.course!, showResources: false),
             )),
             ...lessonAttachments.map(resourceItem),
+            // Les anciens PDF de cours sont intégrés au dossier Cours :
+            // leur format technique n'est plus présenté comme une catégorie.
+            ...pdfs.map(resourceItem),
           ];
 
           void openFolder(String title, List<Widget> folderItems, String empty) {
@@ -641,17 +644,6 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                   _fr ? 'Vidéos' : 'Videos',
                   videos.map(resourceItem).toList(),
                   _fr ? 'Aucune vidéo dans ce chapitre.' : 'No videos in this chapter.',
-                ),
-              ),
-              ChapterFolderCard(
-                title: 'PDF',
-                count: pdfs.length,
-                icon: Icons.picture_as_pdf_outlined,
-                countLabel: _fr ? 'fichier(s)' : 'file(s)',
-                onTap: () => openFolder(
-                  'PDF',
-                  pdfs.map(resourceItem).toList(),
-                  _fr ? 'Aucun PDF dans ce chapitre.' : 'No PDFs in this chapter.',
                 ),
               ),
               ChapterFolderCard(
