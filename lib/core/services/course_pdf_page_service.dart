@@ -100,8 +100,7 @@ class CoursePdfPageService {
           .delete()
           .eq('course_id', courseId)
           .gt('page_number', selectedPageCount);
-      uploaded = pageRows.length;
-      return uploaded;
+      return pageRows.length;
     } finally {
       await document.close();
     }
