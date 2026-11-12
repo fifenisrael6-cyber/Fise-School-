@@ -31,6 +31,17 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
 
   bool get _fr => widget.locale.languageCode == 'fr';
 
+  String _fileExtension(PlatformFile file) {
+    final provided = file.extension?.trim();
+    if (provided != null && provided.isNotEmpty) {
+      return provided.toLowerCase();
+    }
+    final name = file.name.trim();
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return '';
+    return name.substring(dot + 1).toLowerCase();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -387,7 +398,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       file = result.files.first;
     }
     if (file.bytes == null || file.bytes!.isEmpty) { _snack(_fr ? 'Impossible de lire ce fichier.' : 'Unable to read this file.'); return; }
-    final ext = file.extension?.toLowerCase() ?? '';
+    final ext = _fileExtension(file);
     final type = switch (ext) { 'pdf' => 'pdf', 'jpg' || 'jpeg' || 'png' || 'webp' => 'image', 'mp4' || 'mov' => 'video', 'mp3' || 'wav' || 'm4a' => 'audio', 'doc' || 'docx' || 'txt' || 'ppt' || 'pptx' || 'xls' || 'xlsx' => 'document', _ => 'other' };
     try {
       final count = await _client.from('course_resources').select('id').eq('course_id', course['id']).count(CountOption.exact);
@@ -670,7 +681,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       _snack(_fr ? 'Impossible de lire le nouveau fichier.' : 'Unable to read the new file.');
       return;
     }
-    final extension = file.extension?.toLowerCase() ?? '';
+    final extension = _fileExtension(file);
     final type = switch (extension) {
       'pdf' => 'pdf',
       'jpg' || 'jpeg' || 'png' || 'webp' => 'image',

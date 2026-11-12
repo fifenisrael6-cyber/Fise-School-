@@ -41,6 +41,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     unawaited(_initializeReader());
   }
 
@@ -373,125 +374,124 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     ));
   }
 
+
   Widget _buildPage(Map<String, dynamic> page, int number, int totalPages) {
     final rawBlocks = page['blocks'];
     final blocks = rawBlocks is List
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
+    if (blocks.length == 1 &&
+        blocks.first['type'] == 'raster' &&
+        blocks.first['bytes'] is Uint8List) {
+      return ColoredBox(
+        color: Colors.white,
+        child: SizedBox.expand(
+          child: Image.memory(
+            blocks.first['bytes'] as Uint8List,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+          ),
+        ),
+      );
+    }
     return LayoutBuilder(builder: (context, constraints) {
-      final availableWidth = constraints.maxWidth - 28;
-      final heightLimitedWidth = (constraints.maxHeight - 28) * 210 / 297;
-      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-      return Center(
-        child: SizedBox(
-          width: width,
-          child: AspectRatio(
-            aspectRatio: 210 / 297,
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(widget.item.titleFor(widget.locale.languageCode),
-                      style: const TextStyle(fontSize: 25, height: 1.3, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
-                    const Divider(height: 28, color: Color(0xFF16A34A)),
-                    for (final block in blocks) ...[
-                      if (block['type'] == 'text')
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: RichLessonText(
-                            text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                            style: TextStyle(fontSize: _fontSize, height: 1.75, color: const Color(0xFF1E293B)),
+      final horizontalPadding = constraints.maxWidth < 420 ? 20.0 : 28.0;
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(horizontalPadding, 58, horizontalPadding, 54),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.item.titleFor(widget.locale.languageCode),
+              style: TextStyle(fontSize: _fontSize + 5, height: 1.2, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
+            const Divider(height: 24, color: Color(0xFF16A34A)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final block in blocks) ...[
+                    if (block['type'] == 'text')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: RichLessonText(
+                          text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
+                          style: TextStyle(fontSize: _fontSize, height: 1.55, color: const Color(0xFF1E293B)),
+                        ),
+                      ),
+                    if (block['type'] == 'raster' && block['bytes'] is Uint8List)
+                      Expanded(child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain)),
+                    if (block['type'] == 'raster-pending')
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text((block['message'] ??
+                                (_en ? 'Course pages are not available yet.' : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFF475569))),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: () => _loadCoursePages(forceRetry: true),
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_en ? 'Retry' : 'Réessayer'),
+                              ),
+                            ],
                           ),
                         ),
-                      if (block['type'] == 'raster' && block['bytes'] is Uint8List)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
-                        ),
-                      if (block['type'] == 'raster-pending')
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text(
-                              (block['message'] ??
-                                  (_en
-                                      ? 'Course pages are not available yet.'
-                                      : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Color(0xFF475569)),
-                            ),
+                      ),
+                    if (block['type'] == 'raster-error')
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
+                              const SizedBox(height: 8),
+                              FilledButton.icon(
+                                onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_en ? 'Retry' : 'Réessayer'),
+                              ),
+                            ],
                           ),
                         ),
-                      if (block['type'] == 'raster-pending')
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Center(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _loadCoursePages(forceRetry: true),
-                              icon: const Icon(Icons.refresh),
-                              label: Text(_en ? 'Retry' : 'Réessayer'),
-                            ),
-                          ),
-                        ),
-                      if (block['type'] == 'raster-error')
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
-                                const SizedBox(height: 8),
-                                FilledButton.icon(
-                                  onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
-                                  icon: const Icon(Icons.refresh),
-                                  label: Text(_en ? 'Retry' : 'Réessayer'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                        FutureBuilder<Object?>(
-                          future: _resolveImage(block['storage_path'].toString()),
-                          builder: (context, snapshot) => snapshot.data == null
-                              ? const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator()))
-                              : Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  child: InteractiveViewer(
-                                    child: GestureDetector(
+                      ),
+                    if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
+                      FutureBuilder<Object?>(
+                        future: _resolveImage(block['storage_path'].toString()),
+                        builder: (context, snapshot) => snapshot.data == null
+                          ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+                          : Flexible(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: InteractiveViewer(
+                                  child: GestureDetector(
                                     onTap: () => _openImageGallery(block['storage_path'].toString()),
                                     child: Hero(
                                       tag: 'course-image-${widget.item.id}-${block['storage_path']}',
                                       child: snapshot.data is File
-                                          ? Image.file(snapshot.data as File, fit: BoxFit.contain)
-                                          : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
-                                              errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
+                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
                                     ),
                                   ),
-                                  ),
                                 ),
-                        ),
-                    ],
-                    const SizedBox(height: 18),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Text('${_en ? 'Page' : 'Page'} $number / $totalPages',
-                        style: const TextStyle(fontSize: 10, color: Colors.black45)),
-                    ),
+                              ),
+                            ),
+                      ),
                   ],
-                ),
+                ],
               ),
             ),
-          ),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Text('Page ' + number.toString() + ' / ' + totalPages.toString(),
+                style: const TextStyle(fontSize: 11, color: Colors.black45)),
+            ),
+          ],
         ),
       );
     });
@@ -501,6 +501,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   void dispose() {
     _controller.dispose();
     unawaited(_localDb.closeDatabase());
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: SystemUiOverlay.values,
+    );
     super.dispose();
   }
 
@@ -525,33 +529,40 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     return NotebookPagePagination.expandLegacyPages(
       source,
       fontSize: _fontSize,
-      contentWidth: width - 60,
+      contentWidth: width,
       contentHeight: height,
+    );
+  }
+
+
+  Widget _readerNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: enabled ? const Color(0xE6166534) : const Color(0x66888888),
+      shape: const CircleBorder(),
+      child: IconButton(
+        onPressed: enabled ? onPressed : null,
+        color: Colors.white,
+        disabledColor: Colors.white54,
+        icon: Icon(icon, size: 30),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9EEE9),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF166534),
-        foregroundColor: Colors.white,
-        title: Text(widget.item.titleFor(widget.locale.languageCode)),
-        actions: [TextButton(onPressed: _showFontControls, child: const Text('Aa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)))],
-      ),
+      backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final availableWidth = constraints.maxWidth - 28;
-          final heightLimitedWidth = (constraints.maxHeight - 72) * 210 / 297;
-          final pageWidth = (availableWidth < heightLimitedWidth
-              ? availableWidth
-              : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-          final pageHeight = pageWidth * 297 / 210;
-          const fixedVerticalSpace = 34.0 + 28.0 + 58.0 + 20.0 + 25.0;
+          final pageHorizontalPadding =
+              constraints.maxWidth < 420 ? 40.0 : 56.0;
           final pages = _pagesForLayout(
-            pageWidth,
-            pageHeight - fixedVerticalSpace,
+            constraints.maxWidth - pageHorizontalPadding,
+            constraints.maxHeight - 210,
           );
           final safeIndex = _index.clamp(0, pages.length - 1).toInt();
           if (_controller.hasClients &&
@@ -564,38 +575,83 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               }
             });
           }
-          return Column(
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: pages.length,
-                  onPageChanged: (index) {
-                    setState(() => _index = index);
-                    unawaited(_saveReaderState());
-                  },
-                  itemBuilder: (context, index) => _buildPage(pages[index], index + 1, pages.length),
+              PageView.builder(
+                controller: _controller,
+                itemCount: pages.length,
+                physics: const PageScrollPhysics(),
+                onPageChanged: (index) {
+                  setState(() => _index = index);
+                  unawaited(_saveReaderState());
+                },
+                itemBuilder: (context, index) =>
+                    _buildPage(pages[index], index + 1, pages.length),
+              ),
+              Positioned(
+                top: 8,
+                left: 10,
+                child: Material(
+                  color: const Color(0xCC166534),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: _en ? 'Back' : 'Retour',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  ),
                 ),
               ),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        onPressed: safeIndex == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                        icon: const Icon(Icons.chevron_left_rounded),
-                      ),
-                      Text('${_en ? 'Page' : 'Page'} ${safeIndex + 1} / ${pages.length}',
-                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
-                      IconButton(
-                        onPressed: safeIndex >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                        icon: const Icon(Icons.chevron_right_rounded),
-                      ),
-                    ],
+              Positioned(
+                top: 8,
+                right: 10,
+                child: Material(
+                  color: const Color(0xCC166534),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: _en ? 'Text settings' : 'Taille du texte',
+                    onPressed: _showFontControls,
+                    icon: const Icon(Icons.text_fields, color: Colors.white),
                   ),
+                ),
+              ),
+              Positioned(
+                bottom: 8,
+                left: 8,
+                right: 8,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _readerNavButton(
+                      icon: Icons.chevron_left_rounded,
+                      enabled: safeIndex > 0,
+                      onPressed: () => _controller.previousPage(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
+                      ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xE6166534),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                        child: Text(
+                          'Page ' + (safeIndex + 1).toString() + ' / ' + pages.length.toString(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    _readerNavButton(
+                      icon: Icons.chevron_right_rounded,
+                      enabled: safeIndex < pages.length - 1,
+                      onPressed: () => _controller.nextPage(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -604,9 +660,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       ),
     );
   }
+
 }
-
-
 
 class _CourseImageFullscreenPage extends StatefulWidget {
   const _CourseImageFullscreenPage({
@@ -639,7 +694,7 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
   void dispose() {
     _controller.dispose();
     _zoomController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // The parent course reader remains immersive after the image gallery closes.
     super.dispose();
   }
 
