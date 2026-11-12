@@ -474,12 +474,26 @@ class _ChapterLearningDetailPageState
         ));
         return;
       }
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => CourseNotebookReaderPage(
-          item: lessons.first,
-          locale: widget.locale,
-        ),
-      ));
+      if (lessons.length == 1) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => CourseNotebookReaderPage(
+            item: lessons.first,
+            locale: widget.locale,
+          ),
+        ));
+      } else {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => ChapterFolderPage(
+            title: _folderTitle(folder),
+            items: lessons
+                .map((item) => _courseLessonCard(item, const <ChapterLearningContentItem>[]))
+                .toList(growable: false),
+            emptyMessage: _en
+                ? 'No published course in this chapter.'
+                : 'Aucun cours publié dans ce chapitre.',
+          ),
+        ));
+      }
       return;
     }
     if (folder != _ChapterResourceFolder.exercises) {
@@ -664,13 +678,8 @@ class _ChapterLearningDetailPageState
     List<ChapterLearningContentItem> images,
   ) {
     final title = item.titleFor(widget.locale.languageCode);
-    final body = item.bodyFor(widget.locale.languageCode)?.trim() ?? '';
-    final usableImages = images.where((image) =>
-      (image.storagePath?.trim().isNotEmpty ?? false) ||
-      (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
     final horizontalPadding = _a4Layout ? 38.0 : 20.0;
     final titleSize = _a4Layout ? 25.0 : 21.0;
-    final bodySize = _a4Layout ? 17.0 : 15.5;
 
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
@@ -719,43 +728,29 @@ class _ChapterLearningDetailPageState
                     Text(title.toUpperCase(), style: TextStyle(fontSize: titleSize, height: 1.25, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
                     const SizedBox(height: 10),
                     Container(width: 72, height: 3, decoration: BoxDecoration(color: const Color(0xFF16A34A), borderRadius: BorderRadius.circular(3))),
-                    if (body.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      RichLessonText(
-                        text: body,
-                        style: TextStyle(fontSize: bodySize, height: _a4Layout ? 1.85 : 1.75, color: const Color(0xFF1E293B)),
+                    Text(
+                      _en
+                          ? 'Complete lesson • formatted for comfortable reading'
+                          : 'Cours complet • mise en page adaptée à la lecture',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.5,
+                        color: Color(0xFF475569),
                       ),
-                    ],
-                    if ((item.sourcePdfPath ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      OutlinedButton.icon(
-                        onPressed: () => _openOriginalPdfLesson(item),
-                        icon: const Icon(Icons.auto_stories_rounded),
-                        label: Text(
-                          _en
-                              ? 'View original pages (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})'
-                              : 'Voir les pages originales (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF166534),
-                          side: const BorderSide(color: Color(0xFF86B99A)),
+                    ),
+                    const SizedBox(height: 18),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CourseNotebookReaderPage(
+                            item: item,
+                            locale: widget.locale,
+                          ),
                         ),
                       ),
-                    ],
-                    if (usableImages.isNotEmpty) ...[
-                      const SizedBox(height: 22),
-                      Row(children: [
-                        const Icon(Icons.auto_awesome, color: Color(0xFF166534), size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(
-                          _en ? 'SCIENTIFIC DIAGRAMS AND ILLUSTRATIONS' : 'SCHÉMAS ET ILLUSTRATIONS',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5, color: Color(0xFF166534)),
-                        )),
-                      ]),
-                      const SizedBox(height: 12),
-                      for (final image in usableImages)
-                        Padding(padding: const EdgeInsets.only(bottom: 16), child: _courseIllustration(image)),
-                    ],
+                      icon: const Icon(Icons.menu_book_rounded),
+                      label: Text(_en ? 'Open course' : 'Ouvrir le cours'),
+                    ),
                     const SizedBox(height: 18),
                     const Divider(color: Color(0xFFE2E8F0)),
                     Row(children: [
