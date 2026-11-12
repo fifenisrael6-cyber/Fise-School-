@@ -129,7 +129,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
     final progress = _progress;
     IconData icon = Icons.insert_drive_file_rounded;
     if (resource.resourceType == 'pdf') {
-      icon = Icons.picture_as_pdf_rounded;
+      icon = Icons.menu_book_rounded;
     }
     if (resource.resourceType == 'image') {
       icon = Icons.image_rounded;
@@ -174,7 +174,49 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
           Icon(icon, color: const Color(0xFF166534)),
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(resource.fileName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(resource.fileName.replaceFirst(RegExp(r'\\.pdf
+          if (done) ...[
+            const SizedBox(height: 3),
+            Text(_fr ? 'Disponible hors ligne' : 'Available offline', style: const TextStyle(fontSize: 11, color: Color(0xFF166534), fontWeight: FontWeight.w600)),
+          ] else if (progress?.status == 'downloading') ...[
+            const SizedBox(height: 5),
+            LinearProgressIndicator(value: progress!.fraction),
+            const SizedBox(height: 2),
+            Text(_fr ? 'Téléchargement…' : 'Downloading…', style: const TextStyle(fontSize: 10, color: Colors.black54)),
+          ] else if (progress?.status == 'failed' || _local?.status == 'failed')
+            Text(_fr ? 'Échec — appuyez pour réessayer' : 'Failed — tap to retry', style: const TextStyle(fontSize: 10, color: Colors.redAccent)),
+        ])),
+        const SizedBox(width: 6),
+        if (_loading || _opening) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+        else if (done)
+          IconButton(onPressed: _open, tooltip: _fr ? 'Ouvrir' : 'Open', icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF166534)))
+        else
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: _open,
+                tooltip: _fr ? 'Ouvrir en ligne' : 'Open online',
+                icon: const Icon(
+                  Icons.open_in_new_rounded,
+                  color: Color(0xFF166534),
+                ),
+              ),
+              IconButton(
+                onPressed: _download,
+                tooltip: _fr ? 'Télécharger' : 'Download',
+                icon: const Icon(
+                  Icons.download_rounded,
+                  color: Color(0xFF166534),
+                ),
+              ),
+            ],
+          ),
+      ]),
+    );
+  }
+}
+, caseSensitive: false), ''), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)), 
           if (done) ...[
             const SizedBox(height: 3),
             Text(_fr ? 'Disponible hors ligne' : 'Available offline', style: const TextStyle(fontSize: 11, color: Color(0xFF166534), fontWeight: FontWeight.w600)),
