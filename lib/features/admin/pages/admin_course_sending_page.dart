@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
+import '../../../models/pedagogy.dart';
 import 'course_notebook_editor_page.dart';
 
 /// Espace dédié à l'envoi de cours par l'administrateur.
@@ -725,7 +726,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             curriculumId: curriculumId,
             chapterId: chapterId,
             subjectId: subjectId,
-            teacherId: teacherId,
+            teacherId: existing?['teacher_id']?.toString() ?? teacherId,
             classId: classId,
             titleFr: (existing?['title_fr']?.toString().trim().isNotEmpty == true)
                 ? existing!['title_fr'].toString()
@@ -767,6 +768,9 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
           } catch (_) {
             if (uploaded != null) {
               try { await _resources.deleteResource(uploaded); } catch (_) {}
+            }
+            if (existing == null) {
+              try { await _courses.deleteCourse(course.id); } catch (_) {}
             }
             rethrow;
           }
