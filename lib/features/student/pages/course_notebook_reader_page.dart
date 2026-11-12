@@ -408,9 +408,11 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               style: TextStyle(fontSize: _fontSize + 5, height: 1.2, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
             const Divider(height: 24, color: Color(0xFF16A34A)),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   for (final block in blocks) ...[
                     if (block['type'] == 'text')
                       Padding(
@@ -421,9 +423,13 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         ),
                       ),
                     if (block['type'] == 'raster' && block['bytes'] is Uint8List)
-                      Expanded(child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain)),
+                      SizedBox(
+                        height: constraints.maxHeight * 0.55,
+                        child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
+                      ),
                     if (block['type'] == 'raster-pending')
-                      Expanded(
+                      SizedBox(
+                        height: constraints.maxHeight * 0.55,
                         child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -443,7 +449,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         ),
                       ),
                     if (block['type'] == 'raster-error')
-                      Expanded(
+                      SizedBox(
+                        height: constraints.maxHeight * 0.55,
                         child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
@@ -464,7 +471,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         future: _resolveImage(block['storage_path'].toString()),
                         builder: (context, snapshot) => snapshot.data == null
                           ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
-                          : Flexible(
+                          : SizedBox(
+                              height: constraints.maxHeight * 0.5,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
                                 child: InteractiveViewer(
@@ -483,7 +491,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                             ),
                       ),
                   ],
-                ],
+                  ],
+                ),
               ),
             ),
             Align(
