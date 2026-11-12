@@ -89,6 +89,18 @@ using (
   )
 );
 
+-- Admins need read access to the original private PDF in order to
+-- render its pages locally on the administrator's device.
+drop policy if exists "Admins read course resource files for page conversion" on storage.objects;
+create policy "Admins read course resource files for page conversion"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'course-resources'
+  and (public.is_admin() or public.is_catalog_admin())
+);
+
 drop policy if exists "Admins upload course page images" on storage.objects;
 create policy "Admins upload course page images"
 on storage.objects
