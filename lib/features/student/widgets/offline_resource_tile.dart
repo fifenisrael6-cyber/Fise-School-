@@ -174,7 +174,7 @@ class _OfflineResourceTileState extends State<OfflineResourceTile> {
           Icon(icon, color: const Color(0xFF166534)),
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(resource.fileName.replaceFirst(RegExp(r'\\.pdf
+          Text(resource.fileName.replaceFirst(RegExp(r'\.pdf$', caseSensitive: false), ''), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           if (done) ...[
             const SizedBox(height: 3),
             Text(_fr ? 'Disponible hors ligne' : 'Available offline', style: const TextStyle(fontSize: 11, color: Color(0xFF166534), fontWeight: FontWeight.w600)),
