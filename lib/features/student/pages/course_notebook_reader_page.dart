@@ -61,42 +61,69 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
+    final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
+
     try {
-      final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) return;
-      final pageCourseId = widget.item.pageCourseId ?? widget.item.id;
-      final rows = await Supabase.instance.client
-          .from('course_pages')
-          .select('page_number,image_url')
-          .eq('course_id', pageCourseId)
-          .order('page_number');
+      var remoteAvailable = false;
+      var rows = <Map<String, dynamic>>[];
+      try {
+        final remoteRows = await Supabase.instance.client
+            .from('course_pages')
+            .select('page_number,image_url')
+            .eq('course_id', pageCourseId)
+            .order('page_number');
+        rows = remoteRows
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+        remoteAvailable = true;
+      } catch (_) {
+        // Drift is the offline source of truth when Supabase cannot be reached.
+      }
+
+      final cachedRows = await _localDb.getCachedCoursePages(userId, pageCourseId);
+      if (rows.isEmpty && cachedRows.isNotEmpty) {
+        rows = cachedRows;
+        remoteAvailable = false;
+      }
+
       if (rows.isEmpty) {
-        if (widget.item.pageCourseId != null && mounted) {
-          setState(() => _pdfPages = [
-            {
-              'id': 'course-pages-pending',
-              'position': 1,
-              'blocks': [{'type': 'raster-pending'}],
-            },
-          ]);
-        }
+        if (!mounted) return;
+        setState(() => _pdfPages = [
+          {
+            'id': 'course-pages-pending',
+            'position': 1,
+            'blocks': [
+              {
+                'type': 'raster-pending',
+                'message': widget.item.pageCourseId == null
+                    ? (_en ? 'No prepared pages are available.' : 'Aucune page préparée n’est disponible.')
+                    : (_en
+                        ? 'The administrator must prepare this course pages first.'
+                        : 'L’administrateur doit d’abord préparer les pages de ce cours.'),
+              },
+            ],
+          },
+        ]);
         return;
       }
+
       final pages = <Map<String, dynamic>>[];
       for (final row in rows) {
         final number = (row['page_number'] as num).toInt();
         final path = row['image_url']?.toString() ?? '';
         Uint8List? bytes;
         try {
-          if (!forceRetry) {
+          if (!forceRetry || !remoteAvailable) {
             bytes = await _localDb.getCachedCoursePageImage(userId, pageCourseId, number);
           }
-          if (bytes == null) {
+          if (bytes == null && remoteAvailable && path.isNotEmpty) {
             try {
               bytes = await Supabase.instance.client.storage
                   .from('course-pages').download(path);
             } catch (_) {
-              // One automatic retry for transient storage/network failures.
+              // One automatic retry for a temporary storage/network failure.
               bytes = await Supabase.instance.client.storage
                   .from('course-pages').download(path);
             }
@@ -106,6 +133,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               pageNumber: number,
               bytes: bytes,
             );
+          }
+          if (bytes == null || bytes.isEmpty) {
+            throw StateError('Image de la page $number indisponible.');
           }
           pages.add({
             'id': 'pdf-page-$number',
@@ -122,21 +152,29 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           });
         }
       }
+
       if (!mounted) return;
       setState(() => _pdfPages = pages);
-      {
-        final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
-        final page = ((saved?['page_number'] as num?)?.toInt() ?? 0)
-            .clamp(0, pages.length - 1);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _controller.hasClients) {
-            _controller.jumpToPage(page);
-            setState(() => _index = page);
-          }
-        });
-      }
-    } catch (_) {
-      // Keep the text/notebook version available if no raster pages exist.
+      final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
+      final page = ((saved?['page_number'] as num?)?.toInt() ?? 0)
+          .clamp(0, pages.length - 1);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _controller.hasClients) {
+          _controller.jumpToPage(page);
+          setState(() => _index = page);
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _pdfPages = [
+        {
+          'id': 'course-pages-load-error',
+          'position': 1,
+          'blocks': [
+            {'type': 'raster-pending', 'message': error.toString()},
+          ],
+        },
+      ]);
     }
   }
 
@@ -356,11 +394,23 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                           padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(
                             child: Text(
-                              _en
-                                  ? 'Course pages are being prepared by the administrator.'
-                                  : 'Les pages de ce cours doivent être préparées par l’administrateur.',
+                              (block['message'] ??
+                                  (_en
+                                      ? 'Course pages are not available yet.'
+                                      : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Color(0xFF475569)),
+                            ),
+                          ),
+                        ),
+                      if (block['type'] == 'raster-pending')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Center(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _loadCoursePages(forceRetry: true),
+                              icon: const Icon(Icons.refresh),
+                              label: Text(_en ? 'Retry' : 'Réessayer'),
                             ),
                           ),
                         ),
