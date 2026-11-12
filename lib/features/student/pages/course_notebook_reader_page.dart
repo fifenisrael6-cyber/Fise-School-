@@ -694,7 +694,7 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
   void dispose() {
     _controller.dispose();
     _zoomController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // The parent course reader remains immersive after the image gallery closes.
     super.dispose();
   }
 
