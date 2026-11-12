@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/math_lesson_input.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 
 /// Éditeur de cahier : chaque page est indépendante et prévisualisable au format A4.
@@ -436,14 +437,14 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                  'Continuous writing — A4 pages are created automatically'),
               style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)),
             ),
-            TextField(
+            MathLessonInput(
               controller: page.text,
               minLines: 7,
               maxLines: 18,
-              decoration: InputDecoration(
-                labelText: _t('Cours complet en français', 'Complete course in French'),
-                hintText: _t('Rédige le cours sans créer manuellement les pages…', 'Write the course without creating pages manually…'),
-                border: const OutlineInputBorder(),
+              label: _t('Cours complet en français', 'Complete course in French'),
+              hint: _t(
+                'Rédige le cours. Utilise les boutons pour insérer fractions, divisions et équations…',
+                'Write the lesson. Use the buttons to insert fractions, divisions and equations…',
               ),
             ),
             ExpansionTile(
