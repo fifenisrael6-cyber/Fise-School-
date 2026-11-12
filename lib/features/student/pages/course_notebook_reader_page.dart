@@ -41,6 +41,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     unawaited(_initializeReader());
   }
 
@@ -373,125 +374,110 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     ));
   }
 
+
   Widget _buildPage(Map<String, dynamic> page, int number, int totalPages) {
     final rawBlocks = page['blocks'];
     final blocks = rawBlocks is List
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
     return LayoutBuilder(builder: (context, constraints) {
-      final availableWidth = constraints.maxWidth - 28;
-      final heightLimitedWidth = (constraints.maxHeight - 28) * 210 / 297;
-      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-      return Center(
-        child: SizedBox(
-          width: width,
-          child: AspectRatio(
-            aspectRatio: 210 / 297,
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: const [BoxShadow(color: Color(0x16000000), blurRadius: 12, offset: Offset(0, 4))],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(widget.item.titleFor(widget.locale.languageCode),
-                      style: const TextStyle(fontSize: 25, height: 1.3, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
-                    const Divider(height: 28, color: Color(0xFF16A34A)),
-                    for (final block in blocks) ...[
-                      if (block['type'] == 'text')
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: RichLessonText(
-                            text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                            style: TextStyle(fontSize: _fontSize, height: 1.75, color: const Color(0xFF1E293B)),
+      final horizontalPadding = constraints.maxWidth < 420 ? 20.0 : 28.0;
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.white,
+        padding: EdgeInsets.fromLTRB(horizontalPadding, 58, horizontalPadding, 54),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.item.titleFor(widget.locale.languageCode),
+              style: TextStyle(fontSize: _fontSize + 5, height: 1.2, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
+            const Divider(height: 24, color: Color(0xFF16A34A)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final block in blocks) ...[
+                    if (block['type'] == 'text')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: RichLessonText(
+                          text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
+                          style: TextStyle(fontSize: _fontSize, height: 1.55, color: const Color(0xFF1E293B)),
+                        ),
+                      ),
+                    if (block['type'] == 'raster' && block['bytes'] is Uint8List)
+                      Expanded(child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain)),
+                    if (block['type'] == 'raster-pending')
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text((block['message'] ??
+                                (_en ? 'Course pages are not available yet.' : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFF475569))),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: () => _loadCoursePages(forceRetry: true),
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_en ? 'Retry' : 'Réessayer'),
+                              ),
+                            ],
                           ),
                         ),
-                      if (block['type'] == 'raster' && block['bytes'] is Uint8List)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain),
-                        ),
-                      if (block['type'] == 'raster-pending')
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text(
-                              (block['message'] ??
-                                  (_en
-                                      ? 'Course pages are not available yet.'
-                                      : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Color(0xFF475569)),
-                            ),
+                      ),
+                    if (block['type'] == 'raster-error')
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
+                              const SizedBox(height: 8),
+                              FilledButton.icon(
+                                onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_en ? 'Retry' : 'Réessayer'),
+                              ),
+                            ],
                           ),
                         ),
-                      if (block['type'] == 'raster-pending')
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Center(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _loadCoursePages(forceRetry: true),
-                              icon: const Icon(Icons.refresh),
-                              label: Text(_en ? 'Retry' : 'Réessayer'),
-                            ),
-                          ),
-                        ),
-                      if (block['type'] == 'raster-error')
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
-                                const SizedBox(height: 8),
-                                FilledButton.icon(
-                                  onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
-                                  icon: const Icon(Icons.refresh),
-                                  label: Text(_en ? 'Retry' : 'Réessayer'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                        FutureBuilder<Object?>(
-                          future: _resolveImage(block['storage_path'].toString()),
-                          builder: (context, snapshot) => snapshot.data == null
-                              ? const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator()))
-                              : Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  child: InteractiveViewer(
-                                    child: GestureDetector(
+                      ),
+                    if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
+                      FutureBuilder<Object?>(
+                        future: _resolveImage(block['storage_path'].toString()),
+                        builder: (context, snapshot) => snapshot.data == null
+                          ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+                          : Flexible(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: InteractiveViewer(
+                                  child: GestureDetector(
                                     onTap: () => _openImageGallery(block['storage_path'].toString()),
                                     child: Hero(
                                       tag: 'course-image-${widget.item.id}-${block['storage_path']}',
                                       child: snapshot.data is File
-                                          ? Image.file(snapshot.data as File, fit: BoxFit.contain)
-                                          : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
-                                              errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
+                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
                                     ),
                                   ),
-                                  ),
                                 ),
-                        ),
-                    ],
-                    const SizedBox(height: 18),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Text('${_en ? 'Page' : 'Page'} $number / $totalPages',
-                        style: const TextStyle(fontSize: 10, color: Colors.black45)),
-                    ),
+                              ),
+                            ),
+                      ),
                   ],
-                ),
+                ],
               ),
             ),
-          ),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Text('Page ' + number.toString() + ' / ' + totalPages.toString(),
+                style: const TextStyle(fontSize: 11, color: Colors.black45)),
+            ),
+          ],
         ),
       );
     });
@@ -501,6 +487,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   void dispose() {
     _controller.dispose();
     unawaited(_localDb.closeDatabase());
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: SystemUiOverlay.values,
+    );
     super.dispose();
   }
 
@@ -530,28 +520,33 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     );
   }
 
+
+  Widget _readerNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      color: enabled ? const Color(0xE6166534) : const Color(0x66888888),
+      shape: const CircleBorder(),
+      child: IconButton(
+        onPressed: enabled ? onPressed : null,
+        color: Colors.white,
+        disabledColor: Colors.white54,
+        icon: Icon(icon, size: 30),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE9EEE9),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF166534),
-        foregroundColor: Colors.white,
-        title: Text(widget.item.titleFor(widget.locale.languageCode)),
-        actions: [TextButton(onPressed: _showFontControls, child: const Text('Aa', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)))],
-      ),
+      backgroundColor: Colors.white,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final availableWidth = constraints.maxWidth - 28;
-          final heightLimitedWidth = (constraints.maxHeight - 72) * 210 / 297;
-          final pageWidth = (availableWidth < heightLimitedWidth
-              ? availableWidth
-              : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-          final pageHeight = pageWidth * 297 / 210;
-          const fixedVerticalSpace = 34.0 + 28.0 + 58.0 + 20.0 + 25.0;
           final pages = _pagesForLayout(
-            pageWidth,
-            pageHeight - fixedVerticalSpace,
+            constraints.maxWidth - 40,
+            constraints.maxHeight - 106,
           );
           final safeIndex = _index.clamp(0, pages.length - 1).toInt();
           if (_controller.hasClients &&
@@ -564,38 +559,70 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               }
             });
           }
-          return Column(
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: pages.length,
-                  onPageChanged: (index) {
-                    setState(() => _index = index);
-                    unawaited(_saveReaderState());
-                  },
-                  itemBuilder: (context, index) => _buildPage(pages[index], index + 1, pages.length),
+              PageView.builder(
+                controller: _controller,
+                itemCount: pages.length,
+                physics: const PageScrollPhysics(),
+                onPageChanged: (index) {
+                  setState(() => _index = index);
+                  unawaited(_saveReaderState());
+                },
+                itemBuilder: (context, index) =>
+                    _buildPage(pages[index], index + 1, pages.length),
+              ),
+              Positioned(
+                top: 8,
+                right: 10,
+                child: Material(
+                  color: const Color(0xCC166534),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: _en ? 'Text settings' : 'Taille du texte',
+                    onPressed: _showFontControls,
+                    icon: const Icon(Icons.text_fields, color: Colors.white),
+                  ),
                 ),
               ),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        onPressed: safeIndex == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                        icon: const Icon(Icons.chevron_left_rounded),
+              Positioned(
+                bottom: 8,
+                left: 8,
+                right: 8,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _readerNavButton(
+                      icon: Icons.chevron_left_rounded,
+                      enabled: safeIndex > 0,
+                      onPressed: () => _controller.previousPage(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
                       ),
-                      Text('${_en ? 'Page' : 'Page'} ${safeIndex + 1} / ${pages.length}',
-                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
-                      IconButton(
-                        onPressed: safeIndex >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                        icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: const Color(0xE6166534),
+                        borderRadius: BorderRadius.circular(24),
                       ),
-                    ],
-                  ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                        child: Text(
+                          'Page ' + (safeIndex + 1).toString() + ' / ' + pages.length.toString(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    _readerNavButton(
+                      icon: Icons.chevron_right_rounded,
+                      enabled: safeIndex < pages.length - 1,
+                      onPressed: () => _controller.nextPage(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -604,261 +631,5 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       ),
     );
   }
-}
 
-
-
-class _CourseImageFullscreenPage extends StatefulWidget {
-  const _CourseImageFullscreenPage({
-    required this.images,
-    required this.heroTags,
-    required this.initialIndex,
-  });
-
-  final List<ImageProvider<Object>> images;
-  final List<String> heroTags;
-  final int initialIndex;
-
-  @override
-  State<_CourseImageFullscreenPage> createState() => _CourseImageFullscreenPageState();
-}
-
-class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> {
-  late final PageController _controller =
-      PageController(initialPage: widget.initialIndex);
-  final TransformationController _zoomController = TransformationController();
-  bool _zoomed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _zoomController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
-    body: GestureDetector(
-      onVerticalDragEnd: (details) {
-        if ((details.primaryVelocity ?? 0) > 350) Navigator.of(context).pop();
-      },
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: widget.images.length,
-            itemBuilder: (context, index) => Center(
-              child: Hero(
-                tag: widget.heroTags[index],
-                child: GestureDetector(
-                  onDoubleTap: () {
-                    setState(() {
-                      _zoomed = !_zoomed;
-                      _zoomController.value = _zoomed
-                          ? (Matrix4.identity()..scale(2.0))
-                          : Matrix4.identity();
-                    });
-                  },
-                  child: InteractiveViewer(
-                    transformationController: _zoomController,
-                    minScale: 1,
-                    maxScale: 5,
-                    child: Image(
-                      image: widget.images[index],
-                      fit: BoxFit.contain,
-                      width: double.infinity,
-                      height: double.infinity,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 8,
-            right: 12,
-            child: IconButton(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
-            ),
-          ),
-          if (widget.images.length > 1)
-            Positioned(
-              bottom: MediaQuery.paddingOf(context).bottom + 18,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Text(
-                  'Balayer pour changer d’image',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ),
-            ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// Lecteur A4 des cours stockés dans la table historique `courses`.
-class CourseRecordNotebookReaderPage extends StatefulWidget {
-  const CourseRecordNotebookReaderPage({
-    super.key,
-    required this.title,
-    required this.pages,
-    required this.fallbackText,
-    required this.locale,
-  });
-
-  final String title;
-  final List<Map<String, dynamic>> pages;
-  final String fallbackText;
-  final Locale locale;
-
-  @override
-  State<CourseRecordNotebookReaderPage> createState() => _CourseRecordNotebookReaderPageState();
-}
-
-class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookReaderPage> {
-  final PageController _controller = PageController();
-  int _index = 0;
-  bool get _en => widget.locale.languageCode == 'en';
-
-  List<Map<String, dynamic>> get _pages => widget.pages.isNotEmpty
-      ? NotebookPagePagination.expandLegacyPages(widget.pages)
-      : [
-          {'id': 'legacy-page-1', 'position': 1, 'format': 'A4', 'blocks': [{'type': 'text', 'text_fr': widget.fallbackText, 'text_en': widget.fallbackText}]},
-        ];
-
-  Future<Object?> _resolveImage(String path) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId != null) {
-      final cached = await NotebookImageCache.getCached(userId: userId, storagePath: path);
-      if (cached != null) return cached;
-      final downloaded = await NotebookImageCache.download(userId: userId, storagePath: path);
-      if (downloaded != null) return downloaded;
-    }
-    try {
-      return await Supabase.instance.client.storage.from('chapter-content').createSignedUrl(path, 900);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Widget _page(Map<String, dynamic> page, int number) {
-    final raw = page['blocks'];
-    final blocks = raw is List
-        ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
-        : <Map<String, dynamic>>[];
-    return LayoutBuilder(builder: (context, constraints) {
-      final availableWidth = constraints.maxWidth - 28;
-      final heightLimitedWidth = (constraints.maxHeight - 28) * 210 / 297;
-      final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-      return Center(
-        child: SizedBox(
-          width: width,
-          child: AspectRatio(
-            aspectRatio: 210 / 297,
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              padding: const EdgeInsets.fromLTRB(30, 34, 30, 28),
-              color: Colors.white,
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(widget.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF14532D))),
-                    const Divider(height: 28, color: Color(0xFF16A34A)),
-                    for (final block in blocks) ...[
-                      if (block['type'] == 'text')
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: RichLessonText(
-                            text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                            style: const TextStyle(fontSize: 18, height: 1.8, color: Color(0xFF1E293B)),
-                          ),
-                        ),
-                      if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                        FutureBuilder<Object?>(
-                          future: _resolveImage(block['storage_path'].toString()),
-                          builder: (context, snapshot) => snapshot.data == null
-                              ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
-                              : Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                  child: snapshot.data is File ? Image.file(snapshot.data as File, fit: BoxFit.contain) : Image.network(snapshot.data.toString(), fit: BoxFit.contain),
-                                ),
-                        ),
-                    ],
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Text('${_en ? 'Page' : 'Page'} $number / ${_pages.length}',
-                        style: const TextStyle(fontSize: 10, color: Colors.black45)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pages = _pages;
-    return Scaffold(
-      backgroundColor: const Color(0xFFE9EEE9),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF166534),
-        foregroundColor: Colors.white,
-        title: Text(widget.title),
-      ),
-      body: Column(children: [
-        Expanded(
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: pages.length,
-            onPageChanged: (index) => setState(() => _index = index),
-            itemBuilder: (context, index) => _page(pages[index], index + 1),
-          ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: _index == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                Text('${_en ? 'Page' : 'Page'} ${_index + 1} / ${pages.length}',
-                  style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
-                IconButton(
-                  onPressed: _index >= pages.length - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                  icon: const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
 }
