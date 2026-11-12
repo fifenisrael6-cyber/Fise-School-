@@ -509,7 +509,6 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               ],
             },
           ];
-    final pageHeight = width * 297 / 210;
     return NotebookPagePagination.expandLegacyPages(
       source,
       fontSize: _fontSize,
