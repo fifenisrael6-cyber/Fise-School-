@@ -194,21 +194,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         saved = Map<String, dynamic>.from(updated);
       }
 
-      if (saved['is_published'] == true) {
-        try {
-          await CoursePdfPageService(db).regenerate({
-            ...saved,
-            'source_bucket': 'chapter-content',
-          });
-        } catch (error) {
-          await db.from('chapter_content_items')
-              .update({'is_published': false}).eq('id', saved['id']);
-          toast(t('Le PDF a été enregistré mais sa préparation a échoué. Le cours reste masqué : $error',
-              'The PDF was saved but page preparation failed. The course remains hidden: $error'));
-          if (mounted) await chooseCurriculum(curriculum);
-          return;
-        }
-      }
+      // The student reader displays the original document directly; no raster-page table is required.
 
       for (final oldPath in {oldSource, oldStorage}) {
         if (oldPath.isNotEmpty && oldPath != uploadedPath) {
@@ -453,19 +439,6 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
     try {
-      if (willPublish &&
-          item['content_type'] == 'course' &&
-          (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty) {
-        try {
-          final count = await CoursePdfPageService(db).regenerate(item);
-          toast(t('Pages du cours préparées : $count page(s).',
-              'Course pages prepared: $count page(s).'));
-        } catch (pageError) {
-          toast(t('Publication bloquée : conversion des pages impossible. $pageError',
-              'Publication blocked: page conversion failed. $pageError'));
-          return;
-        }
-      }
       await db.from('chapter_content_items')
           .update({'is_published': willPublish})
           .eq('id', item['id']);
