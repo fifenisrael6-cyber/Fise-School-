@@ -118,6 +118,12 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         try {
           if (!forceRetry || !remoteAvailable) {
             bytes = await _localDb.getCachedCoursePageImage(userId, pageCourseId, number);
+            if (bytes != null && remoteAvailable && sourceUpdatedAt != null) {
+              final cachedVersion = await _localDb.getCachedCoursePageImageUpdatedAt(
+                userId, pageCourseId, number,
+              );
+              if (cachedVersion != sourceUpdatedAt) bytes = null;
+            }
           }
           if (bytes == null && remoteAvailable && path.isNotEmpty) {
             try {
