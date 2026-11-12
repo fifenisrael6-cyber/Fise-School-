@@ -30,10 +30,12 @@ class NotebookPagePagination {
 
       void flushPage() {
         if (currentBlocks.isEmpty) return;
+        final sourceId = sourcePage['id']?.toString() ??
+            'page-' + (pageIndex + 1).toString();
         result.add({
-          ...sourcePage,
-          'id': '${sourcePage['id'] ?? 'page-${pageIndex + 1}'}-reflow-${result.length + 1}',
+          'id': sourceId + '-reflow-' + (result.length + 1).toString(),
           'position': result.length + 1,
+          'format': sourcePage['format'] ?? 'A4',
           'blocks': currentBlocks,
         });
         currentBlocks = <Map<String, dynamic>>[];
@@ -106,44 +108,8 @@ class NotebookPagePagination {
       final paragraph = rawParagraph.trim();
       if (paragraph.isEmpty) continue;
 
-      // Never cut a displayed equation or a Markdown table in the middle.
-      final containsMath = paragraph.contains(r'
-          paragraph.contains(r'\[') ||
-          paragraph.contains(r'\begin{');
-      final containsTable = paragraph
-          .split('\n')
-          .any((line) => line.trimLeft().startsWith('|'));
-
-      if (paragraph.length > targetCharactersPerPage &&
-          !containsMath &&
-          !containsTable) {
-        flush();
-        final words = paragraph.split(RegExp(r'\s+'));
-        var longChunk = '';
-        for (final word in words) {
-          if (longChunk.isNotEmpty &&
-              longChunk.length + word.length + 1 > targetCharactersPerPage) {
-            result.add(longChunk);
-            longChunk = '';
-          }
-          longChunk = longChunk.isEmpty ? word : '$longChunk $word';
-        }
-        if (longChunk.isNotEmpty) result.add(longChunk);
-        continue;
-      }
-
-      if (current.isNotEmpty &&
-          current.length + paragraph.length + 2 > targetCharactersPerPage) {
-        flush();
-      }
-      current = current.isEmpty ? paragraph : '$current\n\n$paragraph';
-    }
-
-    flush();
-    return result.isEmpty ? <String>[text.trim()] : result;
-  }
-}
-) ||
+      // Keep mathematical expressions and Markdown tables intact.
+      final containsMath = paragraph.contains(String.fromCharCode(36)) ||
           paragraph.contains(r'\(') ||
           paragraph.contains(r'\[') ||
           paragraph.contains(r'\begin{');
