@@ -89,7 +89,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       }
 
       if (rows.isEmpty) {
-        if (!mounted) return;
+        final expectsRasterPages = widget.item.pageCourseId != null ||
+            (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
+        if (!expectsRasterPages || !mounted) return;
         setState(() => _pdfPages = [
           {
             'id': 'course-pages-pending',
@@ -173,7 +175,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         }
       });
     } catch (error) {
-      if (!mounted) return;
+      final expectsRasterPages = widget.item.pageCourseId != null ||
+          (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
+      if (!expectsRasterPages || !mounted) return;
       setState(() => _pdfPages = [
         {
           'id': 'course-pages-load-error',
