@@ -20,6 +20,7 @@ class NotebookPagePagination {
     final result = <Map<String, dynamic>>[];
 
     for (var pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      final pageResultStart = result.length;
       final sourcePage = Map<String, dynamic>.from(pages[pageIndex]);
       final rawBlocks = sourcePage['blocks'];
       final blocks = rawBlocks is List
@@ -81,7 +82,7 @@ class NotebookPagePagination {
       }
 
       flushPage();
-      if (blocks.isEmpty) {
+      if (result.length == pageResultStart) {
         result.add({
           ...sourcePage,
           'position': result.length + 1,
