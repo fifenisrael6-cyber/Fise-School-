@@ -287,7 +287,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                         ),
                         subtitle: Text(
                           _fr
-                              ? '${chapters.length} titre(s). Ouvre un chapitre pour retrouver les cours et leurs fichiers classés par dossiers : photos, audios, vidéos et PDF.'
+                              ? '${chapters.length} titre(s). Ouvre un chapitre pour retrouver les cours et leurs fichiers classés par dossiers : photos, audios, vidéos et cours.'
                               : '${chapters.length} title(s). Open a chapter to browse lessons and files grouped into folders: photos, audio, videos and PDFs.',
                         ),
                       ),
@@ -494,7 +494,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
                   Text(
-                    '${entry.resource.resourceType.toUpperCase()} · ${_formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))}',
+                    entry.resource.resourceType.toLowerCase() == 'pdf'
+                        ? _formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+                        : '${entry.resource.resourceType.toUpperCase()} · ${_formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))}',
                     style: const TextStyle(fontSize: 11, color: Colors.black54),
                   ),
                   OfflineResourceTile(
