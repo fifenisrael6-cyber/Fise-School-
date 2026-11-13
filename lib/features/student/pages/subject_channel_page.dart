@@ -79,7 +79,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     _catalogChaptersFuture = _courses.listStudentCatalogChapters(
       widget.profile.id,
       subjectId: widget.subject.id,
-    );
+    ).timeout(JsonCache.networkTimeout);
     _feedFuture = _load();
     // Keep the cached chapter titles visible while fresh titles are fetched.
     unawaited(_refreshCatalogChaptersInBackground());
@@ -137,7 +137,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       chapterContent = await _courses.listStudentChapterContent(
         widget.profile.id,
         subjectId: widget.subject.id,
-      );
+      ).timeout(JsonCache.networkTimeout);
     } catch (_) {
       chapterContent = <Map<String, dynamic>>[];
     }
@@ -205,7 +205,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         widget.profile.id,
         subjectId: widget.subject.id,
         forceRefresh: true,
-      );
+      ).timeout(JsonCache.networkTimeout);
     });
     await _feedFuture;
     if (!_chapterFocused) await _catalogChaptersFuture;
