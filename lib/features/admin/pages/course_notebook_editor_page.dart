@@ -242,7 +242,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       final before = text.substring(cursor, match.start).trim();
       if (before.isNotEmpty) blocks.add({'type': 'TEXT', 'text': before});
       final raw = match.group(0)!;
-            final latex = raw.length > 1 && raw[1] == r'
+      final latex = raw.length > 1 && raw.codeUnitAt(1) == 36 ? raw.substring(2, raw.length - 2).trim() : raw.substring(1, raw.length - 1).trim();
       if (latex.isNotEmpty) blocks.add({'type': 'FORMULA', 'latex': latex});
       cursor = match.end;
     }
