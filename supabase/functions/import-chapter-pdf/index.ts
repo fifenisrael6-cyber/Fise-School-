@@ -18,7 +18,7 @@ function normalize(value: unknown): string {
 /** Convertit le Markdown en blocs ordonnes sans inventer d'images. */
 function buildContentBlocks(markdown: string): Array<Record<string, string>> {
   const blocks: Array<Record<string, string>> = [];
-  const formulaPattern = /(\\$\\$[\\s\\S]+?\\$\\$|\\$[^$\\n]+\\$)/g;
+  const formulaPattern = /(?:\$\$[\s\S]+?\$\$|\$[^$\n]+\$)/g;
   let cursor = 0;
   for (const match of markdown.matchAll(formulaPattern)) {
     const index = match.index ?? 0;
