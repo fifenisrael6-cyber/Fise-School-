@@ -108,12 +108,15 @@ serve(async (req) => {
     const db = createClient(url, service);
 
     const { data: source, error: sourceError } = await db.from("chapter_content_items")
-      .select("id,chapter_id,content_type,title_fr,storage_path")
+      .select("id,chapter_id,content_type,title_fr,storage_path,is_published")
       .eq("id", contentItemId).single();
     if (sourceError || !source) return json({ error: "Document source introuvable." }, 404);
     if (source.content_type !== "pdf" || !source.storage_path) {
       return json({ error: "Le contenu source doit être un PDF stocké." }, 400);
     }
+
+    // Lessons generated from the PDF follow the administrator publication choice.
+    const publishGeneratedLessons = source.is_published === true;
 
     const { data: sourceChapter, error: chapterError } = await db.from("course_chapters")
       .select("id,curriculum_id,title_fr,title_en,position")
@@ -325,7 +328,16 @@ ${extracted.slice(0, 90000)}`;
       let status = "imported_draft";
       if (!restoreExisting && (duplicate ?? []).length) {
         item = duplicate![0];
-        status = "already_exists";
+        if (publishGeneratedLessons && item.is_published !== true) {
+          const { data: published, error: publishError } = await db.from("chapter_content_items")
+            .update({ is_published: true }).eq("id", item.id)
+            .select("id,is_published").single();
+          if (publishError) throw publishError;
+          item = published;
+          status = "published_existing";
+        } else {
+          status = item.is_published === true ? "already_published" : "already_exists";
+        }
       } else if (restoreExisting && (duplicate ?? []).length) {
         const previous = duplicate![0];
         const { data: updated, error: updateError } = await db.from("chapter_content_items")
@@ -337,11 +349,12 @@ ${extracted.slice(0, 90000)}`;
             source_page_start: generated.source_page_start,
             source_page_end: generated.source_page_end,
             folder_key: "course",
+            is_published: previous.is_published === true || publishGeneratedLessons,
           })
-          .eq("id", previous.id).select("id").single();
+          .eq("id", previous.id).select("id,is_published").single();
         if (updateError) throw updateError;
         item = updated;
-        status = "restored_existing";
+        status = updated.is_published === true ? "restored_existing_published" : "restored_existing";
       } else if (restoreExisting) {
         const { data: existingCourses, error: coursesError } = await db.from("chapter_content_items")
           .select("id,title_fr,title_en,is_published,position")
@@ -360,11 +373,12 @@ ${extracted.slice(0, 90000)}`;
               source_page_start: generated.source_page_start,
               source_page_end: generated.source_page_end,
               folder_key: "course",
+              is_published: previous.is_published === true || publishGeneratedLessons,
             })
-            .eq("id", previous.id).select("id").single();
+            .eq("id", previous.id).select("id,is_published").single();
           if (updateError) throw updateError;
           item = updated;
-          status = "restored_existing";
+          status = updated.is_published === true ? "restored_existing_published" : "restored_existing";
         }
       }
 
@@ -380,13 +394,13 @@ ${extracted.slice(0, 90000)}`;
           source_page_start: generated.source_page_start,
           source_page_end: generated.source_page_end,
           position: 0,
-          is_published: false,
+          is_published: publishGeneratedLessons,
           created_by: authData.user.id,
           folder_key: "course",
         }).select("id").single();
         if (insertError) throw insertError;
         item = inserted;
-        status = restoreExisting ? "restored_new" : "imported_draft";
+        status = restoreExisting ? "restored_new" : (publishGeneratedLessons ? "imported_published" : "imported_draft");
       }
 
       // Explicit links guarantee that every selected classroom's matching
@@ -421,12 +435,15 @@ ${extracted.slice(0, 90000)}`;
       target_room_count: targetRooms.length,
       target_curriculum_count: targetCurricula.length,
       detected_chapters: chapters.length,
-      imported: report.filter((x) => x.status === "imported_draft").length,
+      imported: report.filter((x) => x.status === "imported_draft" || x.status === "imported_published").length,
+      published: report.filter((x) => x.status === "imported_published" || x.status === "published_existing" || x.status === "already_published").length,
       restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
-      requires_admin_publication: !restoreExisting,
-      message: `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
+      requires_admin_publication: report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
+      message: publishGeneratedLessons
+        ? `Import terminé : les leçons natives sont publiées et reliées aux chapitres correspondants de ${targetRooms.length} salle(s).`
+        : `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
