@@ -236,7 +236,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
 
   List<Map<String, dynamic>> _structuredBlocks(String text, {required bool english}) {
     final blocks = <Map<String, dynamic>>[];
-    final pattern = RegExp(r'(\\$\\$[\\s\\S]+?\\$\\$|\\$[^$\\n]+\\$)');
+    final pattern = RegExp(r'(\$\$[\s\S]+?\$\$|\$[^$\n]+\$)');
     var cursor = 0;
     for (final match in pattern.allMatches(text)) {
       final before = text.substring(cursor, match.start).trim();
