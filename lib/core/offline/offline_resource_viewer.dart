@@ -156,8 +156,9 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
     final source = await document.getPage(pageNumber);
     try {
       final image = await source.render(
-        width: source.width * 2,
-        height: source.height * 2,
+        // Higher render density keeps text and formulas sharp after mobile zoom.
+        width: source.width * 3,
+        height: source.height * 3,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
@@ -201,18 +202,15 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                 onPageChanged: (index) => setState(() => _page = index),
                 itemBuilder: (context, index) => LayoutBuilder(
                   builder: (context, constraints) {
-                    final availableWidth = constraints.maxWidth - 24;
-                    final heightLimitedWidth = (constraints.maxHeight - 24) * 210 / 297;
-                    final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-                    return Center(
-                      child: SizedBox(
+                    // Use the full screen width instead of shrinking the A4 page
+                    // to fit vertically; the reader can scroll/pan after zooming.
+                    final width = constraints.maxWidth;
+                    return SizedBox(
                         width: width,
                         child: AspectRatio(
                           aspectRatio: 210 / 297,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10),
+                          child: ColoredBox(
                             color: Colors.white,
-                            padding: const EdgeInsets.all(4),
                             child: FutureBuilder<Uint8List>(
                               future: _render(document, index + 1),
                               builder: (context, pageSnapshot) {
@@ -222,10 +220,24 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                                 if (pageSnapshot.hasError || !pageSnapshot.hasData) {
                                   return Center(child: Text(_fr ? 'Cette page du cours est indisponible.' : 'This lesson page is unavailable.'));
                                 }
-                                return InteractiveViewer(
-                                  minScale: 1,
-                                  maxScale: 4,
-                                  child: Image.memory(pageSnapshot.data!, fit: BoxFit.contain),
+                                return ClipRect(
+                                  child: InteractiveViewer(
+                                    minScale: 1,
+                                    maxScale: 4,
+                                    boundaryMargin: const EdgeInsets.all(80),
+                                    child: Transform.scale(
+                                      // A modest default zoom makes the printed text
+                                      // noticeably larger while retaining pinch-to-zoom.
+                                      scale: 1.14,
+                                      child: Image.memory(
+                                        pageSnapshot.data!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        filterQuality: FilterQuality.high,
+                                      ),
+                                    ),
+                                  ),
                                 );
                               },
                             ),
@@ -240,19 +252,19 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
                       onPressed: _page == 0 ? null : () => _controller.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                      icon: const Icon(Icons.chevron_left_rounded),
+                      icon: const Icon(Icons.chevron_left_rounded, size: 36),
                     ),
                     Text('${_fr ? 'Page' : 'Page'} ${_page + 1} / ${document.pagesCount}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF166534))),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Color(0xFF166534))),
                     IconButton(
                       onPressed: _page >= document.pagesCount - 1 ? null : () => _controller.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOut),
-                      icon: const Icon(Icons.chevron_right_rounded),
+                      icon: const Icon(Icons.chevron_right_rounded, size: 36),
                     ),
                   ],
                 ),
