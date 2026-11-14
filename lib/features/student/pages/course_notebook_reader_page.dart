@@ -64,7 +64,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 20;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
       final target = savedPage.clamp(0, _pages.length - 1).toInt();
-      setState(() => _fontSize = savedSize.clamp(18, 30).toDouble());
+      setState(() => _fontSize = savedSize.clamp(16, 30).toDouble());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
           _controller.jumpToPage(target);
@@ -337,13 +337,13 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 Text(_en ? 'Text size' : 'Taille du texte',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                 Row(children: [
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(18, 30).toDouble()), child: const Text('A−')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(16, 30).toDouble()), child: const Text('A−')),
                   Expanded(child: Slider(
-                    min: 18, max: 30, divisions: 12, value: selected,
+                    min: 16, max: 30, divisions: 14, value: selected,
                     label: selected.round().toString(),
                     onChanged: (value) => updateSheet(() => selected = value),
                   )),
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(18, 30).toDouble()), child: const Text('A+')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(16, 30).toDouble()), child: const Text('A+')),
                 ]),
                 Text('${selected.round()} pt'),
                 FilledButton(
