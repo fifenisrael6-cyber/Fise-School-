@@ -243,8 +243,7 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                             ),
                           ),
                         ),
-                      ),
-                    );
+                      );
                   },
                 ),
               ),
