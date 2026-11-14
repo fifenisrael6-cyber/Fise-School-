@@ -34,6 +34,26 @@ function buildContentBlocks(markdown: string): Array<Record<string, string>> {
   return blocks.length ? blocks : [{ type: 'TEXT', text: markdown }];
 }
 
+function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
+  const fr = buildContentBlocks(french);
+  const en = buildContentBlocks(english || french);
+  const blocks = fr.map((block, index) => {
+    const kind = String(block.type ?? "TEXT").toLowerCase();
+    if (kind === "formula") return { type: "formula", latex: block.latex ?? "" };
+    const translated = en[index];
+    const frText = String(block.text ?? "");
+    const enText = translated?.type === block.type
+      ? String(translated.text ?? frText)
+      : frText;
+    return {
+      type: "text",
+      text_fr: frText,
+      text_en: enText,
+    };
+  });
+  return [{ id: "imported-course-page-1", position: 1, blocks }];
+}
+
 async function extractPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
   if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
@@ -366,6 +386,7 @@ ${extracted.slice(0, 90000)}`;
             body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
             content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
             content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
+            pages_json: buildReaderPages(String(generated.content_fr).trim(), String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
             source_pdf_path: source.storage_path,
             source_page_start: generated.source_page_start,
             source_page_end: generated.source_page_end,
@@ -392,6 +413,7 @@ ${extracted.slice(0, 90000)}`;
               body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
               content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
               content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
+              pages_json: buildReaderPages(String(generated.content_fr).trim(), String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
               source_pdf_path: source.storage_path,
               source_page_start: generated.source_page_start,
               source_page_end: generated.source_page_end,
@@ -415,6 +437,7 @@ ${extracted.slice(0, 90000)}`;
           body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
           content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
           content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
+          pages_json: buildReaderPages(String(generated.content_fr).trim(), String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
           source_pdf_path: source.storage_path,
           source_page_start: generated.source_page_start,
           source_page_end: generated.source_page_end,
