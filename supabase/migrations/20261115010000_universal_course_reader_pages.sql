@@ -46,6 +46,55 @@ where jsonb_array_length(pages_json) = 0
     or nullif(trim(coalesce(content_en, '')), '') is not null
   );
 
+-- Upgrade placeholder pages created by the earlier notebook migration
+-- from existing TEXT/FORMULA/DIAGRAM blocks without replacing hand-edited pages.
+update public.chapter_content_items as item
+set pages_json = jsonb_build_array(jsonb_build_object(
+  'id', 'migrated-structured-page-1',
+  'position', 1,
+  'blocks', (
+    select jsonb_agg(
+      case upper(coalesce(fr.block ->> 'type', 'TEXT'))
+        when 'FORMULA' then jsonb_build_object(
+          'type', 'formula',
+          'latex', coalesce(fr.block ->> 'latex', '')
+        )
+        when 'DIAGRAM' then jsonb_build_object(
+          'type', 'image',
+          'storage_path', coalesce(fr.block ->> 'storage_path', ''),
+          'caption', coalesce(fr.block ->> 'caption', ''),
+          'caption_en', coalesce(en.block ->> 'caption', fr.block ->> 'caption', '')
+        )
+        else jsonb_build_object(
+          'type', 'text',
+          'text_fr', coalesce(fr.block ->> 'text', ''),
+          'text_en', coalesce(en.block ->> 'text', fr.block ->> 'text', '')
+        )
+      end
+      order by fr.ordinality
+    )
+    from jsonb_array_elements(item.content_blocks_fr) with ordinality as fr(block, ordinality)
+    left join lateral (
+      select block
+      from jsonb_array_elements(coalesce(item.content_blocks_en, '[]'::jsonb))
+        with ordinality as en(block, ordinality)
+      where en.ordinality = fr.ordinality
+    ) as en on true
+  )
+))
+where jsonb_array_length(item.content_blocks_fr) > 0
+  and (
+    jsonb_array_length(item.pages_json) = 0
+    or (
+      jsonb_array_length(item.pages_json) = 1
+      and item.pages_json -> 0 -> 'blocks' = jsonb_build_array(jsonb_build_object(
+        'type', 'text',
+        'text_fr', coalesce(item.body_text_fr, ''),
+        'text_en', coalesce(item.body_text_en, item.body_text_fr, '')
+      ))
+    )
+  );
+
 -- Backfill chapter lessons only when the structured page list is empty.
 -- Keep the legacy body_text columns intact for old app versions and audit.
 update public.chapter_content_items
