@@ -47,6 +47,99 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return pages.join("\n\n").trim();
 }
 
+function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks: Array<Record<string, unknown>> = [];
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    const value = paragraph.join("\n").trim();
+    if (value) blocks.push({ type: "text", text_fr: value, text_en: value });
+    paragraph = [];
+  };
+  const isTableLine = (line: string) => /^\s*\|.*\|\s*$/.test(line);
+  const parseCells = (line: string) => line.trim().replace(/^\|/, "").replace(/\|$/, "")
+    .split("|").map((cell) => cell.trim());
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+    if (isTableLine(line)) {
+      flushParagraph();
+      const rows: string[][] = [];
+      while (i < lines.length && isTableLine(lines[i].trim())) {
+        const cells = parseCells(lines[i].trim());
+        if (!cells.every((cell) => /^:?-{2,}:?$/.test(cell))) rows.push(cells);
+        i++;
+      }
+      i--;
+      if (rows.length) blocks.push({ type: "table", rows });
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      const level = heading[1].length;
+      blocks.push({
+        type: level === 1 ? "title" : level === 2 ? "section" : "subtitle",
+        text_fr: heading[2].trim(),
+        text_en: heading[2].trim(),
+      });
+      continue;
+    }
+    const roman = line.match(/^([IVXLCDM]+)[.)]\s+(.+)$/i);
+    if (roman) {
+      flushParagraph();
+      blocks.push({ type: "section", text_fr: line, text_en: line });
+      continue;
+    }
+    const numbered = line.match(/^(\d+(?:\.\d+)*[.)])\s+(.+)$/);
+    if (numbered) {
+      flushParagraph();
+      blocks.push({ type: "subtitle", text_fr: line, text_en: line });
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      blocks.push({ type: "bullet", text_fr: bullet[1], text_en: bullet[1] });
+      continue;
+    }
+    const displayFormula = line.match(/^\$\$([\s\S]+)\$\$/);
+    const inlineOnlyFormula = line.match(/^\$([^$]+)\$/);
+    if (displayFormula || inlineOnlyFormula) {
+      flushParagraph();
+      blocks.push({ type: "formula", latex: (displayFormula?.[1] ?? inlineOnlyFormula?.[1] ?? "").trim() });
+      continue;
+    }
+    paragraph.push(line);
+  }
+  flushParagraph();
+  return blocks;
+}
+
+function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
+  const fr = buildReaderBlocks(french);
+  const en = buildReaderBlocks(english || french);
+  const blocks = fr.map((block, index) => {
+    const translated = en[index];
+    if (block.type === "table" || block.type === "formula") return block;
+    const frText = String(block.text_fr ?? "");
+    const enText = translated?.type === block.type
+      ? String(translated.text_fr ?? translated.text_en ?? frText)
+      : frText;
+    return { ...block, text_fr: frText, text_en: enText };
+  });
+  return [{
+    id: "imported-course-page-1",
+    position: 1,
+    blocks,
+  }];
+}
+
 async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Promise<string> {
   const parts: any[] = [{ text: prompt }];
   if (pdfBytes?.length) {
@@ -233,6 +326,7 @@ ${extracted}`;
               title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
               body_text_fr: bodyText,
               body_text_en: String(chapter.content_en ?? "").trim() || bodyText,
+              pages_json: buildReaderPages(bodyText, String(chapter.content_en ?? "").trim() || bodyText),
               source_pdf_path: sourcePdfPath,
               source_page_start: chapter.source_page_start,
               source_page_end: chapter.source_page_end,
@@ -247,6 +341,7 @@ ${extracted}`;
         const { data: item, error: itemError } = await db.from("chapter_content_items").insert({
           chapter_id: target.id, content_type: "course", title_fr: title, title_en: String(chapter.title_en ?? title).trim().slice(0, 250) || title,
           body_text_fr: bodyText, body_text_en: String(chapter.content_en ?? "").trim() || bodyText,
+          pages_json: buildReaderPages(bodyText, String(chapter.content_en ?? "").trim() || bodyText),
           source_pdf_path: sourcePdfPath,
           source_page_start: chapter.source_page_start,
           source_page_end: chapter.source_page_end,
