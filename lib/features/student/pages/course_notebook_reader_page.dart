@@ -31,6 +31,8 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   final PageController _controller = PageController();
   int _index = 0;
   double _fontSize = 20;
+  double _zoomScale = 1;
+  bool _isFullscreen = false;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
   List<Map<String, dynamic>> _pdfPages = const [];
@@ -726,109 +728,159 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = _pagesForLayout(
+      MediaQuery.sizeOf(context).width - 20,
+      MediaQuery.sizeOf(context).height - 150,
+    );
+    final safeIndex = _index.clamp(0, pages.length - 1).toInt();
     return Scaffold(
       backgroundColor: Colors.white,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final pageHorizontalPadding =
-              constraints.maxWidth < 420 ? 40.0 : 56.0;
-          final pages = _pagesForLayout(
-            constraints.maxWidth - pageHorizontalPadding,
-            constraints.maxHeight - 210,
-          );
-          final safeIndex = _index.clamp(0, pages.length - 1).toInt();
-          if (_controller.hasClients &&
-              _controller.page != null &&
-              _controller.page!.round() != safeIndex) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _controller.hasClients &&
-                  (_controller.page?.round() ?? safeIndex) != safeIndex) {
-                _controller.jumpToPage(safeIndex);
-              }
-            });
-          }
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              PageView.builder(
-                controller: _controller,
-                itemCount: pages.length,
-                physics: const PageScrollPhysics(),
-                onPageChanged: (index) {
-                  setState(() => _index = index);
-                  unawaited(_saveReaderState());
-                },
-                itemBuilder: (context, index) =>
-                    _buildPage(pages[index], index + 1, pages.length),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: pages.length,
+            physics: const PageScrollPhysics(),
+            onPageChanged: (index) {
+              setState(() => _index = index);
+              unawaited(_saveReaderState());
+            },
+            itemBuilder: (context, index) => ClipRect(
+              child: Transform.scale(
+                scale: _zoomScale,
+                alignment: Alignment.topCenter,
+                child: _buildPage(pages[index], index + 1, pages.length),
               ),
-              Positioned(
-                top: 8,
-                left: 10,
-                child: Material(
-                  color: const Color(0xCC166534),
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: _en ? 'Back' : 'Retour',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 10,
-                child: Material(
-                  color: const Color(0xCC166534),
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: _en ? 'Text settings' : 'Taille du texte',
-                    onPressed: _showFontControls,
-                    icon: const Icon(Icons.text_fields, color: Colors.white),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 8,
-                left: 8,
-                right: 8,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _readerNavButton(
-                      icon: Icons.chevron_left_rounded,
-                      enabled: safeIndex > 0,
-                      onPressed: () => _controller.previousPage(
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeInOut,
+            ),
+          ),
+          if (!_isFullscreen)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Container(
+                  height: 54,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  color: const Color(0xF5FFFFFF),
+                  child: Row(children: [
+                    IconButton(
+                      tooltip: _en ? 'Back' : 'Retour',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF123B70)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        widget.item.titleFor(widget.locale.languageCode),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF123B70)),
                       ),
                     ),
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: const Color(0xE6166534),
-                        borderRadius: BorderRadius.circular(24),
+                    IconButton(
+                      tooltip: 'A−',
+                      onPressed: () {
+                        setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
+                        unawaited(_saveReaderState());
+                      },
+                      icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
+                    ),
+                    IconButton(
+                      tooltip: 'A+',
+                      onPressed: () {
+                        setState(() => _fontSize = (_fontSize + 1).clamp(16, 30).toDouble());
+                        unawaited(_saveReaderState());
+                      },
+                      icon: const Icon(Icons.text_increase, color: Color(0xFF123B70)),
+                    ),
+                    IconButton(
+                      tooltip: _en ? 'Full screen' : 'Plein écran',
+                      onPressed: () {
+                        setState(() => _isFullscreen = true);
+                        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                      },
+                      icon: const Icon(Icons.fullscreen, color: Color(0xFF123B70)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          if (_isFullscreen)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: SafeArea(
+                child: Material(
+                  color: const Color(0xCC123B70),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: _en ? 'Exit full screen' : 'Quitter le plein écran',
+                    onPressed: () {
+                      setState(() => _isFullscreen = false);
+                      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge, overlays: SystemUiOverlay.values);
+                    },
+                    icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          if (!_isFullscreen)
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 8,
+              child: SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF5FFFFFF),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: const Color(0xFFD9E5F2)),
+                    boxShadow: const [BoxShadow(color: Color(0x18000000), blurRadius: 12, offset: Offset(0, 3))],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _readerNavButton(
+                        icon: Icons.chevron_left_rounded,
+                        enabled: safeIndex > 0,
+                        onPressed: () => _controller.previousPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                        child: Text(
-                          'Page ' + (safeIndex + 1).toString() + ' / ' + pages.length.toString(),
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                      IconButton(
+                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(color: const Color(0xFF123B70), borderRadius: BorderRadius.circular(22)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.description_outlined, size: 17, color: Colors.white),
+                            const SizedBox(width: 6),
+                            Text('\${safeIndex + 1} / \${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                          ]),
                         ),
                       ),
-                    ),
-                    _readerNavButton(
-                      icon: Icons.chevron_right_rounded,
-                      enabled: safeIndex < pages.length - 1,
-                      onPressed: () => _controller.nextPage(
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeInOut,
+                      IconButton(
+                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
                       ),
-                    ),
-                  ],
+                      _readerNavButton(
+                        icon: Icons.chevron_right_rounded,
+                        enabled: safeIndex < pages.length - 1,
+                        onPressed: () => _controller.nextPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          );
-        },
+            ),
+        ],
       ),
     );
   }
