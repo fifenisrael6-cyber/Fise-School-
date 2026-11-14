@@ -380,121 +380,293 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     final blocks = rawBlocks is List
         ? rawBlocks.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
         : <Map<String, dynamic>>[];
-    if (blocks.length == 1 &&
-        blocks.first['type'] == 'raster' &&
+
+    Widget renderBlock(Map<String, dynamic> block) {
+      final rawType = (block['type'] ?? '').toString().toLowerCase();
+      final type = switch (rawType) {
+        'text' || 'paragraph' || 'texte' => 'text',
+        'title' || 'heading' || 'titre' => 'title',
+        'section' || 'section_title' => 'section',
+        'subtitle' || 'subheading' || 'sous_titre' => 'subtitle',
+        'bullet' || 'list_item' || 'puce' => 'bullet',
+        'key_phrase' || 'keyphrase' || 'phrase_cle' => 'key',
+        'formula' || 'equation' => 'formula',
+        'table' => 'table',
+        'diagram' || 'schema' || 'schéma' => 'diagram',
+        'image' || 'figure' => 'image',
+        'raster' => 'raster',
+        'raster-pending' || 'raster-error' => rawType,
+        _ => rawType,
+      };
+      final text = (block[_en ? 'text_en' : 'text_fr'] ??
+              block['text'] ??
+              block['content'] ??
+              block['label'] ??
+              '').toString();
+      const navy = Color(0xFF123B70);
+      const paleBlue = Color(0xFFEAF3FF);
+      const paleGreen = Color(0xFFEAF8EF);
+
+      switch (type) {
+        case 'title':
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(text, style: TextStyle(
+              fontSize: _fontSize + 4, height: 1.2,
+              fontWeight: FontWeight.w900, color: navy,
+            )),
+          );
+        case 'section':
+          return Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: paleBlue, borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFB9D7FA)),
+            ),
+            child: Text(text, style: TextStyle(
+              fontSize: _fontSize + 1, height: 1.25,
+              fontWeight: FontWeight.w800, color: navy,
+            )),
+          );
+        case 'subtitle':
+          return Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: paleGreen, borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFC7E9D1)),
+            ),
+            child: Text(text, style: TextStyle(
+              fontSize: _fontSize, height: 1.3,
+              fontWeight: FontWeight.w800, color: const Color(0xFF17633B),
+            )),
+          );
+        case 'bullet':
+          return Padding(
+            padding: const EdgeInsets.only(left: 5, bottom: 7),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 7, right: 9),
+                child: Icon(Icons.circle, size: 7, color: Color(0xFF2476D2)),
+              ),
+              Expanded(child: RichLessonText(
+                text: text,
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+              )),
+            ]),
+          );
+        case 'key':
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: RichLessonText(
+              text: text,
+              style: TextStyle(fontSize: _fontSize, height: 1.4,
+                fontWeight: FontWeight.w800, color: navy),
+            ),
+          );
+        case 'formula':
+          final formula = (block['latex'] ?? block['formula'] ?? text).toString();
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              color: paleBlue, borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFB9D7FA)),
+            ),
+            child: Center(child: RichLessonText(
+              text: formula.startsWith(r'$') ? formula : r'$$' + formula + r'$$',
+              style: TextStyle(fontSize: _fontSize + 1, height: 1.5,
+                fontWeight: FontWeight.w600, color: navy),
+            )),
+          );
+        case 'table':
+          final rawRows = block['rows'] ?? block['data'];
+          final rows = rawRows is List ? rawRows : const [];
+          final cells = rows.map((row) {
+            if (row is List) return row.map((v) => v.toString()).toList();
+            if (row is Map) return row.values.map((v) => v.toString()).toList();
+            return <String>[row.toString()];
+          }).toList();
+          if (cells.isEmpty) {
+            return Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(border: Border.all(color: const Color(0xFFCBD5E1))),
+              child: RichLessonText(text: text, style: TextStyle(fontSize: _fontSize, height: 1.4)),
+            );
+          }
+          final columnCount = cells.fold<int>(0, (n, row) => row.length > n ? row.length : n).clamp(1, 8);
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Table(
+              defaultColumnWidth: const IntrinsicColumnWidth(),
+              border: TableBorder.all(color: const Color(0xFF9DB6D3)),
+              children: [
+                for (var ri = 0; ri < cells.length; ri++)
+                  TableRow(
+                    decoration: ri == 0 ? const BoxDecoration(color: paleBlue) : null,
+                    children: [
+                      for (var ci = 0; ci < columnCount; ci++)
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Text(ci < cells[ri].length ? cells[ri][ci] : '',
+                            style: TextStyle(fontSize: _fontSize - 1, height: 1.3,
+                              fontWeight: ri == 0 ? FontWeight.w800 : FontWeight.w400)),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        case 'image' || 'diagram':
+          final imagePath = (block['storage_path'] ?? block['path'] ?? '').toString();
+          if (imagePath.isEmpty) return const SizedBox.shrink();
+          return FutureBuilder<Object?>(
+            future: _resolveImage(imagePath),
+            builder: (context, snapshot) {
+              final resolved = snapshot.data;
+              if (resolved == null) {
+                return const Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final image = resolved is File
+                  ? Image.file(resolved, fit: BoxFit.contain)
+                  : Image.network(resolved.toString(), fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink());
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(children: [
+                  GestureDetector(
+                    onTap: () => _openImageGallery(imagePath),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 360),
+                      child: image,
+                    ),
+                  ),
+                  if ((block['caption'] ?? '').toString().trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 7),
+                      child: Text(block['caption'].toString(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: _fontSize - 2, color: Colors.black54)),
+                    ),
+                ]),
+              );
+            },
+          );
+        case 'raster':
+          final bytes = block['bytes'];
+          if (bytes is! Uint8List) return const SizedBox.shrink();
+          return GestureDetector(
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (_) => Dialog.fullscreen(
+                child: Stack(children: [
+                  Center(child: InteractiveViewer(
+                    minScale: 0.7, maxScale: 5,
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  )),
+                  Positioned(top: 18, right: 12, child: IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  )),
+                ]),
+              ),
+            ),
+            child: Image.memory(bytes, width: double.infinity, fit: BoxFit.fitWidth),
+          );
+        case 'raster-pending':
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(child: Text(
+              _en ? 'This lesson is being prepared. Please try again later.' :
+                'Ce cours est en cours de préparation. Réessayez plus tard.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: _fontSize, color: const Color(0xFF475569)),
+            )),
+          );
+        case 'raster-error':
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(child: OutlinedButton.icon(
+              onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
+              icon: const Icon(Icons.refresh),
+              label: Text(_en ? 'Reload this page' : 'Recharger cette page'),
+            )),
+          );
+        case 'text':
+          if (text.trim().isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: RichLessonText(
+              text: text,
+              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+            ),
+          );
+        default:
+          if (text.trim().isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: RichLessonText(text: text,
+              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B))),
+          );
+      }
+    }
+
+    if (blocks.length == 1 && blocks.first['type'] == 'raster' &&
         blocks.first['bytes'] is Uint8List) {
       return ColoredBox(
         color: Colors.white,
-        child: SizedBox.expand(
-          child: Image.memory(
-            blocks.first['bytes'] as Uint8List,
-            fit: BoxFit.contain,
-            alignment: Alignment.center,
-          ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(10, 72, 10, 90),
+          child: renderBlock(blocks.first),
         ),
       );
     }
-    return LayoutBuilder(builder: (context, constraints) {
-      final horizontalPadding = constraints.maxWidth < 420 ? 20.0 : 28.0;
-      return Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: Colors.white,
-        padding: EdgeInsets.fromLTRB(horizontalPadding, 58, horizontalPadding, 54),
+
+    return ColoredBox(
+      color: Colors.white,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(10, 68, 10, 92),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(widget.item.titleFor(widget.locale.languageCode),
-              style: TextStyle(fontSize: _fontSize + 5, height: 1.2, fontWeight: FontWeight.w900, color: const Color(0xFF14532D))),
-            const Divider(height: 24, color: Color(0xFF16A34A)),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final block in blocks) ...[
-                    if (block['type'] == 'text')
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: RichLessonText(
-                          text: (block[_en ? 'text_en' : 'text_fr'] ?? block['text'] ?? '').toString(),
-                          style: TextStyle(fontSize: _fontSize, height: 1.55, color: const Color(0xFF1E293B)),
-                        ),
-                      ),
-                    if (block['type'] == 'raster' && block['bytes'] is Uint8List)
-                      Expanded(child: Image.memory(block['bytes'] as Uint8List, fit: BoxFit.contain)),
-                    if (block['type'] == 'raster-pending')
-                      Expanded(
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text((block['message'] ??
-                                (_en ? 'Course pages are not available yet.' : 'Les pages du cours ne sont pas encore disponibles.')).toString(),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Color(0xFF475569))),
-                              const SizedBox(height: 10),
-                              OutlinedButton.icon(
-                                onPressed: () => _loadCoursePages(forceRetry: true),
-                                icon: const Icon(Icons.refresh),
-                                label: Text(_en ? 'Retry' : 'Réessayer'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (block['type'] == 'raster-error')
-                      Expanded(
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_en ? 'This page could not be loaded.' : 'Cette page n’a pas pu être chargée.'),
-                              const SizedBox(height: 8),
-                              FilledButton.icon(
-                                onPressed: () => _retryCoursePage((block['page_number'] as num).toInt()),
-                                icon: const Icon(Icons.refresh),
-                                label: Text(_en ? 'Retry' : 'Réessayer'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    if (block['type'] == 'image' && (block['storage_path'] ?? '').toString().isNotEmpty)
-                      FutureBuilder<Object?>(
-                        future: _resolveImage(block['storage_path'].toString()),
-                        builder: (context, snapshot) => snapshot.data == null
-                          ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
-                          : Flexible(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: InteractiveViewer(
-                                  child: GestureDetector(
-                                    onTap: () => _openImageGallery(block['storage_path'].toString()),
-                                    child: Hero(
-                                      tag: 'course-image-${widget.item.id}-${block['storage_path']}',
-                                      child: snapshot.data is File
-                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
-                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                      ),
-                  ],
-                ],
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF123B70),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                widget.item.titleFor(widget.locale.languageCode),
+                style: TextStyle(fontSize: _fontSize + 3, height: 1.2,
+                  fontWeight: FontWeight.w900, color: Colors.white),
               ),
             ),
+            const SizedBox(height: 12),
+            for (final block in blocks) renderBlock(block),
+            const SizedBox(height: 12),
             Align(
-              alignment: Alignment.bottomRight,
-              child: Text('Page ' + number.toString() + ' / ' + totalPages.toString(),
+              alignment: Alignment.centerRight,
+              child: Text('$number / $totalPages',
                 style: const TextStyle(fontSize: 11, color: Colors.black45)),
             ),
           ],
         ),
-      );
-    });
+      ),
+    );
   }
 
   @override
