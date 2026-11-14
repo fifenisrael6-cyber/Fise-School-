@@ -57,7 +57,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
       if (!mounted || saved == null) return;
-      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 20;
+      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 24;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
       final target = savedPage.clamp(0, _pages.length - 1).toInt();
       setState(() => _fontSize = savedSize.clamp(22, 34).toDouble());
@@ -383,15 +383,26 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     if (blocks.length == 1 &&
         blocks.first['type'] == 'raster' &&
         blocks.first['bytes'] is Uint8List) {
-      return ColoredBox(
-        color: Colors.white,
-        child: SizedBox.expand(
-          child: Image.memory(
-            blocks.first['bytes'] as Uint8List,
-            fit: BoxFit.contain,
-            alignment: Alignment.center,
-          ),
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final pageWidth = constraints.maxWidth - 8;
+          return ClipRect(
+            child: InteractiveViewer(
+              constrained: false,
+              alignment: Alignment.topCenter,
+              minScale: 1,
+              maxScale: 4,
+              boundaryMargin: const EdgeInsets.all(100),
+              child: Image.memory(
+                blocks.first['bytes'] as Uint8List,
+                width: pageWidth,
+                fit: BoxFit.fitWidth,
+                alignment: Alignment.topCenter,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          );
+        },
       );
     }
     return LayoutBuilder(builder: (context, constraints) {
