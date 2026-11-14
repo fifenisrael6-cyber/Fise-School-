@@ -77,6 +77,69 @@ create index if not exists chapter_content_pages_json_published_idx
   on public.chapter_content_items (updated_at desc)
   where content_type = 'course' and is_published = true;
 
+-- Keep future legacy/admin text publications in the same page contract.
+-- Explicit rich pages always win; plain-text forms are wrapped in one TEXT block.
+create or replace function public.ensure_course_reader_pages()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+begin
+  if (tg_table_name = 'courses') then
+    if coalesce(jsonb_array_length(new.pages_json), 0) = 0
+       or (tg_op = 'UPDATE'
+           and new.pages_json is not distinct from old.pages_json
+           and (new.content_fr is distinct from old.content_fr
+                or new.content_en is distinct from old.content_en)) then
+      if nullif(trim(coalesce(new.content_fr, '')), '') is not null
+         or nullif(trim(coalesce(new.content_en, '')), '') is not null then
+        new.pages_json := jsonb_build_array(jsonb_build_object(
+          'id', 'legacy-page-1',
+          'position', 1,
+          'blocks', jsonb_build_array(jsonb_build_object(
+            'type', 'text',
+            'text_fr', coalesce(new.content_fr, ''),
+            'text_en', coalesce(new.content_en, new.content_fr, '')
+          ))
+        ));
+      end if;
+    end if;
+  elsif (tg_table_name = 'chapter_content_items') then
+    if coalesce(jsonb_array_length(new.pages_json), 0) = 0
+       or (tg_op = 'UPDATE'
+           and new.pages_json is not distinct from old.pages_json
+           and (new.body_text_fr is distinct from old.body_text_fr
+                or new.body_text_en is distinct from old.body_text_en)) then
+      if nullif(trim(coalesce(new.body_text_fr, '')), '') is not null
+         or nullif(trim(coalesce(new.body_text_en, '')), '') is not null then
+        new.pages_json := jsonb_build_array(jsonb_build_object(
+          'id', 'legacy-page-1',
+          'position', 1,
+          'blocks', jsonb_build_array(jsonb_build_object(
+            'type', 'text',
+            'text_fr', coalesce(new.body_text_fr, ''),
+            'text_en', coalesce(new.body_text_en, new.body_text_fr, '')
+          ))
+        ));
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists courses_ensure_reader_pages on public.courses;
+create trigger courses_ensure_reader_pages
+before insert or update of content_fr, content_en, pages_json
+on public.courses
+for each row execute function public.ensure_course_reader_pages();
+
+drop trigger if exists chapter_items_ensure_reader_pages on public.chapter_content_items;
+create trigger chapter_items_ensure_reader_pages
+before insert or update of body_text_fr, body_text_en, pages_json
+on public.chapter_content_items
+for each row execute function public.ensure_course_reader_pages();
+
 comment on column public.courses.pages_json is
   'Ordered responsive course pages; each page contains typed content blocks.';
 comment on column public.chapter_content_items.pages_json is
