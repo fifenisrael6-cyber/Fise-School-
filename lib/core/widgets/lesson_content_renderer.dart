@@ -22,8 +22,8 @@ class LessonContentRenderer extends StatefulWidget {
     super.key,
     required this.text,
     this.style = const TextStyle(
-      fontSize: 16,
-      height: 1.65,
+      fontSize: 20,
+      height: 1.7,
       color: Color(0xFF334155),
     ),
     this.selectable = true,
