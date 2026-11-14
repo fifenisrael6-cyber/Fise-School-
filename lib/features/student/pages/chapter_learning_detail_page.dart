@@ -1049,10 +1049,11 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
   PdfDocument? _document;
   int _totalPages = 0;
   int _pageIndex = 0;
-  bool _a4Layout = true;
+  bool _a4Layout = false;
+  final Map<int, Future<Uint8List>> _pageRenders = <int, Future<Uint8List>>{};
 
   bool get _en => widget.locale.languageCode == 'en';
-  int get _startPage => widget.item.sourcePageStart ?? 1;
+  int get _startPage => (widget.item.sourcePageStart ?? 1).clamp(1, 1 << 30).toInt();
 
   @override
   void initState() {
@@ -1074,6 +1075,27 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     final end = requestedEnd.clamp(_startPage, maxPage).toInt();
     _totalPages = end - _startPage + 1;
     return document;
+  }
+
+  Future<Uint8List> _renderPageCached(PdfDocument document, int pageNumber) {
+    return _pageRenders.putIfAbsent(pageNumber, () async {
+      try {
+        return await _renderPage(document, pageNumber);
+      } catch (_) {
+        _pageRenders.remove(pageNumber);
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> _retryOriginalPage(PdfDocument document, int pageNumber) async {
+    setState(() => _pageRenders.remove(pageNumber));
+    try {
+      await _renderPageCached(document, pageNumber);
+    } catch (_) {
+      // Keep the retry action available if rendering still fails.
+    }
+    if (mounted) setState(() {});
   }
 
   Future<Uint8List> _renderPage(PdfDocument document, int pageNumber) async {
@@ -1145,7 +1167,15 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
               Expanded(
                 child: PageView.builder(
                   itemCount: _totalPages,
-                  onPageChanged: (index) => setState(() => _pageIndex = index),
+                  onPageChanged: (index) {
+                    setState(() {
+                      _pageIndex = index;
+                      final currentPage = _startPage + index;
+                      _pageRenders.removeWhere(
+                        (number, _) => (number - currentPage).abs() > 1,
+                      );
+                    });
+                  },
                   itemBuilder: (context, index) {
                     final pageNumber = _startPage + index;
                     return LayoutBuilder(
@@ -1157,25 +1187,50 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
                           child: SizedBox(
                             width: pageWidth,
                             child: FutureBuilder<Uint8List>(
-                              future: _renderPage(document, pageNumber),
+                              future: _renderPageCached(document, pageNumber),
                               builder: (context, pageSnapshot) {
                                 if (pageSnapshot.connectionState == ConnectionState.waiting) {
                                   return const Center(child: CircularProgressIndicator());
                                 }
                                 if (pageSnapshot.hasError || !pageSnapshot.hasData) {
-                                  return Center(child: Text(_en ? 'Page could not be rendered.' : 'Impossible de rendre cette page.'));
+                                  return Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _en ? 'Page could not be rendered.' : 'Impossible de rendre cette page.',
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          FilledButton.icon(
+                                            onPressed: () => _retryOriginalPage(document, pageNumber),
+                                            icon: const Icon(Icons.refresh_rounded),
+                                            label: Text(_en ? 'Retry this page' : 'Réessayer cette page'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
                                 }
                                 return Container(
                                   margin: const EdgeInsets.symmetric(vertical: 12),
                                   color: Colors.white,
                                   child: InteractiveViewer(
                                     minScale: 1,
-                                    maxScale: 4,
-                                    child: Image.memory(
-                                      pageSnapshot.data!,
-                                      fit: BoxFit.contain,
-                                      width: pageWidth,
-                                      gaplessPlayback: true,
+                                    maxScale: 5,
+                                    boundaryMargin: const EdgeInsets.all(120),
+                                    clipBehavior: Clip.none,
+                                    child: Transform.scale(
+                                      scale: _a4Layout ? 1.12 : 1.28,
+                                      child: Image.memory(
+                                        pageSnapshot.data!,
+                                        fit: BoxFit.contain,
+                                        width: pageWidth,
+                                        gaplessPlayback: true,
+                                        filterQuality: FilterQuality.high,
+                                      ),
                                     ),
                                   ),
                                 );
