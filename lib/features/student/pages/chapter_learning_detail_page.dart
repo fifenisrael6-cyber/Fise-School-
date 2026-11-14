@@ -1102,8 +1102,8 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     final page = await document.getPage(pageNumber);
     try {
       final image = await page.render(
-        width: page.width * 2,
-        height: page.height * 2,
+        width: page.width * 3,
+        height: page.height * 3,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
@@ -1182,13 +1182,11 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
                       builder: (context, constraints) {
                         final pageWidth = _a4Layout
                             ? (constraints.maxWidth - 32).clamp(280.0, 794.0).toDouble()
-                            : (constraints.maxWidth - 20).toDouble();
-                        return Center(
-                          child: SizedBox(
-                            width: pageWidth,
-                            child: FutureBuilder<Uint8List>(
-                              future: _renderPageCached(document, pageNumber),
-                              builder: (context, pageSnapshot) {
+                            : (constraints.maxWidth - 12).clamp(280.0, 1200.0).toDouble();
+                        return SizedBox.expand(
+                          child: FutureBuilder<Uint8List>(
+                            future: _renderPageCached(document, pageNumber),
+                            builder: (context, pageSnapshot) {
                                 if (pageSnapshot.connectionState == ConnectionState.waiting) {
                                   return const Center(child: CircularProgressIndicator());
                                 }
@@ -1214,28 +1212,24 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
                                     ),
                                   );
                                 }
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(vertical: 12),
-                                  color: Colors.white,
-                                  child: InteractiveViewer(
-                                    minScale: 1,
-                                    maxScale: 5,
-                                    boundaryMargin: const EdgeInsets.all(120),
-                                    clipBehavior: Clip.none,
-                                    child: Transform.scale(
-                                      scale: _a4Layout ? 1.12 : 1.28,
-                                      child: Image.memory(
-                                        pageSnapshot.data!,
-                                        fit: BoxFit.contain,
-                                        width: pageWidth,
-                                        gaplessPlayback: true,
-                                        filterQuality: FilterQuality.high,
-                                      ),
-                                    ),
+                              return ClipRect(
+                                child: InteractiveViewer(
+                                  constrained: false,
+                                  alignment: Alignment.topCenter,
+                                  minScale: 1,
+                                  maxScale: 4,
+                                  boundaryMargin: const EdgeInsets.all(100),
+                                  child: Image.memory(
+                                    pageSnapshot.data!,
+                                    width: pageWidth,
+                                    fit: BoxFit.fitWidth,
+                                    alignment: Alignment.topCenter,
+                                    gaplessPlayback: true,
+                                    filterQuality: FilterQuality.high,
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            },
                           ),
                         );
                       },
