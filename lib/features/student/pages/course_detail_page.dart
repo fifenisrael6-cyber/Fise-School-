@@ -684,7 +684,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${pages.isEmpty ? 1 : pages.length} ${isEnglish ? 'A4 page(s)' : 'page(s) A4'} • ${isEnglish ? 'Tap to read' : 'Appuyez pour lire'}',
+                      '${pages.isEmpty ? 1 : pages.length} ${isEnglish ? 'page(s)' : 'page(s)'} • ${isEnglish ? 'Tap to read' : 'Appuyez pour lire'}',
                       style: const TextStyle(color: Colors.black54, fontSize: 12),
                     ),
                   ],
