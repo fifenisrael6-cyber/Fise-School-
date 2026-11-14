@@ -18,10 +18,14 @@ class CourseNotebookReaderPage extends StatefulWidget {
     super.key,
     required this.item,
     required this.locale,
+    this.useStructuredPagesOnly = false,
+    this.onOpenOriginalPdf,
   });
 
   final ChapterLearningContentItem item;
   final Locale locale;
+  final bool useStructuredPagesOnly;
+  final VoidCallback? onOpenOriginalPdf;
 
   @override
   State<CourseNotebookReaderPage> createState() => _CourseNotebookReaderPageState();
@@ -47,7 +51,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
   Future<void> _initializeReader() async {
     await _restoreReaderState();
-    await _loadCoursePages();
+    if (!widget.useStructuredPagesOnly) {
+      await _loadCoursePages();
+    }
   }
 
   Future<void> _restoreReaderState() async {
@@ -303,7 +309,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   List<Map<String, dynamic>> get _pages {
-    if (_pdfPages.isNotEmpty) return _pdfPages;
+    if (!widget.useStructuredPagesOnly && _pdfPages.isNotEmpty) return _pdfPages;
     final source = widget.item.pages.isNotEmpty
         ? widget.item.pages
         : [
@@ -467,17 +473,32 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                           : Flexible(
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: InteractiveViewer(
-                                  child: GestureDetector(
-                                    onTap: () => _openImageGallery(block['storage_path'].toString()),
-                                    child: Hero(
-                                      tag: 'course-image-${widget.item.id}-${block['storage_path']}',
-                                      child: snapshot.data is File
-                                        ? Image.file(snapshot.data as File, fit: BoxFit.contain)
-                                        : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: InteractiveViewer(
+                                        child: GestureDetector(
+                                          onTap: () => _openImageGallery(block['storage_path'].toString()),
+                                          child: Hero(
+                                            tag: 'course-image-${widget.item.id}-${block['storage_path']}',
+                                            child: snapshot.data is File
+                                              ? Image.file(snapshot.data as File, fit: BoxFit.contain)
+                                              : Image.network(snapshot.data.toString(), fit: BoxFit.contain,
+                                                errorBuilder: (_, __, ___) => Text(_en ? 'Image unavailable' : 'Image indisponible')),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    if ((block['caption_fr'] ?? block['caption_en'] ?? '').toString().trim().isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          (block[_en ? 'caption_en' : 'caption_fr'] ?? block['caption_fr'] ?? '').toString(),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -605,14 +626,31 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               Positioned(
                 top: 8,
                 right: 10,
-                child: Material(
-                  color: const Color(0xCC166534),
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: _en ? 'Text settings' : 'Taille du texte',
-                    onPressed: _showFontControls,
-                    icon: const Icon(Icons.text_fields, color: Colors.white),
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.onOpenOriginalPdf != null) ...[
+                      Material(
+                        color: const Color(0xCC166534),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: _en ? 'Original PDF' : 'PDF original',
+                          onPressed: widget.onOpenOriginalPdf,
+                          icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Material(
+                      color: const Color(0xCC166534),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: _en ? 'Text settings' : 'Taille du texte',
+                        onPressed: _showFontControls,
+                        icon: const Icon(Icons.text_fields, color: Colors.white),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Positioned(

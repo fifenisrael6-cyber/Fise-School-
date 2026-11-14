@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
 import '../../../core/services/course_pdf_page_service.dart';
+import 'course_notebook_editor_page.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
 class AdminChapterContentPage extends StatefulWidget {
@@ -143,8 +144,6 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         if (rows.isNotEmpty) current = Map<String, dynamic>.from(rows.first);
       }
 
-      final oldSource = (current?['source_pdf_path'] as String? ?? '').trim();
-      final oldStorage = (current?['storage_path'] as String? ?? '').trim();
       final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       uploadedPath = '${selectedChapter['id']}/course_${timestamp}_$safeName';
@@ -194,24 +193,92 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         saved = Map<String, dynamic>.from(updated);
       }
 
-      // The student reader displays the original document directly; no raster-page table is required.
-
-      for (final oldPath in {oldSource, oldStorage}) {
-        if (oldPath.isNotEmpty && oldPath != uploadedPath) {
-          try { await db.storage.from('chapter-content').remove([oldPath]); } catch (_) {}
-        }
-      }
+      // Le PDF source est conservé. Une erreur d'extraction ne doit jamais annuler son import.
       uploadedPath = null;
-      if (mounted) {
-        await chooseCurriculum(curriculum);
-        toast(t('Cours PDF enregistré. Il est visible aux élèves selon son statut de publication.',
-            'Course document saved. Students can see it according to its publication status.'));
+      try {
+        final extraction = await db.functions.invoke(
+          'process-chapter-course-pdf',
+          body: {'content_item_id': saved['id']},
+        );
+        final data = extraction.data;
+        if (extraction.status >= 200 &&
+            extraction.status < 300 &&
+            data is Map &&
+            data['success'] == true) {
+          toast(t(
+            'PDF enregistré et extraction terminée. Vérifie le contenu structuré avant publication.',
+            'PDF saved and extraction completed. Review the structured content before publishing.',
+          ));
+        } else {
+          final message = data is Map
+              ? (data['error']?.toString() ?? 'Extraction non terminée.')
+              : 'Réponse du service d’extraction invalide.';
+          toast(t(
+            'PDF conservé. Extraction à relancer : $message',
+            'PDF preserved. Extraction needs retry: $message',
+          ));
+        }
+      } catch (extractionError) {
+        toast(t(
+          'PDF conservé dans le chapitre, mais extraction impossible : $extractionError',
+          'PDF is preserved in the chapter, but extraction failed: $extractionError',
+        ));
       }
+      if (mounted) await chooseCurriculum(curriculum);
     } catch (error) {
       if (uploadedPath != null) {
         try { await db.storage.from('chapter-content').remove([uploadedPath]); } catch (_) {}
       }
       toast(t('Envoi du cours impossible : $error', 'Could not upload the course: $error'));
+    }
+  }
+
+  Future<void> editStructuredCourse(Map<String, dynamic> item) async {
+    final chapterId = (item['chapter_id'] ?? chapter?['id'])?.toString() ?? '';
+    if (chapterId.isEmpty) {
+      toast(t('Chapitre introuvable pour ce cours.', 'Chapter not found for this course.'));
+      return;
+    }
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CourseNotebookEditorPage(
+          locale: widget.locale,
+          chapterId: chapterId,
+          existingItem: item,
+        ),
+      ),
+    );
+    if (saved == true && mounted) await chooseCurriculum(curriculum);
+  }
+
+  Future<void> processChapterCoursePdf(Map<String, dynamic> item) async {
+    final sourcePath = (item['source_pdf_path'] as String? ?? '').trim();
+    if (item['content_type'] != 'course' || sourcePath.isEmpty) {
+      toast(t('Le PDF original de ce cours est introuvable.', 'The original PDF for this course is unavailable.'));
+      return;
+    }
+    try {
+      toast(t('Extraction du cours en cours…', 'Extracting course…'));
+      final result = await db.functions.invoke(
+        'process-chapter-course-pdf',
+        body: {'content_item_id': item['id']},
+      );
+      final data = result.data;
+      if (result.status >= 200 && result.status < 300 &&
+          data is Map && data['success'] == true) {
+        toast(t(
+          'Extraction terminée. Vérifie le contenu structuré avant publication.',
+          'Extraction complete. Review the structured content before publishing.',
+        ));
+      } else {
+        final message = data is Map
+            ? (data['error']?.toString() ?? 'Extraction non terminée.')
+            : 'Réponse serveur invalide.';
+        toast(t('Extraction impossible : $message', 'Extraction failed: $message'));
+      }
+      if (mounted) await chooseCurriculum(curriculum);
+    } catch (error) {
+      toast(t('Extraction impossible : $error', 'Extraction failed: $error'));
     }
   }
 
@@ -438,6 +505,16 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> toggleContent(Map<String, dynamic> item) async {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
+    final hasOriginalPdf = (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty;
+    final processingStatus = item['processing_status']?.toString() ?? 'not_started';
+    if (willPublish && item['content_type'] == 'course' &&
+        hasOriginalPdf && processingStatus != 'ready') {
+      toast(t(
+        'Vérifie et enregistre d’abord le contenu structuré avant de publier ce cours.',
+        'Review and save the structured content before publishing this course.',
+      ));
+      return;
+    }
     try {
       await db.from('chapter_content_items')
           .update({'is_published': willPublish})
@@ -504,12 +581,27 @@ FutureBuilder<List<Map<String,dynamic>>>(
           return Column(children:items.map((item)=>Card(child:ListTile(
             leading:Icon(item['content_type']=='pdf'?Icons.picture_as_pdf:item['content_type']=='video'?Icons.play_circle:Icons.menu_book),
             title:Text((item['title_fr'] as String?)??''),
-            subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
+            subtitle:Text(
+              ((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')) +
+              (item['content_type'] == 'course'
+                ? ' • ' + switch (item['processing_status']?.toString() ?? 'not_started') {
+                    'processing' => t('Extraction en cours','Extracting'),
+                    'review_required' => t('À vérifier','Needs review'),
+                    'ready' => t('Contenu vérifié','Reviewed'),
+                    'failed' => t('Échec extraction','Extraction failed'),
+                    _ => t('Non extrait','Not extracted'),
+                  }
+                : ''),
+            ),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='extract')processChapterCoursePdf(item);if(v=='pages')editStructuredCourse(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
+                if (item['content_type'] == 'course' && (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty)
+                  PopupMenuItem(value:'extract',child:Text(t('Extraire / réessayer l’extraction IA','Extract / retry AI extraction'))),
+                if (item['content_type'] == 'course')
+                  PopupMenuItem(value:'pages',child:Text(t('Modifier le contenu structuré','Edit structured content'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
                 if (item['content_type'] == 'course' &&
                     (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty)
