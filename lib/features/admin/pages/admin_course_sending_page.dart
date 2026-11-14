@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/pedagogy_service.dart';
+import '../../../models/pedagogy.dart';
 import 'course_notebook_editor_page.dart';
 
 /// Espace dédié à l'envoi de cours par l'administrateur.
@@ -39,6 +41,7 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
   bool _loadingChoices = false;
   bool _saving = false;
   bool _publish = true;
+  PlatformFile? _selectedPdf;
   String _filter = 'all';
   String? _error;
 
@@ -281,34 +284,221 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
     }
   }
 
-  Future<void> _openNotebookEditor() async {
-    if (_chapterIds.isEmpty) {
-      _showMessage(_t('Sélectionnez au moins un chapitre.', 'Select at least one chapter.'));
+  Future<PlatformFile?> _pickCoursePdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.length < 5 ||
+        String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+      _showMessage(_t('Le fichier choisi n’est pas un PDF valide.',
+          'The selected file is not a valid PDF.'));
+      return null;
+    }
+    return file;
+  }
+
+  String _pdfCourseTitle(PlatformFile file) {
+    final lowerName = file.name.toLowerCase();
+    final title = lowerName.endsWith('.pdf')
+        ? file.name.substring(0, file.name.length - 4).trim()
+        : file.name.trim();
+    return title.isEmpty ? _t('Cours', 'Course') : title;
+  }
+
+  Future<void> _sendPdfCourse() async {
+    final reference = _referenceClass;
+    final subjectId = _subjectId;
+    final curriculumId = _curriculumId;
+    final file = _selectedPdf;
+    if (reference == null || subjectId == null || curriculumId == null ||
+        _chapterIds.isEmpty || _targetClassIds.isEmpty || file == null) {
+      _showMessage(_t('Choisissez le PDF, au moins une salle et un chapitre.',
+          'Choose a PDF, at least one classroom and one chapter.'));
       return;
     }
-    final selected = _chapters.where((item) => _chapterIds.contains(item['id']?.toString())).toList();
-    if (selected.isEmpty) return;
-    final chapter = selected.first;
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CourseNotebookEditorPage(
-          locale: widget.locale,
-          chapterId: chapter['id'].toString(),
-          courseContext: {
-            'class_ids': _targetClassIds.toList(growable: false),
-            'subject_id': _subjectId,
-            'teacher_id': _db.auth.currentUser?.id,
-            'curriculum_id': _curriculumId,
-            'chapter_id': chapter['id'].toString(),
-            'chapter_ids': selected.map((item) => item['id'].toString()).toList(growable: false),
-            'publish': _publish,
-          },
-        ),
-      ),
-    );
-    if (saved == true && mounted) {
+
+    final currentUserId = _db.auth.currentUser?.id;
+    if (currentUserId == null) {
+      _showMessage(_t('Session administrateur absente.', 'Administrator session is missing.'));
+      return;
+    }
+
+    setState(() => _saving = true);
+    var completed = 0;
+    try {
+      final title = _pdfCourseTitle(file);
+      for (final classId in _targetClassIds.toList(growable: false)) {
+        for (final chapterId in _chapterIds.toList(growable: false)) {
+          final matches = _courseRows.where((row) =>
+              row['class_id']?.toString() == classId &&
+              row['subject_id']?.toString() == subjectId &&
+              row['chapter_id']?.toString() == chapterId).toList();
+          final existing = matches.isEmpty ? null : matches.first;
+          final oldResources = existing == null
+              ? <CourseResource>[]
+              : await _resources.listForCourse(existing['id'].toString());
+
+          final course = existing == null
+              ? await _courses.saveCourse(
+                  curriculumId: curriculumId,
+                  chapterId: chapterId,
+                  subjectId: subjectId,
+                  teacherId: currentUserId,
+                  classId: classId,
+                  titleFr: title,
+                  titleEn: title,
+                  contentFr: '',
+                  contentEn: '',
+                  status: 'draft',
+                )
+              : await _courses.getCourse(existing['id'].toString());
+
+          CourseResource? uploaded;
+          var courseUpdated = false;
+          try {
+            uploaded = await _resources.uploadResource(
+              courseId: course.id,
+              file: file,
+              resourceType: 'pdf',
+              position: 0,
+              titleFr: title,
+              titleEn: title,
+            );
+
+            await _courses.saveCourse(
+              id: course.id,
+              curriculumId: curriculumId,
+              chapterId: chapterId,
+              subjectId: subjectId,
+              teacherId: existing?['teacher_id']?.toString() ?? currentUserId,
+              classId: classId,
+              titleFr: existing?['title_fr']?.toString().trim().isNotEmpty == true
+                  ? existing!['title_fr'].toString()
+                  : title,
+              titleEn: existing?['title_en']?.toString().trim().isNotEmpty == true
+                  ? existing!['title_en'].toString()
+                  : title,
+              descriptionFr: existing?['description_fr']?.toString(),
+              descriptionEn: existing?['description_en']?.toString(),
+              contentFr: '',
+              contentEn: '',
+              smartLessonEnabled: existing?['smart_lesson_enabled'] as bool? ?? true,
+              minimumExerciseScore:
+                  (existing?['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+              status: 'draft',
+            );
+            courseUpdated = true;
+
+            if (_publish) await _courses.publishCourse(course.id);
+
+            // Delete older course PDFs only after the replacement is saved.
+            for (final old in oldResources.where((resource) =>
+                resource.resourceType.toLowerCase() == 'pdf')) {
+              try { await _resources.deleteResource(old); } catch (_) {}
+            }
+            completed++;
+          } catch (_) {
+            if (uploaded != null) {
+              try { await _resources.deleteResource(uploaded); } catch (_) {}
+            }
+            if (existing == null) {
+              try { await _courses.deleteCourse(course.id); } catch (_) {}
+            } else if (courseUpdated) {
+              try {
+                await _courses.saveCourse(
+                  id: course.id,
+                  curriculumId: existing['curriculum_id']?.toString(),
+                  chapterId: existing['chapter_id']?.toString(),
+                  subjectId: existing['subject_id'].toString(),
+                  teacherId: existing['teacher_id']?.toString() ?? currentUserId,
+                  classId: existing['class_id'].toString(),
+                  titleFr: existing['title_fr']?.toString() ?? title,
+                  titleEn: existing['title_en']?.toString() ?? title,
+                  descriptionFr: existing['description_fr']?.toString(),
+                  descriptionEn: existing['description_en']?.toString(),
+                  contentFr: existing['content_fr']?.toString(),
+                  contentEn: existing['content_en']?.toString(),
+                  smartLessonEnabled: existing['smart_lesson_enabled'] as bool? ?? true,
+                  minimumExerciseScore:
+                      (existing['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+                  status: existing['status']?.toString() ?? 'draft',
+                );
+              } catch (_) {}
+            }
+            rethrow;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() => _selectedPdf = null);
       await _loadCourses();
-      _showMessage(_t('Cahier enregistré dans le chapitre sélectionné.', 'Notebook saved in the selected chapter.'));
+      _showMessage(completed.toString() +
+          _t(' cours enregistré(s) avec le document choisi.',
+              ' course(s) saved with the selected document.'));
+    } catch (error) {
+      _showMessage(_t('Envoi du cours impossible : ', 'Course upload failed: ') +
+          error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+  Future<void> _replaceCoursePdf(Map<String, dynamic> row) async {
+    final file = await _pickCoursePdf();
+    if (file == null) return;
+    final courseId = row['id']?.toString() ?? '';
+    final currentUserId = _db.auth.currentUser?.id;
+    if (courseId.isEmpty || currentUserId == null) return;
+
+    setState(() => _saving = true);
+    CourseResource? uploaded;
+    try {
+      final oldResources = await _resources.listForCourse(courseId);
+      final title = _pdfCourseTitle(file);
+      uploaded = await _resources.uploadResource(
+        courseId: courseId,
+        file: file,
+        resourceType: 'pdf',
+        position: 0,
+        titleFr: title,
+        titleEn: title,
+      );
+      await _courses.saveCourse(
+        id: courseId,
+        curriculumId: row['curriculum_id']?.toString(),
+        chapterId: row['chapter_id']?.toString(),
+        subjectId: row['subject_id'].toString(),
+        teacherId: row['teacher_id']?.toString() ?? currentUserId,
+        classId: row['class_id'].toString(),
+        titleFr: row['title_fr']?.toString() ?? title,
+        titleEn: row['title_en']?.toString() ?? title,
+        descriptionFr: row['description_fr']?.toString(),
+        descriptionEn: row['description_en']?.toString(),
+        contentFr: '',
+        contentEn: '',
+        smartLessonEnabled: row['smart_lesson_enabled'] as bool? ?? true,
+        minimumExerciseScore:
+            (row['minimum_exercise_score'] as num?)?.toInt() ?? 50,
+        status: row['status']?.toString() ?? 'draft',
+      );
+      for (final old in oldResources.where((resource) =>
+          resource.resourceType.toLowerCase() == 'pdf')) {
+        try { await _resources.deleteResource(old); } catch (_) {}
+      }
+      await _loadCourses();
+      _showMessage(_t('Document du cours remplacé.', 'Course document replaced.'));
+    } catch (error) {
+      if (uploaded != null) {
+        try { await _resources.deleteResource(uploaded); } catch (_) {}
+      }
+      _showMessage(_t('Remplacement impossible : ', 'Replacement failed: ') +
+          error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -482,21 +672,32 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
               }),
             const Divider(height: 28),
             _sectionTitle(
-              _t('4. Rédiger le cours', '4. Write the course'),
-              _t('Le texte sera enregistré dans le cours correspondant à chaque salle et chaque chapitre.', 'The text will be saved in the course for each selected classroom and chapter.'),
+              _t('4. Choisir le document du cours', '4. Choose the course document'),
+              _t('Un seul document est envoyé pour chaque combinaison salle et chapitre sélectionnée.',
+                  'One document is sent for each selected classroom and chapter combination.'),
             ),
-            Container(
-              margin: const EdgeInsets.only(top: 8, bottom: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(12),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : () async {
+                final file = await _pickCoursePdf();
+                if (file != null && mounted) setState(() => _selectedPdf = file);
+              },
+              icon: const Icon(Icons.upload_file_rounded),
+              label: Text(_t('Sélectionner le document du cours', 'Select course document')),
+            ),
+            if (_selectedPdf != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: Row(children: [
+                  const Icon(Icons.description_outlined, color: Color(0xFF166534)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_selectedPdf!.name, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                    tooltip: _t('Retirer', 'Remove'),
+                    onPressed: _saving ? null : () => setState(() => _selectedPdf = null),
+                    icon: const Icon(Icons.close),
+                  ),
+                ]),
               ),
-              child: Text(_t(
-                'Tous les cours sont maintenant créés dans le cahier A4. Rédigez le cours en continu : les pages se créent automatiquement selon la place disponible. L’ancien formulaire de texte et d’envoi de PDF n’est plus utilisé.',
-                'All lessons are now created in the A4 notebook. Write continuously: pages are generated automatically from available space. The old text and PDF upload form is no longer used.',
-              )),
-            ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _publish,
@@ -506,11 +707,12 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: _saving || reference == null || _chapterIds.isEmpty || _targetClassIds.isEmpty
+              onPressed: _saving || reference == null || _chapterIds.isEmpty ||
+                      _targetClassIds.isEmpty || _selectedPdf == null
                   ? null
-                  : _openNotebookEditor,
-              icon: const Icon(Icons.menu_book_rounded),
-              label: Text(_t('Créer le cours en pages A4', 'Create A4 notebook course')),
+                  : _sendPdfCourse,
+              icon: const Icon(Icons.send_rounded),
+              label: Text(_t('Envoyer le cours aux élèves', 'Send course to students')),
             ),
           ],
         ),
@@ -604,12 +806,15 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
                     onSelected: (action) {
+                      if (action == 'replace') _replaceCoursePdf(row);
                       if (action == 'pages') _editCoursePages(row);
                       if (action == 'delete') _deleteCourse(row);
                     },
                     itemBuilder: (_) => [
-                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty)
-                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier les pages A4', 'Edit A4 pages'))),
+                      PopupMenuItem(value: 'replace', child: Text(_t('Remplacer le document du cours', 'Replace course document'))),
+                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty &&
+                          row['pages_json'] is List && (row['pages_json'] as List).isNotEmpty)
+                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier les anciennes pages A4', 'Edit legacy A4 pages'))),
                       PopupMenuItem(value: 'delete', child: Text(_t('Supprimer', 'Delete'))),
                     ],
                   ),

@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'admin_chapter_assessments_page.dart';
-import 'course_notebook_editor_page.dart';
 import '../../../core/services/course_pdf_page_service.dart';
 
 /// Administration des chapitres. La sécurité des écritures est imposée par RLS.
@@ -107,20 +106,112 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
   Future<void> deleteChapter(Map<String,dynamic> ch) async {if(!await confirm(t('Supprimer ce chapitre et son contenu ?','Delete this chapter and its content?')))return;try{await db.from('course_chapters').delete().eq('id',ch['id']);if(chapter?['id']==ch['id'])chapter=null;await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
   Future<void> toggleChapter(Map<String,dynamic> ch) async {try{await db.from('course_chapters').update({'is_active':!(ch['is_active'] as bool? ?? true)}).eq('id',ch['id']);await chooseCurriculum(curriculum);}catch(e){toast(e.toString());}}
-  Future<void> addContent() async {
+  Future<void> addContent() => uploadPdfCourse();
+
+  /// Un seul document source représente le cours du chapitre.
+  /// Le PDF reste privé dans Storage ; l'élève voit uniquement le lecteur de cours.
+  Future<void> uploadPdfCourse({Map<String, dynamic>? existingItem}) async {
     final selectedChapter = chapter;
     if (selectedChapter == null) return;
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CourseNotebookEditorPage(
-          locale: widget.locale,
-          chapterId: selectedChapter['id'].toString(),
+
+    String? uploadedPath;
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+      final file = picked.files.single;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.length < 5 ||
+          String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+        toast(t('Le fichier sélectionné n’est pas un PDF valide.',
+            'The selected file is not a valid PDF.'));
+        return;
+      }
+
+      Map<String, dynamic>? current = existingItem;
+      if (current == null) {
+        final rows = await db
+            .from('chapter_content_items')
+            .select()
+            .eq('chapter_id', selectedChapter['id'])
+            .eq('content_type', 'course')
+            .order('position')
+            .limit(1);
+        if (rows.isNotEmpty) current = Map<String, dynamic>.from(rows.first);
+      }
+
+      final oldSource = (current?['source_pdf_path'] as String? ?? '').trim();
+      final oldStorage = (current?['storage_path'] as String? ?? '').trim();
+      final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      uploadedPath = '${selectedChapter['id']}/course_${timestamp}_$safeName';
+      await db.storage.from('chapter-content').uploadBinary(
+        uploadedPath,
+        bytes,
+        fileOptions: const FileOptions(
+          contentType: 'application/pdf',
+          upsert: false,
         ),
-      ),
-    );
-    if (saved == true && mounted) {
-      await chooseCurriculum(curriculum);
-      toast(t('Cours créé dans le cahier A4.', 'Course created in the A4 notebook.'));
+      );
+
+      final rawTitle = p.basenameWithoutExtension(file.name).trim();
+      final title = rawTitle.isEmpty ? t('Cours', 'Course') : rawTitle;
+      final rowData = <String, dynamic>{
+        'chapter_id': selectedChapter['id'],
+        'content_type': 'course',
+        'title_fr': current == null ? title : (current['title_fr'] ?? title),
+        'title_en': current == null
+            ? title
+            : (current['title_en'] ?? current['title_fr'] ?? title),
+        'body_text_fr': current?['body_text_fr'] ?? ' ',
+        'body_text_en': current?['body_text_en'] ?? ' ',
+        'source_pdf_path': uploadedPath,
+        'source_page_start': 1,
+        'source_page_end': null,
+        'folder_key': 'course',
+        'position': current?['position'] ?? 0,
+        'is_published': current?['is_published'] == true,
+      };
+
+      Map<String, dynamic> saved;
+      if (current == null) {
+        final inserted = await db
+            .from('chapter_content_items')
+            .insert(rowData)
+            .select()
+            .single();
+        saved = Map<String, dynamic>.from(inserted);
+      } else {
+        final updated = await db
+            .from('chapter_content_items')
+            .update(rowData)
+            .eq('id', current['id'])
+            .select()
+            .single();
+        saved = Map<String, dynamic>.from(updated);
+      }
+
+      // The student reader displays the original document directly; no raster-page table is required.
+
+      for (final oldPath in {oldSource, oldStorage}) {
+        if (oldPath.isNotEmpty && oldPath != uploadedPath) {
+          try { await db.storage.from('chapter-content').remove([oldPath]); } catch (_) {}
+        }
+      }
+      uploadedPath = null;
+      if (mounted) {
+        await chooseCurriculum(curriculum);
+        toast(t('Cours PDF enregistré. Il est visible aux élèves selon son statut de publication.',
+            'Course document saved. Students can see it according to its publication status.'));
+      }
+    } catch (error) {
+      if (uploadedPath != null) {
+        try { await db.storage.from('chapter-content').remove([uploadedPath]); } catch (_) {}
+      }
+      toast(t('Envoi du cours impossible : $error', 'Could not upload the course: $error'));
     }
   }
 
@@ -207,21 +298,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final targetChapterId = chapter?['id']?.toString();
     final type = item['content_type'] as String? ?? 'course';
     if (type == 'course') {
-      final chapterId = item['chapter_id']?.toString() ?? targetChapterId ?? '';
-      if (chapterId.isEmpty) {
-        toast(t('Ce cours doit être associé à un chapitre.', 'This course must be linked to a chapter.'));
-        return;
-      }
-      final saved = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => CourseNotebookEditorPage(
-            locale: widget.locale,
-            chapterId: chapterId,
-            existingItem: item,
-          ),
-        ),
-      );
-      if (saved == true && mounted) await chooseCurriculum(curriculum);
+      await uploadPdfCourse(existingItem: item);
       return;
     }
     final titleFr = TextEditingController(text: item['title_fr'] as String? ?? '');
@@ -362,19 +439,6 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
     try {
-      if (willPublish &&
-          item['content_type'] == 'course' &&
-          (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty) {
-        try {
-          final count = await CoursePdfPageService(db).regenerate(item);
-          toast(t('Pages du cours préparées : $count page(s).',
-              'Course pages prepared: $count page(s).'));
-        } catch (pageError) {
-          toast(t('Publication bloquée : conversion des pages impossible. $pageError',
-              'Publication blocked: page conversion failed. $pageError'));
-          return;
-        }
-      }
       await db.from('chapter_content_items')
           .update({'is_published': willPublish})
           .eq('id', item['id']);
@@ -408,7 +472,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
 
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Créer un cours A4 / ajouter une ressource','Create A4 course / add resource')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
+  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text(t('Gestion des chapitres','Chapter management'))),floatingActionButton:chapter==null?null:FloatingActionButton.extended(onPressed:addContent,icon:const Icon(Icons.add),label:Text(t('Importer le cours du chapitre','Upload chapter course')),),body:loading?const Center(child:CircularProgressIndicator()):error!=null?Center(child:Text(error!)):RefreshIndicator(onRefresh:loadClasses,child:ListView(padding:const EdgeInsets.all(16),children:[
     DropdownButtonFormField<Map<String,dynamic>>(value:schoolClass,isExpanded:true,decoration:InputDecoration(labelText:t('1. Classe','1. Class')),items:classes.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'display_name','display_name')))).toList(),onChanged:chooseClass),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:subject,isExpanded:true,decoration:InputDecoration(labelText:t('2. Matière','2. Subject')),items:subjects.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'name_fr','name_en')))).toList(),onChanged:chooseSubject),
     const SizedBox(height:12),DropdownButtonFormField<Map<String,dynamic>>(value:curriculum,isExpanded:true,decoration:InputDecoration(labelText:t('3. Programme','3. Curriculum')),items:curricula.map((v)=>DropdownMenuItem(value:v,child:Text(label(v,'title_fr','title_en')))).toList(),onChanged:chooseCurriculum),
@@ -442,7 +506,7 @@ FutureBuilder<List<Map<String,dynamic>>>(
             title:Text((item['title_fr'] as String?)??''),
             subtitle:Text((item['is_published'] as bool? ?? false)?t('Publié','Published'):t('Masqué','Hidden')),
             trailing:PopupMenuButton<String>(
-              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='pages')Navigator.of(context).push(MaterialPageRoute(builder:(_)=>CourseNotebookEditorPage(locale:widget.locale,chapterId:chapter!['id'].toString(),existingItem:item))).then((saved){if(saved==true&&mounted)setState((){});});if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
+              onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
@@ -450,8 +514,6 @@ FutureBuilder<List<Map<String,dynamic>>>(
                 if (item['content_type'] == 'course' &&
                     (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty)
                   PopupMenuItem(value:'regenerate',child:Text(t('Régénérer les pages','Regenerate pages'))),
-                if (item['content_type'] == 'course')
-                  PopupMenuItem(value:'pages',child:Text(t('Modifier les pages du cahier','Edit notebook pages'))),
                 PopupMenuItem(value:'toggle',child:Text(t('Masquer / publier','Hide / publish'))),
                 PopupMenuItem(value:'delete',child:Text(t('Supprimer','Delete'))),
               ],

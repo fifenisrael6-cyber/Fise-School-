@@ -386,14 +386,14 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                       'image': isEnglish ? 'Photos' : 'Photos',
                       'audio': isEnglish ? 'Audio' : 'Audios',
                       'video': isEnglish ? 'Videos' : 'Vidéos',
-                      'pdf': 'PDF',
+                      'pdf': widget.locale.languageCode == 'en' ? 'Lesson' : 'Cours',
                       'document': isEnglish ? 'Other files' : 'Autres fichiers',
                     };
                     final categoryIcons = <String, IconData>{
                       'image': Icons.photo_library_outlined,
                       'audio': Icons.audiotrack_rounded,
                       'video': Icons.video_library_outlined,
-                      'pdf': Icons.picture_as_pdf_outlined,
+                      'pdf': Icons.menu_book_rounded,
                       'document': Icons.folder_open_rounded,
                     };
 

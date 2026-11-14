@@ -234,6 +234,31 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
     return result;
   }
 
+  List<Map<String, dynamic>> _structuredBlocks(String text, {required bool english}) {
+    final blocks = <Map<String, dynamic>>[];
+    final pattern = RegExp(r'(\$\$[\s\S]+?\$\$|\$[^$\n]+\$)');
+    var cursor = 0;
+    for (final match in pattern.allMatches(text)) {
+      final before = text.substring(cursor, match.start).trim();
+      if (before.isNotEmpty) blocks.add({'type': 'TEXT', 'text': before});
+      final raw = match.group(0)!;
+      final latex = raw.length > 1 && raw.codeUnitAt(1) == 36 ? raw.substring(2, raw.length - 2).trim() : raw.substring(1, raw.length - 1).trim();
+      if (latex.isNotEmpty) blocks.add({'type': 'FORMULA', 'latex': latex});
+      cursor = match.end;
+    }
+    final remaining = text.substring(cursor).trim();
+    if (remaining.isNotEmpty) blocks.add({'type': 'TEXT', 'text': remaining});
+    for (final image in _pages.first.images) {
+      final path = image['storage_path']?.toString() ?? '';
+      if (path.isEmpty) continue;
+      blocks.add({
+        'type': 'DIAGRAM',
+        'storage_path': path,
+        'caption': (english ? image['caption_en'] : image['caption_fr'])?.toString() ?? '',
+      });
+    }
+    return blocks;
+  }
   Future<void> _save() async {
     if (_saving) return;
     if (_titleFr.text.trim().isEmpty) {
@@ -324,6 +349,8 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           'body_text_fr': plainText,
           'body_text_en': plainTextEn,
           'pages_json': pages,
+          'content_blocks_fr': _structuredBlocks(plainText, english: false),
+          'content_blocks_en': _structuredBlocks(plainTextEn, english: true),
           'is_published': _published,
           'created_by': _db.auth.currentUser?.id,
         };

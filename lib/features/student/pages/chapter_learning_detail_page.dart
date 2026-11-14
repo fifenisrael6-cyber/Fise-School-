@@ -216,6 +216,33 @@ class _ChapterLearningDetailPageState
     }
   }
 
+  Future<void> _openCourse(_ChapterData data) async {
+    final lessons = data.content
+        .where((item) => item.folderKey == 'course' && item.isPublished)
+        .toList(growable: false);
+    if (lessons.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_en
+            ? 'No course has been published in this chapter yet.'
+            : 'Aucun cours n’a encore été publié dans ce chapitre.'),
+      ));
+      return;
+    }
+    await _markRead();
+    if (!mounted) return;
+    final lesson = lessons.first;
+    if ((lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
+      await _openOriginalPdfLesson(lesson);
+    } else {
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => CourseNotebookReaderPage(
+          item: lesson,
+          locale: widget.locale,
+        ),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const green = Color(0xFF166534);
@@ -331,7 +358,7 @@ class _ChapterLearningDetailPageState
                 Align(
                   alignment: Alignment.centerLeft,
                   child: FilledButton.icon(
-                    onPressed: data.content.isEmpty ? null : _markRead,
+                    onPressed: data.content.isEmpty ? null : () => _openCourse(data),
                     icon: _savingRead
                         ? const SizedBox(
                             width: 16, height: 16,
@@ -474,12 +501,17 @@ class _ChapterLearningDetailPageState
         ));
         return;
       }
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => CourseNotebookReaderPage(
-          item: lessons.first,
-          locale: widget.locale,
-        ),
-      ));
+      final lesson = lessons.first;
+      if ((lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
+        await _openOriginalPdfLesson(lesson);
+      } else {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => CourseNotebookReaderPage(
+            item: lesson,
+            locale: widget.locale,
+          ),
+        ));
+      }
       return;
     }
     if (folder != _ChapterResourceFolder.exercises) {
@@ -673,9 +705,15 @@ class _ChapterLearningDetailPageState
     final bodySize = _a4Layout ? 17.0 : 15.5;
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => CourseNotebookReaderPage(item: item, locale: widget.locale),
-      )),
+      onTap: () {
+        if ((item.sourcePdfPath ?? '').trim().isNotEmpty) {
+          _openOriginalPdfLesson(item);
+        } else {
+          Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CourseNotebookReaderPage(item: item, locale: widget.locale),
+          ));
+        }
+      },
       child: Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(

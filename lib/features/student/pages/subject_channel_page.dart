@@ -287,7 +287,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                         ),
                         subtitle: Text(
                           _fr
-                              ? '${chapters.length} titre(s). Ouvre un chapitre pour retrouver les cours et leurs fichiers classés par dossiers : photos, audios, vidéos et PDF.'
+                              ? '${chapters.length} titre(s). Ouvre un chapitre pour retrouver les cours et leurs fichiers classés par dossiers : photos, audios, vidéos et cours.'
                               : '${chapters.length} title(s). Open a chapter to browse lessons and files grouped into folders: photos, audio, videos and PDFs.',
                         ),
                       ),
@@ -415,13 +415,12 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     final cacheKey = items
         .map((item) => item.course?.id ?? item.chapterContent?['id']?.toString() ?? '')
         .join('|');
-    final coursePosts = items.where((item) =>
-        item.chapterContent != null ||
-        (item.course != null &&
-            (((item.course!.contentFr ?? '').trim().isNotEmpty) ||
-             ((item.course!.contentEn ?? '').trim().isNotEmpty) ||
-             ((item.course!.descriptionFr ?? '').trim().isNotEmpty) ||
-             ((item.course!.descriptionEn ?? '').trim().isNotEmpty)))).toList();
+    // A PDF-only course is intentionally stored with empty content/description:
+    // its title and attached document are the lesson. Do not hide that course
+    // from the Cours folder just because it has no rich-text body.
+    final coursePosts = items
+        .where((item) => item.chapterContent != null || item.course != null)
+        .toList();
     final mediaFuture = _chapterMediaFutures.putIfAbsent(
       cacheKey,
       () => _loadChapterMedia(items),
@@ -495,7 +494,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
                   Text(
-                    '${entry.resource.resourceType.toUpperCase()} · ${_formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))}',
+                    entry.resource.resourceType.toLowerCase() == 'pdf'
+                        ? _formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))
+                        : '${entry.resource.resourceType.toUpperCase()} · ${_formatDate(entry.course.publishedAt ?? entry.resource.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0))}',
                     style: const TextStyle(fontSize: 11, color: Colors.black54),
                   ),
                   OfflineResourceTile(

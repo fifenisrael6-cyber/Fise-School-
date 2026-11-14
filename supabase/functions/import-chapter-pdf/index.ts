@@ -15,6 +15,25 @@ function normalize(value: unknown): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+/** Convertit le Markdown en blocs ordonnes sans inventer d'images. */
+function buildContentBlocks(markdown: string): Array<Record<string, string>> {
+  const blocks: Array<Record<string, string>> = [];
+  const formulaPattern = /(?:\$\$[\s\S]+?\$\$|\$[^$\n]+\$)/g;
+  let cursor = 0;
+  for (const match of markdown.matchAll(formulaPattern)) {
+    const index = match.index ?? 0;
+    const before = markdown.slice(cursor, index).trim();
+    if (before) blocks.push({ type: 'TEXT', text: before });
+    const raw = match[0];
+    const latex = raw.startsWith('$$') ? raw.slice(2, -2).trim() : raw.slice(1, -1).trim();
+    if (latex) blocks.push({ type: 'FORMULA', latex });
+    cursor = index + raw.length;
+  }
+  const remaining = markdown.slice(cursor).trim();
+  if (remaining) blocks.push({ type: 'TEXT', text: remaining });
+  return blocks.length ? blocks : [{ type: 'TEXT', text: markdown }];
+}
+
 async function extractPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
   if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
@@ -345,6 +364,8 @@ ${extracted.slice(0, 90000)}`;
             title_en: String(generated.title_en ?? previous.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
             body_text_fr: String(generated.content_fr).trim(),
             body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+            content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
+            content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
             source_pdf_path: source.storage_path,
             source_page_start: generated.source_page_start,
             source_page_end: generated.source_page_end,
@@ -369,6 +390,8 @@ ${extracted.slice(0, 90000)}`;
               title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
               body_text_fr: String(generated.content_fr).trim(),
               body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+              content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
+              content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
               source_pdf_path: source.storage_path,
               source_page_start: generated.source_page_start,
               source_page_end: generated.source_page_end,
@@ -390,6 +413,8 @@ ${extracted.slice(0, 90000)}`;
           title_en: String(generated.title_en ?? contentTitle).trim().slice(0, 250) || contentTitle,
           body_text_fr: String(generated.content_fr).trim(),
           body_text_en: String(generated.content_en ?? "").trim() || String(generated.content_fr).trim(),
+          content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
+          content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
           source_pdf_path: source.storage_path,
           source_page_start: generated.source_page_start,
           source_page_end: generated.source_page_end,

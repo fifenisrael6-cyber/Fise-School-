@@ -188,7 +188,7 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError || !snapshot.hasData) {
-          return Center(child: Text(_fr ? 'Impossible d’ouvrir le PDF.' : 'Unable to open PDF.'));
+          return Center(child: Text(_fr ? 'Impossible d’ouvrir ce cours.' : 'Unable to open this lesson.'));
         }
         final document = snapshot.data!;
         _document ??= document;
@@ -220,7 +220,7 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                                   return const Center(child: CircularProgressIndicator());
                                 }
                                 if (pageSnapshot.hasError || !pageSnapshot.hasData) {
-                                  return Center(child: Text(_fr ? 'Page illisible.' : 'Page unavailable.'));
+                                  return Center(child: Text(_fr ? 'Cette page du cours est indisponible.' : 'This lesson page is unavailable.'));
                                 }
                                 return InteractiveViewer(
                                   minScale: 1,
