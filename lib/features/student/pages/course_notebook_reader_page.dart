@@ -16,10 +16,10 @@ import '../../../core/services/chapter_learning_service.dart';
 
 /// Palette commune au lecteur, indépendante des couleurs générales de l'application.
 abstract final class CourseReaderTheme {
-  static const navy = CourseReaderTheme.navy;
+  static const navy = Color(0xFF17365D);
   static const blue = Color(0xFF2476D2);
-  static const paleBlue = CourseReaderTheme.paleBlue;
-  static const paleGreen = CourseReaderTheme.paleGreen;
+  static const paleBlue = Color(0xFFEAF3FF);
+  static const paleGreen = Color(0xFFEAF7EF);
   static const text = Color(0xFF1E293B);
   static const border = Color(0xFFB9D7FA);
 }
