@@ -1049,6 +1049,7 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
   PdfDocument? _document;
   int _totalPages = 0;
   int _pageIndex = 0;
+  final PageController _pageController = PageController();
   bool _a4Layout = false;
   final Map<int, Future<Uint8List>> _pageRenders = <int, Future<Uint8List>>{};
 
@@ -1121,6 +1122,7 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     if (document != null) {
       unawaited(document.close());
     }
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -1166,6 +1168,7 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
             children: [
               Expanded(
                 child: PageView.builder(
+                  controller: _pageController,
                   itemCount: _totalPages,
                   onPageChanged: (index) {
                     setState(() {
@@ -1240,10 +1243,39 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
               SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    '${_en ? 'Original page' : 'Page originale'} ${_startPage + _pageIndex}/${_startPage + _totalPages - 1}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: green),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        tooltip: _en ? 'Previous page' : 'Page précédente',
+                        onPressed: _pageIndex <= 0
+                            ? null
+                            : () => _pageController.previousPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOut,
+                                ),
+                        icon: const Icon(Icons.chevron_left_rounded, size: 34),
+                      ),
+                      Text(
+                        '${_en ? 'Page' : 'Page'} ${_startPage + _pageIndex} / ${_startPage + _totalPages - 1}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 20,
+                          color: green,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Next page' : 'Page suivante',
+                        onPressed: _pageIndex >= _totalPages - 1
+                            ? null
+                            : () => _pageController.nextPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOut,
+                                ),
+                        icon: const Icon(Icons.chevron_right_rounded, size: 34),
+                      ),
+                    ],
                   ),
                 ),
               ),
