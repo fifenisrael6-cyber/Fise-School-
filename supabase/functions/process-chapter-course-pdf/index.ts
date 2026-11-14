@@ -393,7 +393,7 @@ async function createPageContent(doc: any, pageCount: number, chapterId: string,
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
 
