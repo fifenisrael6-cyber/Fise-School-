@@ -233,18 +233,10 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                     // On phones, use the full available width. Limiting the
                     // page to the available height makes printed text too small.
                     final width = (constraints.maxWidth - 12).clamp(280.0, 794.0).toDouble();
-                    return Center(
-                      child: SizedBox(
-                        width: width,
-                        child: AspectRatio(
-                          aspectRatio: 210 / 297,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10),
-                            color: Colors.white,
-                            padding: const EdgeInsets.all(4),
-                            child: FutureBuilder<Uint8List>(
-                              future: _renderCached(document, index + 1),
-                              builder: (context, pageSnapshot) {
+                    return SizedBox.expand(
+                      child: FutureBuilder<Uint8List>(
+                        future: _renderCached(document, index + 1),
+                        builder: (context, pageSnapshot) {
                                 if (pageSnapshot.connectionState == ConnectionState.waiting) {
                                   return const Center(child: CircularProgressIndicator());
                                 }
@@ -270,28 +262,23 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
                                     ),
                                   );
                                 }
-                                return ClipRect(
-                                  child: InteractiveViewer(
-                                    minScale: 1,
-                                    maxScale: 5,
-                                    boundaryMargin: const EdgeInsets.all(120),
-                                    clipBehavior: Clip.none,
-                                    child: Transform.scale(
-                                      scale: 1.32,
-                                      child: Image.memory(
-                                        pageSnapshot.data!,
-                                        fit: BoxFit.contain,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                        filterQuality: FilterQuality.high,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+                          return ClipRect(
+                            child: InteractiveViewer(
+                              constrained: false,
+                              alignment: Alignment.topCenter,
+                              minScale: 1,
+                              maxScale: 4,
+                              boundaryMargin: const EdgeInsets.all(100),
+                              child: Image.memory(
+                                pageSnapshot.data!,
+                                width: width,
+                                fit: BoxFit.fitWidth,
+                                alignment: Alignment.topCenter,
+                                filterQuality: FilterQuality.high,
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     );
                   },
