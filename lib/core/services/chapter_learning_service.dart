@@ -249,7 +249,11 @@ class ChapterLearningService {
     for (final course in courses) {
       final bodyFr = course['content_fr']?.toString();
       final bodyEn = course['content_en']?.toString();
-      if ((bodyFr ?? '').trim().isEmpty && (bodyEn ?? '').trim().isEmpty) {
+      final pageData = course['pages_json'];
+      final hasPages = pageData is List && pageData.isNotEmpty;
+      if ((bodyFr ?? '').trim().isEmpty &&
+          (bodyEn ?? '').trim().isEmpty &&
+          !hasPages) {
         continue;
       }
       content.add({
