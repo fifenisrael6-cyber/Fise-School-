@@ -1113,6 +1113,18 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
         title: Text(widget.item.titleFor(widget.locale.languageCode)),
         actions: [
           IconButton(
+            tooltip: _en ? 'Structured version' : 'Version structurée',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => CourseNotebookReaderPage(
+                item: widget.item,
+                locale: widget.locale,
+                useStructuredPagesOnly: true,
+                onOpenOriginalPdf: () => Navigator.of(context).pop(),
+              ),
+            )),
+            icon: const Icon(Icons.article_outlined),
+          ),
+          IconButton(
             tooltip: _a4Layout
                 ? (_en ? 'Phone layout' : 'Format téléphone')
                 : (_en ? 'A4 layout' : 'Format A4'),

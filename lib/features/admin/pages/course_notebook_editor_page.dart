@@ -355,6 +355,12 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           'created_by': _db.auth.currentUser?.id,
         };
         final existingId = widget.existingItem?['id']?.toString();
+        if (existingId != null &&
+            (widget.existingItem?['source_pdf_path']?.toString().trim().isNotEmpty ?? false)) {
+          data['processing_status'] = 'ready';
+          data['processing_error'] = null;
+          data['processed_at'] = DateTime.now().toUtc().toIso8601String();
+        }
         if (existingId == null) {
           final rows = await _db.from('chapter_content_items')
               .select('position').eq('chapter_id', widget.chapterId).order('position', ascending: false).limit(1);
