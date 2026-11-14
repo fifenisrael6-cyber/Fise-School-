@@ -231,16 +231,14 @@ class _ChapterLearningDetailPageState
     await _markRead();
     if (!mounted) return;
     final lesson = lessons.first;
-    if ((lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
-      await _openOriginalPdfLesson(lesson);
-    } else {
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => CourseNotebookReaderPage(
-          item: lesson,
-          locale: widget.locale,
-        ),
-      ));
-    }
+    // All published course formats enter the same responsive reader. The
+    // original source is used internally only as an offline raster fallback.
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CourseNotebookReaderPage(
+        item: lesson,
+        locale: widget.locale,
+      ),
+    ));
   }
 
   @override
