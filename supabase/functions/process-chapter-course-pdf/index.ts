@@ -182,13 +182,19 @@ async function createPageContent(doc: any, pageCount: number, chapterId: string,
     if (id) assets.set(id, asset);
   }
 
-  const pages: any[] = Array.from({ length: pageCount }, (_, index) => ({
-    id: "pdf-page-" + (index + 1),
-    position: index + 1,
-    source_page_number: index + 1,
-    format: "original-pdf-page",
-    blocks: [],
-  }));
+  const sourcePages = Array.isArray(doc?.pages) ? doc.pages : [];
+  const pages: any[] = Array.from({ length: pageCount }, (_, index) => {
+    const dimension = sourcePages[index]?.dimension ?? {};
+    return {
+      id: "pdf-page-" + (index + 1),
+      position: index + 1,
+      source_page_number: index + 1,
+      page_width: Number(dimension.width ?? 0) || null,
+      page_height: Number(dimension.height ?? 0) || null,
+      format: "original-pdf-page",
+      blocks: [],
+    };
+  });
   const imagePaths = new Map<string, string>();
   let extractedImageCount = 0;
   let tableCount = 0;
@@ -422,11 +428,14 @@ serve(async (req) => {
     db = createClient(url, service);
 
     const sourceResult = await db.from("chapter_content_items")
-      .select("id,chapter_id,content_type,title_fr,source_pdf_path,is_published,processing_status")
+      .select("id,chapter_id,content_type,title_fr,source_pdf_path,pending_source_pdf_path,is_published,processing_status")
       .eq("id", contentItemId).single();
     if (sourceResult.error || !sourceResult.data) return json({ error: "Cours introuvable." }, 404);
     const source = sourceResult.data;
-    if (source.content_type !== "course" || !source.source_pdf_path) {
+    const processingPdfPath = String(
+      source.pending_source_pdf_path || source.source_pdf_path || "",
+    ).trim();
+    if (source.content_type !== "course" || !processingPdfPath) {
       return json({ error: "Le cours sélectionné ne possède pas de PDF original." }, 400);
     }
 
@@ -436,7 +445,7 @@ serve(async (req) => {
     }).eq("id", contentItemId);
     if (!processorName) throw new Error("Secret DOCUMENT_AI_PROCESSOR_NAME manquant.");
 
-    const fileResult = await db.storage.from("chapter-content").download(source.source_pdf_path);
+    const fileResult = await db.storage.from("chapter-content").download(processingPdfPath);
     if (fileResult.error || !fileResult.data) {
       throw new Error(fileResult.error?.message ?? "Téléchargement du PDF original impossible.");
     }
@@ -493,6 +502,10 @@ serve(async (req) => {
 
     const { error: updateError } = await db.from("chapter_content_items")
       .update({
+        source_pdf_path: processingPdfPath,
+        pending_source_pdf_path: null,
+        // Every newly extracted/replaced document must be reviewed again.
+        is_published: false,
         body_text_fr: result.fullText,
         body_text_en: result.fullText,
         content_blocks_fr: result.contentBlocks,

@@ -167,7 +167,16 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
             : (current['title_en'] ?? current['title_fr'] ?? title),
         'body_text_fr': current?['body_text_fr'] ?? ' ',
         'body_text_en': current?['body_text_en'] ?? ' ',
-        'source_pdf_path': uploadedPath,
+        // Existing published content keeps its current source until the new PDF
+        // has been extracted successfully. New course rows use source_pdf_path.
+        'source_pdf_path': current == null
+            ? uploadedPath
+            : current['source_pdf_path'],
+        'pending_source_pdf_path': current == null ? null : uploadedPath,
+        'processing_status': 'not_started',
+        'processing_error': null,
+        'processed_at': null,
+        'processing_metadata': <String, dynamic>{},
         'source_page_start': 1,
         'source_page_end': null,
         'folder_key': 'course',
@@ -252,7 +261,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
 
   Future<void> processChapterCoursePdf(Map<String, dynamic> item) async {
-    final sourcePath = (item['source_pdf_path'] as String? ?? '').trim();
+    final sourcePath = (item['pending_source_pdf_path'] as String? ??
+        item['source_pdf_path'] as String? ?? '').trim();
     if (item['content_type'] != 'course' || sourcePath.isEmpty) {
       toast(t('Le PDF original de ce cours est introuvable.', 'The original PDF for this course is unavailable.'));
       return;
@@ -505,7 +515,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   Future<void> toggleContent(Map<String, dynamic> item) async {
     final willPublish = !(item['is_published'] as bool? ?? false);
     final targetChapterId = item['chapter_id']?.toString() ?? chapter?['id']?.toString();
-    final hasOriginalPdf = (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty;
+    final hasOriginalPdf =
+        ((item['pending_source_pdf_path'] as String? ?? '').trim().isNotEmpty) ||
+        ((item['source_pdf_path'] as String? ?? '').trim().isNotEmpty);
     final processingStatus = item['processing_status']?.toString() ?? 'not_started';
     if (willPublish && item['content_type'] == 'course' &&
         hasOriginalPdf && processingStatus != 'ready') {
@@ -598,7 +610,9 @@ FutureBuilder<List<Map<String,dynamic>>>(
               itemBuilder:(_)=>[
                 if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
-                if (item['content_type'] == 'course' && (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty)
+                if (item['content_type'] == 'course' &&
+                    ((item['pending_source_pdf_path'] as String? ?? '').trim().isNotEmpty ||
+                     (item['source_pdf_path'] as String? ?? '').trim().isNotEmpty))
                   PopupMenuItem(value:'extract',child:Text(t('Extraire / réessayer l’extraction IA','Extract / retry AI extraction'))),
                 if (item['content_type'] == 'course')
                   PopupMenuItem(value:'pages',child:Text(t('Modifier le contenu structuré','Edit structured content'))),

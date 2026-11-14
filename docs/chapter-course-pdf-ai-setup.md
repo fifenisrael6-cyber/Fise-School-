@@ -45,7 +45,10 @@ le projet lié et disposer d'une sauvegarde récente.
 ## Limite actuelle
 
 La fonction utilise le traitement en ligne Document AI : maximum 15 pages par PDF
-et maximum 40 Mo. Le PDF original reste enregistré même si le traitement échoue.
+et maximum 40 Mo. Le PDF original reste enregistré même si le traitement échoue. Lors du remplacement d'un cours
+existant, le nouveau fichier est d'abord stocké comme source en attente : l'ancien PDF et son
+contenu restent utilisés si l'extraction échoue. Après extraction réussie, la nouvelle version
+est activée mais repasse à l'état masqué pour permettre la vérification éditoriale avant publication.
 Pour les documents de plus de 15 pages, il faudra activer un worker Cloud Run avec
 le traitement par lots Document AI (jusqu'à 500 pages par document pour Layout Parser),
 un bucket Google Cloud Storage dédié et une file de tâches. Cette étape exige un

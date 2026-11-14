@@ -2,6 +2,7 @@
 -- The original PDF, pages_json and content_blocks_* remain separate and untouched.
 alter table public.chapter_content_items
   add column if not exists processing_status text not null default 'not_started',
+  add column if not exists pending_source_pdf_path text,
   add column if not exists processing_error text,
   add column if not exists processed_at timestamptz,
   add column if not exists processing_metadata jsonb not null default '{}'::jsonb;
