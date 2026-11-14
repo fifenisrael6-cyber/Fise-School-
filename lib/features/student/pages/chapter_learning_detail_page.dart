@@ -966,7 +966,7 @@ class _ChapterLearningDetailPageState
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: SingleChildScrollView(
-                    child: Text(body, style: const TextStyle(fontSize: 16)),
+                    child: Text(body, style: const TextStyle(fontSize: 20, height: 1.7)),
                   ),
                 ),
               ),
