@@ -701,8 +701,8 @@ class _ChapterLearningDetailPageState
       (image.storagePath?.trim().isNotEmpty ?? false) ||
       (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
     final horizontalPadding = _a4Layout ? 38.0 : 20.0;
-    final titleSize = _a4Layout ? 25.0 : 21.0;
-    final bodySize = _a4Layout ? 17.0 : 15.5;
+    final titleSize = _a4Layout ? 25.0 : 23.0;
+    final bodySize = _a4Layout ? 17.0 : 18.0;
 
     return GestureDetector(
       onTap: () {
