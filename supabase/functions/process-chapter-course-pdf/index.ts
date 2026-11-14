@@ -56,9 +56,12 @@ async function googleAccessToken(): Promise<string> {
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
     .replace(/-----END PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
+  const pemBytes = base64ToBytes(pem);
+  const keyData = new ArrayBuffer(pemBytes.byteLength);
+  new Uint8Array(keyData).set(pemBytes);
   const key = await crypto.subtle.importKey(
     "pkcs8",
-    base64ToBytes(pem),
+    keyData,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"],
@@ -86,8 +89,8 @@ async function googleAccessToken(): Promise<string> {
 async function getPdfPageCount(bytes: Uint8Array): Promise<number> {
   const document = await pdfjsLib.getDocument({
     data: bytes,
-    disableWorker: true,
     useSystemFonts: true,
+    isEvalSupported: false,
   }).promise;
   const count = document.numPages;
   await document.destroy();
@@ -417,11 +420,11 @@ async function createPageContent(doc: any, pageCount: number, chapterId: string,
   };
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
 
-  let db: ReturnType<typeof createClient> | null = null;
+  let db: any = null;
   let contentItemId = "";
   try {
     const url = Deno.env.get("SUPABASE_URL");
@@ -434,7 +437,7 @@ serve(async (req) => {
     const auth = req.headers.get("Authorization") ?? "";
     if (!auth.startsWith("Bearer ")) return json({ error: "Connexion administrateur requise." }, 401);
     const token = auth.slice(7).trim();
-    const userClient = createClient(url, anon, {
+    const userClient = createClient<any>(url, anon, {
       global: { headers: { Authorization: "Bearer " + token } },
       auth: { persistSession: false },
     });
@@ -449,7 +452,7 @@ serve(async (req) => {
     const body = await req.json();
     contentItemId = String(body?.content_item_id ?? "").trim();
     if (!contentItemId) return json({ error: "content_item_id manquant." }, 400);
-    db = createClient(url, service);
+    db = createClient<any>(url, service);
 
     const sourceResult = await db.from("chapter_content_items")
       .select("id,chapter_id,content_type,title_fr,source_pdf_path,pending_source_pdf_path,is_published,processing_status")
