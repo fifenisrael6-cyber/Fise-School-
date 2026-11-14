@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/offline/app_database.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:pdfx/pdfx.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
 import '../../../core/offline/notebook_image_cache.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
+import '../../../core/services/chapter_learning_service.dart';
 
 /// Lecteur de cahier : une page indépendante à la fois, avec navigation horizontale.
 class CourseNotebookReaderPage extends StatefulWidget {
@@ -75,6 +77,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
+    // Structured pages are the primary representation for every subject and
+    // chapter. Raster pages are only a safety fallback for legacy/unparsed files.
+    if (widget.item.pages.isNotEmpty) return;
     final hasPdfSource = (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
     if (widget.item.pageCourseId == null && !hasPdfSource) return;
     final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
@@ -105,23 +110,16 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       }
 
       if (rows.isEmpty) {
-        final expectsRasterPages = widget.item.pageCourseId != null ||
-            (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
-        if (!expectsRasterPages || !mounted) return;
+        if (hasPdfSource) {
+          await _renderOriginalPagesFromLocalSource(pageCourseId, userId);
+          return;
+        }
+        if (!mounted) return;
         setState(() => _pdfPages = [
           {
             'id': 'course-pages-pending',
             'position': 1,
-            'blocks': [
-              {
-                'type': 'raster-pending',
-                'message': widget.item.pageCourseId == null
-                    ? (_en ? 'No prepared pages are available.' : 'Aucune page préparée n’est disponible.')
-                    : (_en
-                        ? 'The administrator must prepare this course pages first.'
-                        : 'L’administrateur doit d’abord préparer les pages de ce cours.'),
-              },
-            ],
+            'blocks': [{'type': 'raster-pending'}],
           },
         ]);
         return;
@@ -204,6 +202,66 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           ],
         },
       ]);
+    }
+  }
+
+  Future<void> _renderOriginalPagesFromLocalSource(
+    String pageCourseId,
+    String userId,
+  ) async {
+    PdfDocument? document;
+    try {
+      final sourceBytes = await ChapterLearningService()
+          .loadOriginalPdfBytes(widget.item);
+      document = await PdfDocument.openData(sourceBytes);
+      final first = (widget.item.sourcePageStart ?? 1)
+          .clamp(1, document.pagesCount).toInt();
+      final last = (widget.item.sourcePageEnd ?? document.pagesCount)
+          .clamp(first, document.pagesCount).toInt();
+      final pages = <Map<String, dynamic>>[];
+      for (var sourceNumber = first; sourceNumber <= last; sourceNumber++) {
+        final pageNumber = sourceNumber - first + 1;
+        final page = await document.getPage(sourceNumber);
+        try {
+          final rendered = await page.render(
+            width: page.width * 120 / 72,
+            height: page.height * 120 / 72,
+            format: PdfPageImageFormat.png,
+          );
+          if (rendered == null || rendered.bytes.isEmpty) {
+            throw StateError('Page image unavailable');
+          }
+          final bytes = rendered.bytes;
+          await _localDb.cacheCoursePageImage(
+            userId: userId,
+            courseId: pageCourseId,
+            pageNumber: pageNumber,
+            bytes: bytes,
+            sourceUpdatedAt: null,
+          );
+          pages.add({
+            'id': 'source-page-$pageNumber',
+            'position': pageNumber,
+            'blocks': [{'type': 'raster', 'bytes': bytes}],
+          });
+        } finally {
+          await page.close();
+        }
+      }
+      if (mounted && pages.isNotEmpty) {
+        setState(() => _pdfPages = pages);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pdfPages = [
+        {
+          'id': 'course-pages-pending',
+          'position': 1,
+          'blocks': [{'type': 'raster-pending'}],
+        },
+      ]);
+    } finally {
+      await document?.close();
     }
   }
 
