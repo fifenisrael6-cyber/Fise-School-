@@ -14,6 +14,16 @@ import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
 import '../../../core/services/chapter_learning_service.dart';
 
+/// Palette commune au lecteur, indépendante des couleurs générales de l'application.
+abstract final class CourseReaderTheme {
+  static const navy = CourseReaderTheme.navy;
+  static const blue = Color(0xFF2476D2);
+  static const paleBlue = CourseReaderTheme.paleBlue;
+  static const paleGreen = CourseReaderTheme.paleGreen;
+  static const text = Color(0xFF1E293B);
+  static const border = Color(0xFFB9D7FA);
+}
+
 /// Lecteur de cahier : une page indépendante à la fois, avec navigation horizontale.
 class CourseNotebookReaderPage extends StatefulWidget {
   const CourseNotebookReaderPage({
@@ -32,7 +42,7 @@ class CourseNotebookReaderPage extends StatefulWidget {
 class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   final PageController _controller = PageController();
   int _index = 0;
-  double _fontSize = 20;
+  double _fontSize = 18;
   double _zoomScale = 1;
   bool _isFullscreen = false;
   final AppDatabase _localDb = AppDatabase();
@@ -61,7 +71,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
       if (!mounted || saved == null) return;
-      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 20;
+      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 18;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
       final target = savedPage.clamp(0, _pages.length - 1).toInt();
       setState(() => _fontSize = savedSize.clamp(16, 30).toDouble());
