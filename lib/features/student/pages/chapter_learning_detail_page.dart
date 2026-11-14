@@ -701,8 +701,8 @@ class _ChapterLearningDetailPageState
       (image.storagePath?.trim().isNotEmpty ?? false) ||
       (image.externalUrl?.trim().isNotEmpty ?? false)).toList(growable: false);
     final horizontalPadding = _a4Layout ? 38.0 : 20.0;
-    final titleSize = _a4Layout ? 25.0 : 21.0;
-    final bodySize = _a4Layout ? 17.0 : 15.5;
+    final titleSize = _a4Layout ? 25.0 : 23.0;
+    final bodySize = _a4Layout ? 17.0 : 18.0;
 
     return GestureDetector(
       onTap: () {
@@ -966,7 +966,7 @@ class _ChapterLearningDetailPageState
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: SingleChildScrollView(
-                    child: Text(body, style: const TextStyle(fontSize: 16)),
+                    child: Text(body, style: const TextStyle(fontSize: 20, height: 1.7)),
                   ),
                 ),
               ),
@@ -1049,10 +1049,12 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
   PdfDocument? _document;
   int _totalPages = 0;
   int _pageIndex = 0;
-  bool _a4Layout = true;
+  final PageController _pageController = PageController();
+  bool _a4Layout = false;
+  final Map<int, Future<Uint8List>> _pageRenders = <int, Future<Uint8List>>{};
 
   bool get _en => widget.locale.languageCode == 'en';
-  int get _startPage => widget.item.sourcePageStart ?? 1;
+  int get _startPage => (widget.item.sourcePageStart ?? 1).clamp(1, 1 << 30).toInt();
 
   @override
   void initState() {
@@ -1076,12 +1078,33 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     return document;
   }
 
+  Future<Uint8List> _renderPageCached(PdfDocument document, int pageNumber) {
+    return _pageRenders.putIfAbsent(pageNumber, () async {
+      try {
+        return await _renderPage(document, pageNumber);
+      } catch (_) {
+        _pageRenders.remove(pageNumber);
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> _retryOriginalPage(PdfDocument document, int pageNumber) async {
+    setState(() => _pageRenders.remove(pageNumber));
+    try {
+      await _renderPageCached(document, pageNumber);
+    } catch (_) {
+      // Keep the retry action available if rendering still fails.
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<Uint8List> _renderPage(PdfDocument document, int pageNumber) async {
     final page = await document.getPage(pageNumber);
     try {
       final image = await page.render(
-        width: page.width * 2,
-        height: page.height * 2,
+        width: page.width * 3,
+        height: page.height * 3,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
@@ -1099,6 +1122,7 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
     if (document != null) {
       unawaited(document.close());
     }
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -1144,43 +1168,71 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
             children: [
               Expanded(
                 child: PageView.builder(
+                  controller: _pageController,
                   itemCount: _totalPages,
-                  onPageChanged: (index) => setState(() => _pageIndex = index),
+                  onPageChanged: (index) {
+                    setState(() {
+                      _pageIndex = index;
+                      final currentPage = _startPage + index;
+                      _pageRenders.removeWhere(
+                        (number, _) => (number - currentPage).abs() > 1,
+                      );
+                    });
+                  },
                   itemBuilder: (context, index) {
                     final pageNumber = _startPage + index;
                     return LayoutBuilder(
                       builder: (context, constraints) {
                         final pageWidth = _a4Layout
                             ? (constraints.maxWidth - 32).clamp(280.0, 794.0).toDouble()
-                            : (constraints.maxWidth - 20).toDouble();
-                        return Center(
-                          child: SizedBox(
-                            width: pageWidth,
-                            child: FutureBuilder<Uint8List>(
-                              future: _renderPage(document, pageNumber),
-                              builder: (context, pageSnapshot) {
+                            : (constraints.maxWidth - 12).clamp(280.0, 1200.0).toDouble();
+                        return SizedBox.expand(
+                          child: FutureBuilder<Uint8List>(
+                            future: _renderPageCached(document, pageNumber),
+                            builder: (context, pageSnapshot) {
                                 if (pageSnapshot.connectionState == ConnectionState.waiting) {
                                   return const Center(child: CircularProgressIndicator());
                                 }
                                 if (pageSnapshot.hasError || !pageSnapshot.hasData) {
-                                  return Center(child: Text(_en ? 'Page could not be rendered.' : 'Impossible de rendre cette page.'));
-                                }
-                                return Container(
-                                  margin: const EdgeInsets.symmetric(vertical: 12),
-                                  color: Colors.white,
-                                  child: InteractiveViewer(
-                                    minScale: 1,
-                                    maxScale: 4,
-                                    child: Image.memory(
-                                      pageSnapshot.data!,
-                                      fit: BoxFit.contain,
-                                      width: pageWidth,
-                                      gaplessPlayback: true,
+                                  return Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _en ? 'Page could not be rendered.' : 'Impossible de rendre cette page.',
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 10),
+                                          FilledButton.icon(
+                                            onPressed: () => _retryOriginalPage(document, pageNumber),
+                                            icon: const Icon(Icons.refresh_rounded),
+                                            label: Text(_en ? 'Retry this page' : 'Réessayer cette page'),
+                                          ),
+                                        ],
+                                      ),
                                     ),
+                                  );
+                                }
+                              return ClipRect(
+                                child: InteractiveViewer(
+                                  constrained: false,
+                                  alignment: Alignment.topCenter,
+                                  minScale: 1,
+                                  maxScale: 4,
+                                  boundaryMargin: const EdgeInsets.all(100),
+                                  child: Image.memory(
+                                    pageSnapshot.data!,
+                                    width: pageWidth,
+                                    fit: BoxFit.fitWidth,
+                                    alignment: Alignment.topCenter,
+                                    gaplessPlayback: true,
+                                    filterQuality: FilterQuality.high,
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              );
+                            },
                           ),
                         );
                       },
@@ -1191,10 +1243,39 @@ class _OriginalPdfLessonBookPageState extends State<OriginalPdfLessonBookPage> {
               SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    '${_en ? 'Original page' : 'Page originale'} ${_startPage + _pageIndex}/${_startPage + _totalPages - 1}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: green),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        tooltip: _en ? 'Previous page' : 'Page précédente',
+                        onPressed: _pageIndex <= 0
+                            ? null
+                            : () => _pageController.previousPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOut,
+                                ),
+                        icon: const Icon(Icons.chevron_left_rounded, size: 34),
+                      ),
+                      Text(
+                        '${_en ? 'Page' : 'Page'} ${_startPage + _pageIndex} / ${_startPage + _totalPages - 1}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 20,
+                          color: green,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Next page' : 'Page suivante',
+                        onPressed: _pageIndex >= _totalPages - 1
+                            ? null
+                            : () => _pageController.nextPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOut,
+                                ),
+                        icon: const Icon(Icons.chevron_right_rounded, size: 34),
+                      ),
+                    ],
                   ),
                 ),
               ),

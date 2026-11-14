@@ -149,15 +149,37 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
   PdfDocument? _document;
   final PageController _controller = PageController();
   int _page = 0;
+  final Map<int, Future<Uint8List>> _pageRenders = <int, Future<Uint8List>>{};
 
   bool get _fr => widget.locale.languageCode != 'en';
+
+  Future<Uint8List> _renderCached(PdfDocument document, int pageNumber) {
+    return _pageRenders.putIfAbsent(pageNumber, () async {
+      try {
+        return await _render(document, pageNumber);
+      } catch (_) {
+        _pageRenders.remove(pageNumber);
+        rethrow;
+      }
+    });
+  }
+
+  Future<void> _retryPage(PdfDocument document, int pageNumber) async {
+    setState(() => _pageRenders.remove(pageNumber));
+    try {
+      await _renderCached(document, pageNumber);
+    } catch (_) {
+      // Keep the retry action available if rendering still fails.
+    }
+    if (mounted) setState(() {});
+  }
 
   Future<Uint8List> _render(PdfDocument document, int pageNumber) async {
     final source = await document.getPage(pageNumber);
     try {
       final image = await source.render(
-        width: source.width * 2,
-        height: source.height * 2,
+        width: source.width * 3,
+        height: source.height * 3,
         format: PdfPageImageFormat.png,
       );
       if (image == null || image.bytes.isEmpty) {
@@ -198,39 +220,65 @@ class _PdfA4PageBookState extends State<_PdfA4PageBook> {
               child: PageView.builder(
                 controller: _controller,
                 itemCount: document.pagesCount,
-                onPageChanged: (index) => setState(() => _page = index),
+                onPageChanged: (index) {
+                  setState(() {
+                    _page = index;
+                    _pageRenders.removeWhere(
+                      (number, _) => (number - index - 1).abs() > 1,
+                    );
+                  });
+                },
                 itemBuilder: (context, index) => LayoutBuilder(
                   builder: (context, constraints) {
-                    final availableWidth = constraints.maxWidth - 24;
-                    final heightLimitedWidth = (constraints.maxHeight - 24) * 210 / 297;
-                    final width = (availableWidth < heightLimitedWidth ? availableWidth : heightLimitedWidth).clamp(200.0, 794.0).toDouble();
-                    return Center(
-                      child: SizedBox(
-                        width: width,
-                        child: AspectRatio(
-                          aspectRatio: 210 / 297,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 10),
-                            color: Colors.white,
-                            padding: const EdgeInsets.all(4),
-                            child: FutureBuilder<Uint8List>(
-                              future: _render(document, index + 1),
-                              builder: (context, pageSnapshot) {
+                    // On phones, use the full available width. Limiting the
+                    // page to the available height makes printed text too small.
+                    final width = (constraints.maxWidth - 12).clamp(280.0, 794.0).toDouble();
+                    return SizedBox.expand(
+                      child: FutureBuilder<Uint8List>(
+                        future: _renderCached(document, index + 1),
+                        builder: (context, pageSnapshot) {
                                 if (pageSnapshot.connectionState == ConnectionState.waiting) {
                                   return const Center(child: CircularProgressIndicator());
                                 }
                                 if (pageSnapshot.hasError || !pageSnapshot.hasData) {
-                                  return Center(child: Text(_fr ? 'Cette page du cours est indisponible.' : 'This lesson page is unavailable.'));
+                                  return Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(20),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _fr ? 'Cette page du cours est indisponible.' : 'This lesson page is unavailable.',
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          FilledButton.icon(
+                                            onPressed: () => _retryPage(document, index + 1),
+                                            icon: const Icon(Icons.refresh_rounded),
+                                            label: Text(_fr ? 'Réessayer cette page' : 'Retry this page'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
                                 }
-                                return InteractiveViewer(
-                                  minScale: 1,
-                                  maxScale: 4,
-                                  child: Image.memory(pageSnapshot.data!, fit: BoxFit.contain),
-                                );
-                              },
+                          return ClipRect(
+                            child: InteractiveViewer(
+                              constrained: false,
+                              alignment: Alignment.topCenter,
+                              minScale: 1,
+                              maxScale: 4,
+                              boundaryMargin: const EdgeInsets.all(100),
+                              child: Image.memory(
+                                pageSnapshot.data!,
+                                width: width,
+                                fit: BoxFit.fitWidth,
+                                alignment: Alignment.topCenter,
+                                filterQuality: FilterQuality.high,
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     );
                   },

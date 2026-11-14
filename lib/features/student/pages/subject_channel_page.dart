@@ -917,8 +917,8 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
         widgets.add(RichLessonText(
           text: text,
           style: const TextStyle(
-            fontSize: 15,
-            height: 1.55,
+            fontSize: 20,
+            height: 1.7,
             color: Colors.black87,
           ),
         ));

@@ -174,7 +174,7 @@ class _DailyLessonPageState extends State<DailyLessonPage> {
               const SizedBox(height: 14),
               SelectableText(
                 lesson.text,
-                style: const TextStyle(fontSize: 16, height: 1.55),
+                style: const TextStyle(fontSize: 20, height: 1.7),
               ),
               const SizedBox(height: 26),
               Text(_fr ? 'Exercice' : 'Exercise', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),

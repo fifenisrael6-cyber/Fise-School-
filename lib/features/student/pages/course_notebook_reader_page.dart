@@ -30,7 +30,7 @@ class CourseNotebookReaderPage extends StatefulWidget {
 class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   final PageController _controller = PageController();
   int _index = 0;
-  double _fontSize = 20;
+  double _fontSize = 24;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
   List<Map<String, dynamic>> _pdfPages = const [];
@@ -57,10 +57,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     try {
       final saved = await _localDb.getCourseReaderState(userId, widget.item.id);
       if (!mounted || saved == null) return;
-      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 20;
+      final savedSize = (saved['font_size'] as num?)?.toDouble() ?? 24;
       final savedPage = (saved['page_number'] as num?)?.toInt() ?? 0;
       final target = savedPage.clamp(0, _pages.length - 1).toInt();
-      setState(() => _fontSize = savedSize.clamp(18, 30).toDouble());
+      setState(() => _fontSize = savedSize.clamp(22, 34).toDouble());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _controller.hasClients) {
           _controller.jumpToPage(target);
@@ -277,13 +277,13 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 Text(_en ? 'Text size' : 'Taille du texte',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                 Row(children: [
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(18, 30).toDouble()), child: const Text('A−')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected - 1).clamp(22, 34).toDouble()), child: const Text('A−')),
                   Expanded(child: Slider(
-                    min: 18, max: 30, divisions: 12, value: selected,
+                    min: 22, max: 34, divisions: 12, value: selected,
                     label: selected.round().toString(),
                     onChanged: (value) => updateSheet(() => selected = value),
                   )),
-                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(18, 30).toDouble()), child: const Text('A+')),
+                  TextButton(onPressed: () => updateSheet(() => selected = (selected + 1).clamp(22, 34).toDouble()), child: const Text('A+')),
                 ]),
                 Text('${selected.round()} pt'),
                 FilledButton(
@@ -383,15 +383,26 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     if (blocks.length == 1 &&
         blocks.first['type'] == 'raster' &&
         blocks.first['bytes'] is Uint8List) {
-      return ColoredBox(
-        color: Colors.white,
-        child: SizedBox.expand(
-          child: Image.memory(
-            blocks.first['bytes'] as Uint8List,
-            fit: BoxFit.contain,
-            alignment: Alignment.center,
-          ),
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final pageWidth = constraints.maxWidth - 8;
+          return ClipRect(
+            child: InteractiveViewer(
+              constrained: false,
+              alignment: Alignment.topCenter,
+              minScale: 1,
+              maxScale: 4,
+              boundaryMargin: const EdgeInsets.all(100),
+              child: Image.memory(
+                blocks.first['bytes'] as Uint8List,
+                width: pageWidth,
+                fit: BoxFit.fitWidth,
+                alignment: Alignment.topCenter,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          );
+        },
       );
     }
     return LayoutBuilder(builder: (context, constraints) {
@@ -559,7 +570,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final pageHorizontalPadding =
-              constraints.maxWidth < 420 ? 40.0 : 56.0;
+              constraints.maxWidth < 420 ? 24.0 : 36.0;
           final pages = _pagesForLayout(
             constraints.maxWidth - pageHorizontalPadding,
             constraints.maxHeight - 210,
