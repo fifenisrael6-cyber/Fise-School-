@@ -689,7 +689,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       return ColoredBox(
         color: Colors.white,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(10, 72, 10, 90),
+          padding: EdgeInsets.fromLTRB(10, _isFullscreen ? 10 : 72, 10, _isFullscreen ? 12 : 90),
           child: renderBlock(blocks.first),
         ),
       );
@@ -698,7 +698,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     return ColoredBox(
       color: Colors.white,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(10, 68, 10, 92),
+        padding: EdgeInsets.fromLTRB(10, _isFullscreen ? 10 : 68, 10, _isFullscreen ? 12 : 92),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
