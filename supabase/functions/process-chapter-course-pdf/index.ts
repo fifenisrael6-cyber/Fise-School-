@@ -145,10 +145,23 @@ function tableMarkdown(table: any, documentText: string): string {
 }
 
 function annotationText(value: any): string {
-  const annotations = Array.isArray(value?.annotations) ? value.annotations : [];
-  return annotations.map((annotation: any) =>
-    String(annotation?.description ?? annotation?.text ?? "").trim()
-  ).filter(Boolean).join("\n");
+  const annotation = value?.annotations;
+  const descriptions = Array.isArray(annotation)
+    ? annotation.map((entry: any) => String(entry?.description ?? entry?.text ?? "").trim())
+    : [String(annotation?.description ?? "").trim()];
+  const imageText = String(value?.imageText ?? value?.image_text ?? "").trim();
+  return [...descriptions, imageText].filter(Boolean).join("\n");
+}
+
+function imageDataUri(value: string): { mimeType: string; bytes: Uint8Array } | null {
+  const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/i.exec(value);
+  if (!match) return null;
+  const mimeType = match[1] || "image/png";
+  const payload = match[3] ?? "";
+  const bytes = match[2]
+    ? base64ToBytes(payload)
+    : encoder.encode(decodeURIComponent(payload));
+  return bytes.length ? { mimeType, bytes } : null;
 }
 
 function headingPrefix(type: string): string {
@@ -277,20 +290,31 @@ async function createPageContent(doc: any, pageCount: number, chapterId: string,
       const annotation = annotationText(image);
       let storagePath = imagePaths.get(assetId) ?? "";
       const asset = assets.get(assetId);
-      if (!storagePath && asset?.content && assetId) {
-        const imageBytes = base64ToBytes(String(asset.content));
-        const mime = String(asset.mimeType ?? image.mimeType ?? "image/png");
+      let imageBytes: Uint8Array | null = null;
+      let mime = String(asset?.mimeType ?? image.mimeType ?? "image/png");
+      if (asset?.content && assetId) {
+        imageBytes = base64ToBytes(String(asset.content));
+      } else if (typeof image.dataUri === "string") {
+        const decoded = imageDataUri(image.dataUri);
+        if (decoded) {
+          imageBytes = decoded.bytes;
+          mime = decoded.mimeType;
+        }
+      }
+      if (!storagePath && imageBytes && imageBytes.length > 0) {
+        const safeAssetId = (assetId || "inline_" + (pageNumber) + "_" + destination.blocks.length)
+          .replace(/[^A-Za-z0-9_-]/g, "_");
         const extension = mime.includes("jpeg") || mime.includes("jpg")
           ? "jpg"
           : mime.includes("webp") ? "webp" : "png";
-        storagePath = chapterId + "/course-assets/" + itemId + "/" + assetId + "." + extension;
+        storagePath = chapterId + "/course-assets/" + itemId + "/" + safeAssetId + "." + extension;
         const upload = await db.storage.from("chapter-content").upload(
           storagePath,
           imageBytes,
           { contentType: mime, upsert: true },
         );
         if (upload.error) throw new Error("Impossible d'enregistrer une figure extraite : " + upload.error.message);
-        imagePaths.set(assetId, storagePath);
+        if (assetId) imagePaths.set(assetId, storagePath);
         extractedImageCount++;
       }
       if (storagePath) {
@@ -393,7 +417,7 @@ async function createPageContent(doc: any, pageCount: number, chapterId: string,
   };
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
 
