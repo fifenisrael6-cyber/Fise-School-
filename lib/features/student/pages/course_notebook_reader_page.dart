@@ -1083,7 +1083,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
             },
           ];
     final item = ChapterLearningContentItem(
-      id: 'legacy-course-record-${widget.title.hashCode}',
+      id: 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
       chapterId: 'legacy-course-record',
       type: ChapterLearningContentType.course,
       titleFr: widget.title,
