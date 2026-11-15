@@ -840,7 +840,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       resources = await _resources.listForCourse(courseId);
     } catch (_) {
       // Offline mode is a fallback for a failed remote resource read only.
-      return _offline.resourcesForCourse(widget.profile.id, courseId);
+      return _offline.resourcesForCourse(widget.profile.id, courseId)
+          .where((resource) => resource.resourceType.toLowerCase() != 'pdf' &&
+              (resource.mimeType ?? '').toLowerCase() != 'application/pdf')
+          .toList(growable: false);
     }
 
     // Warming the offline cache is a separate best-effort task. Its failure
@@ -851,7 +854,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     } catch (_) {
       // Keep the live resource list visible.
     }
-    return resources;
+    return resources.where((resource) =>
+      resource.resourceType.toLowerCase() != 'pdf' &&
+      (resource.mimeType ?? '').toLowerCase() != 'application/pdf'
+    ).toList(growable: false);
   }
 
   /// Affiche une illustration intégrée au texte du cours.
