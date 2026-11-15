@@ -125,10 +125,19 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         if (!mounted) return;
         final course = Map<String, dynamic>.from(raw);
         final pages = course['pages_json'];
-        final hasBlocks = pages is List && pages.any((page) =>
-            page is Map && page['blocks'] is List &&
-            (page['blocks'] as List).isNotEmpty);
-        if (hasBlocks) { skipped++; continue; }
+        final hasReadableContent = pages is List && pages.any((page) {
+          if (page is! Map || page['blocks'] is! List) return false;
+          return (page['blocks'] as List).whereType<Map>().any((block) {
+            final type = (block['type'] ?? '').toString().toLowerCase();
+            if (type == 'table') return block['rows'] is List && (block['rows'] as List).isNotEmpty;
+            if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'image' || type == 'diagram') {
+              return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+            }
+            return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+          });
+        });
+        if (hasReadableContent) { skipped++; continue; }
 
         final resources = await _resources.listForCourse(course['id'].toString());
         final pdfs = resources.where((resource) =>
