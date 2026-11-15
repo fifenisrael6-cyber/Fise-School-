@@ -187,6 +187,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       if (raw is! List) return false;
       return raw.whereType<Map>().any((block) {
         final type = (block['type'] ?? '').toString().toLowerCase();
+        if (type == 'diagram' &&
+            (block['diagram_id'] ?? block['kind'] ?? block['diagram'] ?? '').toString().trim().isNotEmpty) {
+          return true;
+        }
         if (type == 'image' || type == 'diagram') {
           return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
         }
