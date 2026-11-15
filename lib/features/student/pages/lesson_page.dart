@@ -574,17 +574,6 @@ class _LessonPageState extends State<LessonPage> {
 
   Future<void> _openUnifiedLessonReader() async {
     final pages = <Map<String, dynamic>>[];
-    void addBlock(String type, String? value) {
-      if (value == null || value.trim().isEmpty) return;
-      pages.add({
-        'id': 'lesson-page-${pages.length + 1}',
-        'position': pages.length + 1,
-        'blocks': [
-          {'type': type, 'text_fr': value, 'text_en': value},
-        ],
-      });
-    }
-
     // One responsive page flow for objectives, lesson body, examples and summary.
     final blocks = <Map<String, dynamic>>[];
     void add(String type, String? value) {
