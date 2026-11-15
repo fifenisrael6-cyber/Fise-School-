@@ -1180,6 +1180,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
     super.key,
     this.readerId,
     this.pageCourseId,
+    this.chapterId,
     required this.title,
     required this.pages,
     required this.fallbackText,
@@ -1188,6 +1189,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
 
   final String? readerId;
   final String? pageCourseId;
+  final String? chapterId;
   final String title;
   final List<Map<String, dynamic>> pages;
   final String fallbackText;
@@ -1217,7 +1219,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
           ];
     final item = ChapterLearningContentItem(
       id: widget.readerId ?? 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
-      chapterId: 'legacy-course-record',
+      chapterId: widget.chapterId ?? 'legacy-course-record',
       type: ChapterLearningContentType.course,
       titleFr: widget.title,
       titleEn: widget.title,
