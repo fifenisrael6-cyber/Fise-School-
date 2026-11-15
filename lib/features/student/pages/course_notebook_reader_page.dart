@@ -1036,31 +1036,33 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         enabled: safeIndex > 0,
                         onPressed: () => _controller.previousPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
                       ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
-                      ),
                       DecoratedBox(
                         decoration: BoxDecoration(color: const Color(0xFF123B70), borderRadius: BorderRadius.circular(22)),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.description_outlined, size: 17, color: Colors.white),
                             const SizedBox(width: 6),
-                            Text('\${safeIndex + 1} / \${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                            Text('${safeIndex + 1} / ${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                           ]),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
                       ),
                       _readerNavButton(
                         icon: Icons.chevron_right_rounded,
                         enabled: safeIndex < pages.length - 1,
                         onPressed: () => _controller.nextPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
                       ),
                     ],
                   ),
