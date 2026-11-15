@@ -500,16 +500,12 @@ class _ChapterLearningDetailPageState
         return;
       }
       final lesson = lessons.first;
-      if ((lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
-        await _openOriginalPdfLesson(lesson);
-      } else {
-        await Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => CourseNotebookReaderPage(
-            item: lesson,
-            locale: widget.locale,
-          ),
-        ));
-      }
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => CourseNotebookReaderPage(
+          item: lesson,
+          locale: widget.locale,
+        ),
+      ));
       return;
     }
     if (folder != _ChapterResourceFolder.exercises) {
@@ -703,15 +699,9 @@ class _ChapterLearningDetailPageState
     final bodySize = _a4Layout ? 17.0 : 15.5;
 
     return GestureDetector(
-      onTap: () {
-        if ((item.sourcePdfPath ?? '').trim().isNotEmpty) {
-          _openOriginalPdfLesson(item);
-        } else {
-          Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => CourseNotebookReaderPage(item: item, locale: widget.locale),
-          ));
-        }
-      },
+      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => CourseNotebookReaderPage(item: item, locale: widget.locale),
+      )),
       child: Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
