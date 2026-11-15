@@ -593,6 +593,7 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
                         : const <Map<String, dynamic>>[];
                     Navigator.push(context, MaterialPageRoute<void>(
                       builder: (_) => CourseRecordNotebookReaderPage(
+                        readerId: lesson['id']?.toString(),
                         title: (lesson[_fr ? 'title_fr' : 'title_en'] ??
                                 lesson['title_fr'] ??
                                 (_fr ? 'Cours' : 'Course'))
