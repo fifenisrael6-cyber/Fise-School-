@@ -194,7 +194,58 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         saved = Map<String, dynamic>.from(updated);
       }
 
-      // The student reader displays the original document directly; no raster-page table is required.
+      // Build the structured lesson immediately after the upload. If AI
+      // extraction is unavailable, keep the original file and let the reader
+      // use its local high-resolution rendering fallback.
+      var readerPrepared = false;
+      try {
+        final imported = await db.functions.invoke(
+          'import-chapter-pdf',
+          body: {'content_item_id': saved['id'], 'restore_existing': true},
+        );
+        final payload = imported.data;
+        if (imported.status >= 200 && imported.status < 300 &&
+            payload is Map && payload['success'] == true) {
+          final reportRows = (payload['report'] as List? ?? const [])
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false);
+          final itemIds = reportRows
+              .map((row) => row['content_item_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+          if (itemIds.isNotEmpty) {
+            final importedItems = await db
+                .from('chapter_content_items')
+                .select('id,source_pdf_path,source_page_start,source_page_end')
+                .inFilter('id', itemIds);
+            for (final importedItem in importedItems) {
+              final sourcePath = (importedItem['source_pdf_path'] as String? ?? '').trim();
+              if (sourcePath.isEmpty) continue;
+              await CoursePdfPageService(db).regenerate({
+                ...Map<String, dynamic>.from(importedItem),
+                'storage_path': sourcePath,
+                'source_bucket': 'chapter-content',
+              });
+            }
+          }
+          readerPrepared = true;
+        } else {
+          final message = payload is Map
+              ? (payload['error']?.toString() ?? 'Extraction indisponible.')
+              : 'Réponse du service de lecture invalide.';
+          toast(t(
+            'Cours enregistré. La structuration automatique sera à relancer : $message',
+            'Course saved. Automatic structuring can be retried: $message',
+          ));
+        }
+      } catch (readerError) {
+        toast(t(
+          'Cours enregistré. Le lecteur utilisera le repli haute résolution si nécessaire : $readerError',
+          'Course saved. The reader will use its high-resolution fallback if needed: $readerError',
+        ));
+      }
 
       for (final oldPath in {oldSource, oldStorage}) {
         if (oldPath.isNotEmpty && oldPath != uploadedPath) {
@@ -204,8 +255,9 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
       uploadedPath = null;
       if (mounted) {
         await chooseCurriculum(curriculum);
-        toast(t('Cours PDF enregistré. Il est visible aux élèves selon son statut de publication.',
-            'Course document saved. Students can see it according to its publication status.'));
+        toast(readerPrepared
+            ? t('Cours enregistré et structuré pour le lecteur élève.', 'Course saved and structured for the student reader.')
+            : t('Cours enregistré. La préparation du lecteur reste à vérifier.', 'Course saved. Reader preparation still needs verification.'));
       }
     } catch (error) {
       if (uploadedPath != null) {
@@ -229,8 +281,8 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
   }
 
   Future<void> restoreCourseFromPdf(Map<String, dynamic> item) async {
-    if (item['content_type'] != 'pdf' ||
-        (item['storage_path'] as String? ?? '').isEmpty) {
+    final sourcePath = (item['storage_path'] ?? item['source_pdf_path'] ?? '').toString().trim();
+    if (!{'pdf', 'course'}.contains(item['content_type']) || sourcePath.isEmpty) {
       toast(t('Le PDF source est introuvable.', 'The source PDF is unavailable.'));
       return;
     }
@@ -508,7 +560,8 @@ FutureBuilder<List<Map<String,dynamic>>>(
             trailing:PopupMenuButton<String>(
               onSelected:(v){if(v=='restore')restoreCourseFromPdf(item);if(v=='regenerate')regenerateCoursePages(item);if(v=='edit')editContent(item);if(v=='toggle')toggleContent(item);if(v=='delete')deleteContent(item);},
               itemBuilder:(_)=>[
-                if (item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty)
+                if ((item['content_type'] == 'pdf' && (item['storage_path'] as String? ?? '').isNotEmpty) ||
+            (item['content_type'] == 'course' && (item['source_pdf_path'] as String? ?? '').isNotEmpty))
                   PopupMenuItem(value:'restore',child:Text(t('Restaurer le cours depuis ce PDF','Restore lesson from this PDF'))),
                 PopupMenuItem(value:'edit',child:Text(t('Modifier','Edit'))),
                 if (item['content_type'] == 'course' &&
