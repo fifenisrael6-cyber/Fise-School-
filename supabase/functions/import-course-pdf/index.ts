@@ -63,6 +63,8 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) { flushParagraph(); continue; }
+    const diagram = line.match(/^\\[\\[diagram:([a-z_]+)\\]\\]$/i);
+    if (diagram) { flushParagraph(); blocks.push({ type: "diagram", diagram_id: diagram[1] }); continue; }
     if (isTableLine(line)) {
       flushParagraph();
       const rows: string[][] = [];
