@@ -242,11 +242,12 @@ serve(async (req) => {
     const db = createClient(url, service);
 
     const { data: source, error: sourceError } = await db.from("chapter_content_items")
-      .select("id,chapter_id,content_type,title_fr,storage_path,is_published")
+      .select("id,chapter_id,content_type,title_fr,storage_path,source_pdf_path,is_published")
       .eq("id", contentItemId).single();
     if (sourceError || !source) return json({ error: "Document source introuvable." }, 404);
-    if (source.content_type !== "pdf" || !source.storage_path) {
-      return json({ error: "Le contenu source doit être un PDF stocké." }, 400);
+    const sourcePdfPath = String(source.storage_path ?? source.source_pdf_path ?? "").trim();
+    if (!["pdf", "course"].includes(String(source.content_type)) || !sourcePdfPath) {
+      return json({ error: "Le document source du cours est introuvable." }, 400);
     }
 
     // Lessons generated from the PDF follow the administrator publication choice.
@@ -276,7 +277,7 @@ serve(async (req) => {
     if (curriculaError) throw curriculaError;
 
     const { data: file, error: downloadError } = await db.storage.from("chapter-content")
-      .download(source.storage_path);
+      .download(sourcePdfPath);
     if (downloadError || !file) throw new Error(downloadError?.message ?? "Téléchargement du PDF impossible.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.length > 25 * 1024 * 1024) throw new Error("Le PDF dépasse la taille maximale de 25 Mo.");
@@ -482,7 +483,7 @@ ${extracted.slice(0, 90000)}`;
             content_blocks_fr: buildContentBlocks(String(generated.content_fr).trim()),
             content_blocks_en: buildContentBlocks(String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
             pages_json: buildReaderPages(String(generated.content_fr).trim(), String(generated.content_en ?? "").trim() || String(generated.content_fr).trim()),
-            source_pdf_path: source.storage_path,
+            source_pdf_path: sourcePdfPath,
             source_page_start: generated.source_page_start,
             source_page_end: generated.source_page_end,
             folder_key: "course",
