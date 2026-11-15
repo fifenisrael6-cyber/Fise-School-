@@ -521,6 +521,35 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             (row['minimum_exercise_score'] as num?)?.toInt() ?? 50,
         status: row['status']?.toString() ?? 'draft',
       );
+      try {
+        final imported = await _db.functions.invoke(
+          'import-course-pdf',
+          body: {'resource_id': uploaded.id, 'replace_existing': true},
+        );
+        final payload = imported.data;
+        if (imported.status < 200 || imported.status >= 300 ||
+            payload is! Map || payload['success'] != true) {
+          final message = payload is Map
+              ? (payload['error']?.toString() ?? 'Extraction indisponible.')
+              : 'Réponse du service de lecture invalide.';
+          _showMessage(_t(
+            'Document remplacé, mais préparation du lecteur à reprendre : $message',
+            'Document replaced, but reader preparation needs a retry: $message',
+          ));
+        }
+      } catch (readerError) {
+        _showMessage(_t(
+          'Document remplacé. Préparation du lecteur à relancer : $readerError',
+          'Document replaced. Reader preparation can be retried: $readerError',
+        ));
+      }
+      try {
+        await CoursePdfPageService(_db).regenerate({
+          'course_id': courseId,
+          'storage_path': uploaded.storagePath,
+          'source_bucket': 'course-resources',
+        });
+      } catch (_) {}
       for (final old in oldResources.where((resource) =>
           resource.resourceType.toLowerCase() == 'pdf')) {
         try { await _resources.deleteResource(old); } catch (_) {}
