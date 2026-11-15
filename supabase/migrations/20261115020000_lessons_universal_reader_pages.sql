@@ -56,7 +56,7 @@ create or replace function public.ensure_lesson_reader_pages()
 returns trigger
 language plpgsql
 set search_path = public
-as $
+as $$
 declare
   should_sync boolean := false;
 begin
@@ -105,7 +105,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists lessons_ensure_reader_pages on public.lessons;
 create trigger lessons_ensure_reader_pages
