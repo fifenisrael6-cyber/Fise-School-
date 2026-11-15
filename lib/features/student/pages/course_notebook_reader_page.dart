@@ -498,7 +498,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       if (text.isNotEmpty) children.add(RichLessonText(text: text, style: TextStyle(fontSize: _fontSize, height: 1.5, color: const Color(0xFF1E293B))));
       buffer.clear();
     }
-    for (final line in value.split('\\n')) {
+    for (final line in value.split('\n')) {
       final trimmed = line.trim();
       if (trimmed.startsWith('[[diagram:') && trimmed.endsWith(']]')) {
         flush();
