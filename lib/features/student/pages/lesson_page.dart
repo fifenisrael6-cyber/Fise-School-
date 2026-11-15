@@ -610,15 +610,15 @@ class _LessonPageState extends State<LessonPage> {
           if (content != null) content!,
           if (examples != null) examples!,
           if (summary != null) summary!,
-        ].join('\\n\\n'),
+        ].join('\n\n'),
         locale: widget.locale,
       ),
     ));
   }
 
   Widget _buildUnifiedReaderCard() {
-    final hasText = objectives != null || content != null ||
-        examples != null || summary != null;
+    final hasText = widget.lesson.pages.isNotEmpty || objectives != null ||
+        content != null || examples != null || summary != null;
     if (!hasText) return const SizedBox.shrink();
     return Card(
       elevation: 0,
