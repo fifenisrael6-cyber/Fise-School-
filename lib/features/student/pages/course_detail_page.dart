@@ -666,7 +666,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
           .eq('resource_type', 'pdf')
           .order('created_at', ascending: false)
           .limit(1)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 4));
       final path = source?['storage_path']?.toString().trim() ?? '';
       if (path.isNotEmpty) sourcePdfPath = 'legacy-course-resource:$path';
     } catch (_) {
