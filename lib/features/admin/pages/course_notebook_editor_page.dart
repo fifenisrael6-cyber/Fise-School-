@@ -72,8 +72,11 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       _titleEn.text = item['title_en']?.toString() ?? '';
       _published = item['is_published'] == true || item['status'] == 'published';
       final rawPages = item['pages_json'];
-      if (rawPages is List) {
-        for (final rawPage in rawPages.whereType<Map>()) {
+      final decodedPages = rawPages is String
+          ? (() { try { return jsonDecode(rawPages); } catch (_) { return null; } })()
+          : rawPages;
+      if (decodedPages is List) {
+        for (final rawPage in decodedPages.whereType<Map>()) {
           final page = Map<String, dynamic>.from(rawPage);
           final french = <String>[];
           final english = <String>[];
