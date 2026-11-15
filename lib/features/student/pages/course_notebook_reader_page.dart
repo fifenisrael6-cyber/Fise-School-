@@ -407,7 +407,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           if (insert is String) {
             buffer.write(insert);
           } else if (insert is Map && insert['image'] != null) {
-            buffer.write('\\n');
+            buffer.write('\n');
           }
         }
         return buffer.toString().trim();
