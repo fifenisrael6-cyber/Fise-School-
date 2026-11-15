@@ -663,6 +663,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => CourseRecordNotebookReaderPage(
             readerId: widget.course.id,
+            pageCourseId: widget.course.id,
             title: widget.course.labelFor(widget.locale.languageCode),
             pages: pages,
             fallbackText: courseContent,
