@@ -443,6 +443,17 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               ? 'PDF conservé dans Supabase, mais l’analyse IA a échoué : $e'
               : 'PDF remains saved in Supabase, but AI analysis failed: $e');
         }
+        // Always prepare a high-resolution fallback for scanned or partially
+        // extractable files, while the structured text remains the main reader.
+        try {
+          await CoursePdfPageService(_client).regenerate({
+            'course_id': uploaded.courseId,
+            'storage_path': uploaded.storagePath,
+            'source_bucket': 'course-resources',
+          });
+        } catch (_) {
+          // Keep the uploaded source and structured text if raster fallback fails.
+        }
       } else {
         _snack(_fr ? 'Contenu ajouté à la salle et au cours.' : 'Content added to the classroom course.');
       }
@@ -663,6 +674,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       }
       final preparedPages =
           await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+      await CoursePdfPageService(_client).regenerate({
+        'course_id': resource.courseId,
+        'storage_path': resource.storagePath,
+        'source_bucket': 'course-resources',
+      });
       final imported = data['imported'] ?? 0;
       final replaced = data['replaced'] ?? 0;
       _snack(_fr
@@ -724,6 +740,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         }
         final preparedPages =
             await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+        await CoursePdfPageService(_client).regenerate({
+          'course_id': resource.courseId,
+          'storage_path': resource.storagePath,
+          'source_bucket': 'course-resources',
+        });
         _snack(_fr
             ? 'PDF remplacé : contenus actualisés et $preparedPages page(s) A4 préparée(s).'
             : 'PDF replaced: lessons updated and $preparedPages A4 page(s) prepared.');
