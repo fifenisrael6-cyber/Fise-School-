@@ -809,7 +809,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           );
         case 'text':
           if (text.trim().isEmpty) return const SizedBox.shrink();
-          final tokenPattern = RegExp(r'\\[\\[diagram:([a-z_]+)\\]\\]');
+          final tokenPattern = RegExp(r'\[\[diagram:([a-z_]+)\]\]');
           final matches = tokenPattern.allMatches(text).toList(growable: false);
           if (matches.isEmpty) {
             return Padding(
