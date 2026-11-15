@@ -840,7 +840,9 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
       resources = await _resources.listForCourse(courseId);
     } catch (_) {
       // Offline mode is a fallback for a failed remote resource read only.
-      return _offline.resourcesForCourse(widget.profile.id, courseId)
+      final cachedResources =
+          await _offline.resourcesForCourse(widget.profile.id, courseId);
+      return cachedResources
           .where((resource) => resource.resourceType.toLowerCase() != 'pdf' &&
               (resource.mimeType ?? '').toLowerCase() != 'application/pdf')
           .toList(growable: false);
