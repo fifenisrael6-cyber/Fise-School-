@@ -863,7 +863,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                     IconButton(
                       tooltip: 'A+',
                       onPressed: () {
-                        setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
+                        setState(() => _fontSize = (_fontSize + 1).clamp(16, 30).toDouble());
                         unawaited(_saveReaderState());
                       },
                       icon: const Icon(Icons.text_increase, color: Color(0xFF123B70)),
@@ -871,7 +871,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                     IconButton(
                       tooltip: 'A−',
                       onPressed: () {
-                        setState(() => _fontSize = (_fontSize + 1).clamp(16, 30).toDouble());
+                        setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
                         unawaited(_saveReaderState());
                       },
                       icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
