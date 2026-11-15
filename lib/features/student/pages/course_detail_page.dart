@@ -87,9 +87,15 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       // Continue to the cached fallback if connectivity detection is unavailable.
     }
     try {
-      return await ResourceService()
+      final resources = await ResourceService()
           .listForCourse(widget.course.id)
           .timeout(const Duration(seconds: 8));
+      // Source PDFs are an administrator-side import format, not student
+      // course attachments. Students receive the structured reader instead.
+      return resources.where((resource) =>
+        resource.resourceType.toLowerCase() != 'pdf' &&
+        (resource.mimeType ?? '').toLowerCase() != 'application/pdf'
+      ).toList(growable: false);
     } catch (_) {
       return _loadCachedResources();
     }
@@ -103,18 +109,20 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         widget.profile.id,
         widget.course.id,
       );
-      return files.map((file) {
+      return files.where((file) {
         final mime = (file.mimeType ?? '').toLowerCase();
         final name = file.fileName.toLowerCase();
-        final type = mime.contains('pdf') || name.endsWith('.pdf')
-            ? 'pdf'
-            : mime.startsWith('image/')
-                ? 'image'
-                : mime.startsWith('audio/')
-                    ? 'audio'
-                    : mime.startsWith('video/')
-                        ? 'video'
-                        : 'document';
+        return !mime.contains('pdf') && !name.endsWith('.pdf');
+      }).map((file) {
+        final mime = (file.mimeType ?? '').toLowerCase();
+        final name = file.fileName.toLowerCase();
+        final type = mime.startsWith('image/')
+            ? 'image'
+            : mime.startsWith('audio/')
+                ? 'audio'
+                : mime.startsWith('video/')
+                    ? 'video'
+                    : 'document';
         return CourseResource(
           id: file.resourceId,
           courseId: widget.course.id,
