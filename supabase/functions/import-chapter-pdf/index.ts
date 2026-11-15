@@ -34,24 +34,119 @@ function buildContentBlocks(markdown: string): Array<Record<string, string>> {
   return blocks.length ? blocks : [{ type: 'TEXT', text: markdown }];
 }
 
+function buildRichReaderBlocks(markdown: string): Array<Record<string, unknown>> {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks: Array<Record<string, unknown>> = [];
+  let paragraph: string[] = [];
+  const flush = () => {
+    const value = paragraph.join("\n").trim();
+    if (value) blocks.push({ type: "text", text_fr: value, text_en: value });
+    paragraph = [];
+  };
+  const tableLine = (line: string) => /^\s*\|.*\|\s*$/.test(line);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) { flush(); continue; }
+    if (tableLine(line)) {
+      flush();
+      const rows: string[][] = [];
+      while (i < lines.length && tableLine(lines[i].trim())) {
+        const row = lines[i].trim().replace(/^\|/, "").replace(/\|$/, "")
+          .split("|").map((cell) => cell.trim());
+        if (!row.every((cell) => /^:?-{2,}:?$/.test(cell))) rows.push(row);
+        i++;
+      }
+      i--;
+      if (rows.length) blocks.push({ type: "table", rows });
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flush();
+      blocks.push({ type: heading[1].length === 1 ? "title" : heading[1].length === 2 ? "section" : "subtitle",
+        text_fr: heading[2].trim(), text_en: heading[2].trim() });
+      continue;
+    }
+    if (/^[IVXLCDM]+[.)]\s+/i.test(line)) {
+      flush(); blocks.push({ type: "section", text_fr: line, text_en: line }); continue;
+    }
+    if (/^(?:\d+(?:\.\d+)*[.)]|[A-Z][.)])\s+/.test(line)) {
+      flush(); blocks.push({ type: "subtitle", text_fr: line, text_en: line }); continue;
+    }
+    const formula = line.match(/^\$\$([\s\S]+)\$\$$/);
+    if (formula) { flush(); blocks.push({ type: "formula", latex: formula[1].trim() }); continue; }
+    if (/^[-*•]\s+/.test(line)) {
+      flush(); blocks.push({ type: "bullet", text_fr: line.replace(/^[-*•]\s+/, ""), text_en: line.replace(/^[-*•]\s+/, "") }); continue;
+    }
+    const key = line.match(/^(?:\*\*)?(Définition|Propriété|Théorème|Démonstration|Exemple|Application|À retenir|Attention|Remarque)(?:\*\*)?\s*[:：]/i);
+    if (key) { flush(); blocks.push({ type: "key", text_fr: line, text_en: line }); continue; }
+    paragraph.push(line);
+  }
+  flush();
+  return blocks;
+}
+
+function splitReaderText(value: string, limit = 2200): string[] {
+  const parts = value.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const result: string[] = [];
+  let current = "";
+  const flush = () => { if (current.trim()) result.push(current.trim()); current = ""; };
+  for (const part of parts) {
+    if (part.length <= limit) {
+      const next = current ? current + "\n\n" + part : part;
+      if (next.length <= limit) current = next; else { flush(); current = part; }
+      continue;
+    }
+    flush();
+    const tokens = part.match(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\S+/g) ?? [part];
+    for (const token of tokens) {
+      if (current && (current + " " + token).length > limit) flush();
+      current = current ? current + " " + token : token;
+    }
+    flush();
+  }
+  flush();
+  return result.length ? result : [value.trim()];
+}
+
 function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
-  const fr = buildContentBlocks(french);
-  const en = buildContentBlocks(english || french);
-  const blocks = fr.map((block, index) => {
-    const kind = String(block.type ?? "TEXT").toLowerCase();
-    if (kind === "formula") return { type: "formula", latex: block.latex ?? "" };
+  const fr = buildRichReaderBlocks(french);
+  const en = buildRichReaderBlocks(english || french);
+  const blocks: Array<Record<string, unknown>> = [];
+  fr.forEach((block, index) => {
     const translated = en[index];
-    const frText = String(block.text ?? "");
+    if (block.type === "formula" || block.type === "table") { blocks.push(block); return; }
+    const frText = String(block.text_fr ?? "");
     const enText = translated?.type === block.type
-      ? String(translated.text ?? frText)
-      : frText;
-    return {
-      type: "text",
-      text_fr: frText,
-      text_en: enText,
-    };
+      ? String(translated.text_fr ?? translated.text_en ?? frText) : frText;
+    const frParts = block.type === "text" && frText.length > 2200 ? splitReaderText(frText) : [frText];
+    const enParts = block.type === "text" && enText.length > 2200 ? splitReaderText(enText) : [enText];
+    const count = Math.max(frParts.length, enParts.length);
+    for (let part = 0; part < count; part++) {
+      const f = frParts[part] ?? "";
+      const e = enParts[part] ?? f;
+      blocks.push({ ...block, text_fr: f || e, text_en: e || f });
+    }
   });
-  return [{ id: "imported-course-page-1", position: 1, blocks }];
+  const pages: Array<Record<string, unknown>> = [];
+  let current: Array<Record<string, unknown>> = [];
+  let chars = 0;
+  const flushPage = () => {
+    if (!current.length) return;
+    pages.push({ id: `imported-course-page-${pages.length + 1}`, position: pages.length + 1,
+      format: "reflow", blocks: current });
+    current = []; chars = 0;
+  };
+  for (const block of blocks) {
+    const size = block.type === "table" ? JSON.stringify(block.rows ?? []).length
+      : String(block.text_fr ?? block.latex ?? "").length;
+    if (current.length && (current.length >= 8 || chars + size > 2600)) flushPage();
+    current.push(block); chars += size;
+  }
+  flushPage();
+  if (!pages.length) pages.push({ id: "imported-course-page-1", position: 1, format: "reflow",
+    blocks: [{ type: "text", text_fr: french, text_en: english || french }] });
+  return pages;
 }
 
 async function extractPdf(bytes: Uint8Array): Promise<string[]> {
