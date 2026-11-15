@@ -222,6 +222,7 @@ class Lesson {
   final int position;
   final int? estimatedMinutes;
   final bool isPublished;
+  final List<Map<String, dynamic>> pages;
   const Lesson({
     required this.id,
     required this.courseId,
@@ -238,6 +239,7 @@ class Lesson {
     this.position = 0,
     this.estimatedMinutes,
     this.isPublished = false,
+    this.pages = const <Map<String, dynamic>>[],
   });
   factory Lesson.fromMap(Map<String, dynamic> map) => Lesson(
     id: map['id'] as String,
@@ -255,6 +257,12 @@ class Lesson {
     position: map['position'] as int? ?? 0,
     estimatedMinutes: map['estimated_minutes'] as int?,
     isPublished: map['is_published'] as bool? ?? false,
+    pages: map['pages_json'] is List
+        ? (map['pages_json'] as List)
+            .whereType<Map>()
+            .map((page) => Map<String, dynamic>.from(page))
+            .toList(growable: false)
+        : const <Map<String, dynamic>>[],
   );
   String labelFor(String languageCode) =>
       languageCode == 'en' ? titleEn : titleFr;
