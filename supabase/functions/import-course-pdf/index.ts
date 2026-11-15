@@ -92,7 +92,7 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
       blocks.push({ type: "subtitle", text_fr: line, text_en: line });
       continue;
     }
-    const key = line.match(/^(?:\*\*)?(Définition|Définition|Propriété|Théorème|À retenir|Attention|Remarque)(?:\*\*)?\s*[:：]\s*(.*)$/i);
+    const key = line.match(/^(?:\*\*)?(Définition|Propriété|Théorème|Démonstration|Exemple|Application|À retenir|Attention|Remarque)(?:\*\*)?\s*[:：]\s*(.*)$/i);
     if (key) {
       flushParagraph();
       blocks.push({ type: "key", text_fr: line, text_en: line });
