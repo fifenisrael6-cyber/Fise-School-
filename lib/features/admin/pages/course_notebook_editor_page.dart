@@ -99,8 +99,8 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
             }
           }
           _pages.add(_NotebookPage(
-            text: french.join('\\n\\n'),
-            textEn: english.join('\\n\\n'),
+            text: french.join('\n\n'),
+            textEn: english.join('\n\n'),
             images: images,
           ));
         }
