@@ -657,6 +657,39 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     );
   }
 
+  Future<void> _openCourseContentReader(
+    String courseContent,
+    List<Map<String, dynamic>> pages,
+  ) async {
+    String? sourcePdfPath;
+    try {
+      final source = await Supabase.instance.client
+          .from('course_resources')
+          .select('storage_path')
+          .eq('course_id', widget.course.id)
+          .eq('resource_type', 'pdf')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      final path = source?['storage_path']?.toString().trim() ?? '';
+      if (path.isNotEmpty) sourcePdfPath = 'legacy-course-resource:$path';
+    } catch (_) {
+      // Cached structured pages remain the normal offline path.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CourseRecordNotebookReaderPage(
+        readerId: widget.course.id,
+        pageCourseId: widget.course.id,
+        sourcePdfPath: sourcePdfPath,
+        title: widget.course.labelFor(widget.locale.languageCode),
+        pages: pages,
+        fallbackText: courseContent,
+        locale: widget.locale,
+      ),
+    ));
+  }
+
   Widget _buildCourseContentCard(String courseContent, bool isEnglish) {
     final pages = widget.course.pages;
     return Card(
@@ -668,16 +701,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => CourseRecordNotebookReaderPage(
-            readerId: widget.course.id,
-            pageCourseId: widget.course.id,
-            title: widget.course.labelFor(widget.locale.languageCode),
-            pages: pages,
-            fallbackText: courseContent,
-            locale: widget.locale,
-          ),
-        )),
+        onTap: () => _openCourseContentReader(courseContent, pages),
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Row(
