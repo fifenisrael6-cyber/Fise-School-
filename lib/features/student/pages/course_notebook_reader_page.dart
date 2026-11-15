@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/course_diagram_renderer.dart';
 import '../../../core/offline/notebook_image_cache.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
@@ -696,6 +697,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             ),
           );
         case 'image' || 'diagram':
+          final diagramKind = (block['diagram_id'] ?? block['kind'] ?? block['diagram'] ?? '').toString().trim();
+          if (type == 'diagram' && diagramKind.isNotEmpty) {
+            return CourseDiagramRenderer(kind: diagramKind, locale: widget.locale);
+          }
           final imagePath = (block['storage_path'] ?? block['path'] ?? '').toString();
           if (imagePath.isEmpty) return const SizedBox.shrink();
           return FutureBuilder<Object?>(
@@ -804,13 +809,44 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           );
         case 'text':
           if (text.trim().isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: RichLessonText(
-              text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
-            ),
-          );
+          final tokenPattern = RegExp(r'\\[\\[diagram:([a-z_]+)\\]\\]');
+          final matches = tokenPattern.allMatches(text).toList(growable: false);
+          if (matches.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: RichLessonText(
+                text: text,
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+              ),
+            );
+          }
+          final children = <Widget>[];
+          var cursor = 0;
+          for (final match in matches) {
+            final before = text.substring(cursor, match.start).trim();
+            if (before.isNotEmpty) {
+              children.add(Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RichLessonText(
+                  text: before,
+                  style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+                ),
+              ));
+            }
+            children.add(CourseDiagramRenderer(kind: match.group(1)!, locale: widget.locale));
+            cursor = match.end;
+          }
+          final after = text.substring(cursor).trim();
+          if (after.isNotEmpty) {
+            children.add(Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: RichLessonText(
+                text: after,
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+              ),
+            ));
+          }
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
         default:
           if (text.trim().isEmpty) return const SizedBox.shrink();
           return Padding(
