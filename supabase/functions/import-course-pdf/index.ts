@@ -15,15 +15,13 @@ function normalize(value: unknown): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-async function extractPdf(bytes: Uint8Array): Promise<string> {
+async function extractPdf(bytes: Uint8Array): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
+  if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
     const content = await page.getTextContent();
-    // Keep the PDF's visual line structure instead of flattening every page
-    // into one long sentence. This lets the lesson formatter recover headings,
-    // numbered sections, formulas and table rows more faithfully.
     const lineGroups = new Map<number, Array<{ x: number; text: string }>>();
     for (const item of content.items as any[]) {
       const text = String(item?.str ?? "").trim();
@@ -42,9 +40,9 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
         .map((part) => part.text).join(" ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
       .join("\n");
-    pages.push(`[PAGE ${n}]\n${line}`);
+    pages.push(line);
   }
-  return pages.join("\n\n").trim();
+  return pages;
 }
 
 function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
@@ -210,24 +208,39 @@ serve(async (req) => {
     const { data: file, error: downloadError } = await db.storage.from("course-resources").download(resource.storage_path);
     if (downloadError || !file) throw new Error(downloadError?.message ?? "Téléchargement du PDF impossible.");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    let extracted = await extractPdf(bytes);
-    const sourcePageCount = (extracted.match(/\[PAGE \d+\]/g) ?? []).length;
-    if (sourcePageCount === 0) throw new Error("Impossible de déterminer le nombre de pages du PDF.");
-    if (extracted.length < 250) {
-      let binary = "";
-      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      const scanned = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${"gemini-3.8-flash"}:generateContent`, {
-        method: "POST", headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts: [
-          { text: "Transcris fidèlement tout le texte de ce PDF scolaire en français. Conserve les titres, les formules, les tableaux sous forme textuelle et les exemples. Ne résume pas et n'invente rien." },
-          { inline_data: { mime_type: "application/pdf", data: btoa(binary) } },
-        ] }], generationConfig: {} }),
-      });
-      const scannedData = await scanned.json();
-      if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
-      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\n") ?? "";
+    if (bytes.length > 25 * 1024 * 1024) throw new Error("Le PDF dépasse la taille maximale de 25 Mo.");
+    if (bytes.length < 5 || new TextDecoder().decode(bytes.subarray(0, 5)) !== "%PDF-") {
+      throw new Error("Le fichier stocké ne possède pas une signature PDF valide.");
     }
-    if (extracted.trim().length < 200) throw new Error("Le PDF ne contient pas assez de texte lisible pour l'import.");
+    const extractedPages = await extractPdf(bytes);
+    const sourcePageCount = extractedPages.length;
+    if (sourcePageCount === 0) throw new Error("Le PDF ne contient aucune page lisible.");
+    // OCR is page-aware: scanned pages inside a mixed PDF are not silently lost.
+    const pagesNeedingOcr = extractedPages
+      .map((text, index) => text.trim().length < 45 ? index + 1 : null)
+      .filter((page): page is number => page !== null);
+    if (pagesNeedingOcr.length) {
+      const ocrPrompt = \`Effectue une OCR fidèle uniquement pour les pages suivantes du PDF scolaire : \${pagesNeedingOcr.join(", ")}.
+Retourne exclusivement un JSON valide de la forme {"pages":[{"page_number":1,"text":"texte complet reconnu"}]}.
+Respecte la langue d'origine, les accents, les titres, les formules, les tableaux (colonnes séparées par |), les légendes et l'ordre de lecture. N'invente rien. Pour une page réellement vide, retourne une chaîne vide. N'inclus aucune page non demandée.\`;
+      const ocrResult = JSON.parse(await gemini(ocrPrompt, geminiKey, bytes));
+      for (const page of Array.isArray(ocrResult.pages) ? ocrResult.pages : []) {
+        const pageNumber = Number(page.page_number);
+        if (pagesNeedingOcr.includes(pageNumber) && pageNumber >= 1 && pageNumber <= sourcePageCount) {
+          const recognized = String(page.text ?? "").trim();
+          if (recognized.length > extractedPages[pageNumber - 1].trim().length) {
+            extractedPages[pageNumber - 1] = recognized;
+          }
+        }
+      }
+    }
+    const extracted = extractedPages
+      .map((page, index) => \`[PAGE \${index + 1}]\\n\${page}\`)
+      .join("\\n\\n")
+      .trim();
+    if (extracted.replace(/\\[PAGE \\d+\\]/g, "").trim().length < 200) {
+      throw new Error("Le PDF ne contient pas assez de texte lisible, même après OCR.");
+    }
 
     const subjectResult = await db.from("subjects").select("id,name_fr,name_en").eq("id", sourceCourse.subject_id).single();
     if (subjectResult.error || !subjectResult.data) throw new Error("Matière source introuvable.");
