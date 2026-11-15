@@ -168,12 +168,79 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           failed++;
         }
       }
+      // Also migrate published chapter lessons that still point directly
+      // to an uploaded source file and have no readable structured blocks.
+      final chapterItems = await _client
+          .from('chapter_content_items')
+          .select('id,chapter_id,title_fr,pages_json,source_pdf_path,is_published')
+          .eq('content_type', 'course')
+          .eq('is_published', true)
+          .not('source_pdf_path', 'is', null);
+      for (final raw in chapterItems) {
+        if (!mounted) return;
+        final item = Map<String, dynamic>.from(raw);
+        final pages = item['pages_json'];
+        final hasReadableContent = pages is List && pages.any((page) {
+          if (page is! Map || page['blocks'] is! List) return false;
+          return (page['blocks'] as List).whereType<Map>().any((block) {
+            final type = (block['type'] ?? '').toString().toLowerCase();
+            if (type == 'table') return block['rows'] is List && (block['rows'] as List).isNotEmpty;
+            if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'diagram') return (block['diagram_id'] ?? block['kind'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'image') return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+            return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+          });
+        });
+        if (hasReadableContent) { skipped++; continue; }
+        final sourcePath = item['source_pdf_path']?.toString().trim() ?? '';
+        if (sourcePath.isEmpty) { skipped++; continue; }
+        try {
+          final response = await _client.functions.invoke(
+            'import-chapter-pdf',
+            body: {'content_item_id': item['id'], 'restore_existing': true},
+          );
+          final data = response.data;
+          if (response.status < 200 || response.status >= 300 ||
+              data is! Map || data['success'] != true) {
+            failed++;
+            continue;
+          }
+          final report = (data['report'] as List? ?? const [])
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false);
+          final ids = report
+              .map((row) => row['content_item_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+          if (ids.isNotEmpty) {
+            final restored = await _client
+                .from('chapter_content_items')
+                .select('id,source_pdf_path,source_page_start,source_page_end')
+                .inFilter('id', ids);
+            for (final restoredItem in restored) {
+              final path = restoredItem['source_pdf_path']?.toString().trim() ?? '';
+              if (path.isEmpty) continue;
+              await CoursePdfPageService(_client).regenerate({
+                ...Map<String, dynamic>.from(restoredItem),
+                'storage_path': path,
+                'source_bucket': 'chapter-content',
+              });
+            }
+          }
+          migrated++;
+        } catch (_) {
+          failed++;
+        }
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 10),
         content: Text(_fr
-            ? 'Migration terminée : $migrated cours préparé(s), $skipped ignoré(s), $failed échec(s).'
-            : 'Migration finished: $migrated course(s) prepared, $skipped skipped, $failed failed.'),
+            ? 'Migration terminée : $migrated cours/leçons préparé(s), $skipped ignoré(s), $failed échec(s).'
+            : 'Migration finished: $migrated course/lesson(s) prepared, $skipped skipped, $failed failed.'),
       ));
       await _load();
     } catch (error) {
