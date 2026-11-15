@@ -15,23 +15,52 @@ function normalize(value: unknown): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** Convertit le Markdown en blocs ordonnes sans inventer d'images. */
-function buildContentBlocks(markdown: string): Array<Record<string, string>> {
-  const blocks: Array<Record<string, string>> = [];
-  const formulaPattern = /(?:\$\$[\s\S]+?\$\$|\$[^$\n]+\$)/g;
-  let cursor = 0;
-  for (const match of markdown.matchAll(formulaPattern)) {
-    const index = match.index ?? 0;
-    const before = markdown.slice(cursor, index).trim();
-    if (before) blocks.push({ type: 'TEXT', text: before });
-    const raw = match[0];
-    const latex = raw.startsWith('$$') ? raw.slice(2, -2).trim() : raw.slice(1, -1).trim();
-    if (latex) blocks.push({ type: 'FORMULA', latex });
-    cursor = index + raw.length;
+/** Convertit le Markdown en blocs structurés en conservant titres, listes, tableaux et formules. */
+function buildContentBlocks(markdown: string): Array<Record<string, unknown>> {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks: Array<Record<string, unknown>> = [];
+  let paragraph: string[] = [];
+  const flush = () => {
+    const value = paragraph.join("\n").trim();
+    if (value) blocks.push({ type: "TEXT", text: value });
+    paragraph = [];
+  };
+  const isTable = (line: string) => /^\s*\|.*\|\s*$/.test(line);
+  const cells = (line: string) => line.trim().replace(/^\|/, "").replace(/\|$/, "")
+    .split("|").map((cell) => cell.trim());
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) { flush(); continue; }
+    if (isTable(line)) {
+      flush();
+      const rows: string[][] = [];
+      while (i < lines.length && isTable(lines[i].trim())) {
+        const row = cells(lines[i].trim());
+        if (!row.every((cell) => /^:?-{2,}:?$/.test(cell))) rows.push(row);
+        i++;
+      }
+      i--;
+      if (rows.length) blocks.push({ type: "TABLE", rows });
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flush();
+      blocks.push({ type: heading[1].length === 1 ? "TITLE" : heading[1].length === 2 ? "SECTION" : "SUBTITLE", text: heading[2].trim() });
+      continue;
+    }
+    const roman = line.match(/^([IVXLCDM]+)[.)]\s+(.+)$/i);
+    if (roman) { flush(); blocks.push({ type: "SECTION", text: line }); continue; }
+    const numbered = line.match(/^(\d+(?:\.\d+)*[.)])\s+(.+)$/);
+    if (numbered) { flush(); blocks.push({ type: "SUBTITLE", text: line }); continue; }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) { flush(); blocks.push({ type: "BULLET", text: bullet[1] }); continue; }
+    const formula = line.match(/^\$\$([\s\S]+)\$\$$/) ?? line.match(/^\$([^$]+)\$$/);
+    if (formula) { flush(); blocks.push({ type: "FORMULA", latex: formula[1].trim() }); continue; }
+    paragraph.push(line);
   }
-  const remaining = markdown.slice(cursor).trim();
-  if (remaining) blocks.push({ type: 'TEXT', text: remaining });
-  return blocks.length ? blocks : [{ type: 'TEXT', text: markdown }];
+  flush();
+  return blocks.length ? blocks : [{ type: "TEXT", text: markdown }];
 }
 
 function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
@@ -40,16 +69,13 @@ function buildReaderPages(french: string, english: string): Array<Record<string,
   const blocks = fr.map((block, index) => {
     const kind = String(block.type ?? "TEXT").toLowerCase();
     if (kind === "formula") return { type: "formula", latex: block.latex ?? "" };
+    if (kind === "table") return { type: "table", rows: block.rows ?? [] };
     const translated = en[index];
     const frText = String(block.text ?? "");
     const enText = translated?.type === block.type
       ? String(translated.text ?? frText)
       : frText;
-    return {
-      type: "text",
-      text_fr: frText,
-      text_en: enText,
-    };
+    return { type: kind, text_fr: frText, text_en: enText };
   });
   return [{ id: "imported-course-page-1", position: 1, blocks }];
 }
@@ -191,28 +217,33 @@ serve(async (req) => {
 
     const extractedPages = await extractPdf(bytes);
     const sourcePageCount = extractedPages.length;
-    let extracted = extractedPages
-      .map((page, index) => `[PAGE ${index + 1}]\n${page}`)
-      .join("\n\n")
-      .trim();
-    if (extracted.length < 250) {
-      let binary = "";
-      for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    if (sourcePageCount === 0) throw new Error("Le PDF ne contient aucune page lisible.");
+    // OCR only pages with no usable text, including mixed scanned/text PDFs.
+    const pagesNeedingOcr = extractedPages
+      .map((text, index) => text.trim().length < 45 ? index + 1 : null)
+      .filter((page): page is number => page !== null);
+    if (pagesNeedingOcr.length) {
+      const ocrPrompt = \`Effectue une OCR fidèle uniquement pour les pages suivantes du PDF scolaire : \${pagesNeedingOcr.join(", ")}.
+Retourne exclusivement un JSON valide de la forme {"pages":[{"page_number":1,"text":"texte complet reconnu"}]}.
+Respecte la langue d'origine, les accents, les titres, les formules, les tableaux (colonnes séparées par |), les légendes et l'ordre de lecture. N'invente rien. Pour une page vide, retourne une chaîne vide. N'inclus aucune page non demandée.\`;
+      const ocrResult = JSON.parse(await gemini(ocrPrompt, geminiKey, bytes));
+      for (const page of Array.isArray(ocrResult.pages) ? ocrResult.pages : []) {
+        const pageNumber = Number(page.page_number);
+        if (pagesNeedingOcr.includes(pageNumber) && pageNumber >= 1 && pageNumber <= sourcePageCount) {
+          const recognized = String(page.text ?? "").trim();
+          if (recognized.length > extractedPages[pageNumber - 1].trim().length) {
+            extractedPages[pageNumber - 1] = recognized;
+          }
+        }
       }
-      const scanned = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${"gemini-3.8-flash"}:generateContent`, {
-        method: "POST",
-        headers: { "x-goog-api-key": geminiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts: [
-          { text: "Transcris fidèlement le texte de ce PDF scolaire en français. Conserve les titres, formules, tableaux sous forme textuelle et exemples. Ne résume pas et n'invente rien." },
-          { inline_data: { mime_type: "application/pdf", data: btoa(binary) } },
-        ] }]}),
-      });
-      const scannedData = await scanned.json();
-      if (!scanned.ok) throw new Error(scannedData?.error?.message ?? "Lecture du PDF scanné impossible.");
-      extracted = scannedData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("\n") ?? "";
     }
-    if (extracted.trim().length < 200) throw new Error("Le PDF ne contient pas assez de texte lisible.");
+    const extracted = extractedPages
+      .map((page, index) => \`[PAGE \${index + 1}]\\n\${page}\`)
+      .join("\\n\\n")
+      .trim();
+    if (extracted.replace(/\\[PAGE \\d+\\]/g, "").trim().length < 200) {
+      throw new Error("Le PDF ne contient pas assez de texte lisible, même après OCR.");
+    }
 
     const prompt = `Tu es un rédacteur pédagogique expérimenté pour les classes du système scolaire camerounais francophone. Transforme le texte extrait en un véritable cours de salle de classe, clair, complet, progressif et directement lisible par un élève dans l'application mobile. Ce n'est PAS un résumé et ce ne doit PAS ressembler à un PDF brut.
 
