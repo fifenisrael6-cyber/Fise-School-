@@ -249,7 +249,10 @@ class ChapterLearningService {
     for (final course in courses) {
       final bodyFr = course['content_fr']?.toString();
       final bodyEn = course['content_en']?.toString();
-      final pageData = course['pages_json'];
+      final rawPageData = course['pages_json'];
+      final pageData = rawPageData is String
+          ? (() { try { return jsonDecode(rawPageData); } catch (_) { return null; } })()
+          : rawPageData;
       final hasPages = pageData is List && pageData.isNotEmpty;
       if ((bodyFr ?? '').trim().isEmpty &&
           (bodyEn ?? '').trim().isEmpty &&
@@ -264,7 +267,7 @@ class ChapterLearningService {
         'title_en': course['title_en']?.toString() ?? 'Course',
         'body_text_fr': bodyFr,
         'body_text_en': bodyEn,
-        'pages_json': course['pages_json'],
+        'pages_json': pageData,
         'position': 0,
         'is_published': true,
       });

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -70,33 +72,35 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       _titleEn.text = item['title_en']?.toString() ?? '';
       _published = item['is_published'] == true || item['status'] == 'published';
       final rawPages = item['pages_json'];
-      if (rawPages is List) {
-        final savedPages = rawPages
-            .whereType<Map>()
-            .map((raw) => Map<String, dynamic>.from(raw))
-            .toList(growable: false);
-        final french = <String>[];
-        final english = <String>[];
-        final images = <Map<String, dynamic>>[];
-        for (final page in savedPages) {
+      final decodedPages = rawPages is String
+          ? (() { try { return jsonDecode(rawPages); } catch (_) { return null; } })()
+          : rawPages;
+      if (decodedPages is List) {
+        for (final rawPage in decodedPages.whereType<Map>()) {
+          final page = Map<String, dynamic>.from(rawPage);
+          final french = <String>[];
+          final english = <String>[];
+          final images = <Map<String, dynamic>>[];
           final blocks = page['blocks'];
-          if (blocks is! List) continue;
-          for (final rawBlock in blocks.whereType<Map>()) {
-            final block = Map<String, dynamic>.from(rawBlock);
-            if (block['type'] == 'text') {
-              final fr = (block['text_fr'] ?? block['text'] ?? '').toString().trim();
-              final en = (block['text_en'] ?? fr).toString().trim();
-              if (fr.isNotEmpty) french.add(fr);
-              if (en.isNotEmpty) english.add(en);
-            } else if (block['type'] == 'image') {
-              images.add(block);
+          if (blocks is List) {
+            for (final rawBlock in blocks.whereType<Map>()) {
+              final block = Map<String, dynamic>.from(rawBlock);
+              final type = (block['type'] ?? '').toString().toLowerCase();
+              if (type == 'text' || type == 'paragraph' || type == 'title' ||
+                  type == 'section' || type == 'subtitle' || type == 'bullet' ||
+                  type == 'formula' || type == 'key') {
+                final fr = (block['text_fr'] ?? block['text'] ?? block['content'] ?? block['latex'] ?? '').toString();
+                final en = (block['text_en'] ?? fr).toString();
+                if (fr.trim().isNotEmpty) french.add(fr);
+                if (en.trim().isNotEmpty) english.add(en);
+              } else if (type == 'image' || type == 'diagram') {
+                images.add({...block, 'type': 'image'});
+              }
             }
           }
-        }
-        if (french.isNotEmpty || english.isNotEmpty || images.isNotEmpty) {
           _pages.add(_NotebookPage(
-            text: french.join('\\n\\n'),
-            textEn: english.join('\\n\\n'),
+            text: french.join('\n\n'),
+            textEn: english.join('\n\n'),
             images: images,
           ));
         }
@@ -104,7 +108,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
       if (_pages.isEmpty) {
         final legacyFr = (item['body_text_fr'] ?? item['content_fr'] ?? item['body_text_en'] ?? item['content_en'] ?? '').toString();
         final legacyEn = (item['body_text_en'] ?? item['content_en'] ?? item['body_text_fr'] ?? item['content_fr'] ?? '').toString();
-        _pages.add(_NotebookPage(text: legacyFr, textEn: legacyEn));
+        _pages.add(_NotebookPage(text: _plainCourseText(legacyFr), textEn: _plainCourseText(legacyEn)));
       }
     } else {
       _published = widget.courseContext?['publish'] == true;
@@ -167,30 +171,86 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
   }
 
   List<Map<String, dynamic>> _serializePages() {
-    final page = _pages.first;
-    final french = page.text.text.trim();
-    final english = page.textEn.text.trim().isEmpty
-        ? french
-        : page.textEn.text.trim();
-    return NotebookPagePagination.expandLegacyPages(
-      [
-        {
-          'id': 'course-content',
-          'position': 1,
-          'format': 'A4',
-          'blocks': [
-            if (french.isNotEmpty || english.isNotEmpty)
-              {
-                'type': 'text',
-                'text_fr': french.isEmpty ? english : french,
-                'text_en': english.isEmpty ? french : english,
-              },
-            ...page.images,
-          ],
-        },
-      ],
-      fontSize: 18,
-    );
+    final result = <Map<String, dynamic>>[];
+    for (var index = 0; index < _pages.length; index++) {
+      final page = _pages[index];
+      final french = page.text.text.trim();
+      final english = page.textEn.text.trim().isEmpty
+          ? french
+          : page.textEn.text.trim();
+      final expanded = NotebookPagePagination.expandLegacyPages(
+        [
+          {
+            'id': 'course-page-${index + 1}',
+            'position': index + 1,
+            'format': 'A4',
+            'blocks': [
+              if (french.isNotEmpty || english.isNotEmpty)
+                {
+                  'type': 'text',
+                  'text_fr': french.isEmpty ? english : french,
+                  'text_en': english.isEmpty ? french : english,
+                },
+              ...page.images,
+            ],
+          },
+        ],
+        fontSize: 18,
+      );
+      for (final item in expanded) {
+        result.add({...item, 'position': result.length + 1});
+      }
+    }
+    return result;
+  }
+
+  String _plainCourseText(String value) {
+    final source = value.trim();
+    if (source.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(source);
+      if (decoded is List) {
+        final buffer = StringBuffer();
+        for (final operation in decoded) {
+          if (operation is! Map) continue;
+          final insert = operation['insert'];
+          if (insert is String) {
+            buffer.write(insert);
+          } else if (insert is Map && insert['image'] != null) {
+            buffer.write('\n[Image intégrée — à réinsérer si nécessaire]\n');
+          }
+        }
+        return buffer.toString().trim();
+      }
+    } catch (_) {
+      // Plain text and legacy markup remain unchanged.
+    }
+    return source;
+  }
+
+  void _addPage() {
+    setState(() {
+      _pages.add(_NotebookPage());
+      _previewIndex = _pages.length - 1;
+    });
+  }
+
+  void _removePage(int index) {
+    if (_pages.length <= 1) return;
+    setState(() {
+      final removed = _pages.removeAt(index);
+      removed.dispose();
+      _previewIndex = _previewIndex.clamp(0, _pages.length - 1);
+    });
+  }
+
+  void _movePage(int index, int offset) {
+    final target = index + offset;
+    if (target < 0 || target >= _pages.length) return;
+    setState(() {
+      final page = _pages.removeAt(index);
+      _pages.insert(target, page);
+    });
   }
 
   List<Map<String, dynamic>> get _previewPages => _serializePages();
@@ -248,7 +308,8 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
     }
     final remaining = text.substring(cursor).trim();
     if (remaining.isNotEmpty) blocks.add({'type': 'TEXT', 'text': remaining});
-    for (final image in _pages.first.images) {
+    for (final page in _pages) {
+      for (final image in page.images) {
       final path = image['storage_path']?.toString() ?? '';
       if (path.isEmpty) continue;
       blocks.add({
@@ -256,6 +317,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         'storage_path': path,
         'caption': (english ? image['caption_en'] : image['caption_fr'])?.toString() ?? '',
       });
+      }
     }
     return blocks;
   }
@@ -459,10 +521,28 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _t('Rédaction continue — les pages A4 sont créées automatiquement',
-                 'Continuous writing — A4 pages are created automatically'),
-              style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)),
+            Row(
+              children: [
+                Expanded(child: Text(
+                  '${_t('Page', 'Page')} ${index + 1} / ${_pages.length}',
+                  style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF166534)),
+                )),
+                IconButton(
+                  tooltip: _t('Monter la page', 'Move page up'),
+                  onPressed: index == 0 ? null : () => _movePage(index, -1),
+                  icon: const Icon(Icons.arrow_upward),
+                ),
+                IconButton(
+                  tooltip: _t('Descendre la page', 'Move page down'),
+                  onPressed: index == _pages.length - 1 ? null : () => _movePage(index, 1),
+                  icon: const Icon(Icons.arrow_downward),
+                ),
+                IconButton(
+                  tooltip: _t('Supprimer la page', 'Delete page'),
+                  onPressed: _pages.length <= 1 ? null : () => _removePage(index),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
             ),
             MathLessonInput(
               controller: page.text,
@@ -557,6 +637,11 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
                 ),
                 const SizedBox(height: 12),
                 for (var index = 0; index < _pages.length; index++) _buildPageEditor(index),
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _addPage,
+                  icon: const Icon(Icons.add),
+                  label: Text(_t('Ajouter une page', 'Add a page')),
+                ),
                 SwitchListTile(
                   value: _published,
                   onChanged: (value) => setState(() => _published = value),

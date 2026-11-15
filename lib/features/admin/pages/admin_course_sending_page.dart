@@ -812,9 +812,8 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(value: 'replace', child: Text(_t('Remplacer le document du cours', 'Replace course document'))),
-                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty &&
-                          row['pages_json'] is List && (row['pages_json'] as List).isNotEmpty)
-                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier les anciennes pages A4', 'Edit legacy A4 pages'))),
+                      if ((row['chapter_id']?.toString() ?? '').isNotEmpty)
+                        PopupMenuItem(value: 'pages', child: Text(_t('Modifier le cours et ses pages', 'Edit course and pages'))),
                       PopupMenuItem(value: 'delete', child: Text(_t('Supprimer', 'Delete'))),
                     ],
                   ),

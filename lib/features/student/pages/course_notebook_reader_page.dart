@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -384,13 +385,37 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               'blocks': [
                 {
                   'type': 'text',
-                  'text_fr': widget.item.bodyFor('fr') ?? '',
-                  'text_en': widget.item.bodyFor('en') ?? widget.item.bodyFor('fr') ?? '',
+                  'text_fr': _plainCourseText(widget.item.bodyFor('fr') ?? ''),
+                  'text_en': _plainCourseText(widget.item.bodyFor('en') ?? widget.item.bodyFor('fr') ?? ''),
                 },
               ],
             },
           ];
     return NotebookPagePagination.expandLegacyPages(source, fontSize: _fontSize);
+  }
+
+  String _plainCourseText(String value) {
+    final source = value.trim();
+    if (source.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(source);
+      if (decoded is List) {
+        final buffer = StringBuffer();
+        for (final operation in decoded) {
+          if (operation is! Map) continue;
+          final insert = operation['insert'];
+          if (insert is String) {
+            buffer.write(insert);
+          } else if (insert is Map && insert['image'] != null) {
+            buffer.write('\n');
+          }
+        }
+        return buffer.toString().trim();
+      }
+    } catch (_) {
+      // Keep normal text and legacy markup untouched.
+    }
+    return source;
   }
 
   Future<Object?> _resolveImage(String path) async {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Modèles des contenus de chapitre Fise School.
 ///
 /// Ces modèles complètent lib/models/pedagogy.dart :
@@ -88,6 +90,11 @@ class ChapterLearningContentItem {
       _ => ChapterLearningContentType.course,
     };
 
+    final rawPages = map['pages_json'];
+    final decodedPages = rawPages is String
+        ? (() { try { return jsonDecode(rawPages); } catch (_) { return null; } })()
+        : rawPages;
+
     return ChapterLearningContentItem(
       id: map['id'] as String,
       chapterId: map['chapter_id'] as String,
@@ -105,8 +112,8 @@ class ChapterLearningContentItem {
       sourcePageStart: _asNullableInt(map['source_page_start']),
       sourcePageEnd: _asNullableInt(map['source_page_end']),
       storedFolderKey: map['folder_key'] as String?,
-      pages: map['pages_json'] is List
-          ? (map['pages_json'] as List)
+      pages: decodedPages is List
+          ? (decodedPages as List)
               .whereType<Map>()
               .map((page) => Map<String, dynamic>.from(page))
               .toList(growable: false)
