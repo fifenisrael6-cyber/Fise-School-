@@ -242,9 +242,10 @@ serve(async (req) => {
     if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") return json({ error: "Le fichier doit être un PDF." }, 400);
 
     const { data: sourceCourse, error: courseError } = await db.from("courses")
-      .select("id,class_id,subject_id,curriculum_id,teacher_id,title_fr,content_fr,content_en,pages_json")
+      .select("id,class_id,subject_id,curriculum_id,teacher_id,title_fr,content_fr,content_en,pages_json,status")
       .eq("id", resource.course_id).single();
     if (courseError || !sourceCourse?.class_id || !sourceCourse.subject_id) return json({ error: "Le cours source doit être lié à une salle et une matière." }, 400);
+    const publishImported = body?.publish_imported === true && sourceCourse.status === "published";
 
     const { data: sourceClass, error: classError } = await db.from("school_classes")
       .select("id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id")
@@ -389,10 +390,10 @@ ${extracted}`;
           source_pdf_path: sourcePdfPath,
           source_page_start: chapter.source_page_start,
           source_page_end: chapter.source_page_end,
-          position: 0, is_published: false, created_by: authData.user.id, folder_key: "course",
+          position: 0, is_published: publishImported, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
-        report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
+        report.push({ chapter: title, curriculum: curriculum.title_fr, status: publishImported ? "imported_published" : "imported", content_item_id: item.id });
       }
     }
     // Keep the source course itself readable through the same responsive reader.
@@ -415,7 +416,8 @@ ${extracted}`;
       if (courseUpdateError) throw courseUpdateError;
     }
 
-    const imported = report.filter((r) => r.status === "imported").length;
+    const imported = report.filter((r) => r.status === "imported" || r.status === "imported_published").length;
+    const published = report.filter((r) => r.status === "imported_published").length;
     const existingCount = report.filter((r) => r.status === "already_exists").length;
     const replacedCount = report.filter((r) => r.status === "replaced").length;
     const wordCount = extracted.split(/\s+/).filter(Boolean).length;
@@ -431,8 +433,8 @@ ${extracted}`;
     return json({
       success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
       subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
-      imported, replaced: replacedCount, already_exists: existingCount, report,
-      message: `${imported} chapitre(s) préparé(s), ${replacedCount} remplacé(s), ${existingCount} déjà présents. Relisez les brouillons et publiez-les depuis l’espace écrit.`,
+      imported, published, replaced: replacedCount, already_exists: existingCount, report,
+      message: `${imported} chapitre(s) préparé(s), ${published} publié(s), ${replacedCount} remplacé(s), ${existingCount} déjà présents.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";
