@@ -304,6 +304,7 @@ class OfflineRepository {
       'position': lesson.position,
       'estimated_minutes': lesson.estimatedMinutes,
       'is_published': lesson.isPublished,
+      'pages_json': lesson.pages,
     };
   }
 }
