@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/lesson_content_renderer.dart';
 import '../../../core/offline/notebook_image_cache.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
@@ -399,6 +401,22 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     );
   }
 
+  bool _looksLikeQuillDelta(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      final operations = decoded is List
+          ? decoded
+          : decoded is Map
+              ? decoded['ops']
+              : null;
+      return operations is List &&
+          operations.any((operation) =>
+              operation is Map && operation.containsKey('insert'));
+    } catch (_) {
+      return false;
+    }
+  }
+
   List<Map<String, dynamic>> get _pages {
     if (_pdfPages.isNotEmpty) return _pdfPages;
     final source = _structuredPages.isNotEmpty
@@ -491,6 +509,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         'diagram' || 'schema' || 'schéma' => 'diagram',
         'image' || 'figure' => 'image',
         'raster' => 'raster',
+        'quill' || 'delta' => 'quill',
         'raster-pending' || 'raster-error' => rawType,
         _ => rawType,
       };
@@ -705,10 +724,20 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           if (text.trim().isEmpty) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: RichLessonText(
-              text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
-            ),
+            child: _looksLikeQuillDelta(text)
+                ? LessonContentRenderer(
+                    text: text,
+                    style: TextStyle(fontSize: _fontSize, height: 1.5, color: const Color(0xFF1E293B)),
+                  )
+                : RichLessonText(
+                    text: text,
+                    style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+                  ),
+          );
+        case 'quill':
+          return LessonContentRenderer(
+            text: text,
+            style: TextStyle(fontSize: _fontSize, height: 1.5, color: const Color(0xFF1E293B)),
           );
         default:
           if (text.trim().isEmpty) return const SizedBox.shrink();
@@ -789,6 +818,18 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               ],
             },
           ];
+    // Quill Delta is a structured document, not plain text: never split its
+    // JSON payload into arbitrary page fragments.
+    final containsQuillDelta = source.any((page) {
+      final raw = page['blocks'];
+      if (raw is! List) return false;
+      return raw.whereType<Map>().any((block) {
+        final value = (block['text_fr'] ?? block['text'] ?? block['content'] ?? '').toString();
+        return _looksLikeQuillDelta(value);
+      });
+    });
+    if (containsQuillDelta) return source;
+
     return NotebookPagePagination.expandLegacyPages(
       source,
       fontSize: _fontSize,
