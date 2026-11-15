@@ -664,25 +664,6 @@ class _ChapterLearningDetailPageState
         .createSignedUrl(path, 900);
   }
 
-  Future<void> _openOriginalPdfLesson(ChapterLearningContentItem item) async {
-    try {
-      await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => OriginalPdfLessonBookPage(
-          item: item,
-          locale: widget.locale,
-          service: _service,
-        ),
-      ));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_en
-            ? 'Original PDF pages could not be opened: $error'
-            : 'Impossible d’ouvrir les pages originales du PDF : $error'),
-      ));
-    }
-  }
-
   /// Présente chaque leçon comme une page de manuel scolaire illustré.
   /// Les contenus et médias restent ceux publiés pour le chapitre dans Supabase.
   Widget _courseLessonCard(
@@ -750,22 +731,6 @@ class _ChapterLearningDetailPageState
                       RichLessonText(
                         text: body,
                         style: TextStyle(fontSize: bodySize, height: _a4Layout ? 1.85 : 1.75, color: const Color(0xFF1E293B)),
-                      ),
-                    ],
-                    if ((item.sourcePdfPath ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      OutlinedButton.icon(
-                        onPressed: () => _openOriginalPdfLesson(item),
-                        icon: const Icon(Icons.auto_stories_rounded),
-                        label: Text(
-                          _en
-                              ? 'View original pages (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})'
-                              : 'Voir les pages originales (${item.sourcePageStart ?? 1}–${item.sourcePageEnd ?? '…'})',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF166534),
-                          side: const BorderSide(color: Color(0xFF86B99A)),
-                        ),
                       ),
                     ],
                     if (usableImages.isNotEmpty) ...[
