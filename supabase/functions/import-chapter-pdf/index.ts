@@ -47,6 +47,8 @@ function buildRichReaderBlocks(markdown: string): Array<Record<string, unknown>>
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) { flush(); continue; }
+    const diagram = line.match(/^\\[\\[diagram:([a-z_]+)\\]\\]$/i);
+    if (diagram) { flush(); blocks.push({ type: "diagram", diagram_id: diagram[1] }); continue; }
     if (tableLine(line)) {
       flush();
       const rows: string[][] = [];
