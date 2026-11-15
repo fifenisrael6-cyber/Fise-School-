@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/widgets/lesson_content_renderer.dart';
