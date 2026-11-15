@@ -702,16 +702,38 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             future: _resolveImage(imagePath),
             builder: (context, snapshot) {
               final resolved = snapshot.data;
-              if (resolved == null) {
+              if (snapshot.connectionState != ConnectionState.done) {
                 return const Padding(
                   padding: EdgeInsets.all(18),
                   child: Center(child: CircularProgressIndicator()),
                 );
               }
+              if (resolved == null) {
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _en ? 'Illustration unavailable offline.' : 'Illustration indisponible hors connexion.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: _fontSize - 1, color: const Color(0xFF64748B)),
+                  ),
+                );
+              }
               final image = resolved is File
                   ? Image.file(resolved, fit: BoxFit.contain)
                   : Image.network(resolved.toString(), fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink());
+                      errorBuilder: (_, __, ___) => Container(
+                        padding: const EdgeInsets.all(16),
+                        alignment: Alignment.center,
+                        child: Text(_en ? 'Illustration unavailable.' : 'Illustration indisponible.',
+                          style: TextStyle(fontSize: _fontSize - 1, color: const Color(0xFF64748B))),
+                      ));
               return Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(vertical: 10),
