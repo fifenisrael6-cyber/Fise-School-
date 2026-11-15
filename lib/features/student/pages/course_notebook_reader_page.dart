@@ -18,7 +18,7 @@ import '../../../core/services/chapter_learning_service.dart';
 abstract final class CourseReaderTheme {
   static const navy = Color(0xFF17365D);
   static const blue = Color(0xFF2476D2);
-  static const paleBlue = Color(0xFFEAF3FF);
+  static const paleBlue = CourseReaderTheme.paleBlue;
   static const paleGreen = Color(0xFFEAF7EF);
   static const text = Color(0xFF1E293B);
   static const border = Color(0xFFB9D7FA);
@@ -578,9 +578,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               block['content'] ??
               block['label'] ??
               '').toString();
-      const navy = Color(0xFF123B70);
+      const navy = CourseReaderTheme.navy;
       const paleBlue = Color(0xFFEAF3FF);
-      const paleGreen = Color(0xFFEAF8EF);
+      const paleGreen = CourseReaderTheme.paleGreen;
 
       switch (type) {
         case 'title':
@@ -597,7 +597,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: paleBlue, borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFB9D7FA)),
+              border: Border.all(color: CourseReaderTheme.border),
             ),
             child: Text(text, style: TextStyle(
               fontSize: _fontSize + 1, height: 1.25,
@@ -627,7 +627,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               ),
               Expanded(child: RichLessonText(
                 text: text,
-                style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
               )),
             ]),
           );
@@ -648,7 +648,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
               color: paleBlue, borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFB9D7FA)),
+              border: Border.all(color: CourseReaderTheme.border),
             ),
             child: Center(child: RichLessonText(
               text: formula.startsWith(r'$') ? formula : r'$$' + formula + r'$$',
@@ -808,7 +808,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             padding: const EdgeInsets.only(bottom: 10),
             child: RichLessonText(
               text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+              style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
             ),
           );
         default:
@@ -816,7 +816,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: RichLessonText(text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B))),
+              style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text)),
           );
       }
     }
@@ -843,7 +843,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF123B70),
+                color: CourseReaderTheme.navy,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -1059,7 +1059,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         onPressed: () => _controller.previousPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
                       ),
                       DecoratedBox(
-                        decoration: BoxDecoration(color: const Color(0xFF123B70), borderRadius: BorderRadius.circular(22)),
+                        decoration: BoxDecoration(color: CourseReaderTheme.navy, borderRadius: BorderRadius.circular(22)),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
