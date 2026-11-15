@@ -10,6 +10,7 @@ import '../../../core/offline/json_cache.dart';
 import '../../../core/offline/offline_repository.dart';
 import '../../../core/services/pedagogy_service.dart';
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/course_diagram_renderer.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/offline_resource_tile.dart';
@@ -963,91 +964,10 @@ class _SubjectChannelPageState extends State<SubjectChannelPage> {
     );
   }
 
-  Widget _courseDiagramCard(String kind) {
-    const titles = <String, String>{
-      'gravity_pair': 'Attraction gravitationnelle entre deux corps',
-      'gravity_altitude': 'Champ gravitationnel autour de la Terre',
-      'weight': 'Poids d’un corps',
-      'geom_triangle': 'Triangle et éléments géométriques',
-      'geom_right_triangle': 'Triangle rectangle',
-      'geom_circle': 'Cercle et rayon',
-      'geom_square': 'Carré et diagonales',
-      'geom_parallel': 'Configuration de Thalès',
-      'geom_coordinate': 'Repère cartésien',
-      'geom_cube': 'Cube en perspective',
-      'geom_pyramid': 'Pyramide à base carrée',
-      'geom_cylinder': 'Cylindre',
-      'geom_prism': 'Prisme droit',
-      'graph_line': 'Représentation graphique d’une droite',
-      'stats_bar': 'Diagramme en bâtons',
-      'svt_cell': 'Échanges à travers la membrane cellulaire',
-      'svt_neuron': 'Structure d’un neurone',
-      'svt_synapse': 'Transmission au niveau d’une synapse',
-    };
-    const englishTitles = <String, String>{
-      'gravity_pair': 'Gravitational attraction between two bodies',
-      'gravity_altitude': 'Gravitational field around Earth',
-      'weight': 'Weight of a body',
-      'geom_triangle': 'Triangle and its elements',
-      'geom_right_triangle': 'Right-angled triangle',
-      'geom_circle': 'Circle and radius',
-      'geom_square': 'Square and diagonals',
-      'geom_parallel': 'Thales configuration',
-      'geom_coordinate': 'Cartesian coordinate plane',
-      'geom_cube': 'Cube in perspective',
-      'geom_pyramid': 'Square-based pyramid',
-      'geom_cylinder': 'Cylinder',
-      'geom_prism': 'Right prism',
-      'graph_line': 'Graph of a straight line',
-      'stats_bar': 'Bar chart',
-      'svt_cell': 'Cell membrane exchanges',
-      'svt_neuron': 'Structure of a neuron',
-      'svt_synapse': 'Synaptic transmission',
-    };
-    const formulas = <String, String>{
-      'gravity_pair': 'F = G × m₁ × m₂ / r²',
-      'gravity_altitude': 'g(h) = G × Mₜ / (Rₜ + h)²',
-      'weight': 'P = m × g',
-      'geom_triangle': 'A = (base × hauteur) / 2',
-      'geom_right_triangle': 'c² = a² + b²',
-      'geom_circle': 'P = 2πr  •  A = πr²',
-      'geom_square': 'A = c²  •  diagonale = c√2',
-      'geom_parallel': 'MN ∥ BC  ⇒  AM/AB = AN/AC',
-      'geom_coordinate': 'Point A(x ; y)',
-      'geom_cube': 'V = a³  •  A totale = 6a²',
-      'geom_pyramid': 'V = (A base × hauteur) / 3',
-      'geom_cylinder': 'V = πr²h',
-      'geom_prism': 'V = A base × hauteur',
-      'graph_line': 'y = ax + b',
-      'stats_bar': 'Hauteur des barres proportionnelle aux effectifs',
-      'svt_cell': 'Entrées : eau, ions, nutriments, O₂  •  Sorties : CO₂ et déchets',
-      'svt_neuron': 'Dendrites → corps cellulaire → axone → terminaisons',
-      'svt_synapse': 'Message électrique → neurotransmetteurs → récepteurs',
-    };
-    final title = _fr ? titles[kind] : (englishTitles[kind] ?? titles[kind]);
-    if (title == null) return const SizedBox.shrink();
-    final formula = formulas[kind] ?? '';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(children: [
-        Text(title, textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF164E63), fontSize: 14)),
-        const SizedBox(height: 8),
-        SizedBox(width: double.infinity, height: 190,
-            child: CustomPaint(painter: _GravityDiagramPainter(kind))),
-        const SizedBox(height: 6),
-        Text(formula, textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8), fontSize: 14)),
-      ]),
-    );
-  }
+  Widget _courseDiagramCard(String kind) => CourseDiagramRenderer(
+    kind: kind,
+    locale: widget.locale,
+  );
 
   Widget _chapterContentPost(Map<String, dynamic> item) {
     final code = widget.locale.languageCode;
