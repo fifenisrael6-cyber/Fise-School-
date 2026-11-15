@@ -27,6 +27,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   bool _catalogLoading = false;
+  bool _readerMigrationRunning = false;
   String? _error;
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -56,7 +57,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     try {
       final rows = await _client
           .from('courses')
-          .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
+          .select('id,title_fr,title_en,description_fr,description_en,status,pages_json,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
           .order('created_at', ascending: false);
       if (!mounted) {
         return;
@@ -89,6 +90,92 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final fr = raw[keyFr]?.toString() ?? '';
     final en = raw[keyEn]?.toString() ?? '';
     return _fr ? (fr.isNotEmpty ? fr : en) : (en.isNotEmpty ? en : fr);
+  }
+
+  Future<void> _migratePublishedCourseReaders() async {
+    if (_readerMigrationRunning) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Uniformiser les cours publiés ?' : 'Unify published course readers?'),
+        content: Text(_fr
+            ? 'Cette opération reprend uniquement les cours publiés qui n’ont pas encore de pages structurées et qui possèdent un document source. Elle conserve les cours déjà structurés et leur état de publication.'
+            : 'This processes only published courses that have no structured pages yet and have a source document. Already structured courses and their publication state are preserved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Démarrer' : 'Start')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _readerMigrationRunning = true);
+    var migrated = 0;
+    var skipped = 0;
+    var failed = 0;
+    try {
+      final courses = await _client
+          .from('courses')
+          .select('id,title_fr,pages_json,status')
+          .eq('status', 'published')
+          .order('updated_at', ascending: true);
+      for (final raw in courses) {
+        if (!mounted) return;
+        final course = Map<String, dynamic>.from(raw);
+        final pages = course['pages_json'];
+        final hasBlocks = pages is List && pages.any((page) =>
+            page is Map && page['blocks'] is List &&
+            (page['blocks'] as List).isNotEmpty);
+        if (hasBlocks) { skipped++; continue; }
+
+        final resources = await _resources.listForCourse(course['id'].toString());
+        final pdfs = resources.where((resource) =>
+            resource.resourceType.toLowerCase() == 'pdf' ||
+            (resource.mimeType ?? '').toLowerCase() == 'application/pdf').toList();
+        if (pdfs.isEmpty) { skipped++; continue; }
+
+        final source = pdfs.first;
+        try {
+          final response = await _client.functions.invoke(
+            'import-course-pdf',
+            body: {'resource_id': source.id, 'publish_imported': true},
+          );
+          final data = response.data;
+          if (response.status < 200 || response.status >= 300 ||
+              data is! Map || data['success'] != true) {
+            failed++;
+            continue;
+          }
+          await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+          await CoursePdfPageService(_client).regenerate({
+            'course_id': source.courseId,
+            'storage_path': source.storagePath,
+            'source_bucket': 'course-resources',
+          });
+          migrated++;
+        } catch (_) {
+          failed++;
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text(_fr
+            ? 'Migration terminée : $migrated cours préparé(s), $skipped ignoré(s), $failed échec(s).'
+            : 'Migration finished: $migrated course(s) prepared, $skipped skipped, $failed failed.'),
+      ));
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Migration impossible : $error' : 'Migration failed: $error'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _readerMigrationRunning = false);
+    }
   }
 
   Future<void> _applyCatalog() async {
@@ -773,6 +860,13 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                 builder: (_) => SchoolClassesPage(locale: widget.locale),
               ),
             ),
+          ),
+          IconButton(
+            tooltip: _fr ? 'Uniformiser les lecteurs publiés' : 'Unify published readers',
+            onPressed: _readerMigrationRunning ? null : _migratePublishedCourseReaders,
+            icon: _readerMigrationRunning
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_fix_high_rounded),
           ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
