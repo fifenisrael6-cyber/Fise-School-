@@ -217,7 +217,7 @@ class _CourseNotebookEditorPageState extends State<CourseNotebookEditorPage> {
           if (insert is String) {
             buffer.write(insert);
           } else if (insert is Map && insert['image'] != null) {
-            buffer.write('\\n[Image intégrée — à réinsérer si nécessaire]\\n');
+            buffer.write('\n[Image intégrée — à réinsérer si nécessaire]\n');
           }
         }
         return buffer.toString().trim();
