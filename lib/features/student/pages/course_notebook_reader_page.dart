@@ -19,7 +19,7 @@ import '../../../core/services/chapter_learning_service.dart';
 abstract final class CourseReaderTheme {
   static const navy = Color(0xFF17365D);
   static const blue = Color(0xFF2476D2);
-  static const paleBlue = CourseReaderTheme.paleBlue;
+  static const paleBlue = Color(0xFFEAF2FC);
   static const paleGreen = Color(0xFFEAF7EF);
   static const text = Color(0xFF1E293B);
   static const border = Color(0xFFB9D7FA);
@@ -118,9 +118,12 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             .select('name_fr,name_en')
             .eq('id', subjectId)
             .maybeSingle();
-        subjectName = (widget.locale.languageCode == 'en'
-            ? subject?['name_en'] ?? subject?['name_fr']
-            : subject?['name_fr'] ?? subject?['name_en'])?.toString();
+        final subjectNameValue = subject == null
+            ? null
+            : (widget.locale.languageCode == 'en'
+                ? subject['name_en'] ?? subject['name_fr']
+                : subject['name_fr'] ?? subject['name_en']);
+        subjectName = subjectNameValue?.toString();
       }
       if (levelId != null && levelId.isNotEmpty) {
         final level = await Supabase.instance.client
@@ -128,9 +131,12 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             .select('level_name_fr,level_name_en')
             .eq('id', levelId)
             .maybeSingle();
-        levelName = (widget.locale.languageCode == 'en'
-            ? level?['level_name_en'] ?? level?['level_name_fr']
-            : level?['level_name_fr'] ?? level?['level_name_en'])?.toString();
+        final levelNameValue = level == null
+            ? null
+            : (widget.locale.languageCode == 'en'
+                ? level['level_name_en'] ?? level['level_name_fr']
+                : level['level_name_fr'] ?? level['level_name_en']);
+        levelName = levelNameValue?.toString();
       }
       if (teacherId != null && teacherId.isNotEmpty) {
         final teacher = await Supabase.instance.client
