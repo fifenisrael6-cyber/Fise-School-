@@ -274,7 +274,7 @@ class ChapterLearningService {
       try {
         final lessons = await _client
             .from('lessons')
-            .select('id,course_id,title_fr,title_en,content_fr,content_en,position')
+            .select('id,course_id,title_fr,title_en,content_fr,content_en,pages_json,position')
             .inFilter('course_id', courseIds)
             .eq('is_published', true)
             .order('position');
@@ -290,20 +290,22 @@ class ChapterLearningService {
             'title_en': lesson['title_en']?.toString() ?? 'Lesson',
             'body_text_fr': bodyFr,
             'body_text_en': bodyEn,
-            'pages_json': [
-              {
-                'id': 'legacy-page-1',
-                'position': 1,
-                'format': 'A4',
-                'blocks': [
-                  {
-                    'type': 'text',
-                    'text_fr': bodyFr ?? '',
-                    'text_en': bodyEn ?? bodyFr ?? '',
-                  },
-                ],
-              },
-            ],
+            'pages_json': lesson['pages_json'] is List && (lesson['pages_json'] as List).isNotEmpty
+                ? lesson['pages_json']
+                : [
+                    {
+                      'id': 'legacy-page-1',
+                      'position': 1,
+                      'format': 'reflow',
+                      'blocks': [
+                        {
+                          'type': 'text',
+                          'text_fr': bodyFr ?? '',
+                          'text_en': bodyEn ?? bodyFr ?? '',
+                        },
+                      ],
+                    },
+                  ],
             'position': (lesson['position'] as num?)?.toInt() ?? 0,
             'is_published': true,
           });

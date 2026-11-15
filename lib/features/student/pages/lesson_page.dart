@@ -8,6 +8,7 @@ import '../../../core/widgets/rich_lesson_text.dart';
 import '../../ai/pages/ai_page.dart';
 import '../../../models/pedagogy.dart';
 import '../../../models/user_profile.dart';
+import 'course_notebook_reader_page.dart';
 
 class LessonPage extends StatefulWidget {
   final Locale locale;
@@ -571,6 +572,85 @@ class _LessonPageState extends State<LessonPage> {
     );
   }
 
+  Future<void> _openUnifiedLessonReader() async {
+    final pages = <Map<String, dynamic>>[];
+    // Prefer the server/cache canonical block representation. Legacy lessons
+    // are converted to the same block contract below without losing their text.
+    if (widget.lesson.pages.isNotEmpty) {
+      pages.addAll(widget.lesson.pages);
+    }
+    // One responsive page flow for legacy objectives, body, examples and summary.
+    final blocks = <Map<String, dynamic>>[];
+    void add(String type, String? value) {
+      if (value == null || value.trim().isEmpty) return;
+      blocks.add({'type': type, 'text_fr': value, 'text_en': value});
+    }
+    add('section', isEnglish ? 'Objectives' : 'Objectifs');
+    add('text', objectives);
+    add('section', isEnglish ? 'Course content' : 'Contenu du cours');
+    add('text', content);
+    add('section', isEnglish ? 'Examples' : 'Exemples');
+    add('text', examples);
+    add('section', isEnglish ? 'Summary' : 'Résumé');
+    add('text', summary);
+    if (pages.isEmpty && blocks.isNotEmpty) {
+      pages.add({
+        'id': 'lesson-content',
+        'position': 1,
+        'blocks': blocks,
+      });
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CourseRecordNotebookReaderPage(
+        readerId: widget.lesson.id,
+        pageCourseId: widget.course.id,
+        title: title,
+        pages: pages,
+        fallbackText: <String>[
+          if (objectives != null) objectives!,
+          if (content != null) content!,
+          if (examples != null) examples!,
+          if (summary != null) summary!,
+        ].join('\n\n'),
+        locale: widget.locale,
+      ),
+    ));
+  }
+
+  Widget _buildUnifiedReaderCard() {
+    final hasText = widget.lesson.pages.isNotEmpty || objectives != null ||
+        content != null || examples != null || summary != null;
+    if (!hasText) return const SizedBox.shrink();
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFEAF3FF),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFB9D7FA)),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: const Icon(Icons.menu_book_rounded, color: Color(0xFF17365D), size: 30),
+        title: Text(
+          isEnglish ? 'Read lesson' : 'Lire la leçon',
+          style: const TextStyle(
+            color: Color(0xFF17365D),
+            fontWeight: FontWeight.w800,
+            fontSize: 17,
+          ),
+        ),
+        subtitle: Text(
+          isEnglish
+              ? 'Comfortable full-width reading with text and zoom controls'
+              : 'Lecture adaptée à l’écran avec réglage du texte et du zoom',
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF17365D)),
+        onTap: _openUnifiedLessonReader,
+      ),
+    );
+  }
+
   Widget _buildContentSection({
     required String title,
     required String content,
@@ -760,30 +840,7 @@ class _LessonPageState extends State<LessonPage> {
           const SizedBox(height: 18),
           _buildProgressCard(),
           const SizedBox(height: 22),
-          if (objectives case final value?)
-            _buildContentSection(
-              title: isEnglish ? 'Objectives' : 'Objectifs',
-              content: value,
-              icon: Icons.flag_rounded,
-            ),
-          if (content case final value?)
-            _buildContentSection(
-              title: isEnglish ? 'Course content' : 'Contenu du cours',
-              content: value,
-              icon: Icons.menu_book_rounded,
-            ),
-          if (examples case final value?)
-            _buildContentSection(
-              title: isEnglish ? 'Examples' : 'Exemples',
-              content: value,
-              icon: Icons.lightbulb_rounded,
-            ),
-          if (summary case final value?)
-            _buildContentSection(
-              title: isEnglish ? 'Summary' : 'Résumé',
-              content: value,
-              icon: Icons.summarize_rounded,
-            ),
+          _buildUnifiedReaderCard(),
           _buildAiCard(),
           const SizedBox(height: 8),
           Row(

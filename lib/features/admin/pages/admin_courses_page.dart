@@ -27,6 +27,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   bool _catalogLoading = false;
+  bool _readerMigrationRunning = false;
   String? _error;
 
   bool get _fr => widget.locale.languageCode == 'fr';
@@ -56,7 +57,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     try {
       final rows = await _client
           .from('courses')
-          .select('id,title_fr,title_en,description_fr,description_en,status,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
+          .select('id,title_fr,title_en,description_fr,description_en,status,pages_json,created_at,class_id,subject_id,teacher_id,school_classes(display_name,name),subjects(name_fr,name_en,code)')
           .order('created_at', ascending: false);
       if (!mounted) {
         return;
@@ -89,6 +90,168 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
     final fr = raw[keyFr]?.toString() ?? '';
     final en = raw[keyEn]?.toString() ?? '';
     return _fr ? (fr.isNotEmpty ? fr : en) : (en.isNotEmpty ? en : fr);
+  }
+
+  Future<void> _migratePublishedCourseReaders() async {
+    if (_readerMigrationRunning) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_fr ? 'Uniformiser les cours publiés ?' : 'Unify published course readers?'),
+        content: Text(_fr
+            ? 'Cette opération reprend uniquement les cours publiés qui n’ont pas encore de pages structurées et qui possèdent un document source. Elle conserve les cours déjà structurés et leur état de publication.'
+            : 'This processes only published courses that have no structured pages yet and have a source document. Already structured courses and their publication state are preserved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(_fr ? 'Annuler' : 'Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(_fr ? 'Démarrer' : 'Start')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _readerMigrationRunning = true);
+    var migrated = 0;
+    var skipped = 0;
+    var failed = 0;
+    try {
+      final courses = await _client
+          .from('courses')
+          .select('id,title_fr,pages_json,status')
+          .eq('status', 'published')
+          .order('updated_at', ascending: true);
+      for (final raw in courses) {
+        if (!mounted) return;
+        final course = Map<String, dynamic>.from(raw);
+        final pages = course['pages_json'];
+        final hasReadableContent = pages is List && pages.any((page) {
+          if (page is! Map || page['blocks'] is! List) return false;
+          return (page['blocks'] as List).whereType<Map>().any((block) {
+            final type = (block['type'] ?? '').toString().toLowerCase();
+            if (type == 'table') return block['rows'] is List && (block['rows'] as List).isNotEmpty;
+            if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'image' || type == 'diagram') {
+              return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+            }
+            return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+          });
+        });
+        if (hasReadableContent) { skipped++; continue; }
+
+        final resources = await _resources.listForCourse(course['id'].toString());
+        final pdfs = resources.where((resource) =>
+            resource.resourceType.toLowerCase() == 'pdf' ||
+            (resource.mimeType ?? '').toLowerCase() == 'application/pdf').toList();
+        if (pdfs.isEmpty) { skipped++; continue; }
+
+        final source = pdfs.first;
+        try {
+          final response = await _client.functions.invoke(
+            'import-course-pdf',
+            body: {'resource_id': source.id, 'publish_imported': true},
+          );
+          final data = response.data;
+          if (response.status < 200 || response.status >= 300 ||
+              data is! Map || data['success'] != true) {
+            failed++;
+            continue;
+          }
+          await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+          await CoursePdfPageService(_client).regenerate({
+            'course_id': source.courseId,
+            'storage_path': source.storagePath,
+            'source_bucket': 'course-resources',
+          });
+          migrated++;
+        } catch (_) {
+          failed++;
+        }
+      }
+      // Also migrate published chapter lessons that still point directly
+      // to an uploaded source file and have no readable structured blocks.
+      final chapterItems = await _client
+          .from('chapter_content_items')
+          .select('id,chapter_id,title_fr,pages_json,source_pdf_path,is_published')
+          .eq('content_type', 'course')
+          .eq('is_published', true)
+          .not('source_pdf_path', 'is', null);
+      for (final raw in chapterItems) {
+        if (!mounted) return;
+        final item = Map<String, dynamic>.from(raw);
+        final pages = item['pages_json'];
+        final hasReadableContent = pages is List && pages.any((page) {
+          if (page is! Map || page['blocks'] is! List) return false;
+          return (page['blocks'] as List).whereType<Map>().any((block) {
+            final type = (block['type'] ?? '').toString().toLowerCase();
+            if (type == 'table') return block['rows'] is List && (block['rows'] as List).isNotEmpty;
+            if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'diagram') return (block['diagram_id'] ?? block['kind'] ?? '').toString().trim().isNotEmpty;
+            if (type == 'image') return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+            return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+          });
+        });
+        if (hasReadableContent) { skipped++; continue; }
+        final sourcePath = item['source_pdf_path']?.toString().trim() ?? '';
+        if (sourcePath.isEmpty) { skipped++; continue; }
+        try {
+          final response = await _client.functions.invoke(
+            'import-chapter-pdf',
+            body: {'content_item_id': item['id'], 'restore_existing': true},
+          );
+          final data = response.data;
+          if (response.status < 200 || response.status >= 300 ||
+              data is! Map || data['success'] != true) {
+            failed++;
+            continue;
+          }
+          final report = (data['report'] as List? ?? const [])
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList(growable: false);
+          final ids = report
+              .map((row) => row['content_item_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+          if (ids.isNotEmpty) {
+            final restored = await _client
+                .from('chapter_content_items')
+                .select('id,source_pdf_path,source_page_start,source_page_end')
+                .inFilter('id', ids);
+            for (final restoredItem in restored) {
+              final path = restoredItem['source_pdf_path']?.toString().trim() ?? '';
+              if (path.isEmpty) continue;
+              await CoursePdfPageService(_client).regenerate({
+                ...Map<String, dynamic>.from(restoredItem),
+                'storage_path': path,
+                'source_bucket': 'chapter-content',
+              });
+            }
+          }
+          migrated++;
+        } catch (_) {
+          failed++;
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text(_fr
+            ? 'Migration terminée : $migrated cours/leçons préparé(s), $skipped ignoré(s), $failed échec(s).'
+            : 'Migration finished: $migrated course/lesson(s) prepared, $skipped skipped, $failed failed.'),
+      ));
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_fr ? 'Migration impossible : $error' : 'Migration failed: $error'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _readerMigrationRunning = false);
+    }
   }
 
   Future<void> _applyCatalog() async {
@@ -443,6 +606,17 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               ? 'PDF conservé dans Supabase, mais l’analyse IA a échoué : $e'
               : 'PDF remains saved in Supabase, but AI analysis failed: $e');
         }
+        // Always prepare a high-resolution fallback for scanned or partially
+        // extractable files, while the structured text remains the main reader.
+        try {
+          await CoursePdfPageService(_client).regenerate({
+            'course_id': uploaded.courseId,
+            'storage_path': uploaded.storagePath,
+            'source_bucket': 'course-resources',
+          });
+        } catch (_) {
+          // Keep the uploaded source and structured text if raster fallback fails.
+        }
       } else {
         _snack(_fr ? 'Contenu ajouté à la salle et au cours.' : 'Content added to the classroom course.');
       }
@@ -663,6 +837,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
       }
       final preparedPages =
           await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+      await CoursePdfPageService(_client).regenerate({
+        'course_id': resource.courseId,
+        'storage_path': resource.storagePath,
+        'source_bucket': 'course-resources',
+      });
       final imported = data['imported'] ?? 0;
       final replaced = data['replaced'] ?? 0;
       _snack(_fr
@@ -724,6 +903,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
         }
         final preparedPages =
             await _prepareImportedChapterPages(Map<String, dynamic>.from(data));
+        await CoursePdfPageService(_client).regenerate({
+          'course_id': resource.courseId,
+          'storage_path': resource.storagePath,
+          'source_bucket': 'course-resources',
+        });
         _snack(_fr
             ? 'PDF remplacé : contenus actualisés et $preparedPages page(s) A4 préparée(s).'
             : 'PDF replaced: lessons updated and $preparedPages A4 page(s) prepared.');
@@ -752,6 +936,13 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                 builder: (_) => SchoolClassesPage(locale: widget.locale),
               ),
             ),
+          ),
+          IconButton(
+            tooltip: _fr ? 'Uniformiser les lecteurs publiés' : 'Unify published readers',
+            onPressed: _readerMigrationRunning ? null : _migratePublishedCourseReaders,
+            icon: _readerMigrationRunning
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_fix_high_rounded),
           ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],

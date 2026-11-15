@@ -1,3 +1,4 @@
+import '../../../core/services/course_pdf_page_service.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -396,6 +397,41 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
 
             if (_publish) await _courses.publishCourse(course.id);
 
+            // Convert the uploaded source into the same structured reader pages
+            // used by all student course routes. Keep the source file if AI
+            // extraction is temporarily unavailable and still prepare images.
+            try {
+              final imported = await _db.functions.invoke(
+                'import-course-pdf',
+                body: {'resource_id': uploaded.id},
+              );
+              final payload = imported.data;
+              if (imported.status < 200 || imported.status >= 300 ||
+                  payload is! Map || payload['success'] != true) {
+                final message = payload is Map
+                    ? (payload['error']?.toString() ?? 'Extraction indisponible.')
+                    : 'Réponse du service de lecture invalide.';
+                _showMessage(_t(
+                  'Document conservé, mais sa mise en page structurée doit être reprise : $message',
+                  'Document saved, but structured reading preparation needs a retry: $message',
+                ));
+              }
+            } catch (readerError) {
+              _showMessage(_t(
+                'Document conservé. La préparation du lecteur sera à relancer : $readerError',
+                'Document saved. Reader preparation can be retried: $readerError',
+              ));
+            }
+            try {
+              await CoursePdfPageService(_db).regenerate({
+                'course_id': course.id,
+                'storage_path': uploaded.storagePath,
+                'source_bucket': 'course-resources',
+              });
+            } catch (_) {
+              // The original file and any structured text remain available.
+            }
+
             // Delete older course PDFs only after the replacement is saved.
             for (final old in oldResources.where((resource) =>
                 resource.resourceType.toLowerCase() == 'pdf')) {
@@ -485,6 +521,35 @@ class _AdminCourseSendingPageState extends State<AdminCourseSendingPage> {
             (row['minimum_exercise_score'] as num?)?.toInt() ?? 50,
         status: row['status']?.toString() ?? 'draft',
       );
+      try {
+        final imported = await _db.functions.invoke(
+          'import-course-pdf',
+          body: {'resource_id': uploaded.id, 'replace_existing': true},
+        );
+        final payload = imported.data;
+        if (imported.status < 200 || imported.status >= 300 ||
+            payload is! Map || payload['success'] != true) {
+          final message = payload is Map
+              ? (payload['error']?.toString() ?? 'Extraction indisponible.')
+              : 'Réponse du service de lecture invalide.';
+          _showMessage(_t(
+            'Document remplacé, mais préparation du lecteur à reprendre : $message',
+            'Document replaced, but reader preparation needs a retry: $message',
+          ));
+        }
+      } catch (readerError) {
+        _showMessage(_t(
+          'Document remplacé. Préparation du lecteur à relancer : $readerError',
+          'Document replaced. Reader preparation can be retried: $readerError',
+        ));
+      }
+      try {
+        await CoursePdfPageService(_db).regenerate({
+          'course_id': courseId,
+          'storage_path': uploaded.storagePath,
+          'source_bucket': 'course-resources',
+        });
+      } catch (_) {}
       for (final old in oldResources.where((resource) =>
           resource.resourceType.toLowerCase() == 'pdf')) {
         try { await _resources.deleteResource(old); } catch (_) {}

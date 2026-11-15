@@ -51,7 +51,6 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: Array<Record<string, unknown>> = [];
   let paragraph: string[] = [];
-
   const flushParagraph = () => {
     const value = paragraph.join("\n").trim();
     if (value) blocks.push({ type: "text", text_fr: value, text_en: value });
@@ -63,10 +62,9 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (!line) {
-      flushParagraph();
-      continue;
-    }
+    if (!line) { flushParagraph(); continue; }
+    const diagram = line.match(/^\[\[diagram:([a-z_]+)\]\]$/i);
+    if (diagram) { flushParagraph(); blocks.push({ type: "diagram", diagram_id: diagram[1] }); continue; }
     if (isTableLine(line)) {
       flushParagraph();
       const rows: string[][] = [];
@@ -82,24 +80,24 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       flushParagraph();
-      const level = heading[1].length;
-      blocks.push({
-        type: level === 1 ? "title" : level === 2 ? "section" : "subtitle",
-        text_fr: heading[2].trim(),
-        text_en: heading[2].trim(),
-      });
+      blocks.push({ type: heading[1].length === 1 ? "title" : heading[1].length === 2 ? "section" : "subtitle",
+        text_fr: heading[2].trim(), text_en: heading[2].trim() });
       continue;
     }
-    const roman = line.match(/^([IVXLCDM]+)[.)]\s+(.+)$/i);
-    if (roman) {
+    if (/^[IVXLCDM]+[.)]\s+/i.test(line)) {
       flushParagraph();
       blocks.push({ type: "section", text_fr: line, text_en: line });
       continue;
     }
-    const numbered = line.match(/^(\d+(?:\.\d+)*[.)])\s+(.+)$/);
-    if (numbered) {
+    if (/^(?:\d+(?:\.\d+)*[.)]|[A-Z][.)])\s+/.test(line)) {
       flushParagraph();
       blocks.push({ type: "subtitle", text_fr: line, text_en: line });
+      continue;
+    }
+    const key = line.match(/^(?:\*\*)?(Définition|Propriété|Théorème|Démonstration|Exemple|Application|À retenir|Attention|Remarque)(?:\*\*)?\s*[:：]\s*(.*)$/i);
+    if (key) {
+      flushParagraph();
+      blocks.push({ type: "key", text_fr: line, text_en: line });
       continue;
     }
     const bullet = line.match(/^[-*•]\s+(.+)$/);
@@ -108,11 +106,10 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
       blocks.push({ type: "bullet", text_fr: bullet[1], text_en: bullet[1] });
       continue;
     }
-    const displayFormula = line.match(/^\$\$([\s\S]+)\$\$/);
-    const inlineOnlyFormula = line.match(/^\$([^$]+)\$/);
-    if (displayFormula || inlineOnlyFormula) {
+    const displayFormula = line.match(/^\$\$([\s\S]+)\$\$$/);
+    if (displayFormula) {
       flushParagraph();
-      blocks.push({ type: "formula", latex: (displayFormula?.[1] ?? inlineOnlyFormula?.[1] ?? "").trim() });
+      blocks.push({ type: "formula", latex: displayFormula[1].trim() });
       continue;
     }
     paragraph.push(line);
@@ -121,23 +118,72 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
   return blocks;
 }
 
-function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
+function splitReaderText(value: string, limit = 2200): string[] {
+  const paragraphs = value.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let current = "";
+  const flush = () => { if (current.trim()) chunks.push(current.trim()); current = ""; };
+  for (const paragraph of paragraphs) {
+    if (paragraph.length <= limit) {
+      const next = current ? current + "\n\n" + paragraph : paragraph;
+      if (next.length <= limit) current = next;
+      else { flush(); current = paragraph; }
+      continue;
+    }
+    flush();
+    const tokens = paragraph.match(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\S+/g) ?? [paragraph];
+    for (const token of tokens) {
+      const next = current ? current + " " + token : token;
+      if (current && next.length > limit) flush();
+      current = current ? current + " " + token : token;
+    }
+    flush();
+  }
+  flush();
+  return chunks.length ? chunks : [value.trim()];
+}
+
+function buildReaderPages(french: string, english: string, prefix = "reader"): Array<Record<string, unknown>> {
   const fr = buildReaderBlocks(french);
   const en = buildReaderBlocks(english || french);
-  const blocks = fr.map((block, index) => {
+  const aligned: Array<Record<string, unknown>> = [];
+  fr.forEach((block, index) => {
     const translated = en[index];
-    if (block.type === "table" || block.type === "formula") return block;
+    if (block.type === "table" || block.type === "formula") { aligned.push(block); return; }
     const frText = String(block.text_fr ?? "");
     const enText = translated?.type === block.type
-      ? String(translated.text_fr ?? translated.text_en ?? frText)
-      : frText;
-    return { ...block, text_fr: frText, text_en: enText };
+      ? String(translated.text_fr ?? translated.text_en ?? frText) : frText;
+    const limit = 2200;
+    const frParts = frText.length > limit && block.type === "text" ? splitReaderText(frText, limit) : [frText];
+    const enParts = enText.length > limit && block.type === "text" ? splitReaderText(enText, limit) : [enText];
+    const count = Math.max(frParts.length, enParts.length);
+    for (let part = 0; part < count; part++) {
+      const partFr = frParts[part] ?? "";
+      const partEn = enParts[part] ?? partFr;
+      aligned.push({ ...block, text_fr: partFr || partEn, text_en: partEn || partFr });
+    }
   });
-  return [{
-    id: "imported-course-page-1",
-    position: 1,
-    blocks,
-  }];
+  const pages: Array<Record<string, unknown>> = [];
+  let pageBlocks: Array<Record<string, unknown>> = [];
+  let pageChars = 0;
+  const flush = () => {
+    if (!pageBlocks.length) return;
+    pages.push({ id: `${prefix}-page-${pages.length + 1}`, position: pages.length + 1,
+      format: "reflow", blocks: pageBlocks });
+    pageBlocks = [];
+    pageChars = 0;
+  };
+  for (const block of aligned) {
+    const blockChars = block.type === "table" ? JSON.stringify(block.rows ?? []).length
+      : String(block.text_fr ?? block.latex ?? "").length;
+    if (pageBlocks.length && (pageBlocks.length >= 8 || pageChars + blockChars > 2600)) flush();
+    pageBlocks.push(block);
+    pageChars += blockChars;
+  }
+  flush();
+  if (!pages.length) pages.push({ id: `${prefix}-page-1`, position: 1, format: "reflow",
+    blocks: [{ type: "text", text_fr: french, text_en: english || french }] });
+  return pages;
 }
 
 async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Promise<string> {
@@ -198,9 +244,10 @@ serve(async (req) => {
     if (resource.resource_type !== "pdf" && resource.mime_type !== "application/pdf") return json({ error: "Le fichier doit être un PDF." }, 400);
 
     const { data: sourceCourse, error: courseError } = await db.from("courses")
-      .select("id,class_id,subject_id,curriculum_id,teacher_id,title_fr")
+      .select("id,class_id,subject_id,curriculum_id,teacher_id,title_fr,content_fr,content_en,pages_json,status")
       .eq("id", resource.course_id).single();
     if (courseError || !sourceCourse?.class_id || !sourceCourse.subject_id) return json({ error: "Le cours source doit être lié à une salle et une matière." }, 400);
+    const publishImported = body?.publish_imported === true && sourceCourse.status === "published";
 
     const { data: sourceClass, error: classError } = await db.from("school_classes")
       .select("id,display_name,name,subsystem,sector,exam_level_id,series_id,specialty_id")
@@ -345,13 +392,34 @@ ${extracted}`;
           source_pdf_path: sourcePdfPath,
           source_page_start: chapter.source_page_start,
           source_page_end: chapter.source_page_end,
-          position: 0, is_published: false, created_by: authData.user.id, folder_key: "course",
+          position: 0, is_published: publishImported, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
-        report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
+        report.push({ chapter: title, curriculum: curriculum.title_fr, status: publishImported ? "imported_published" : "imported", content_item_id: item.id });
       }
     }
-    const imported = report.filter((r) => r.status === "imported").length;
+    // Keep the source course itself readable through the same responsive reader.
+    // Existing hand-authored pages win unless the administrator explicitly requested replacement.
+    const existingCoursePages = Array.isArray(sourceCourse.pages_json) ? sourceCourse.pages_json : [];
+    const coursePages = chapters.flatMap((chapter: any, index: number) => {
+      const chapterTitleFr = String(chapter.title_fr ?? "").trim();
+      const chapterTitleEn = String(chapter.title_en ?? chapterTitleFr).trim() || chapterTitleFr;
+      const frText = `# ${chapterTitleFr}\n\n${String(chapter.content_fr ?? "").trim()}`;
+      const enText = `# ${chapterTitleEn}\n\n${String(chapter.content_en ?? chapter.content_fr ?? "").trim()}`;
+      return buildReaderPages(frText, enText, `chapter-${index + 1}`);
+    }).map((page: any, index: number) => ({ ...page, position: index + 1 }));
+    if (existingCoursePages.length === 0 || replaceExisting) {
+      const legacyFr = chapters.map((chapter: any) => `# ${String(chapter.title_fr ?? "").trim()}\n\n${String(chapter.content_fr ?? "").trim()}`).join("\n\n");
+      const legacyEn = chapters.map((chapter: any) => `# ${String(chapter.title_en ?? chapter.title_fr ?? "").trim()}\n\n${String(chapter.content_en ?? chapter.content_fr ?? "").trim()}`).join("\n\n");
+      const courseUpdate: Record<string, unknown> = { pages_json: coursePages };
+      if (replaceExisting || !String(sourceCourse.content_fr ?? "").trim()) courseUpdate.content_fr = legacyFr;
+      if (replaceExisting || !String(sourceCourse.content_en ?? "").trim()) courseUpdate.content_en = legacyEn;
+      const { error: courseUpdateError } = await db.from("courses").update(courseUpdate).eq("id", sourceCourse.id);
+      if (courseUpdateError) throw courseUpdateError;
+    }
+
+    const imported = report.filter((r) => r.status === "imported" || r.status === "imported_published").length;
+    const published = report.filter((r) => r.status === "imported_published").length;
     const existingCount = report.filter((r) => r.status === "already_exists").length;
     const replacedCount = report.filter((r) => r.status === "replaced").length;
     const wordCount = extracted.split(/\s+/).filter(Boolean).length;
@@ -367,8 +435,8 @@ ${extracted}`;
     return json({
       success: true, source_resource_id: resourceId, source_class: sourceClass.display_name ?? sourceClass.name,
       subject: subjectResult.data.name_fr, detected_chapters: chapters.length,
-      imported, replaced: replacedCount, already_exists: existingCount, report,
-      message: `${imported} chapitre(s) préparé(s), ${replacedCount} remplacé(s), ${existingCount} déjà présents. Relisez les brouillons et publiez-les depuis l’espace écrit.`,
+      imported, published, replaced: replacedCount, already_exists: existingCount, report,
+      message: `${imported} chapitre(s) préparé(s), ${published} publié(s), ${replacedCount} remplacé(s), ${existingCount} déjà présents.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur lors de l'import du PDF.";

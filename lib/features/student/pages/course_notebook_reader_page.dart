@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/course_diagram_renderer.dart';
 import '../../../core/offline/notebook_image_cache.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
@@ -18,7 +19,7 @@ import '../../../core/services/chapter_learning_service.dart';
 abstract final class CourseReaderTheme {
   static const navy = Color(0xFF17365D);
   static const blue = Color(0xFF2476D2);
-  static const paleBlue = Color(0xFFEAF3FF);
+  static const paleBlue = Color(0xFFEAF2FC);
   static const paleGreen = Color(0xFFEAF7EF);
   static const text = Color(0xFF1E293B);
   static const border = Color(0xFFB9D7FA);
@@ -45,6 +46,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   double _fontSize = 18;
   double _zoomScale = 1;
   bool _isFullscreen = false;
+  String? _readerMetadata;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
   List<Map<String, dynamic>> _pdfPages = const [];
@@ -57,6 +59,103 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     unawaited(_initializeReader());
+    unawaited(_loadReaderMetadata());
+  }
+
+  Future<void> _loadReaderMetadata() async {
+    String? subjectName;
+    String? className;
+    String? levelName;
+    String? teacherName;
+    try {
+      String? subjectId;
+      String? levelId;
+      String? teacherId;
+      if ((widget.item.pageCourseId ?? '').trim().isNotEmpty) {
+        final course = await Supabase.instance.client
+            .from('courses')
+            .select('subject_id,teacher_id,class_id')
+            .eq('id', widget.item.pageCourseId!)
+            .maybeSingle();
+        subjectId = course?['subject_id']?.toString();
+        teacherId = course?['teacher_id']?.toString();
+        final classId = course?['class_id']?.toString();
+        if (classId != null && classId.isNotEmpty) {
+          final room = await Supabase.instance.client
+              .from('school_classes')
+              .select('display_name,name,exam_level_id')
+              .eq('id', classId)
+              .maybeSingle();
+          className = (room?['display_name'] ?? room?['name'])?.toString();
+          levelId = room?['exam_level_id']?.toString();
+        }
+      } else {
+        final chapter = await Supabase.instance.client
+            .from('course_chapters')
+            .select('curriculum_id')
+            .eq('id', widget.item.chapterId)
+            .maybeSingle();
+        final curriculumId = chapter?['curriculum_id']?.toString();
+        if (curriculumId != null && curriculumId.isNotEmpty) {
+          final curriculum = await Supabase.instance.client
+              .from('curricula')
+              .select('subject_id,exam_level_id')
+              .eq('id', curriculumId)
+              .maybeSingle();
+          subjectId = curriculum?['subject_id']?.toString();
+          levelId = curriculum?['exam_level_id']?.toString();
+        }
+        final item = await Supabase.instance.client
+            .from('chapter_content_items')
+            .select('created_by')
+            .eq('id', widget.item.id)
+            .maybeSingle();
+        teacherId = item?['created_by']?.toString();
+      }
+      if (subjectId != null && subjectId.isNotEmpty) {
+        final subject = await Supabase.instance.client
+            .from('subjects')
+            .select('name_fr,name_en')
+            .eq('id', subjectId)
+            .maybeSingle();
+        final subjectNameValue = subject == null
+            ? null
+            : (widget.locale.languageCode == 'en'
+                ? subject['name_en'] ?? subject['name_fr']
+                : subject['name_fr'] ?? subject['name_en']);
+        subjectName = subjectNameValue?.toString();
+      }
+      if (levelId != null && levelId.isNotEmpty) {
+        final level = await Supabase.instance.client
+            .from('exam_levels')
+            .select('level_name_fr,level_name_en')
+            .eq('id', levelId)
+            .maybeSingle();
+        final levelNameValue = level == null
+            ? null
+            : (widget.locale.languageCode == 'en'
+                ? level['level_name_en'] ?? level['level_name_fr']
+                : level['level_name_fr'] ?? level['level_name_en']);
+        levelName = levelNameValue?.toString();
+      }
+      if (teacherId != null && teacherId.isNotEmpty) {
+        final teacher = await Supabase.instance.client
+            .from('profiles')
+            .select('first_name,last_name')
+            .eq('id', teacherId)
+            .maybeSingle();
+        teacherName = [teacher?['first_name'], teacher?['last_name']]
+            .where((value) => value != null && value.toString().trim().isNotEmpty)
+            .join(' ');
+      }
+    } catch (_) {
+      // Metadata is optional: offline reading must never wait for it.
+    }
+    final details = [subjectName, levelName, className, teacherName]
+        .where((value) => value != null && value.trim().isNotEmpty)
+        .join(' • ');
+    if (!mounted || details.isEmpty) return;
+    setState(() => _readerMetadata = details);
   }
 
   Future<void> _initializeReader() async {
@@ -87,9 +186,26 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
-    // Structured pages are the primary representation for every subject and
-    // chapter. Raster pages are only a safety fallback for legacy/unparsed files.
-    if (widget.item.pages.isNotEmpty) return;
+    // Structured pages are primary. If a legacy/scanned document has no
+    // meaningful text blocks, use the cached high-resolution page images.
+    final hasReadableBlocks = widget.item.pages.any((page) {
+      final raw = page['blocks'];
+      if (raw is! List) return false;
+      return raw.whereType<Map>().any((block) {
+        final type = (block['type'] ?? '').toString().toLowerCase();
+        if (type == 'diagram' &&
+            (block['diagram_id'] ?? block['kind'] ?? block['diagram'] ?? '').toString().trim().isNotEmpty) {
+          return true;
+        }
+        if (type == 'image' || type == 'diagram') {
+          return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+        }
+        if (type == 'table') return (block['rows'] is List) && (block['rows'] as List).isNotEmpty;
+        if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+        return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+      });
+    });
+    if (hasReadableBlocks) return;
     final hasPdfSource = (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
     if (widget.item.pageCourseId == null && !hasPdfSource) return;
     final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
@@ -473,9 +589,9 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               block['content'] ??
               block['label'] ??
               '').toString();
-      const navy = Color(0xFF123B70);
+      const navy = CourseReaderTheme.navy;
       const paleBlue = Color(0xFFEAF3FF);
-      const paleGreen = Color(0xFFEAF8EF);
+      const paleGreen = CourseReaderTheme.paleGreen;
 
       switch (type) {
         case 'title':
@@ -492,7 +608,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: paleBlue, borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFB9D7FA)),
+              border: Border.all(color: CourseReaderTheme.border),
             ),
             child: Text(text, style: TextStyle(
               fontSize: _fontSize + 1, height: 1.25,
@@ -522,7 +638,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               ),
               Expanded(child: RichLessonText(
                 text: text,
-                style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
               )),
             ]),
           );
@@ -543,7 +659,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
               color: paleBlue, borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFB9D7FA)),
+              border: Border.all(color: CourseReaderTheme.border),
             ),
             child: Center(child: RichLessonText(
               text: formula.startsWith(r'$') ? formula : r'$$' + formula + r'$$',
@@ -591,22 +707,48 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             ),
           );
         case 'image' || 'diagram':
+          final diagramKind = (block['diagram_id'] ?? block['kind'] ?? block['diagram'] ?? '').toString().trim();
+          if (type == 'diagram' && diagramKind.isNotEmpty) {
+            return CourseDiagramRenderer(kind: diagramKind, locale: widget.locale);
+          }
           final imagePath = (block['storage_path'] ?? block['path'] ?? '').toString();
           if (imagePath.isEmpty) return const SizedBox.shrink();
           return FutureBuilder<Object?>(
             future: _resolveImage(imagePath),
             builder: (context, snapshot) {
               final resolved = snapshot.data;
-              if (resolved == null) {
+              if (snapshot.connectionState != ConnectionState.done) {
                 return const Padding(
                   padding: EdgeInsets.all(18),
                   child: Center(child: CircularProgressIndicator()),
                 );
               }
+              if (resolved == null) {
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _en ? 'Illustration unavailable offline.' : 'Illustration indisponible hors connexion.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: _fontSize - 1, color: const Color(0xFF64748B)),
+                  ),
+                );
+              }
               final image = resolved is File
                   ? Image.file(resolved, fit: BoxFit.contain)
                   : Image.network(resolved.toString(), fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink());
+                      errorBuilder: (_, __, ___) => Container(
+                        padding: const EdgeInsets.all(16),
+                        alignment: Alignment.center,
+                        child: Text(_en ? 'Illustration unavailable.' : 'Illustration indisponible.',
+                          style: TextStyle(fontSize: _fontSize - 1, color: const Color(0xFF64748B))),
+                      ));
               return Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(vertical: 10),
@@ -677,19 +819,50 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           );
         case 'text':
           if (text.trim().isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: RichLessonText(
-              text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B)),
-            ),
-          );
+          final tokenPattern = RegExp(r'\[\[diagram:([a-z_]+)\]\]');
+          final matches = tokenPattern.allMatches(text).toList(growable: false);
+          if (matches.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: RichLessonText(
+                text: text,
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+              ),
+            );
+          }
+          final children = <Widget>[];
+          var cursor = 0;
+          for (final match in matches) {
+            final before = text.substring(cursor, match.start).trim();
+            if (before.isNotEmpty) {
+              children.add(Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RichLessonText(
+                  text: before,
+                  style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+                ),
+              ));
+            }
+            children.add(CourseDiagramRenderer(kind: match.group(1)!, locale: widget.locale));
+            cursor = match.end;
+          }
+          final after = text.substring(cursor).trim();
+          if (after.isNotEmpty) {
+            children.add(Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: RichLessonText(
+                text: after,
+                style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text),
+              ),
+            ));
+          }
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
         default:
           if (text.trim().isEmpty) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: RichLessonText(text: text,
-              style: TextStyle(fontSize: _fontSize, height: 1.4, color: const Color(0xFF1E293B))),
+              style: TextStyle(fontSize: _fontSize, height: 1.4, color: CourseReaderTheme.text)),
           );
       }
     }
@@ -716,13 +889,27 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF123B70),
+                color: CourseReaderTheme.navy,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                widget.item.titleFor(widget.locale.languageCode),
-                style: TextStyle(fontSize: _fontSize + 3, height: 1.2,
-                  fontWeight: FontWeight.w900, color: Colors.white),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.item.titleFor(widget.locale.languageCode),
+                    style: TextStyle(fontSize: _fontSize + 3, height: 1.2,
+                      fontWeight: FontWeight.w900, color: Colors.white),
+                  ),
+                  if ((_readerMetadata ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(_readerMetadata!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: _fontSize - 5, height: 1.2,
+                        color: Colors.white70, fontWeight: FontWeight.w600)),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -848,20 +1035,20 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'A−',
-                      onPressed: () {
-                        setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
-                        unawaited(_saveReaderState());
-                      },
-                      icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
-                    ),
-                    IconButton(
                       tooltip: 'A+',
                       onPressed: () {
                         setState(() => _fontSize = (_fontSize + 1).clamp(16, 30).toDouble());
                         unawaited(_saveReaderState());
                       },
                       icon: const Icon(Icons.text_increase, color: Color(0xFF123B70)),
+                    ),
+                    IconButton(
+                      tooltip: 'A−',
+                      onPressed: () {
+                        setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
+                        unawaited(_saveReaderState());
+                      },
+                      icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
                     ),
                     IconButton(
                       tooltip: _en ? 'Full screen' : 'Plein écran',
@@ -917,31 +1104,33 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                         enabled: safeIndex > 0,
                         onPressed: () => _controller.previousPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
                       ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
-                      ),
                       DecoratedBox(
-                        decoration: BoxDecoration(color: const Color(0xFF123B70), borderRadius: BorderRadius.circular(22)),
+                        decoration: BoxDecoration(color: CourseReaderTheme.navy, borderRadius: BorderRadius.circular(22)),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.description_outlined, size: 17, color: Colors.white),
                             const SizedBox(width: 6),
-                            Text('\${safeIndex + 1} / \${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                            Text('${safeIndex + 1} / ${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                           ]),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
                       ),
                       _readerNavButton(
                         icon: Icons.chevron_right_rounded,
                         enabled: safeIndex < pages.length - 1,
                         onPressed: () => _controller.nextPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
+                      ),
+                      IconButton(
+                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
+                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
                       ),
                     ],
                   ),
@@ -1059,12 +1248,20 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
 class CourseRecordNotebookReaderPage extends StatefulWidget {
   const CourseRecordNotebookReaderPage({
     super.key,
+    this.readerId,
+    this.pageCourseId,
+    this.chapterId,
+    this.sourcePdfPath,
     required this.title,
     required this.pages,
     required this.fallbackText,
     required this.locale,
   });
 
+  final String? readerId;
+  final String? pageCourseId;
+  final String? chapterId;
+  final String? sourcePdfPath;
   final String title;
   final List<Map<String, dynamic>> pages;
   final String fallbackText;
@@ -1093,8 +1290,8 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
             },
           ];
     final item = ChapterLearningContentItem(
-      id: 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
-      chapterId: 'legacy-course-record',
+      id: widget.readerId ?? 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
+      chapterId: widget.chapterId ?? 'legacy-course-record',
       type: ChapterLearningContentType.course,
       titleFr: widget.title,
       titleEn: widget.title,
@@ -1102,6 +1299,8 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
       isPublished: true,
       bodyTextFr: widget.fallbackText,
       bodyTextEn: widget.fallbackText,
+      pageCourseId: widget.pageCourseId,
+      sourcePdfPath: widget.sourcePdfPath,
       pages: pages,
     );
     return CourseNotebookReaderPage(item: item, locale: widget.locale);

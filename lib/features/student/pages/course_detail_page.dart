@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/offline/connectivity_service.dart';
 import '../../../core/widgets/lesson_content_renderer.dart';
@@ -87,9 +88,15 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       // Continue to the cached fallback if connectivity detection is unavailable.
     }
     try {
-      return await ResourceService()
+      final resources = await ResourceService()
           .listForCourse(widget.course.id)
           .timeout(const Duration(seconds: 8));
+      // Source PDFs are an administrator-side import format, not student
+      // course attachments. Students receive the structured reader instead.
+      return resources.where((resource) =>
+        resource.resourceType.toLowerCase() != 'pdf' &&
+        (resource.mimeType ?? '').toLowerCase() != 'application/pdf'
+      ).toList(growable: false);
     } catch (_) {
       return _loadCachedResources();
     }
@@ -103,18 +110,20 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
         widget.profile.id,
         widget.course.id,
       );
-      return files.map((file) {
+      return files.where((file) {
         final mime = (file.mimeType ?? '').toLowerCase();
         final name = file.fileName.toLowerCase();
-        final type = mime.contains('pdf') || name.endsWith('.pdf')
-            ? 'pdf'
-            : mime.startsWith('image/')
-                ? 'image'
-                : mime.startsWith('audio/')
-                    ? 'audio'
-                    : mime.startsWith('video/')
-                        ? 'video'
-                        : 'document';
+        return !mime.contains('pdf') && !name.endsWith('.pdf');
+      }).map((file) {
+        final mime = (file.mimeType ?? '').toLowerCase();
+        final name = file.fileName.toLowerCase();
+        final type = mime.startsWith('image/')
+            ? 'image'
+            : mime.startsWith('audio/')
+                ? 'audio'
+                : mime.startsWith('video/')
+                    ? 'video'
+                    : 'document';
         return CourseResource(
           id: file.resourceId,
           courseId: widget.course.id,
@@ -284,10 +293,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
                 children: [
                   _buildCourseHeader(isEnglish),
                   const SizedBox(height: 12),
-                  if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _buildCourseContentCard(courseContent ?? '', isEnglish),
-                  ],
+                  const SizedBox(height: 12),
+                  _buildCourseContentCard(courseContent ?? '', isEnglish),
                   const SizedBox(height: 18),
                   const Center(
                     child: Padding(
@@ -342,10 +349,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
               children: [
                 _buildCourseHeader(isEnglish),
                 const SizedBox(height: 12),
-                if ((courseContent != null && courseContent.isNotEmpty) || widget.course.pages.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildCourseContentCard(courseContent ?? '', isEnglish),
-                ],
+                const SizedBox(height: 16),
+                _buildCourseContentCard(courseContent ?? '', isEnglish),
                 if (_offlineMode) ...[
                   const SizedBox(height: 10),
                   Container(
@@ -649,6 +654,40 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     );
   }
 
+  Future<void> _openCourseContentReader(
+    String courseContent,
+    List<Map<String, dynamic>> pages,
+  ) async {
+    String? sourcePdfPath;
+    try {
+      final source = await Supabase.instance.client
+          .from('course_resources')
+          .select('storage_path')
+          .eq('course_id', widget.course.id)
+          .eq('resource_type', 'pdf')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 4));
+      final path = source?['storage_path']?.toString().trim() ?? '';
+      if (path.isNotEmpty) sourcePdfPath = 'legacy-course-resource:$path';
+    } catch (_) {
+      // Cached structured pages remain the normal offline path.
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CourseRecordNotebookReaderPage(
+        readerId: widget.course.id,
+        pageCourseId: widget.course.id,
+        sourcePdfPath: sourcePdfPath,
+        title: widget.course.labelFor(widget.locale.languageCode),
+        pages: pages,
+        fallbackText: courseContent,
+        locale: widget.locale,
+      ),
+    ));
+  }
+
   Widget _buildCourseContentCard(String courseContent, bool isEnglish) {
     final pages = widget.course.pages;
     return Card(
@@ -660,14 +699,7 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-          builder: (_) => CourseRecordNotebookReaderPage(
-            title: widget.course.labelFor(widget.locale.languageCode),
-            pages: pages,
-            fallbackText: courseContent,
-            locale: widget.locale,
-          ),
-        )),
+        onTap: () => _openCourseContentReader(courseContent, pages),
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Row(
