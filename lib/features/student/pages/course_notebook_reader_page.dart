@@ -45,6 +45,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   double _fontSize = 18;
   double _zoomScale = 1;
   bool _isFullscreen = false;
+  String? _readerMetadata;
   final AppDatabase _localDb = AppDatabase();
   String? _userId;
   List<Map<String, dynamic>> _pdfPages = const [];
@@ -57,6 +58,97 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     unawaited(_initializeReader());
+    unawaited(_loadReaderMetadata());
+  }
+
+  Future<void> _loadReaderMetadata() async {
+    String? subjectName;
+    String? className;
+    String? levelName;
+    String? teacherName;
+    try {
+      String? subjectId;
+      String? levelId;
+      String? teacherId;
+      if ((widget.item.pageCourseId ?? '').trim().isNotEmpty) {
+        final course = await Supabase.instance.client
+            .from('courses')
+            .select('subject_id,teacher_id,class_id')
+            .eq('id', widget.item.pageCourseId!)
+            .maybeSingle();
+        subjectId = course?['subject_id']?.toString();
+        teacherId = course?['teacher_id']?.toString();
+        final classId = course?['class_id']?.toString();
+        if (classId != null && classId.isNotEmpty) {
+          final room = await Supabase.instance.client
+              .from('school_classes')
+              .select('display_name,name,exam_level_id')
+              .eq('id', classId)
+              .maybeSingle();
+          className = (room?['display_name'] ?? room?['name'])?.toString();
+          levelId = room?['exam_level_id']?.toString();
+        }
+      } else {
+        final chapter = await Supabase.instance.client
+            .from('course_chapters')
+            .select('curriculum_id')
+            .eq('id', widget.item.chapterId)
+            .maybeSingle();
+        final curriculumId = chapter?['curriculum_id']?.toString();
+        if (curriculumId != null && curriculumId.isNotEmpty) {
+          final curriculum = await Supabase.instance.client
+              .from('curricula')
+              .select('subject_id,exam_level_id')
+              .eq('id', curriculumId)
+              .maybeSingle();
+          subjectId = curriculum?['subject_id']?.toString();
+          levelId = curriculum?['exam_level_id']?.toString();
+        }
+        final item = await Supabase.instance.client
+            .from('chapter_content_items')
+            .select('created_by')
+            .eq('id', widget.item.id)
+            .maybeSingle();
+        teacherId = item?['created_by']?.toString();
+      }
+      if (subjectId != null && subjectId.isNotEmpty) {
+        final subject = await Supabase.instance.client
+            .from('subjects')
+            .select('name_fr,name_en')
+            .eq('id', subjectId)
+            .maybeSingle();
+        subjectName = (widget.locale.languageCode == 'en'
+            ? subject?['name_en'] ?? subject?['name_fr']
+            : subject?['name_fr'] ?? subject?['name_en'])?.toString();
+      }
+      if (levelId != null && levelId.isNotEmpty) {
+        final level = await Supabase.instance.client
+            .from('exam_levels')
+            .select('level_name_fr,level_name_en')
+            .eq('id', levelId)
+            .maybeSingle();
+        levelName = (widget.locale.languageCode == 'en'
+            ? level?['level_name_en'] ?? level?['level_name_fr']
+            : level?['level_name_fr'] ?? level?['level_name_en'])?.toString();
+      }
+      if (teacherId != null && teacherId.isNotEmpty) {
+        final teacher = await Supabase.instance.client
+            .from('profiles')
+            .select('first_name,last_name')
+            .eq('id', teacherId)
+            .maybeSingle();
+        teacherName = [teacher?['first_name'], teacher?['last_name']]
+            .where((value) => value != null && value.toString().trim().isNotEmpty)
+            .join(' ');
+      }
+    } catch (_) {
+      // Metadata is optional: offline reading must never wait for it.
+    }
+    final details = [subjectName, levelName, className, teacherName]
+        .where((value) => value != null && value.trim().isNotEmpty)
+        .join(' • ');
+    if (!mounted || details.isEmpty) return;
+    setState(() => _readerMetadata = details);
   }
 
   Future<void> _initializeReader() async {
@@ -732,10 +824,24 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 color: const Color(0xFF123B70),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(
-                widget.item.titleFor(widget.locale.languageCode),
-                style: TextStyle(fontSize: _fontSize + 3, height: 1.2,
-                  fontWeight: FontWeight.w900, color: Colors.white),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.item.titleFor(widget.locale.languageCode),
+                    style: TextStyle(fontSize: _fontSize + 3, height: 1.2,
+                      fontWeight: FontWeight.w900, color: Colors.white),
+                  ),
+                  if ((_readerMetadata ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(_readerMetadata!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: _fontSize - 5, height: 1.2,
+                        color: Colors.white70, fontWeight: FontWeight.w600)),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 12),
