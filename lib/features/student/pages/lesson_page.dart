@@ -574,7 +574,12 @@ class _LessonPageState extends State<LessonPage> {
 
   Future<void> _openUnifiedLessonReader() async {
     final pages = <Map<String, dynamic>>[];
-    // One responsive page flow for objectives, lesson body, examples and summary.
+    // Prefer the server/cache canonical block representation. Legacy lessons
+    // are converted to the same block contract below without losing their text.
+    if (widget.lesson.pages.isNotEmpty) {
+      pages.addAll(widget.lesson.pages);
+    }
+    // One responsive page flow for legacy objectives, body, examples and summary.
     final blocks = <Map<String, dynamic>>[];
     void add(String type, String? value) {
       if (value == null || value.trim().isEmpty) return;
@@ -588,7 +593,7 @@ class _LessonPageState extends State<LessonPage> {
     add('text', examples);
     add('section', isEnglish ? 'Summary' : 'Résumé');
     add('text', summary);
-    if (blocks.isNotEmpty) {
+    if (pages.isEmpty && blocks.isNotEmpty) {
       pages.add({
         'id': 'lesson-content',
         'position': 1,
