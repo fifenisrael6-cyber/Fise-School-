@@ -604,6 +604,7 @@ class _LessonPageState extends State<LessonPage> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => CourseRecordNotebookReaderPage(
         readerId: widget.lesson.id,
+        pageCourseId: widget.course.id,
         title: title,
         pages: pages,
         fallbackText: <String>[
