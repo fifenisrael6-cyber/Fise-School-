@@ -848,20 +848,20 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'A−',
+                      tooltip: 'A+',
                       onPressed: () {
                         setState(() => _fontSize = (_fontSize - 1).clamp(16, 30).toDouble());
                         unawaited(_saveReaderState());
                       },
-                      icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
+                      icon: const Icon(Icons.text_increase, color: Color(0xFF123B70)),
                     ),
                     IconButton(
-                      tooltip: 'A+',
+                      tooltip: 'A−',
                       onPressed: () {
                         setState(() => _fontSize = (_fontSize + 1).clamp(16, 30).toDouble());
                         unawaited(_saveReaderState());
                       },
-                      icon: const Icon(Icons.text_increase, color: Color(0xFF123B70)),
+                      icon: const Icon(Icons.text_decrease, color: Color(0xFF123B70)),
                     ),
                     IconButton(
                       tooltip: _en ? 'Full screen' : 'Plein écran',
@@ -1059,12 +1059,14 @@ class _CourseImageFullscreenPageState extends State<_CourseImageFullscreenPage> 
 class CourseRecordNotebookReaderPage extends StatefulWidget {
   const CourseRecordNotebookReaderPage({
     super.key,
+    this.readerId,
     required this.title,
     required this.pages,
     required this.fallbackText,
     required this.locale,
   });
 
+  final String? readerId;
   final String title;
   final List<Map<String, dynamic>> pages;
   final String fallbackText;
@@ -1093,7 +1095,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
             },
           ];
     final item = ChapterLearningContentItem(
-      id: 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
+      id: widget.readerId ?? 'legacy-course-record-${widget.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
       chapterId: 'legacy-course-record',
       type: ChapterLearningContentType.course,
       titleFr: widget.title,
