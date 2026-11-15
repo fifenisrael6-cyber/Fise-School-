@@ -1205,6 +1205,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
     this.readerId,
     this.pageCourseId,
     this.chapterId,
+    this.sourcePdfPath,
     required this.title,
     required this.pages,
     required this.fallbackText,
@@ -1214,6 +1215,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
   final String? readerId;
   final String? pageCourseId;
   final String? chapterId;
+  final String? sourcePdfPath;
   final String title;
   final List<Map<String, dynamic>> pages;
   final String fallbackText;
@@ -1252,6 +1254,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
       bodyTextFr: widget.fallbackText,
       bodyTextEn: widget.fallbackText,
       pageCourseId: widget.pageCourseId,
+      sourcePdfPath: widget.sourcePdfPath,
       pages: pages,
     );
     return CourseNotebookReaderPage(item: item, locale: widget.locale);
