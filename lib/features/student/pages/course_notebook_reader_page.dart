@@ -87,9 +87,22 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
   }
 
   Future<void> _loadCoursePages({bool forceRetry = false}) async {
-    // Structured pages are the primary representation for every subject and
-    // chapter. Raster pages are only a safety fallback for legacy/unparsed files.
-    if (widget.item.pages.isNotEmpty) return;
+    // Structured pages are primary. If a legacy/scanned document has no
+    // meaningful text blocks, use the cached high-resolution page images.
+    final hasReadableBlocks = widget.item.pages.any((page) {
+      final raw = page['blocks'];
+      if (raw is! List) return false;
+      return raw.whereType<Map>().any((block) {
+        final type = (block['type'] ?? '').toString().toLowerCase();
+        if (type == 'image' || type == 'diagram') {
+          return (block['storage_path'] ?? block['path'] ?? '').toString().trim().isNotEmpty;
+        }
+        if (type == 'table') return (block['rows'] is List) && (block['rows'] as List).isNotEmpty;
+        if (type == 'formula') return (block['latex'] ?? block['formula'] ?? '').toString().trim().isNotEmpty;
+        return (block['text_fr'] ?? block['text_en'] ?? block['text'] ?? block['content'] ?? '').toString().trim().isNotEmpty;
+      });
+    });
+    if (hasReadableBlocks) return;
     final hasPdfSource = (widget.item.sourcePdfPath ?? '').trim().isNotEmpty;
     if (widget.item.pageCourseId == null && !hasPdfSource) return;
     final userId = _userId ?? Supabase.instance.client.auth.currentUser?.id;
@@ -1060,6 +1073,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
   const CourseRecordNotebookReaderPage({
     super.key,
     this.readerId,
+    this.pageCourseId,
     required this.title,
     required this.pages,
     required this.fallbackText,
@@ -1067,6 +1081,7 @@ class CourseRecordNotebookReaderPage extends StatefulWidget {
   });
 
   final String? readerId;
+  final String? pageCourseId;
   final String title;
   final List<Map<String, dynamic>> pages;
   final String fallbackText;
@@ -1104,6 +1119,7 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
       isPublished: true,
       bodyTextFr: widget.fallbackText,
       bodyTextEn: widget.fallbackText,
+      pageCourseId: widget.pageCourseId,
       pages: pages,
     );
     return CourseNotebookReaderPage(item: item, locale: widget.locale);
