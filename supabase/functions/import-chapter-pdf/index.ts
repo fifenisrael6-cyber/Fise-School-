@@ -81,7 +81,7 @@ function buildReaderPages(french: string, english: string): Array<Record<string,
 }
 
 async function extractPdf(bytes: Uint8Array): Promise<string[]> {
-  const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
+  const doc = await pdfjsLib.getDocument({ data: bytes, useSystemFonts: true }).promise;
   if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
@@ -189,7 +189,7 @@ serve(async (req) => {
     if (chapterError || !sourceChapter) return json({ error: "Chapitre de destination introuvable." }, 404);
 
     const { data: curriculum, error: curriculumError } = await db.from("curricula")
-      .select("id,subject_id,subsystem,sector,exam_level_id,series_id,specialty_id,teaching_stream,title_fr,is_active")
+      .select("id,subject_id,subsystem,sector,exam_level_id,series_id,specialty_id,teaching_stream,title_fr,is_active,is_catalog_container")
       .eq("id", sourceChapter.curriculum_id).single();
     if (curriculumError || !curriculum || !curriculum.is_active) {
       return json({ error: "Le programme du chapitre est introuvable ou inactif." }, 400);
