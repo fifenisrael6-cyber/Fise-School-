@@ -165,7 +165,10 @@ async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Pr
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Méthode non autorisée." }, 405);
-  let db: ReturnType<typeof createClient> | null = null;
+  // This function uses service-role access across several tables. Keep the
+  // client dynamically typed here because generated DB typings in this repo
+  // do not yet include all import tables/columns, otherwise Supabase infers never.
+  let db: any = null;
   let resourceId = "";
   try {
     const url = Deno.env.get("SUPABASE_URL");
@@ -329,6 +332,7 @@ ${extracted}`;
           target = created;
           (existing as any[]).push(created);
         }
+        if (!target) throw new Error(`Impossible de créer ou retrouver le chapitre "${title}".`);
         const { data: duplicate, error: duplicateError } = await db.from("chapter_content_items")
           .select("id").eq("chapter_id", target.id).eq("content_type", "course").eq("title_fr", title).limit(1);
         if (duplicateError) throw duplicateError;
