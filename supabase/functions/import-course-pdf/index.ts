@@ -16,7 +16,7 @@ function normalize(value: unknown): string {
 }
 
 async function extractPdf(bytes: Uint8Array): Promise<string[]> {
-  const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
+  const doc = await pdfjsLib.getDocument({ data: bytes, useSystemFonts: true }).promise;
   if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
