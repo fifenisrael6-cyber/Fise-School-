@@ -220,9 +220,9 @@ serve(async (req) => {
       .map((text, index) => text.trim().length < 45 ? index + 1 : null)
       .filter((page): page is number => page !== null);
     if (pagesNeedingOcr.length) {
-      const ocrPrompt = \`Effectue une OCR fidèle uniquement pour les pages suivantes du PDF scolaire : \${pagesNeedingOcr.join(", ")}.
+      const ocrPrompt = `Effectue une OCR fidèle uniquement pour les pages suivantes du PDF scolaire : ${pagesNeedingOcr.join(", ")}.
 Retourne exclusivement un JSON valide de la forme {"pages":[{"page_number":1,"text":"texte complet reconnu"}]}.
-Respecte la langue d'origine, les accents, les titres, les formules, les tableaux (colonnes séparées par |), les légendes et l'ordre de lecture. N'invente rien. Pour une page réellement vide, retourne une chaîne vide. N'inclus aucune page non demandée.\`;
+Respecte la langue d'origine, les accents, les titres, les formules, les tableaux (colonnes séparées par |), les légendes et l'ordre de lecture. N'invente rien. Pour une page réellement vide, retourne une chaîne vide. N'inclus aucune page non demandée.`;
       const ocrResult = JSON.parse(await gemini(ocrPrompt, geminiKey, bytes));
       for (const page of Array.isArray(ocrResult.pages) ? ocrResult.pages : []) {
         const pageNumber = Number(page.page_number);
@@ -235,8 +235,8 @@ Respecte la langue d'origine, les accents, les titres, les formules, les tableau
       }
     }
     const extracted = extractedPages
-      .map((page, index) => \`[PAGE \${index + 1}]\\n\${page}\`)
-      .join("\\n\\n")
+      .map((page, index) => `[PAGE ${index + 1}]\n${page}`)
+      .join("\n\n")
       .trim();
     if (extracted.replace(/\\[PAGE \\d+\\]/g, "").trim().length < 200) {
       throw new Error("Le PDF ne contient pas assez de texte lisible, même après OCR.");
