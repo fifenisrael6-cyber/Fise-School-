@@ -75,6 +75,16 @@ jobs:
           test -n "$VERSION"
           echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Deno for Supabase Edge function validation
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Validate PDF import Edge functions
+        run: |
+          deno check supabase/functions/import-chapter-pdf/index.ts
+          deno check supabase/functions/import-course-pdf/index.ts
+
       - name: Flutter pub get
         run: flutter pub get
 
