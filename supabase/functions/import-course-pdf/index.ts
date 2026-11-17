@@ -345,7 +345,7 @@ ${extracted}`;
           source_pdf_path: sourcePdfPath,
           source_page_start: chapter.source_page_start,
           source_page_end: chapter.source_page_end,
-          position: 0, is_published: false, created_by: authData.user.id, folder_key: "course",
+          position: 0, is_published: true, created_by: authData.user.id, folder_key: "course",
         }).select("id").single();
         if (itemError) throw itemError;
         report.push({ chapter: title, curriculum: curriculum.title_fr, status: "imported", content_item_id: item.id });
