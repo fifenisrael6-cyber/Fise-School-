@@ -173,7 +173,7 @@ class _AdminChapterContentPageState extends State<AdminChapterContentPage> {
         'source_page_end': null,
         'folder_key': 'course',
         'position': current?['position'] ?? 0,
-        'is_published': current?['is_published'] == true,
+        'is_published': current == null ? true : current['is_published'] == true,
       };
 
       Map<String, dynamic> saved;
