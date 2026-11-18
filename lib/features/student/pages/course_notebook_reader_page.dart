@@ -728,11 +728,6 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
             const SizedBox(height: 12),
             for (final block in blocks) renderBlock(block),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text('$number / $totalPages',
-                style: const TextStyle(fontSize: 11, color: Colors.black45)),
-            ),
           ],
         ),
       ),
@@ -794,32 +789,44 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
     );
   }
 
+  /// Regroupe toutes les feuilles A4 historiques en un seul flux vertical.
+  /// Les blocs et leur ordre sont conservés ; seule la pagination visuelle disparaît.
+  Map<String, dynamic> _buildContinuousDocument(double width, double height) {
+    final sourcePages = _pagesForLayout(width, height);
+    final allBlocks = <Map<String, dynamic>>[];
+    for (final page in sourcePages) {
+      final raw = page['blocks'];
+      if (raw is List) {
+        for (final block in raw.whereType<Map>()) {
+          allBlocks.add(Map<String, dynamic>.from(block));
+        }
+      }
+    }
+    return {
+      'id': 'continuous-course-document',
+      'position': 1,
+      'blocks': allBlocks,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pages = _pagesForLayout(
-      MediaQuery.sizeOf(context).width - 20,
-      MediaQuery.sizeOf(context).height - 150,
+    final size = MediaQuery.sizeOf(context);
+    final document = _buildContinuousDocument(
+      size.width - 20,
+      size.height - 150,
     );
-    final safeIndex = _index.clamp(0, pages.length - 1).toInt();
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: pages.length,
-            physics: const PageScrollPhysics(),
-            onPageChanged: (index) {
-              setState(() => _index = index);
-              unawaited(_saveReaderState());
-            },
-            itemBuilder: (context, index) => ClipRect(
-              child: Transform.scale(
-                scale: _zoomScale,
-                alignment: Alignment.topCenter,
-                child: _buildPage(pages[index], index + 1, pages.length),
-              ),
+          SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Transform.scale(
+              scale: _zoomScale,
+              alignment: Alignment.topCenter,
+              child: _buildPage(document, 1, 1),
             ),
           ),
           if (!_isFullscreen)
@@ -890,60 +897,6 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge, overlays: SystemUiOverlay.values);
                     },
                     icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-          if (!_isFullscreen)
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 8,
-              child: SafeArea(
-                top: false,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF5FFFFFF),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: const Color(0xFFD9E5F2)),
-                    boxShadow: const [BoxShadow(color: Color(0x18000000), blurRadius: 12, offset: Offset(0, 3))],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _readerNavButton(
-                        icon: Icons.chevron_left_rounded,
-                        enabled: safeIndex > 0,
-                        onPressed: () => _controller.previousPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
-                      ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom out' : 'Réduire le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale - 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_out, color: Color(0xFF123B70)),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(color: const Color(0xFF123B70), borderRadius: BorderRadius.circular(22)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.description_outlined, size: 17, color: Colors.white),
-                            const SizedBox(width: 6),
-                            Text('\${safeIndex + 1} / \${pages.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                          ]),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: _en ? 'Zoom in' : 'Agrandir le zoom',
-                        onPressed: () => setState(() => _zoomScale = (_zoomScale + 0.1).clamp(0.8, 2.0).toDouble()),
-                        icon: const Icon(Icons.zoom_in, color: Color(0xFF123B70)),
-                      ),
-                      _readerNavButton(
-                        icon: Icons.chevron_right_rounded,
-                        enabled: safeIndex < pages.length - 1,
-                        onPressed: () => _controller.nextPage(duration: const Duration(milliseconds: 240), curve: Curves.easeInOut),
-                      ),
-                    ],
                   ),
                 ),
               ),
