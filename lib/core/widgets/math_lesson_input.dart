@@ -26,6 +26,8 @@ class MathLessonInput extends StatelessWidget {
     {'label': 'Système', 'value': r'$$\begin{aligned}x+y&=5\\2x-y&=1\end{aligned}$$'},
     {'label': 'Limite', 'value': r'$$\lim_{x\to a}f(x)$$'},
     {'label': 'Matrice', 'value': r'$$\begin{pmatrix}a&b\\c&d\end{pmatrix}$$'},
+    {'label': 'Calcul détaillé', 'value': r'$$\begin{aligned}A&=\text{expression initiale}\\&=\text{étape suivante}\\&=\boxed{\text{résultat}}\end{aligned}$$'},
+    {'label': 'Tableau', 'value': '\n| Grandeur | Valeur | Unité |\n| --- | --- | --- |\n| ... | ... | ... |\n'},
   ];
 
   void _insert(String value) {
@@ -72,7 +74,7 @@ class MathLessonInput extends StatelessWidget {
             hintText: hint,
             border: const OutlineInputBorder(),
             helperText:
-                r'Formule : $...$  •  Formule centrée : $$...$$  •  Utilisez les boutons pour insérer les structures courantes.',
+                r'Formule : $...$ • Formule centrée : $...$ • Calculs ligne par ligne : bouton Calcul détaillé • Tableaux : bouton Tableau.',
             helperMaxLines: 3,
           ),
         ),
