@@ -74,7 +74,7 @@ class MathLessonInput extends StatelessWidget {
             hintText: hint,
             border: const OutlineInputBorder(),
             helperText:
-                r'Formule : $...$ • Formule centrée : $...$ • Calculs ligne par ligne : bouton Calcul détaillé • Tableaux : bouton Tableau.',
+                r'Formule : $...$ • Formule centrée : $$...$$ • Calculs ligne par ligne : bouton Calcul détaillé • Tableaux : bouton Tableau.',
             helperMaxLines: 3,
           ),
         ),
