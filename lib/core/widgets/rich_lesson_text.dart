@@ -148,9 +148,32 @@ class RichLessonText extends StatelessWidget {
   static String _normalize(String raw) {
     var value = raw
         .replaceAll('\r\n', '\n')
-        .replaceAll(r'\[', r'$')
-        .replaceAll(r'\]', r'$')
-        .replaceAll(r'\(', r'
+        .replaceAll(r'\[', r'$$')
+        .replaceAll(r'\]', r'$$')
+        .replaceAll(r'\(', r'$')
+        .replaceAll(r'\)', r'$');
+
+    // PDF text extraction can flatten this common measurement table into
+    // consecutive labels and values. Restore its rows before block parsing.
+    final measurementTable = RegExp(
+      r'N[°º]\s*pesée\s+1\s+2\s+3\s+4\s+5\s+6\s+7\s+8\s+9\s+10\s+Masse\s+((?:\d{1,3}[,.]\d{1,3}\s*){10})',
+      caseSensitive: false,
+    );
+    value = value.replaceAllMapped(measurementTable, (match) {
+      final numbers = RegExp(r'\d{1,3}[,.]\d{1,3}')
+          .allMatches(match.group(1)!)
+          .map((item) => item.group(0)!.replaceAll(',', '.'))
+          .toList(growable: false);
+      if (numbers.length != 10) return match.group(0)!;
+      final header = List.generate(10, (index) => '\${index + 1}').join(' | ');
+      final data = numbers.join(' | ');
+      return '| N° pesée | $header |\n| --- | ' +
+          List.filled(10, '---').join(' | ') +
+          ' |\n| Masse (kg) | $data |';
+    });
+
+    return value;
+  }
 
   static List<_Block> _parseBlocks(String input) {
     final blocks = <_Block>[];
