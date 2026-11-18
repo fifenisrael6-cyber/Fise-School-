@@ -156,7 +156,7 @@ class RichLessonText extends StatelessWidget {
     // PDF text extraction can flatten this common measurement table into
     // consecutive labels and values. Restore its rows before block parsing.
     final measurementTable = RegExp(
-      r'N[°º]\\s*pesée[\\s:]*1\\s+2\\s+3\\s+4\\s+5\\s+6\\s+7\\s+8\\s+9\\s+10[\\s\\S]{0,100}?Masse(?:\\s*\\(kg\\))?[\\s:]*((?:\\d{1,3}[,.]\\d{1,3}\\s*){10})',
+      r'N[°º]\s*pesée[\s:]*1\s+2\s+3\s+4\s+5\s+6\s+7\s+8\s+9\s+10[\s\S]{0,100}?Masse(?:\s*\(kg\))?[\s:]*((?:\d{1,3}[,.]\d{1,3}\s*){10})',
       caseSensitive: false,
     );
     value = value.replaceAllMapped(measurementTable, (match) {
