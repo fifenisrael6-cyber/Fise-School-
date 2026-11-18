@@ -165,7 +165,7 @@ class RichLessonText extends StatelessWidget {
           .map((item) => item.group(0)!.replaceAll(',', '.'))
           .toList(growable: false);
       if (numbers.length != 10) return match.group(0)!;
-      final header = List.generate(10, (index) => '\${index + 1}').join(' | ');
+      final header = List.generate(10, (index) => '${index + 1}').join(' | ');
       final data = numbers.join(' | ');
       return '| N° pesée | $header |\n| --- | ' +
           List.filled(10, '---').join(' | ') +
