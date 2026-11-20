@@ -460,7 +460,6 @@ class _ScientificPainter extends CustomPainter {
     final a=Offset(size.width*.25,size.height*.38), b=Offset(size.width*.62,size.height*.38);
     final c=Offset(size.width*.62,size.height*.76), d=Offset(size.width*.25,size.height*.76);
     final shift=Offset(size.width*.17,-size.height*.18);
-    final pts=[a,b,c,d,a,a+shift,b+shift,c+shift,d+shift];
     final p=Paint()..color=blue..strokeWidth=2.3..style=PaintingStyle.stroke;
     final path=Path()..moveTo(a.dx,a.dy)..lineTo(b.dx,b.dy)..lineTo(c.dx,c.dy)..lineTo(d.dx,d.dy)..close()
       ..moveTo(a.dx,a.dy)..lineTo((a+shift).dx,(a+shift).dy)
