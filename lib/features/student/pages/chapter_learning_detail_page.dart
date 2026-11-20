@@ -68,6 +68,8 @@ class _ChapterLearningDetailPageState
     super.initState();
     _future = _load();
     _subscribeToPublishedContent();
+    // Keep cached content visible first, then refresh published pages_json.
+    unawaited(_refreshContentAfterInitialLoad(_future, _loadGeneration));
   }
 
   void _subscribeToPublishedContent() {
@@ -131,6 +133,31 @@ class _ChapterLearningDetailPageState
       counts: const ChapterLearningCounts(),
       progress: null,
     );
+  }
+
+  Future<void> _refreshContentAfterInitialLoad(
+    Future<_ChapterData> initialFuture,
+    int generation,
+  ) async {
+    try {
+      final initial = await initialFuture;
+      if (!mounted || generation != _loadGeneration) return;
+      final latest = await _service
+          .listContent(widget.chapter.id, forceRefresh: true)
+          .timeout(const Duration(seconds: 13));
+      if (!mounted || generation != _loadGeneration) return;
+      final updated = _ChapterData(
+        content: latest,
+        exercises: initial.exercises,
+        quizzes: initial.quizzes,
+        counts: initial.counts,
+        progress: initial.progress,
+      );
+      setState(() => _future = Future<_ChapterData>.value(updated));
+      if (latest.isNotEmpty) unawaited(_cacheOriginalLessonPdfs(latest));
+    } catch (_) {
+      // Keep the cached course visible if the server cannot be reached.
+    }
   }
 
   Future<void> _cacheOriginalLessonPdfs(
