@@ -157,6 +157,51 @@ class _ScientificPainter extends CustomPainter {
         case 'optics':
           _paintLens(canvas, size);
           break;
+        case 'geom_square':
+        case 'square':
+          _paintSquare(canvas, size);
+          break;
+        case 'geom_parallel':
+        case 'parallel_lines':
+          _paintParallel(canvas, size);
+          break;
+        case 'geom_coordinate':
+        case 'coordinate_plane':
+          _paintCoordinate(canvas, size);
+          break;
+        case 'geom_cube':
+        case 'cube':
+          _paintCube(canvas, size);
+          break;
+        case 'geom_pyramid':
+        case 'pyramid':
+          _paintPyramid(canvas, size);
+          break;
+        case 'geom_cylinder':
+        case 'cylinder':
+          _paintCylinder(canvas, size);
+          break;
+        case 'geom_prism':
+        case 'prism':
+          _paintPrism(canvas, size);
+          break;
+        case 'gravity_pair':
+          _paintGravityPair(canvas, size);
+          break;
+        case 'gravity_altitude':
+          _paintGravityAltitude(canvas, size);
+          break;
+        case 'weight':
+          _paintWeight(canvas, size);
+          break;
+        case 'svt_neuron':
+        case 'neuron':
+          _paintNeuron(canvas, size);
+          break;
+        case 'svt_synapse':
+        case 'synapse':
+          _paintSynapse(canvas, size);
+          break;
         default:
           _paintPlaceholder(canvas, size);
       }
@@ -364,6 +409,188 @@ class _ScientificPainter extends CustomPainter {
     canvas.drawLine(Offset(cx,cy-size.height*.2),Offset(size.width*.9,cy+size.height*.08),Paint()..color=red..strokeWidth=1.5);
     _label(canvas,isEnglish?'Object':'Objet',Offset(objectX-18,cy-size.height*.27),color:green,size:10);
     _label(canvas,isEnglish?'Converging lens':'Lentille convergente',Offset(cx-45,12),color:blue,size:10);
+  }
+
+
+  void _paintSquare(Canvas canvas, Size size) {
+    final rect = Rect.fromCenter(center: Offset(size.width * .5, size.height * .52),
+      width: size.width * .48, height: size.width * .48);
+    canvas.drawRect(rect, Paint()..color = const Color(0xFFEEF5FF));
+    canvas.drawRect(rect, Paint()..color = blue..style = PaintingStyle.stroke..strokeWidth = 2.5);
+    canvas.drawLine(rect.topLeft, rect.bottomRight, Paint()..color = red..strokeWidth = 2);
+    _label(canvas, 'A', rect.topLeft + const Offset(-15, -16), bold: true);
+    _label(canvas, 'B', rect.topRight + const Offset(5, -5), bold: true);
+    _label(canvas, 'C', rect.bottomRight + const Offset(5, 0), bold: true);
+    _label(canvas, 'D', rect.bottomLeft + const Offset(-15, 0), bold: true);
+    _label(canvas, isEnglish ? 'Square' : 'Carré', Offset(rect.left, rect.bottom + 18), color: navy, bold: true);
+  }
+
+  void _paintParallel(Canvas canvas, Size size) {
+    final p = Paint()..color = blue..strokeWidth = 2.5;
+    final y1 = size.height * .34, y2 = size.height * .68;
+    canvas.drawLine(Offset(size.width*.12, y1), Offset(size.width*.88, y1), p);
+    canvas.drawLine(Offset(size.width*.12, y2), Offset(size.width*.88, y2), p);
+    canvas.drawLine(Offset(size.width*.35, size.height*.16), Offset(size.width*.68, size.height*.86),
+      Paint()..color = red..strokeWidth = 2);
+    _label(canvas, 'd₁', Offset(size.width*.83, y1-22), color: blue, bold: true);
+    _label(canvas, 'd₂', Offset(size.width*.83, y2-22), color: blue, bold: true);
+    _label(canvas, isEnglish ? 'Parallel lines' : 'Droites parallèles', Offset(18, 12), bold: true);
+  }
+
+  void _paintCoordinate(Canvas canvas, Size size) {
+    final center = Offset(size.width*.5, size.height*.52);
+    final p = Paint()..color = grid..strokeWidth = 1;
+    for (var i=1;i<=6;i++) {
+      final dx = size.width*.4*i/7, dy = size.height*.4*i/7;
+      canvas.drawLine(Offset(center.dx-dx, 18), Offset(center.dx-dx, size.height-18), p);
+      canvas.drawLine(Offset(center.dx+dx, 18), Offset(center.dx+dx, size.height-18), p);
+      canvas.drawLine(Offset(18, center.dy-dy), Offset(size.width-18, center.dy-dy), p);
+      canvas.drawLine(Offset(18, center.dy+dy), Offset(size.width-18, center.dy+dy), p);
+    }
+    final axis = Paint()..color = navy..strokeWidth = 2;
+    canvas.drawLine(Offset(18, center.dy), Offset(size.width-18, center.dy), axis);
+    canvas.drawLine(Offset(center.dx, size.height-18), Offset(center.dx, 18), axis);
+    _label(canvas, 'x', Offset(size.width-17, center.dy+7), bold: true);
+    _label(canvas, 'y', Offset(center.dx+7, 8), bold: true);
+    _label(canvas, 'O', center+const Offset(5,5), size: 9);
+    _label(canvas, isEnglish ? 'Coordinate plane' : 'Repère du plan', Offset(18, size.height-14), color: grey, size: 9);
+  }
+
+  void _paintCube(Canvas canvas, Size size) {
+    final a=Offset(size.width*.25,size.height*.38), b=Offset(size.width*.62,size.height*.38);
+    final c=Offset(size.width*.62,size.height*.76), d=Offset(size.width*.25,size.height*.76);
+    final shift=Offset(size.width*.17,-size.height*.18);
+    final pts=[a,b,c,d,a,a+shift,b+shift,c+shift,d+shift];
+    final p=Paint()..color=blue..strokeWidth=2.3..style=PaintingStyle.stroke;
+    final path=Path()..moveTo(a.dx,a.dy)..lineTo(b.dx,b.dy)..lineTo(c.dx,c.dy)..lineTo(d.dx,d.dy)..close()
+      ..moveTo(a.dx,a.dy)..lineTo((a+shift).dx,(a+shift).dy)
+      ..moveTo(b.dx,b.dy)..lineTo((b+shift).dx,(b+shift).dy)
+      ..moveTo(c.dx,c.dy)..lineTo((c+shift).dx,(c+shift).dy)
+      ..moveTo((a+shift).dx,(a+shift).dy)..lineTo((b+shift).dx,(b+shift).dy)
+      ..lineTo((c+shift).dx,(c+shift).dy)..lineTo((d+shift).dx,(d+shift).dy)
+      ..lineTo((a+shift).dx,(a+shift).dy);
+    canvas.drawPath(path,p);
+    _label(canvas,isEnglish?'Cube':'Cube',Offset(size.width*.38,size.height*.88),bold:true);
+  }
+
+  void _paintPyramid(Canvas canvas, Size size) {
+    final a=Offset(size.width*.2,size.height*.72), b=Offset(size.width*.78,size.height*.72);
+    final c=Offset(size.width*.64,size.height*.88), d=Offset(size.width*.08,size.height*.88);
+    final top=Offset(size.width*.48,size.height*.16);
+    final p=Paint()..color=blue..strokeWidth=2.3..style=PaintingStyle.stroke;
+    final base=Path()..moveTo(a.dx,a.dy)..lineTo(b.dx,b.dy)..lineTo(c.dx,c.dy)..lineTo(d.dx,d.dy)..close();
+    canvas.drawPath(base,p);
+    canvas.drawLine(top,a,p); canvas.drawLine(top,b,p); canvas.drawLine(top,c,p); canvas.drawLine(top,d,p);
+    _label(canvas,isEnglish?'Pyramid':'Pyramide',Offset(size.width*.34,12),bold:true);
+  }
+
+  void _paintCylinder(Canvas canvas, Size size) {
+    final rect=Rect.fromCenter(center:Offset(size.width*.5,size.height*.52),width:size.width*.48,height:size.height*.58);
+    final p=Paint()..color=blue..strokeWidth=2.3..style=PaintingStyle.stroke;
+    canvas.drawOval(Rect.fromLTWH(rect.left,rect.top,rect.width,rect.height*.22),p);
+    canvas.drawLine(Offset(rect.left,rect.top+rect.height*.11),Offset(rect.left,rect.bottom-rect.height*.11),p);
+    canvas.drawLine(Offset(rect.right,rect.top+rect.height*.11),Offset(rect.right,rect.bottom-rect.height*.11),p);
+    canvas.drawArc(Rect.fromLTWH(rect.left,rect.bottom-rect.height*.22,rect.width,rect.height*.22),0,math.pi,false,p);
+    canvas.drawArc(Rect.fromLTWH(rect.left,rect.bottom-rect.height*.22,rect.width,rect.height*.22),math.pi,math.pi,false,
+      Paint()..color=grey..strokeWidth=1.4..style=PaintingStyle.stroke..strokeCap=StrokeCap.round);
+    _label(canvas,isEnglish?'Cylinder':'Cylindre',Offset(rect.left,rect.bottom+20),bold:true);
+  }
+
+  void _paintPrism(Canvas canvas, Size size) {
+    final a=Offset(size.width*.18,size.height*.65), b=Offset(size.width*.4,size.height*.28), c=Offset(size.width*.62,size.height*.65);
+    final shift=Offset(size.width*.2,-size.height*.12);
+    final p=Paint()..color=blue..strokeWidth=2.3..style=PaintingStyle.stroke;
+    final tri=Path()..moveTo(a.dx,a.dy)..lineTo(b.dx,b.dy)..lineTo(c.dx,c.dy)..close();
+    canvas.drawPath(tri,p);
+    canvas.drawLine(a,a+shift,p); canvas.drawLine(b,b+shift,p); canvas.drawLine(c,c+shift,p);
+    final back=Path()..moveTo((a+shift).dx,(a+shift).dy)..lineTo((b+shift).dx,(b+shift).dy)
+      ..lineTo((c+shift).dx,(c+shift).dy)..close();
+    canvas.drawPath(back,p);
+    _label(canvas,isEnglish?'Triangular prism':'Prisme droit',Offset(size.width*.28,size.height*.88),bold:true);
+  }
+
+  void _paintGravityPair(Canvas canvas, Size size) {
+    final left=Offset(size.width*.29,size.height*.5), right=Offset(size.width*.71,size.height*.5);
+    final p=Paint()..color=blue..style=PaintingStyle.fill;
+    canvas.drawCircle(left,24,p); canvas.drawCircle(right,34,Paint()..color=green);
+    final force=Paint()..color=red..strokeWidth=2.8;
+    canvas.drawLine(Offset(left.dx+28,left.dy),Offset(right.dx-38,right.dy),force);
+    canvas.drawLine(Offset(right.dx-38,right.dy),Offset(right.dx-48,right.dy-7),force);
+    canvas.drawLine(Offset(right.dx-38,right.dy),Offset(right.dx-48,right.dy+7),force);
+    canvas.drawLine(Offset(right.dx-38,right.dy+18),Offset(left.dx+28,left.dy+18),force);
+    _label(canvas,isEnglish?'Mass 1':'Masse 1',Offset(left.dx-24,left.dy+42),size:10);
+    _label(canvas,isEnglish?'Mass 2':'Masse 2',Offset(right.dx-28,right.dy+48),size:10);
+    _label(canvas,'F',Offset(size.width*.49,size.height*.38),color:red,bold:true);
+  }
+
+  void _paintGravityAltitude(Canvas canvas, Size size) {
+    final earth=Offset(size.width*.5,size.height*.86);
+    canvas.drawCircle(earth,size.width*.28,Paint()..color=const Color(0xFFDDEFE4));
+    canvas.drawCircle(earth,size.width*.28,Paint()..color=green..style=PaintingStyle.stroke..strokeWidth=2);
+    final object=Offset(size.width*.5,size.height*.2);
+    canvas.drawCircle(object,10,Paint()..color=red);
+    final dash=Paint()..color=navy..strokeWidth=1.6;
+    for(var y=object.dy+14;y<earth.dy-size.width*.28;y+=10) {
+      canvas.drawLine(Offset(object.dx,y),Offset(object.dx,y+5),dash);
+    }
+    _label(canvas,'h',Offset(object.dx+10,size.height*.49),color:red,bold:true);
+    _label(canvas,isEnglish?'Altitude':'Altitude',Offset(18,12),bold:true);
+    _label(canvas,isEnglish?'Earth':'Terre',Offset(earth.dx-17,earth.dy-4),color:green,bold:true);
+  }
+
+  void _paintWeight(Canvas canvas, Size size) {
+    final center=Offset(size.width*.5,size.height*.34);
+    final rect=Rect.fromCenter(center:center,width:70,height:55);
+    canvas.drawRect(rect,Paint()..color=const Color(0xFFFFF1E8));
+    canvas.drawRect(rect,Paint()..color=navy..style=PaintingStyle.stroke..strokeWidth=2);
+    final x=center.dx, start=rect.bottom+5, end=size.height*.82;
+    canvas.drawLine(Offset(x,start),Offset(x,end),Paint()..color=red..strokeWidth=3);
+    canvas.drawLine(Offset(x,end),Offset(x-7,end-12),Paint()..color=red..strokeWidth=2);
+    canvas.drawLine(Offset(x,end),Offset(x+7,end-12),Paint()..color=red..strokeWidth=2);
+    _label(canvas,'P',Offset(x+10,(start+end)/2),color:red,bold:true,size:15);
+    _label(canvas,isEnglish?'Weight':'Poids',Offset(18,12),bold:true);
+  }
+
+  void _paintNeuron(Canvas canvas, Size size) {
+    final soma=Offset(size.width*.35,size.height*.5);
+    final p=Paint()..color=blue..strokeWidth=2.2..style=PaintingStyle.stroke;
+    canvas.drawCircle(soma,31,Paint()..color=const Color(0xFFEAF3FF));
+    canvas.drawCircle(soma,31,p);
+    canvas.drawCircle(soma,9,Paint()..color=red);
+    final branches=[
+      [soma+const Offset(-24,-20),soma+const Offset(-65,-55)],
+      [soma+const Offset(-29,0),soma+const Offset(-78,2)],
+      [soma+const Offset(-22,23),soma+const Offset(-62,57)],
+      [soma+const Offset(-5,-29),soma+const Offset(0,-72)],
+    ];
+    for(final branch in branches) {
+      canvas.drawLine(branch[0],branch[1],p);
+    }
+    canvas.drawLine(Offset(soma.dx+31,soma.dy),Offset(size.width*.91,soma.dy),p);
+    for(var x=soma.dx+70;x<size.width*.86;x+=35) {
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x,soma.dy-8,22,16),const Radius.circular(8)),
+        Paint()..color=const Color(0xFFD9EEDC));
+    }
+    _label(canvas,isEnglish?'Dendrites':'Dendrites',Offset(8,12),size:10);
+    _label(canvas,isEnglish?'Cell body':'Corps cellulaire',Offset(soma.dx-38,soma.dy+40),size:9);
+    _label(canvas,isEnglish?'Axon':'Axone',Offset(size.width*.73,soma.dy-22),size:10);
+  }
+
+  void _paintSynapse(Canvas canvas, Size size) {
+    final x=size.width*.5;
+    final pre=Rect.fromLTWH(18, size.height*.22, size.width*.38, size.height*.18);
+    final post=Rect.fromLTWH(size.width*.56, size.height*.62, size.width*.38, size.height*.18);
+    canvas.drawRRect(RRect.fromRectAndRadius(pre,const Radius.circular(22)),Paint()..color=const Color(0xFFEAF3FF));
+    canvas.drawRRect(RRect.fromRectAndRadius(post,const Radius.circular(22)),Paint()..color=const Color(0xFFEAF7E8));
+    canvas.drawRRect(RRect.fromRectAndRadius(pre,const Radius.circular(22)),Paint()..color=blue..style=PaintingStyle.stroke..strokeWidth=2);
+    canvas.drawRRect(RRect.fromRectAndRadius(post,const Radius.circular(22)),Paint()..color=green..style=PaintingStyle.stroke..strokeWidth=2);
+    for(var i=0;i<5;i++) {
+      canvas.drawCircle(Offset(x-42+i*20,size.height*.49),4,Paint()..color=red);
+    }
+    canvas.drawLine(Offset(x,size.height*.42),Offset(x,size.height*.57),Paint()..color=red..strokeWidth=1.5);
+    _label(canvas,isEnglish?'Presynaptic':'Pré-synaptique',Offset(20,12),size:10);
+    _label(canvas,isEnglish?'Postsynaptic':'Post-synaptique',Offset(size.width*.55,size.height*.84),size:10);
+    _label(canvas,isEnglish?'Synaptic cleft':'Fente synaptique',Offset(x-55,size.height*.53),color:red,size:9);
   }
 
   void _paintPlaceholder(Canvas canvas, Size size) {
