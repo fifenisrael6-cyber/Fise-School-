@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:pdfx/pdfx.dart';
 
 import '../../../core/widgets/rich_lesson_text.dart';
+import '../../../core/widgets/scientific_figure_block.dart';
 import '../../../core/offline/notebook_image_cache.dart';
 import '../../../core/offline/notebook_page_pagination.dart';
 import '../../../models/chapter_learning_content.dart';
@@ -481,35 +482,10 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
 
       switch (type) {
         case 'graph':
-          final graphName = (block['function'] ?? block['name'] ?? 'exp').toString();
-          if (graphName != 'exp' && graphName != 'exponential') {
-            return Text(_en ? 'Unsupported graph: $graphName' : 'Graphique non pris en charge : $graphName');
-          }
-          return Container(
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(vertical: 14),
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFCBD5E1)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_en ? 'Graph of the exponential function' : 'Courbe de la fonction exponentielle',
-                  style: TextStyle(fontSize: _fontSize, fontWeight: FontWeight.w800, color: navy)),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 300,
-                  width: double.infinity,
-                  child: CustomPaint(painter: _ExponentialGraphPainter()),
-                ),
-                const SizedBox(height: 6),
-                Text(_en ? 'Increasing curve; horizontal asymptote: y = 0.' : 'Courbe strictement croissante ; asymptote horizontale : y = 0.',
-                  style: TextStyle(fontSize: _fontSize - 3, color: const Color(0xFF475569))),
-              ],
-            ),
+          return ScientificFigureBlock(
+            block: block,
+            isEnglish: _en,
+            fontSize: _fontSize,
           );
         case 'title':
           return Padding(
@@ -625,7 +601,13 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
           );
         case 'image' || 'diagram':
           final imagePath = (block['storage_path'] ?? block['path'] ?? '').toString();
-          if (imagePath.isEmpty) return const SizedBox.shrink();
+          if (imagePath.isEmpty) {
+            return ScientificFigureBlock(
+              block: block,
+              isEnglish: _en,
+              fontSize: _fontSize,
+            );
+          }
           return FutureBuilder<Object?>(
             future: _resolveImage(imagePath),
             builder: (context, snapshot) {
