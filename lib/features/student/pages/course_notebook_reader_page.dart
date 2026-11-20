@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -462,6 +463,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
         'key_phrase' || 'keyphrase' || 'phrase_cle' => 'key',
         'formula' || 'equation' => 'formula',
         'table' => 'table',
+        'graph' || 'function_graph' || 'chart' => 'graph',
         'diagram' || 'schema' || 'schéma' => 'diagram',
         'image' || 'figure' => 'image',
         'raster' => 'raster',
@@ -478,6 +480,37 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
       const paleGreen = Color(0xFFEAF8EF);
 
       switch (type) {
+        case 'graph':
+          final graphName = (block['function'] ?? block['name'] ?? 'exp').toString();
+          if (graphName != 'exp' && graphName != 'exponential') {
+            return Text(_en ? 'Unsupported graph: $graphName' : 'Graphique non pris en charge : $graphName');
+          }
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFCBD5E1)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_en ? 'Graph of the exponential function' : 'Courbe de la fonction exponentielle',
+                  style: TextStyle(fontSize: _fontSize, fontWeight: FontWeight.w800, color: navy)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 300,
+                  width: double.infinity,
+                  child: CustomPaint(painter: _ExponentialGraphPainter()),
+                ),
+                const SizedBox(height: 6),
+                Text(_en ? 'Increasing curve; horizontal asymptote: y = 0.' : 'Courbe strictement croissante ; asymptote horizontale : y = 0.',
+                  style: TextStyle(fontSize: _fontSize - 3, color: const Color(0xFF475569))),
+              ],
+            ),
+          );
         case 'title':
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -604,9 +637,23 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 );
               }
               final image = resolved is File
-                  ? Image.file(resolved, fit: BoxFit.contain)
-                  : Image.network(resolved.toString(), fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink());
+                  ? Image.file(
+                      resolved,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 42),
+                    )
+                  : Image.network(
+                      resolved.toString(),
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (_, __, ___) => const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('Image indisponible. Vérifiez la connexion puis réessayez.'),
+                      ),
+                    );
               return Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(vertical: 10),
@@ -620,7 +667,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                   GestureDetector(
                     onTap: () => _openImageGallery(imagePath),
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 360),
+                      constraints: const BoxConstraints(maxHeight: 560),
                       child: image,
                     ),
                   ),
@@ -654,7 +701,7 @@ class _CourseNotebookReaderPageState extends State<CourseNotebookReaderPage> {
                 ]),
               ),
             ),
-            child: Image.memory(bytes, width: double.infinity, fit: BoxFit.fitWidth),
+            child: Image.memory(bytes, width: double.infinity, fit: BoxFit.fitWidth, filterQuality: FilterQuality.high),
           );
         case 'raster-pending':
           return Padding(
@@ -1059,4 +1106,73 @@ class _CourseRecordNotebookReaderPageState extends State<CourseRecordNotebookRea
     );
     return CourseNotebookReaderPage(item: item, locale: widget.locale);
   }
+}
+
+
+/// Dessine la courbe exacte y = e^x avec axes, graduations et points remarquables.
+class _ExponentialGraphPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const left = 38.0, right = 12.0, top = 14.0, bottom = 30.0;
+    final plot = Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
+    const xmin = -3.0, xmax = 2.0, ymax = 8.0;
+    double px(double x) => plot.left + (x - xmin) / (xmax - xmin) * plot.width;
+    double py(double y) => plot.bottom - y / ymax * plot.height;
+    final grid = Paint()..color = const Color(0xFFE2E8F0)..strokeWidth = 1;
+    final axis = Paint()..color = const Color(0xFF334155)..strokeWidth = 1.5;
+    final curve = Paint()..color = const Color(0xFF1677C8)..strokeWidth = 3..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
+    final asymptote = Paint()..color = const Color(0xFFD97706)..strokeWidth = 1.4;
+    for (var y = 0; y <= 8; y++) {
+      canvas.drawLine(Offset(plot.left, py(y)), Offset(plot.right, py(y)), grid);
+      _label(canvas, '$y', Offset(plot.left - 9, py(y)), align: TextAlign.right);
+    }
+    for (var x = -3; x <= 2; x++) {
+      canvas.drawLine(Offset(px(x), plot.top), Offset(px(x), plot.bottom), grid);
+      _label(canvas, '$x', Offset(px(x), plot.bottom + 15));
+    }
+    canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right + 4, plot.bottom), axis);
+    canvas.drawLine(Offset(px(0), plot.bottom), Offset(px(0), plot.top - 3), axis);
+    canvas.drawLine(Offset(plot.left, py(0)), Offset(plot.right, py(0)), asymptote..style = PaintingStyle.stroke..strokeWidth = 1.4);
+    final dash = Paint()..color = const Color(0xFFD97706)..strokeWidth = 1.4;
+    for (double x = plot.left; x < plot.right; x += 9) {
+      canvas.drawLine(Offset(x, py(0)), Offset((x + 5).clamp(plot.left, plot.right), py(0)), dash);
+    }
+    final path = Path();
+    for (var i = 0; i <= 240; i++) {
+      final x = xmin + (xmax - xmin) * i / 240;
+      final y = (math.exp(x)).clamp(0.0, ymax);
+      final point = Offset(px(x), py(y));
+      if (i == 0) { path.moveTo(point.dx, point.dy); } else { path.lineTo(point.dx, point.dy); }
+    }
+    canvas.drawPath(path, curve);
+    for (final point in <Offset>[
+      Offset(px(-2), py(0.1353)), Offset(px(-1), py(0.3679)),
+      Offset(px(0), py(1)), Offset(px(1), py(2.7183)), Offset(px(2), py(7.3891)),
+    ]) {
+      canvas.drawCircle(point, 3.5, Paint()..color = const Color(0xFF1677C8));
+    }
+    _label(canvas, 'y', Offset(px(0) + 8, plot.top + 2));
+    _label(canvas, 'x', Offset(plot.right - 2, plot.bottom + 15));
+    _label(canvas, 'O', Offset(px(0) - 9, plot.bottom + 13), align: TextAlign.right);
+    _label(canvas, '(0 ; 1)', Offset(px(0) + 8, py(1) - 11), color: const Color(0xFF1677C8));
+    _label(canvas, '(1 ; e)', Offset(px(1) + 4, py(2.7183) - 12), color: const Color(0xFF1677C8));
+  }
+
+  void _label(Canvas canvas, String value, Offset center, {
+    TextAlign align = TextAlign.center,
+    Color color = const Color(0xFF334155),
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(text: value, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500)),
+      textDirection: TextDirection.ltr,
+      textAlign: align,
+    )..layout();
+    final offset = align == TextAlign.right
+        ? Offset(center.dx - painter.width, center.dy - painter.height / 2)
+        : Offset(center.dx - painter.width / 2, center.dy - painter.height / 2);
+    painter.paint(canvas, offset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ExponentialGraphPainter oldDelegate) => false;
 }
