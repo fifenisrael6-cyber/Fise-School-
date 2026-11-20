@@ -1140,7 +1140,7 @@ class _ExponentialGraphPainter extends CustomPainter {
     final path = Path();
     for (var i = 0; i <= 240; i++) {
       final x = xmin + (xmax - xmin) * i / 240;
-      final y = (math.exp(x)).clamp(0.0, ymax);
+      final y = math.exp(x).clamp(0.0, ymax).toDouble();
       final point = Offset(px(x), py(y));
       if (i == 0) { path.moveTo(point.dx, point.dy); } else { path.lineTo(point.dx, point.dy); }
     }
