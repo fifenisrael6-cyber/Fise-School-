@@ -92,6 +92,19 @@ class ChapterLearningService {
     // refresh cannot write one account's data into another account's cache.
     final userId = _cacheUserId;
     if (forceRefresh) {
+      // Avoid waiting for a network timeout when the device is offline.
+      // The last known-good chapter catalogue remains readable immediately.
+      if (!await ConnectivityService().isOnline()) {
+        final staleJson = await _database.getOfflineCatalogCache(userId, cacheKey);
+        if (staleJson != null) {
+          try {
+            return (jsonDecode(staleJson) as List<dynamic>)
+                .map((row) => Map<String, dynamic>.from(row as Map))
+                .toList(growable: false);
+          } catch (_) {}
+        }
+        return const <Map<String, dynamic>>[];
+      }
       try {
         final rows = await fetch().timeout(const Duration(seconds: 12));
         await _database.saveOfflineCatalogCache(userId, cacheKey, jsonEncode(rows));
