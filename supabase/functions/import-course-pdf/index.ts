@@ -47,6 +47,27 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
   return pages.join("\n\n").trim();
 }
 
+
+function scientificTokenBlock(token: string): Record<string, unknown> | null {
+  const match = token.match(/^\\[\\[(diagram|graph):([a-z0-9_]+)\\]\\]$/i);
+  if (!match) return null;
+  const category = match[1].toLowerCase();
+  const sourceKind = match[2].toLowerCase();
+  if (category === "graph") {
+    const supported = new Set(["exp", "exponential", "ln", "log", "sin", "cos", "tan", "sqrt"]);
+    if (!supported.has(sourceKind)) return null;
+    return { type: "graph", function: sourceKind, title_fr: "Courbe représentative", title_en: "Function graph" };
+  }
+  const aliases: Record<string, string> = {
+    geom_circle: "circle", geom_triangle: "triangle", geom_right_triangle: "right_triangle",
+    svt_cell: "cell", circle: "circle", triangle: "triangle", right_triangle: "right_triangle",
+    plant_cell: "plant_cell", animal_cell: "animal_cell", circuit: "circuit",
+    electric_circuit: "electric_circuit", converging_lens: "converging_lens", lens: "lens",
+  };
+  return { type: "diagram", diagram_kind: aliases[sourceKind] ?? sourceKind,
+    title_fr: "Schéma scientifique", title_en: "Scientific diagram", source_kind: sourceKind };
+}
+
 function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: Array<Record<string, unknown>> = [];
@@ -65,6 +86,12 @@ function buildReaderBlocks(markdown: string): Array<Record<string, unknown>> {
     const line = lines[i].trim();
     if (!line) {
       flushParagraph();
+      continue;
+    }
+    const scientific = scientificTokenBlock(line);
+    if (scientific) {
+      flushParagraph();
+      blocks.push(scientific);
       continue;
     }
     if (isTableLine(line)) {
@@ -243,6 +270,7 @@ RÈGLES ABSOLUES :
 - Place les formules mathématiques en LaTeX entre $...$ ou $$...$$. Mets les tableaux en tableau Markdown et les étapes en listes numérotées ou à puces.
 - Analyse aussi les pages visuelles du PDF fourni en pièce jointe : schémas, figures, graphiques, illustrations, tableaux et légendes. Ne te limite pas au texte extrait automatiquement.
 - Pour chaque figure, conserve sa position logique dans le cours, sa légende et une description fidèle de ses éléments visibles. Si elle correspond à un schéma pris en charge, insère le jeton correspondant ; sinon écris « Schéma à redessiner : [description fidèle des éléments visibles et de leurs légendes] ». Ne prétends jamais qu’une image a été enregistrée si tu ne l’as pas réellement extraite.
+- Pour les courbes explicitement demandées par la source et dont la fonction est clairement définie, insère sur une ligne séparée [[graph:exp]], [[graph:ln]], [[graph:sin]], [[graph:cos]] ou [[graph:tan]]. N'ajoute aucun coefficient ni intervalle non fourni par la source.
 - Conserve les schémas et leurs légendes. Lorsque le texte ou la légende identifie clairement un schéma pris en charge, insère sur une ligne séparée le jeton correspondant exactement à sa place dans le cours : [[diagram:gravity_pair]], [[diagram:gravity_altitude]], [[diagram:weight]], [[diagram:geom_triangle]], [[diagram:geom_right_triangle]], [[diagram:geom_circle]], [[diagram:geom_square]], [[diagram:geom_parallel]], [[diagram:geom_coordinate]], [[diagram:geom_cube]], [[diagram:geom_pyramid]], [[diagram:geom_cylinder]], [[diagram:geom_prism]], [[diagram:graph_line]], [[diagram:stats_bar]], [[diagram:svt_cell]], [[diagram:svt_neuron]] ou [[diagram:svt_synapse]]. N'utilise un jeton que si la source le justifie clairement ; ne devine jamais. Pour tout autre schéma, conserve sa légende et indique « Schéma à redessiner : [description fidèle] » sans prétendre afficher une image.
 - Conserve tous les exercices et questions ; ne fabrique pas de corrigés.
 - N'ajoute pas artificiellement des objectifs ou rubriques absentes de la source.
