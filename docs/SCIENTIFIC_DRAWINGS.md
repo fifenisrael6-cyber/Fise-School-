@@ -40,6 +40,19 @@ Supported function identifiers: `exp`, `exponential`, `ln`, `log`, `sin`, `cos`,
 
 Initial vector diagram identifiers: `circle`, `geometry_circle`, `unit_circle`, `trigonometric_circle`, `triangle`, `right_triangle`, `geometry_triangle`, `plant_cell`, `animal_cell`, `cell`, `circuit`, `electric_circuit`, `lens`, `converging_lens`, `optics`.
 
+## Automatic PDF-import conversion
+
+Both administrator PDF import paths now convert a standalone scientific token into a typed block at the same position in the lesson:
+
+- `[[diagram:geom_circle]]`, `[[diagram:geom_triangle]]`, `[[diagram:geom_right_triangle]]`
+- `[[diagram:geom_square]]`, `[[diagram:geom_parallel]]`, `[[diagram:geom_coordinate]]`
+- `[[diagram:geom_cube]]`, `[[diagram:geom_pyramid]]`, `[[diagram:geom_cylinder]]`, `[[diagram:geom_prism]]`
+- `[[diagram:gravity_pair]]`, `[[diagram:gravity_altitude]]`, `[[diagram:weight]]`
+- `[[diagram:svt_cell]]`, `[[diagram:svt_neuron]]`, `[[diagram:svt_synapse]]`
+- `[[graph:exp]]`, `[[graph:ln]]`, `[[graph:sin]]`, `[[graph:cos]]`, `[[graph:tan]]`
+
+The PDF importer keeps surrounding paragraphs and LaTeX blocks intact. Unsupported diagram kinds remain explicit diagram blocks and display a labelled placeholder instead of a fabricated scientific image. Data-dependent charts and graphs are not generated from a title alone: their actual values or function coefficients must be present in the source.
+
 ## Important authoring rules
 - Keep the original course text and existing blocks. Insert figure blocks at the correct pedagogical position in the page's `blocks` array.
 - Do not replace a complete PDF page with a generated drawing.
