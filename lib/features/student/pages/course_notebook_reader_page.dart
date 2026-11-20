@@ -1123,12 +1123,12 @@ class _ExponentialGraphPainter extends CustomPainter {
     final curve = Paint()..color = const Color(0xFF1677C8)..strokeWidth = 3..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
     final asymptote = Paint()..color = const Color(0xFFD97706)..strokeWidth = 1.4;
     for (var y = 0; y <= 8; y++) {
-      canvas.drawLine(Offset(plot.left, py(y)), Offset(plot.right, py(y)), grid);
-      _label(canvas, '$y', Offset(plot.left - 9, py(y)), align: TextAlign.right);
+      canvas.drawLine(Offset(plot.left, py(y.toDouble())), Offset(plot.right, py(y.toDouble())), grid);
+      _label(canvas, '$y', Offset(plot.left - 9, py(y.toDouble())), align: TextAlign.right);
     }
     for (var x = -3; x <= 2; x++) {
-      canvas.drawLine(Offset(px(x), plot.top), Offset(px(x), plot.bottom), grid);
-      _label(canvas, '$x', Offset(px(x), plot.bottom + 15));
+      canvas.drawLine(Offset(px(x.toDouble()), plot.top), Offset(px(x.toDouble()), plot.bottom), grid);
+      _label(canvas, '$x', Offset(px(x.toDouble()), plot.bottom + 15.0));
     }
     canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right + 4, plot.bottom), axis);
     canvas.drawLine(Offset(px(0), plot.bottom), Offset(px(0), plot.top - 3), axis);
