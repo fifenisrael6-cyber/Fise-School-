@@ -15,23 +15,50 @@ function normalize(value: unknown): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** Convertit le Markdown en blocs ordonnes sans inventer d'images. */
-function buildContentBlocks(markdown: string): Array<Record<string, string>> {
-  const blocks: Array<Record<string, string>> = [];
-  const formulaPattern = /(?:\$\$[\s\S]+?\$\$|\$[^$\n]+\$)/g;
+
+function scientificTokenBlock(token: string): Record<string, unknown> | null {
+  const match = token.match(/^\\[\\[(diagram|graph):([a-z0-9_]+)\\]\\]$/i);
+  if (!match) return null;
+  const category = match[1].toLowerCase();
+  const sourceKind = match[2].toLowerCase();
+  if (category === "graph") {
+    const supported = new Set(["exp", "exponential", "ln", "log", "sin", "cos", "tan", "sqrt"]);
+    if (!supported.has(sourceKind)) return null;
+    return { type: "graph", function: sourceKind, title_fr: "Courbe représentative", title_en: "Function graph" };
+  }
+  const aliases: Record<string, string> = {
+    geom_circle: "circle", geom_triangle: "triangle", geom_right_triangle: "right_triangle",
+    svt_cell: "cell", circle: "circle", triangle: "triangle", right_triangle: "right_triangle",
+    plant_cell: "plant_cell", animal_cell: "animal_cell", circuit: "circuit",
+    electric_circuit: "electric_circuit", converging_lens: "converging_lens", lens: "lens",
+  };
+  return { type: "diagram", diagram_kind: aliases[sourceKind] ?? sourceKind,
+    title_fr: "Schéma scientifique", title_en: "Scientific diagram", source_kind: sourceKind };
+}
+
+/** Convertit le Markdown en blocs ordonnés, en préservant formules et schémas. */
+function buildContentBlocks(markdown: string): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+  const tokenOrFormula = /\\[\\[(?:diagram|graph):[a-z0-9_]+\\]\\]|\\$\\$[\\s\\S]+?\\$\\$|\\$[^$\\n]+\\$/gi;
   let cursor = 0;
-  for (const match of markdown.matchAll(formulaPattern)) {
+  for (const match of markdown.matchAll(tokenOrFormula)) {
     const index = match.index ?? 0;
     const before = markdown.slice(cursor, index).trim();
-    if (before) blocks.push({ type: 'TEXT', text: before });
+    if (before) blocks.push({ type: "TEXT", text: before });
     const raw = match[0];
-    const latex = raw.startsWith('$$') ? raw.slice(2, -2).trim() : raw.slice(1, -1).trim();
-    if (latex) blocks.push({ type: 'FORMULA', latex });
+    if (raw.startsWith("[[")) {
+      const scientific = scientificTokenBlock(raw);
+      if (scientific) blocks.push(scientific);
+      else blocks.push({ type: "TEXT", text: raw });
+    } else {
+      const latex = raw.startsWith("$$") ? raw.slice(2, -2).trim() : raw.slice(1, -1).trim();
+      if (latex) blocks.push({ type: "FORMULA", latex });
+    }
     cursor = index + raw.length;
   }
   const remaining = markdown.slice(cursor).trim();
-  if (remaining) blocks.push({ type: 'TEXT', text: remaining });
-  return blocks.length ? blocks : [{ type: 'TEXT', text: markdown }];
+  if (remaining) blocks.push({ type: "TEXT", text: remaining });
+  return blocks.length ? blocks : [{ type: "TEXT", text: markdown }];
 }
 
 function buildReaderPages(french: string, english: string): Array<Record<string, unknown>> {
@@ -40,6 +67,7 @@ function buildReaderPages(french: string, english: string): Array<Record<string,
   const blocks = fr.map((block, index) => {
     const kind = String(block.type ?? "TEXT").toLowerCase();
     if (kind === "formula") return { type: "formula", latex: block.latex ?? "" };
+    if (kind === "diagram" || kind === "graph") return block;
     const translated = en[index];
     const frText = String(block.text ?? "");
     const enText = translated?.type === block.type
@@ -224,6 +252,7 @@ RÈGLES ABSOLUES :
 - N'écris pas tout le cours dans un seul paragraphe. Aère le texte et utilise des titres et sous-titres Markdown.
 - Utilise les conventions de rédaction scolaire : I., II., III. pour les grandes parties ; A., B. pour les sous-parties ; « Définition », « Propriété », « Théorème », « Exemple », « Application » et « À retenir » lorsque ces éléments existent dans la source.
 - Place chaque définition et formule sur une ligne distincte. Écris les formules mathématiques en LaTeX entre $...$ ou $$...$$. Présente les tableaux en tableau Markdown. Présente les étapes et énumérations en listes numérotées ou à puces.
+- Pour les courbes explicitement demandées par la source et dont la fonction est clairement définie, insère sur une ligne séparée [[graph:exp]], [[graph:ln]], [[graph:sin]], [[graph:cos]] ou [[graph:tan]]. N'ajoute aucun coefficient ni intervalle non fourni par la source.
 - Pour les schémas, conserve les légendes et les relations décrites dans la source. Lorsque le texte ou la légende identifie clairement un schéma pris en charge, insère sur une ligne séparée le jeton correspondant exactement à sa place dans le cours : [[diagram:gravity_pair]], [[diagram:gravity_altitude]], [[diagram:weight]], [[diagram:geom_triangle]], [[diagram:geom_right_triangle]], [[diagram:geom_circle]], [[diagram:geom_square]], [[diagram:geom_parallel]], [[diagram:geom_coordinate]], [[diagram:geom_cube]], [[diagram:geom_pyramid]], [[diagram:geom_cylinder]], [[diagram:geom_prism]], [[diagram:graph_line]], [[diagram:stats_bar]], [[diagram:svt_cell]], [[diagram:svt_neuron]] ou [[diagram:svt_synapse]]. N'utilise un jeton que si la source le justifie clairement ; ne devine jamais. Pour tout autre schéma, conserve sa légende et indique « Schéma à redessiner : [description fidèle] » sans prétendre afficher une image.
 - Préserve tous les exercices et questions du document. Ne fournis pas de corrigé si le document n'en donne pas.
 - N'ajoute pas artificiellement une introduction, des objectifs ou une conclusion si le document ne contient pas les éléments nécessaires.
