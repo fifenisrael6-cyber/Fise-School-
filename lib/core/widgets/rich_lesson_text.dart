@@ -385,8 +385,9 @@ class RichLessonText extends StatelessWidget {
       RegExp(r'\$\$(.+?)\$\$'),
       (match) => r'$' + match.group(1)! + r'$',
     );
-    final pattern =
-        RegExp(r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*');
+    final pattern = RegExp(
+      r'\$(?!\s)([^$\n]+?)(?<!\s)\$|\*\*(.+?)\*\*|\[\[(blue|green|orange|red|purple):(.+?)\]\]',
+    );
 
     var cursor = 0;
     for (final match in pattern.allMatches(input)) {
@@ -399,6 +400,8 @@ class RichLessonText extends StatelessWidget {
 
       final tex = match.group(1);
       final bold = match.group(2);
+      final colorName = match.group(3);
+      final coloredText = match.group(4);
       if (tex != null) {
         spans.add(WidgetSpan(
           alignment: PlaceholderAlignment.middle,
@@ -414,10 +417,22 @@ class RichLessonText extends StatelessWidget {
           text: bold,
           style: base.copyWith(fontWeight: FontWeight.w800),
         ));
+      } else if (colorName != null && coloredText != null) {
+        final color = switch (colorName) {
+          'blue' => const Color(0xFF1565C0),
+          'green' => const Color(0xFF15803D),
+          'orange' => const Color(0xFFC05A12),
+          'red' => const Color(0xFFB91C1C),
+          'purple' => const Color(0xFF7E22CE),
+          _ => base.color,
+        };
+        spans.add(TextSpan(
+          text: coloredText,
+          style: base.copyWith(color: color, fontWeight: FontWeight.w700),
+        ));
       }
       cursor = match.end;
     }
-
     if (cursor < input.length) {
       spans.add(TextSpan(text: input.substring(cursor), style: base));
     }
