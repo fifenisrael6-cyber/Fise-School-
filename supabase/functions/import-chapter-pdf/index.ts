@@ -260,7 +260,8 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
           .map((c: any) => {
             const start = Number(c.source_page_start);
             const end = Number(c.source_page_end);
-            const validStart = Number.isInteger(start) && start >= 1 && start <= sourcePageCount ? start : 1;
+            const minimumSourcePage = isSvteehbTerminalD ? 4 : 1;
+            const validStart = Number.isInteger(start) && start >= minimumSourcePage && start <= sourcePageCount ? start : minimumSourcePage;
             const validEnd = Number.isInteger(end) && end >= validStart && end <= sourcePageCount
               ? end
               : sourcePageCount;
