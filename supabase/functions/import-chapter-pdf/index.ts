@@ -313,7 +313,17 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         const match = normalize(generated.title_fr).match(/sequence\s+(xxi|xx|xix|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|x|ix|viii|vii|vi|v|iv|iii|ii|i|\d+)\b/);
         if (!match) continue;
         const token = match[1].toLowerCase();
-        const index = /^\d+$/.test(token) ? Number(token) : roman.indexOf(token);
+        const titleText = normalize(generated.title_fr);
+        let index = /^\d+$/.test(token) ? Number(token) : roman.indexOf(token);
+        // The source PDF has inconsistent late sequence numbers on some pages.
+        // Prefer the actual topic wording for the last modules over that typo.
+        if (titleText.includes("lithosphere")) index = 15;
+        else if (titleText.includes("biocarburant")) index = 20;
+        else if (titleText.includes("evolution") && titleText.includes("homme")) index = 17;
+        else if (titleText.includes("transformation") && titleText.includes("conservation")) index = 18;
+        else if (titleText.includes("entomophagie")) index = 19;
+        else if (titleText.includes("valorisation") && titleText.includes("dechet")) index = 21;
+        else if (titleText.includes("energie renouvelable")) index = 16;
         if (index >= 1 && index <= canonical.length) {
           generated.title_fr = canonical[index - 1][0];
           generated.title_en = canonical[index - 1][1];
