@@ -265,14 +265,13 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         { title: "Module IV — Biotechnologie", start: 220, end: 229, sequences: "Séquences XVIII à XXI uniquement." },
       ];
       const fullTextMarker = "TEXTE DU PDF:\n" + extracted.slice(0, 450000);
-      const allGeneratedChapters: any[] = [];
-      for (const module of moduleSpecs) {
+      const moduleResults = await Promise.all(moduleSpecs.map(async (module) => {
         const moduleText = extractedPages
           .slice(module.start - 1, module.end)
           .map((page, index) => "[PAGE " + (module.start + index) + "]\n" + page)
           .join("\n\n")
           .trim();
-        if (!moduleText) continue;
+        if (!moduleText) return [];
         const moduleInstructions = module.title + "\n" + module.sequences +
           "\nNe retourne aucune séquence appartenant à un autre module. " +
           "Conserve intégralement toutes les leçons de ce module, leurs titres, exemples, exercices, légendes et explications.";
@@ -281,11 +280,9 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
           moduleInstructions + "\n\nTEXTE DU PDF:\n" + moduleText,
         );
         const moduleResult = JSON.parse(await gemini(modulePrompt, geminiKey));
-        if (Array.isArray(moduleResult.chapters)) {
-          allGeneratedChapters.push(...moduleResult.chapters);
-        }
-      }
-      parsed = { chapters: allGeneratedChapters };
+        return Array.isArray(moduleResult.chapters) ? moduleResult.chapters : [];
+      }));
+      parsed = { chapters: moduleResults.flat() };
     } else {
       parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
     }
