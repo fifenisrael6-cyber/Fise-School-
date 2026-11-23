@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import * as pdfjsLib from "npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
+import { PDFDocument } from "npm:pdf-lib@1.17.1";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -105,7 +106,7 @@ async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Pr
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
-      generationConfig: { responseMimeType: "application/json" },
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 65536 },
     }),
   });
   const data = await response.json();
@@ -243,6 +244,7 @@ CONSIGNES SPÉCIALES SVTEEHB TERMINALE D :
 - Exclure la couverture, le nom de l’auteur et les pages « PROGRAMME ANNUEL » ; seules les pages pédagogiques à partir de la page 4 sont transmises.
 - Regrouper les leçons sous les séquences réellement présentes. Conserver chaque titre de leçon comme sous-titre et garder toutes les explications, figures, tableaux, légendes et exercices.
 - Ne pas inventer le contenu d’une séquence mentionnée uniquement dans la table des matières. Le PDF original sera affiché aux pages source pour conserver les illustrations.
+- Le PDF joint à cette analyse commence à la page originale 4 ; les marqueurs [PAGE n] du texte indiquent toujours la numérotation originale et font foi pour les bornes.
 - Utiliser exactement les titres suivants pour les chapitres de séquence, dans cet ordre : Séquence I — Échanges cellulaires ; Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme ; Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes ; Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus ; Séquence V — Prévision en génétique humaine ; Séquence VI — Activité réflexe ; Séquence VII — Fonctionnement des neurones ; Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée ; Séquence IX — Bases de l’immunocompétence ; Séquence X — Mécanismes de l’immunité ; Séquence XI — Dysfonctionnements du système immunitaire ; Séquence XII — Santé reproductive ; Séquence XIII — Santé nutritionnelle ; Séquence XIV — Secourisme ; Séquence XV — Mouvements de la lithosphère ; Séquence XVI — Énergies renouvelables ; Séquence XVII — Évolution de la Terre et de l’Homme ; Séquence XVIII — Transformation et conservation des produits de saison ; Séquence XIX — Entomophagie ; Séquence XX — Production des biocarburants ; Séquence XXI — Valorisation des déchets de l’environnement de l’Homme.
 - Utiliser exactement les 21 titres de séquence du programme Terminale D, dans l’ordre indiqué par le document ; garder les leçons comme sous-titres à l’intérieur de chaque séquence.
 
@@ -252,7 +254,21 @@ Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapte
 
 TEXTE DU PDF :
 ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
-    const parsed = JSON.parse(await gemini(prompt, geminiKey, isSvteehbTerminalD ? undefined : bytes));
+    let pdfForGemini = bytes;
+    if (isSvteehbTerminalD) {
+      // Remove the cover and annual-program pages before sending the source
+      // to Gemini, while retaining the original page numbering in [PAGE n].
+      const originalPdf = await PDFDocument.load(bytes);
+      const cleanPdf = await PDFDocument.create();
+      const pageIndices = Array.from(
+        { length: Math.max(0, originalPdf.getPageCount() - 3) },
+        (_, index) => index + 3,
+      );
+      const cleanPages = await cleanPdf.copyPages(originalPdf, pageIndices);
+      for (const page of cleanPages) cleanPdf.addPage(page);
+      pdfForGemini = await cleanPdf.save();
+    }
+    const parsed = JSON.parse(await gemini(prompt, geminiKey, pdfForGemini));
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters
           .filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim())
