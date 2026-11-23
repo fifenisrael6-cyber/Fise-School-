@@ -221,16 +221,34 @@ class ChapterLearningService {
     };
 
     try {
+      // Resolve the link table separately instead of relying on PostgREST's
+      // inferred nested relationship name. A missing/ambiguous relationship
+      // used to throw here and silently hide every shared course.
       final linkedRows = await _client
           .from('chapter_content_item_chapters')
-          .select('chapter_content_items(*)')
+          .select('content_item_id')
           .eq('chapter_id', chapterId);
-      for (final link in linkedRows) {
-        final rawItem = link['chapter_content_items'];
-        if (rawItem is! Map) continue;
-        final item = Map<String, dynamic>.from(rawItem);
-        if (item['is_published'] != true || item['id'] == null) continue;
-        contentById[item['id'].toString()] = item;
+      final linkedItemIds = linkedRows
+          .map((row) => row['content_item_id']?.toString())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+
+      if (linkedItemIds.isNotEmpty) {
+        // RLS on chapter_content_items remains authoritative: only items
+        // visible to this student are returned by this query.
+        final linkedItems = await _client
+            .from('chapter_content_items')
+            .select()
+            .inFilter('id', linkedItemIds)
+            .eq('is_published', true);
+        for (final row in linkedItems) {
+          final item = Map<String, dynamic>.from(row);
+          final id = item['id']?.toString();
+          if (id == null || id.isEmpty) continue;
+          contentById[id] = item;
+        }
       }
     } catch (_) {
       // Keep own chapter content visible if the linking table is temporarily
