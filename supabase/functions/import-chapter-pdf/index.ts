@@ -194,6 +194,12 @@ serve(async (req) => {
 
     const extractedPages = await extractPdf(bytes, isSvteehbTerminalD ? 250 : 120);
     const sourcePageCount = extractedPages.length;
+    if (isSvteehbTerminalD) {
+      const coverText = normalize(extractedPages.slice(0, 3).join(" "));
+      if (!coverText.includes("cours de svteehb tle d")) {
+        throw new Error("Le PDF fourni ne correspond pas au cours SVTEEHB Terminale D attendu. Aucun ancien cours n’a été remplacé.");
+      }
+    }
     const pagesForGeneration = isSvteehbTerminalD ? extractedPages.slice(3) : extractedPages;
     let extracted = pagesForGeneration
       .map((page, index) => `[PAGE ${index + (isSvteehbTerminalD ? 4 : 1)}]\n${page}`)
@@ -330,7 +336,7 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         .select("id,position").eq("curriculum_id", curriculum.id);
       if (oldChaptersError) throw oldChaptersError;
       svteehbOriginalChapterIds = (oldChapters ?? []).map((row: any) => String(row.id));
-      for (const oldChapter of oldChapters ?? []) {
+      for (const oldChapter of [...(oldChapters ?? [])].sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0))) {
         const { error: deactivateError } = await db.from("course_chapters")
           .update({
             is_active: false,
