@@ -245,7 +245,7 @@ Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapte
 
 TEXTE DU PDF :
 ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
-    const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
+    const parsed = JSON.parse(await gemini(prompt, geminiKey, isSvteehbTerminalD ? undefined : bytes));
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters
           .filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim())
@@ -260,6 +260,42 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
             return { ...c, source_page_start: validStart, source_page_end: validEnd };
           })
       : [];
+    if (isSvteehbTerminalD) {
+      const canonical = [
+        ["Séquence I — Échanges cellulaires", "Sequence I — Cellular exchanges"],
+        ["Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme", "Sequence II — Aspects of human energy metabolism"],
+        ["Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes", "Sequence III — Fundamental mechanisms of sexual reproduction in mammals and spermatophytes"],
+        ["Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus", "Sequence IV — Genetic mixing during sexual reproduction and genetic uniqueness"],
+        ["Séquence V — Prévision en génétique humaine", "Sequence V — Prediction in human genetics"],
+        ["Séquence VI — Activité réflexe", "Sequence VI — Reflex activity"],
+        ["Séquence VII — Fonctionnement des neurones", "Sequence VII — Neuron function"],
+        ["Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée", "Sequence VIII — Brain activity and voluntary or directed movement"],
+        ["Séquence IX — Bases de l’immunocompétence", "Sequence IX — Foundations of immunocompetence"],
+        ["Séquence X — Mécanismes de l’immunité", "Sequence X — Mechanisms of immunity"],
+        ["Séquence XI — Dysfonctionnements du système immunitaire", "Sequence XI — Immune system dysfunctions"],
+        ["Séquence XII — Santé reproductive", "Sequence XII — Reproductive health"],
+        ["Séquence XIII — Santé nutritionnelle", "Sequence XIII — Nutritional health"],
+        ["Séquence XIV — Secourisme", "Sequence XIV — First aid"],
+        ["Séquence XV — Mouvements de la lithosphère", "Sequence XV — Lithosphere movements"],
+        ["Séquence XVI — Énergies renouvelables", "Sequence XVI — Renewable energy"],
+        ["Séquence XVII — Évolution de la Terre et de l’Homme", "Sequence XVII — Evolution of the Earth and humankind"],
+        ["Séquence XVIII — Transformation et conservation des produits de saison", "Sequence XVIII — Processing and preservation of seasonal produce"],
+        ["Séquence XIX — Entomophagie", "Sequence XIX — Entomophagy"],
+        ["Séquence XX — Production des biocarburants", "Sequence XX — Biofuel production"],
+        ["Séquence XXI — Valorisation des déchets de l’environnement de l’Homme", "Sequence XXI — Recovery and reuse of human-environment waste"],
+      ];
+      const roman = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx", "xxi"];
+      for (const generated of chapters) {
+        const match = normalize(generated.title_fr).match(/sequence\s+(i{1,3}|iv|v|vi{0,3}|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx|xxi|\d+)/);
+        if (!match) continue;
+        const token = match[1].toLowerCase();
+        const index = /^\d+$/.test(token) ? Number(token) : roman.indexOf(token);
+        if (index >= 1 && index <= canonical.length) {
+          generated.title_fr = canonical[index - 1][0];
+          generated.title_en = canonical[index - 1][1];
+        }
+      }
+    }
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié.");
     // The source document has a known 21-sequence Terminale D structure.
     // Keep all sequence cards, including those whose lessons are absent from
