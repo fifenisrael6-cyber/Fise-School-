@@ -343,7 +343,7 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         else if (titleText.includes("transformation") && titleText.includes("conservation")) index = 18;
         else if (titleText.includes("entomophagie")) index = 19;
         else if (titleText.includes("valorisation") && titleText.includes("dechet")) index = 21;
-        else if (titleText.includes("energie renouvelable")) index = 16;
+        else if (titleText.includes("energie renouvelable")) index = Number(generated.source_page_start ?? 0) >= 220 ? 20 : 16;
         if (index >= 1 && index <= canonical.length) {
           generated.title_fr = canonical[index - 1][0];
           generated.title_en = canonical[index - 1][1];
