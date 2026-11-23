@@ -54,9 +54,9 @@ function buildReaderPages(french: string, english: string): Array<Record<string,
   return [{ id: "imported-course-page-1", position: 1, blocks }];
 }
 
-async function extractPdf(bytes: Uint8Array): Promise<string[]> {
+async function extractPdf(bytes: Uint8Array, maxPages = 120): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
-  if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
+  if (doc.numPages > maxPages) throw new Error(`Le PDF dépasse la limite autorisée de ${maxPages} pages.`);
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
@@ -154,8 +154,11 @@ serve(async (req) => {
       return json({ error: "Le contenu source doit être un PDF stocké." }, 400);
     }
 
+    const isSvteehbTerminalD = curriculum.id === "0c34d759-a33d-42c1-9eaf-ad5654aea0e1";
+    if (isSvteehbTerminalD) restoreExisting = true;
+
     // Lessons generated from the PDF follow the administrator publication choice.
-    const publishGeneratedLessons = source.is_published === true;
+    const publishGeneratedLessons = isSvteehbTerminalD || source.is_published === true;
 
     const { data: sourceChapter, error: chapterError } = await db.from("course_chapters")
       .select("id,curriculum_id,title_fr,title_en,position")
@@ -189,10 +192,11 @@ serve(async (req) => {
       throw new Error("Le fichier stocké ne possède pas une signature PDF valide.");
     }
 
-    const extractedPages = await extractPdf(bytes);
+    const extractedPages = await extractPdf(bytes, isSvteehbTerminalD ? 250 : 120);
     const sourcePageCount = extractedPages.length;
-    let extracted = extractedPages
-      .map((page, index) => `[PAGE ${index + 1}]\n${page}`)
+    const pagesForGeneration = isSvteehbTerminalD ? extractedPages.slice(3) : extractedPages;
+    let extracted = pagesForGeneration
+      .map((page, index) => `[PAGE ${index + (isSvteehbTerminalD ? 4 : 1)}]\n${page}`)
       .join("\n\n")
       .trim();
     if (extracted.length < 250) {
@@ -229,12 +233,17 @@ RÈGLES ABSOLUES :
 - N'ajoute pas artificiellement une introduction, des objectifs ou une conclusion si le document ne contient pas les éléments nécessaires.
 - Le contenu doit être propre sur un écran de téléphone : titres courts, paragraphes aérés, aucune balise HTML, aucun bloc de code.
 
+CONSIGNES SPÉCIALES SVTEEHB TERMINALE D :
+- Exclure la couverture, le nom de l’auteur et les pages « PROGRAMME ANNUEL » ; seules les pages pédagogiques à partir de la page 4 sont transmises.
+- Regrouper les leçons sous les séquences réellement présentes. Conserver chaque titre de leçon comme sous-titre et garder toutes les explications, figures, tableaux, légendes et exercices.
+- Ne pas inventer le contenu d’une séquence mentionnée uniquement dans la table des matières. Le PDF original sera affiché aux pages source pour conserver les illustrations.
+
 Pour chaque chapitre, indique aussi source_page_start et source_page_end (numéros de pages du PDF, numérotation commençant à 1). Ces bornes doivent couvrir les pages originales qui contiennent réellement le chapitre, ses exemples, ses tableaux et ses schémas. Si plusieurs chapitres se trouvent sur une même page, cette page peut appartenir aux deux. N'invente jamais de numéro de page.
 
 Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","title_en":"...","content_fr":"cours structuré complet en français avec Markdown","content_en":"faithful English translation preserving the same structure","source_page_start":1,"source_page_end":3}]}. Si le PDF traite d'un seul chapitre, retourne un seul élément. Maximum 30 chapitres. Matière : ${subject.name_fr}. Programme : ${curriculum.title_fr}. Chapitre sélectionné par l'administrateur : ${sourceChapter.title_fr}. Le PDF contient ${sourcePageCount} page(s). Les marqueurs [PAGE n] identifient les numéros de page originaux.
 
 TEXTE DU PDF :
-${extracted.slice(0, 90000)}`;
+${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
     const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters
@@ -298,8 +307,10 @@ ${extracted.slice(0, 90000)}`;
       for (const candidate of selected) selectedCurriculumIds.add(String(candidate.id));
     }
 
-    const targetCurricula = (curricula ?? []).filter((candidate: any) =>
-      selectedCurriculumIds.has(String(candidate.id)));
+    const targetCurricula = isSvteehbTerminalD
+      ? [curriculum]
+      : (curricula ?? []).filter((candidate: any) =>
+          selectedCurriculumIds.has(String(candidate.id)));
     if (!targetCurricula.some((candidate: any) => candidate.id === curriculum.id)) {
       targetCurricula.push(curriculum);
     }
@@ -443,7 +454,7 @@ ${extracted.slice(0, 90000)}`;
           source_page_end: generated.source_page_end,
           position: 0,
           is_published: publishGeneratedLessons,
-          created_by: authData.user.id,
+          created_by: isSvteehbTerminalD ? null : authData.user.id,
           folder_key: "course",
         }).select("id").single();
         if (insertError) throw insertError;
