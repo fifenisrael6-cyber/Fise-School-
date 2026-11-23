@@ -237,6 +237,7 @@ CONSIGNES SPÉCIALES SVTEEHB TERMINALE D :
 - Exclure la couverture, le nom de l’auteur et les pages « PROGRAMME ANNUEL » ; seules les pages pédagogiques à partir de la page 4 sont transmises.
 - Regrouper les leçons sous les séquences réellement présentes. Conserver chaque titre de leçon comme sous-titre et garder toutes les explications, figures, tableaux, légendes et exercices.
 - Ne pas inventer le contenu d’une séquence mentionnée uniquement dans la table des matières. Le PDF original sera affiché aux pages source pour conserver les illustrations.
+- Utiliser exactement les titres suivants pour les chapitres de séquence, dans cet ordre : Séquence I — Échanges cellulaires ; Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme ; Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes ; Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus ; Séquence V — Prévision en génétique humaine ; Séquence VI — Activité réflexe ; Séquence VII — Fonctionnement des neurones ; Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée ; Séquence IX — Bases de l’immunocompétence ; Séquence X — Mécanismes de l’immunité ; Séquence XI — Dysfonctionnements du système immunitaire ; Séquence XII — Santé reproductive ; Séquence XIII — Santé nutritionnelle ; Séquence XIV — Secourisme ; Séquence XV — Mouvements de la lithosphère ; Séquence XVI — Énergies renouvelables ; Séquence XVII — Évolution de la Terre et de l’Homme ; Séquence XVIII — Transformation et conservation des produits de saison ; Séquence XIX — Entomophagie ; Séquence XX — Production des biocarburants ; Séquence XXI — Valorisation des déchets de l’environnement de l’Homme.
 - Utiliser exactement les 21 titres de séquence du programme Terminale D, dans l’ordre indiqué par le document ; garder les leçons comme sous-titres à l’intérieur de chaque séquence.
 
 Pour chaque chapitre, indique aussi source_page_start et source_page_end (numéros de pages du PDF, numérotation commençant à 1). Ces bornes doivent couvrir les pages originales qui contiennent réellement le chapitre, ses exemples, ses tableaux et ses schémas. Si plusieurs chapitres se trouvent sur une même page, cette page peut appartenir aux deux. N'invente jamais de numéro de page.
@@ -286,7 +287,7 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
       ];
       const roman = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx", "xxi"];
       for (const generated of chapters) {
-        const match = normalize(generated.title_fr).match(/sequence\s+(i{1,3}|iv|v|vi{0,3}|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx|xxi|\d+)/);
+        const match = normalize(generated.title_fr).match(/sequence\s+(xxi|xx|xix|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|x|ix|viii|vii|vi|v|iv|iii|ii|i|\d+)\b/);
         if (!match) continue;
         const token = match[1].toLowerCase();
         const index = /^\d+$/.test(token) ? Number(token) : roman.indexOf(token);
@@ -326,12 +327,17 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         ["Séquence XXI — Valorisation des déchets de l’environnement de l’Homme", "Sequence XXI — Recovery and reuse of human-environment waste", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
       ];
       const { data: oldChapters, error: oldChaptersError } = await db.from("course_chapters")
-        .select("id").eq("curriculum_id", curriculum.id);
+        .select("id,position").eq("curriculum_id", curriculum.id);
       if (oldChaptersError) throw oldChaptersError;
       svteehbOriginalChapterIds = (oldChapters ?? []).map((row: any) => String(row.id));
-      const { error: deactivateError } = await db.from("course_chapters")
-        .update({ is_active: false }).eq("curriculum_id", curriculum.id);
-      if (deactivateError) throw deactivateError;
+      for (const oldChapter of oldChapters ?? []) {
+        const { error: deactivateError } = await db.from("course_chapters")
+          .update({
+            is_active: false,
+            position: Number(oldChapter.position ?? 0) + 1000,
+          }).eq("id", oldChapter.id);
+        if (deactivateError) throw deactivateError;
+      }
       for (let index = 0; index < sequenceRows.length; index++) {
         const [titleFr, titleEn, moduleFr, moduleEn] = sequenceRows[index];
         const { error: insertError } = await db.from("course_chapters").insert({
