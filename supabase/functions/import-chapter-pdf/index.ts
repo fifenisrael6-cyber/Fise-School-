@@ -344,6 +344,21 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         if (index >= 1 && index <= canonical.length) {
           generated.title_fr = canonical[index - 1][0];
           generated.title_en = canonical[index - 1][1];
+          const moduleRange = index <= 8
+            ? [4, 113]
+            : index <= 14
+              ? [114, 195]
+              : index <= 17
+                ? [196, 219]
+                : [220, 229];
+          const startPage = Number(generated.source_page_start);
+          const endPage = Number(generated.source_page_end);
+          const boundedStart = Math.min(moduleRange[1], Math.max(moduleRange[0],
+            Number.isInteger(startPage) ? startPage : moduleRange[0]));
+          const boundedEnd = Math.min(moduleRange[1], Math.max(boundedStart,
+            Number.isInteger(endPage) ? endPage : moduleRange[1]));
+          generated.source_page_start = boundedStart;
+          generated.source_page_end = boundedEnd;
         }
       }
     }
