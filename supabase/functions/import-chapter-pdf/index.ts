@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import * as pdfjsLib from "npm:pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
 
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -54,9 +55,9 @@ function buildReaderPages(french: string, english: string): Array<Record<string,
   return [{ id: "imported-course-page-1", position: 1, blocks }];
 }
 
-async function extractPdf(bytes: Uint8Array): Promise<string[]> {
+async function extractPdf(bytes: Uint8Array, maxPages = 120): Promise<string[]> {
   const doc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true, useSystemFonts: true }).promise;
-  if (doc.numPages > 120) throw new Error("Le PDF dépasse la limite de 120 pages. Divisez-le en plusieurs fichiers.");
+  if (doc.numPages > maxPages) throw new Error(`Le PDF dépasse la limite autorisée de ${maxPages} pages.`);
   const pages: string[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
@@ -105,7 +106,7 @@ async function gemini(prompt: string, apiKey: string, pdfBytes?: Uint8Array): Pr
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
-      generationConfig: { responseMimeType: "application/json" },
+      generationConfig: { responseMimeType: "application/json", maxOutputTokens: 65536 },
     }),
   });
   const data = await response.json();
@@ -154,8 +155,11 @@ serve(async (req) => {
       return json({ error: "Le contenu source doit être un PDF stocké." }, 400);
     }
 
+    const isSvteehbTerminalD = curriculum.id === "0c34d759-a33d-42c1-9eaf-ad5654aea0e1";
+    if (isSvteehbTerminalD) restoreExisting = true;
+
     // Lessons generated from the PDF follow the administrator publication choice.
-    const publishGeneratedLessons = source.is_published === true;
+    const publishGeneratedLessons = isSvteehbTerminalD || source.is_published === true;
 
     const { data: sourceChapter, error: chapterError } = await db.from("course_chapters")
       .select("id,curriculum_id,title_fr,title_en,position")
@@ -189,10 +193,17 @@ serve(async (req) => {
       throw new Error("Le fichier stocké ne possède pas une signature PDF valide.");
     }
 
-    const extractedPages = await extractPdf(bytes);
+    const extractedPages = await extractPdf(bytes, isSvteehbTerminalD ? 250 : 120);
     const sourcePageCount = extractedPages.length;
-    let extracted = extractedPages
-      .map((page, index) => `[PAGE ${index + 1}]\n${page}`)
+    if (isSvteehbTerminalD) {
+      const coverText = normalize(extractedPages.slice(0, 3).join(" "));
+      if (!coverText.includes("cours de svteehb tle d")) {
+        throw new Error("Le PDF fourni ne correspond pas au cours SVTEEHB Terminale D attendu. Aucun ancien cours n’a été remplacé.");
+      }
+    }
+    const pagesForGeneration = isSvteehbTerminalD ? extractedPages.slice(3) : extractedPages;
+    let extracted = pagesForGeneration
+      .map((page, index) => `[PAGE ${index + (isSvteehbTerminalD ? 4 : 1)}]\n${page}`)
       .join("\n\n")
       .trim();
     if (extracted.length < 250) {
@@ -229,13 +240,46 @@ RÈGLES ABSOLUES :
 - N'ajoute pas artificiellement une introduction, des objectifs ou une conclusion si le document ne contient pas les éléments nécessaires.
 - Le contenu doit être propre sur un écran de téléphone : titres courts, paragraphes aérés, aucune balise HTML, aucun bloc de code.
 
+${isSvteehbTerminalD ? "CONSIGNES SPÉCIALES SVTEEHB TERMINALE D :\n- Exclure la couverture, le nom de l’auteur et les pages « PROGRAMME ANNUEL » ; seules les pages pédagogiques à partir de la page 4 sont transmises.\n- Regrouper les leçons sous les séquences réellement présentes. Conserver chaque titre de leçon comme sous-titre et garder toutes les explications, figures, tableaux, légendes et exercices.\n- Ne pas inventer le contenu d’une séquence mentionnée uniquement dans la table des matières. Le PDF original sera affiché aux pages source pour conserver les illustrations.\n- Utiliser exactement les titres suivants pour les chapitres de séquence, dans cet ordre : Séquence I — Échanges cellulaires ; Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme ; Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes ; Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus ; Séquence V — Prévision en génétique humaine ; Séquence VI — Activité réflexe ; Séquence VII — Fonctionnement des neurones ; Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée ; Séquence IX — Bases de l’immunocompétence ; Séquence X — Mécanismes de l’immunité ; Séquence XI — Dysfonctionnements du système immunitaire ; Séquence XII — Santé reproductive ; Séquence XIII — Santé nutritionnelle ; Séquence XIV — Secourisme ; Séquence XV — Mouvements de la lithosphère ; Séquence XVI — Énergies renouvelables ; Séquence XVII — Évolution de la Terre et de l’Homme ; Séquence XVIII — Transformation et conservation des produits de saison ; Séquence XIX — Entomophagie ; Séquence XX — Production des biocarburants ; Séquence XXI — Valorisation des déchets de l’environnement de l’Homme.\n- Utiliser exactement les 21 titres de séquence du programme Terminale D, dans l’ordre indiqué par le document ; garder les leçons comme sous-titres à l’intérieur de chaque séquence.\n" : ""}
+
 Pour chaque chapitre, indique aussi source_page_start et source_page_end (numéros de pages du PDF, numérotation commençant à 1). Ces bornes doivent couvrir les pages originales qui contiennent réellement le chapitre, ses exemples, ses tableaux et ses schémas. Si plusieurs chapitres se trouvent sur une même page, cette page peut appartenir aux deux. N'invente jamais de numéro de page.
 
 Réponds uniquement en JSON valide sous la forme {"document_title":"...","chapters":[{"title_fr":"...","title_en":"...","content_fr":"cours structuré complet en français avec Markdown","content_en":"faithful English translation preserving the same structure","source_page_start":1,"source_page_end":3}]}. Si le PDF traite d'un seul chapitre, retourne un seul élément. Maximum 30 chapitres. Matière : ${subject.name_fr}. Programme : ${curriculum.title_fr}. Chapitre sélectionné par l'administrateur : ${sourceChapter.title_fr}. Le PDF contient ${sourcePageCount} page(s). Les marqueurs [PAGE n] identifient les numéros de page originaux.
 
 TEXTE DU PDF :
-${extracted.slice(0, 90000)}`;
-    const parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
+${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
+    let parsed: any;
+    if (isSvteehbTerminalD) {
+      // Separate the four pedagogical modules so the complete lesson text
+      // stays within the model output limit. Page numbers remain original.
+      const moduleSpecs = [
+        { title: "Module I — Le monde vivant", start: 4, end: 113, sequences: "Séquences I à VIII uniquement." },
+        { title: "Module II — Éducation à la santé", start: 114, end: 195, sequences: "Séquences IX à XIV uniquement." },
+        { title: "Module III — Éducation à l’environnement et au développement durable", start: 196, end: 219, sequences: "Séquences XV à XVII uniquement." },
+        { title: "Module IV — Biotechnologie", start: 220, end: 229, sequences: "Séquences XVIII à XXI uniquement." },
+      ];
+      const fullTextMarker = "TEXTE DU PDF:\n" + extracted.slice(0, 450000);
+      const moduleResults = await Promise.all(moduleSpecs.map(async (module) => {
+        const moduleText = extractedPages
+          .slice(module.start - 1, module.end)
+          .map((page, index) => "[PAGE " + (module.start + index) + "]\n" + page)
+          .join("\n\n")
+          .trim();
+        if (!moduleText) return [];
+        const moduleInstructions = module.title + "\n" + module.sequences +
+          "\nNe retourne aucune séquence appartenant à un autre module. " +
+          "Conserve intégralement toutes les leçons de ce module, leurs titres, exemples, exercices, légendes et explications.";
+        const modulePrompt = prompt.replace(
+          fullTextMarker,
+          moduleInstructions + "\n\nTEXTE DU PDF:\n" + moduleText,
+        );
+        const moduleResult = JSON.parse(await gemini(modulePrompt, geminiKey));
+        return Array.isArray(moduleResult.chapters) ? moduleResult.chapters : [];
+      }));
+      parsed = { chapters: moduleResults.flat() };
+    } else {
+      parsed = JSON.parse(await gemini(prompt, geminiKey, bytes));
+    }
     const chapters = Array.isArray(parsed.chapters)
       ? parsed.chapters
           .filter((c: any) => String(c.title_fr ?? "").trim() && String(c.content_fr ?? "").trim())
@@ -243,14 +287,132 @@ ${extracted.slice(0, 90000)}`;
           .map((c: any) => {
             const start = Number(c.source_page_start);
             const end = Number(c.source_page_end);
-            const validStart = Number.isInteger(start) && start >= 1 && start <= sourcePageCount ? start : 1;
+            const minimumSourcePage = isSvteehbTerminalD ? 4 : 1;
+            const validStart = Number.isInteger(start) && start >= minimumSourcePage && start <= sourcePageCount ? start : minimumSourcePage;
             const validEnd = Number.isInteger(end) && end >= validStart && end <= sourcePageCount
               ? end
               : sourcePageCount;
             return { ...c, source_page_start: validStart, source_page_end: validEnd };
           })
       : [];
+    if (isSvteehbTerminalD) {
+      const canonical = [
+        ["Séquence I — Échanges cellulaires", "Sequence I — Cellular exchanges"],
+        ["Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme", "Sequence II — Aspects of human energy metabolism"],
+        ["Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes", "Sequence III — Fundamental mechanisms of sexual reproduction in mammals and spermatophytes"],
+        ["Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus", "Sequence IV — Genetic mixing during sexual reproduction and genetic uniqueness"],
+        ["Séquence V — Prévision en génétique humaine", "Sequence V — Prediction in human genetics"],
+        ["Séquence VI — Activité réflexe", "Sequence VI — Reflex activity"],
+        ["Séquence VII — Fonctionnement des neurones", "Sequence VII — Neuron function"],
+        ["Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée", "Sequence VIII — Brain activity and voluntary or directed movement"],
+        ["Séquence IX — Bases de l’immunocompétence", "Sequence IX — Foundations of immunocompetence"],
+        ["Séquence X — Mécanismes de l’immunité", "Sequence X — Mechanisms of immunity"],
+        ["Séquence XI — Dysfonctionnements du système immunitaire", "Sequence XI — Immune system dysfunctions"],
+        ["Séquence XII — Santé reproductive", "Sequence XII — Reproductive health"],
+        ["Séquence XIII — Santé nutritionnelle", "Sequence XIII — Nutritional health"],
+        ["Séquence XIV — Secourisme", "Sequence XIV — First aid"],
+        ["Séquence XV — Mouvements de la lithosphère", "Sequence XV — Lithosphere movements"],
+        ["Séquence XVI — Énergies renouvelables", "Sequence XVI — Renewable energy"],
+        ["Séquence XVII — Évolution de la Terre et de l’Homme", "Sequence XVII — Evolution of the Earth and humankind"],
+        ["Séquence XVIII — Transformation et conservation des produits de saison", "Sequence XVIII — Processing and preservation of seasonal produce"],
+        ["Séquence XIX — Entomophagie", "Sequence XIX — Entomophagy"],
+        ["Séquence XX — Production des biocarburants", "Sequence XX — Biofuel production"],
+        ["Séquence XXI — Valorisation des déchets de l’environnement de l’Homme", "Sequence XXI — Recovery and reuse of human-environment waste"],
+      ];
+      const roman = ["", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv", "xvi", "xvii", "xviii", "xix", "xx", "xxi"];
+      for (const generated of chapters) {
+        const match = normalize(generated.title_fr).match(/sequence\s+(xxi|xx|xix|xviii|xvii|xvi|xv|xiv|xiii|xii|xi|x|ix|viii|vii|vi|v|iv|iii|ii|i|\d+)\b/);
+        if (!match) continue;
+        const token = match[1].toLowerCase();
+        const titleText = normalize(generated.title_fr);
+        let index = /^\d+$/.test(token) ? Number(token) : roman.indexOf(token);
+        // The source PDF has inconsistent late sequence numbers on some pages.
+        // Prefer the actual topic wording for the last modules over that typo.
+        if (titleText.includes("lithosphere")) index = 15;
+        else if (titleText.includes("biocarburant")) index = 20;
+        else if (titleText.includes("evolution") && titleText.includes("homme")) index = 17;
+        else if (titleText.includes("transformation") && titleText.includes("conservation")) index = 18;
+        else if (titleText.includes("entomophagie")) index = 19;
+        else if (titleText.includes("valorisation") && titleText.includes("dechet")) index = 21;
+        else if (titleText.includes("energie renouvelable")) index = Number(generated.source_page_start ?? 0) >= 220 ? 20 : 16;
+        if (index >= 1 && index <= canonical.length) {
+          generated.title_fr = canonical[index - 1][0];
+          generated.title_en = canonical[index - 1][1];
+          const moduleRange = index <= 8
+            ? [4, 113]
+            : index <= 14
+              ? [114, 195]
+              : index <= 17
+                ? [196, 219]
+                : [220, 229];
+          const startPage = Number(generated.source_page_start);
+          const endPage = Number(generated.source_page_end);
+          const boundedStart = Math.min(moduleRange[1], Math.max(moduleRange[0],
+            Number.isInteger(startPage) ? startPage : moduleRange[0]));
+          const boundedEnd = Math.min(moduleRange[1], Math.max(boundedStart,
+            Number.isInteger(endPage) ? endPage : moduleRange[1]));
+          generated.source_page_start = boundedStart;
+          generated.source_page_end = boundedEnd;
+        }
+      }
+    }
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié.");
+    // The source document has a known 21-sequence Terminale D structure.
+    // Keep all sequence cards, including those whose lessons are absent from
+    // this PDF copy; those cards intentionally remain empty until content exists.
+    let svteehbOriginalChapterIds: string[] = [];
+    if (isSvteehbTerminalD) {
+      const sequenceRows = [
+        ["Séquence I — Échanges cellulaires", "Sequence I — Cellular exchanges", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme", "Sequence II — Aspects of human energy metabolism", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes", "Sequence III — Fundamental mechanisms of sexual reproduction in mammals and spermatophytes", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus", "Sequence IV — Genetic mixing during sexual reproduction and genetic uniqueness", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence V — Prévision en génétique humaine", "Sequence V — Prediction in human genetics", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VI — Activité réflexe", "Sequence VI — Reflex activity", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VII — Fonctionnement des neurones", "Sequence VII — Neuron function", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée", "Sequence VIII — Brain activity and voluntary or directed movement", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence IX — Bases de l’immunocompétence", "Sequence IX — Foundations of immunocompetence", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence X — Mécanismes de l’immunité", "Sequence X — Mechanisms of immunity", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XI — Dysfonctionnements du système immunitaire", "Sequence XI — Immune system dysfunctions", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XII — Santé reproductive", "Sequence XII — Reproductive health", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XIII — Santé nutritionnelle", "Sequence XIII — Nutritional health", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XIV — Secourisme", "Sequence XIV — First aid", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XV — Mouvements de la lithosphère", "Sequence XV — Lithosphere movements", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVI — Énergies renouvelables", "Sequence XVI — Renewable energy", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVII — Évolution de la Terre et de l’Homme", "Sequence XVII — Evolution of the Earth and humankind", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVIII — Transformation et conservation des produits de saison", "Sequence XVIII — Processing and preservation of seasonal produce", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XIX — Entomophagie", "Sequence XIX — Entomophagy", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XX — Production des biocarburants", "Sequence XX — Biofuel production", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XXI — Valorisation des déchets de l’environnement de l’Homme", "Sequence XXI — Recovery and reuse of human-environment waste", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+      ];
+      const { data: oldChapters, error: oldChaptersError } = await db.from("course_chapters")
+        .select("id,position").eq("curriculum_id", curriculum.id);
+      if (oldChaptersError) throw oldChaptersError;
+      svteehbOriginalChapterIds = (oldChapters ?? []).map((row: any) => String(row.id));
+      for (const oldChapter of [...(oldChapters ?? [])].sort((a: any, b: any) => Number(b.position ?? 0) - Number(a.position ?? 0))) {
+        const { error: deactivateError } = await db.from("course_chapters")
+          .update({
+            is_active: false,
+            position: Number(oldChapter.position ?? 0) + 1000,
+          }).eq("id", oldChapter.id);
+        if (deactivateError) throw deactivateError;
+      }
+      for (let index = 0; index < sequenceRows.length; index++) {
+        const [titleFr, titleEn, moduleFr, moduleEn] = sequenceRows[index];
+        const { error: insertError } = await db.from("course_chapters").insert({
+          curriculum_id: curriculum.id,
+          title_fr: titleFr,
+          title_en: titleEn,
+          description_fr: moduleFr,
+          description_en: moduleEn,
+          position: index + 1,
+          is_active: true,
+          source_title: "Document de cours SVTEEHB Terminale D fourni pour l’intégration",
+        });
+        if (insertError) throw insertError;
+      }
+    }
+
 
     // Determine every active classroom that actually studies this subject.
     // Then choose the same canonical curriculum that the student catalogue uses:
@@ -298,8 +460,10 @@ ${extracted.slice(0, 90000)}`;
       for (const candidate of selected) selectedCurriculumIds.add(String(candidate.id));
     }
 
-    const targetCurricula = (curricula ?? []).filter((candidate: any) =>
-      selectedCurriculumIds.has(String(candidate.id)));
+    const targetCurricula = isSvteehbTerminalD
+      ? [curriculum]
+      : (curricula ?? []).filter((candidate: any) =>
+          selectedCurriculumIds.has(String(candidate.id)));
     if (!targetCurricula.some((candidate: any) => candidate.id === curriculum.id)) {
       targetCurricula.push(curriculum);
     }
@@ -320,6 +484,7 @@ ${extracted.slice(0, 90000)}`;
     }
 
     const report: any[] = [];
+    const keptContentItemIds = new Set<string>();
     for (const generated of chapters) {
       const parsedTitle = String(generated.title_fr).trim().slice(0, 250);
       // The selected chapter is only a source context. Always use the chapter
@@ -443,13 +608,15 @@ ${extracted.slice(0, 90000)}`;
           source_page_end: generated.source_page_end,
           position: 0,
           is_published: publishGeneratedLessons,
-          created_by: authData.user.id,
+          created_by: isSvteehbTerminalD ? null : authData.user.id,
           folder_key: "course",
         }).select("id").single();
         if (insertError) throw insertError;
         item = inserted;
-        status = restoreExisting ? "restored_new" : (publishGeneratedLessons ? "imported_published" : "imported_draft");
+        status = publishGeneratedLessons ? "imported_published" : (restoreExisting ? "restored_new" : "imported_draft");
       }
+
+      keptContentItemIds.add(String(item.id));
 
       // Explicit links guarantee that every selected classroom's matching
       // chapter receives the same lesson, even if its title punctuation differs.
@@ -471,6 +638,49 @@ ${extracted.slice(0, 90000)}`;
       });
     }
 
+
+    if (isSvteehbTerminalD) {
+      const { data: oldItems, error: oldItemsError } = await db.from("chapter_content_items")
+        .select("id,chapter_id").in("chapter_id", svteehbOriginalChapterIds).eq("content_type", "course");
+      if (oldItemsError) throw oldItemsError;
+      const oldChapterSet = new Set(svteehbOriginalChapterIds);
+      for (const oldItem of oldItems ?? []) {
+        const oldId = String(oldItem.id);
+        if (keptContentItemIds.has(oldId)) continue;
+        const { data: links, error: linksError } = await db.from("chapter_content_item_chapters")
+          .select("chapter_id").eq("content_item_id", oldId);
+        if (linksError) throw linksError;
+        const outsideLinks = [...new Set((links ?? [])
+          .map((row: any) => String(row.chapter_id))
+          .filter((chapterId: string) => !oldChapterSet.has(chapterId)))];
+        const { error: unlinkError } = await db.from("chapter_content_item_chapters")
+          .delete().eq("content_item_id", oldId).in("chapter_id", svteehbOriginalChapterIds);
+        if (unlinkError) throw unlinkError;
+        if (outsideLinks.length) {
+          const { error: moveError } = await db.from("chapter_content_items")
+            .update({ chapter_id: outsideLinks[0] }).eq("id", oldId);
+          if (moveError) throw moveError;
+        } else {
+          const { error: deleteError } = await db.from("chapter_content_items")
+            .delete().eq("id", oldId);
+          if (deleteError) throw deleteError;
+        }
+      }
+      const { data: oldCourses, error: oldCoursesError } = await db.from("courses")
+        .select("id").in("chapter_id", svteehbOriginalChapterIds);
+      if (oldCoursesError) throw oldCoursesError;
+      const oldCourseIds = (oldCourses ?? []).map((row: any) => String(row.id));
+      if (oldCourseIds.length) {
+        const { error: deleteLessonsError } = await db.from("lessons").delete().in("course_id", oldCourseIds);
+        if (deleteLessonsError) throw deleteLessonsError;
+        const { error: deleteCoursesError } = await db.from("courses").delete().in("id", oldCourseIds);
+        if (deleteCoursesError) throw deleteCoursesError;
+      }
+      const { error: hideSourceError } = await db.from("chapter_content_items")
+        .update({ is_published: false }).eq("id", contentItemId);
+      if (hideSourceError) throw hideSourceError;
+    }
+
     return json({
       success: true,
       source_content_item_id: contentItemId,
@@ -483,12 +693,12 @@ ${extracted.slice(0, 90000)}`;
       target_room_count: targetRooms.length,
       target_curriculum_count: targetCurricula.length,
       detected_chapters: chapters.length,
-      imported: report.filter((x) => x.status === "imported_draft" || x.status === "imported_published").length,
-      published: report.filter((x) => x.status === "imported_published" || x.status === "published_existing" || x.status === "already_published").length,
-      restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
+      imported: report.filter((x) => x.status === "imported_draft" || x.status === "imported_published" || x.status === "restored_new").length,
+      published: report.filter((x) => x.status === "imported_published" || x.status === "published_existing" || x.status === "already_published" || x.status === "restored_existing_published").length,
+      restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_existing_published" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
-      requires_admin_publication: report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
+      requires_admin_publication: !publishGeneratedLessons && report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
       message: publishGeneratedLessons
         ? `Import terminé : les leçons natives sont publiées et reliées aux chapitres correspondants de ${targetRooms.length} salle(s).`
         : `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
