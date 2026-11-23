@@ -577,7 +577,7 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         }).select("id").single();
         if (insertError) throw insertError;
         item = inserted;
-        status = restoreExisting ? "restored_new" : (publishGeneratedLessons ? "imported_published" : "imported_draft");
+        status = publishGeneratedLessons ? "imported_published" : (restoreExisting ? "restored_new" : "imported_draft");
       }
 
       keptContentItemIds.add(String(item.id));
@@ -657,12 +657,12 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
       target_room_count: targetRooms.length,
       target_curriculum_count: targetCurricula.length,
       detected_chapters: chapters.length,
-      imported: report.filter((x) => x.status === "imported_draft" || x.status === "imported_published").length,
-      published: report.filter((x) => x.status === "imported_published" || x.status === "published_existing" || x.status === "already_published").length,
-      restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_new").length,
+      imported: report.filter((x) => x.status === "imported_draft" || x.status === "imported_published" || x.status === "restored_new").length,
+      published: report.filter((x) => x.status === "imported_published" || x.status === "published_existing" || x.status === "already_published" || x.status === "restored_existing_published").length,
+      restored: report.filter((x) => x.status === "restored_existing" || x.status === "restored_existing_published" || x.status === "restored_new").length,
       already_exists: report.filter((x) => x.status === "already_exists").length,
       report,
-      requires_admin_publication: report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
+      requires_admin_publication: !publishGeneratedLessons && report.some((x) => x.status === "imported_draft" || x.status === "restored_new" || x.status === "restored_existing"),
       message: publishGeneratedLessons
         ? `Import terminé : les leçons natives sont publiées et reliées aux chapitres correspondants de ${targetRooms.length} salle(s).`
         : `Import terminé : les leçons sont reliées aux chapitres correspondants de ${targetRooms.length} salle(s). Elles restent en brouillon jusqu'à validation de l'administrateur.`,
