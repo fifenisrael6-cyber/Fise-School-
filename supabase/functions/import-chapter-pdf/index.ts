@@ -237,6 +237,7 @@ CONSIGNES SPÉCIALES SVTEEHB TERMINALE D :
 - Exclure la couverture, le nom de l’auteur et les pages « PROGRAMME ANNUEL » ; seules les pages pédagogiques à partir de la page 4 sont transmises.
 - Regrouper les leçons sous les séquences réellement présentes. Conserver chaque titre de leçon comme sous-titre et garder toutes les explications, figures, tableaux, légendes et exercices.
 - Ne pas inventer le contenu d’une séquence mentionnée uniquement dans la table des matières. Le PDF original sera affiché aux pages source pour conserver les illustrations.
+- Utiliser exactement les 21 titres de séquence du programme Terminale D, dans l’ordre indiqué par le document ; garder les leçons comme sous-titres à l’intérieur de chaque séquence.
 
 Pour chaque chapitre, indique aussi source_page_start et source_page_end (numéros de pages du PDF, numérotation commençant à 1). Ces bornes doivent couvrir les pages originales qui contiennent réellement le chapitre, ses exemples, ses tableaux et ses schémas. Si plusieurs chapitres se trouvent sur une même page, cette page peut appartenir aux deux. N'invente jamais de numéro de page.
 
@@ -260,6 +261,57 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
           })
       : [];
     if (!chapters.length) throw new Error("Aucun chapitre exploitable n'a été identifié.");
+    // The source document has a known 21-sequence Terminale D structure.
+    // Keep all sequence cards, including those whose lessons are absent from
+    // this PDF copy; those cards intentionally remain empty until content exists.
+    let svteehbOriginalChapterIds: string[] = [];
+    if (isSvteehbTerminalD) {
+      const sequenceRows = [
+        ["Séquence I — Échanges cellulaires", "Sequence I — Cellular exchanges", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence II — Quelques aspects du métabolisme énergétique chez l’Homme", "Sequence II — Aspects of human energy metabolism", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence III — Mécanismes fondamentaux de la reproduction sexuée chez les mammifères et les spermaphytes", "Sequence III — Fundamental mechanisms of sexual reproduction in mammals and spermatophytes", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence IV — Brassage génétique au cours de la reproduction sexuée et unicité génétique des individus", "Sequence IV — Genetic mixing during sexual reproduction and genetic uniqueness", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence V — Prévision en génétique humaine", "Sequence V — Prediction in human genetics", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VI — Activité réflexe", "Sequence VI — Reflex activity", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VII — Fonctionnement des neurones", "Sequence VII — Neuron function", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence VIII — Activités cérébrales et motricité volontaire ou dirigée", "Sequence VIII — Brain activity and voluntary or directed movement", "Module I — Le monde vivant", "Module I — The living world"],
+        ["Séquence IX — Bases de l’immunocompétence", "Sequence IX — Foundations of immunocompetence", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence X — Mécanismes de l’immunité", "Sequence X — Mechanisms of immunity", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XI — Dysfonctionnements du système immunitaire", "Sequence XI — Immune system dysfunctions", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XII — Santé reproductive", "Sequence XII — Reproductive health", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XIII — Santé nutritionnelle", "Sequence XIII — Nutritional health", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XIV — Secourisme", "Sequence XIV — First aid", "Module II — Éducation à la santé", "Module II — Health education"],
+        ["Séquence XV — Mouvements de la lithosphère", "Sequence XV — Lithosphere movements", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVI — Énergies renouvelables", "Sequence XVI — Renewable energy", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVII — Évolution de la Terre et de l’Homme", "Sequence XVII — Evolution of the Earth and humankind", "Module III — Éducation à l’environnement et au développement durable", "Module III — Environmental and sustainable development education"],
+        ["Séquence XVIII — Transformation et conservation des produits de saison", "Sequence XVIII — Processing and preservation of seasonal produce", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XIX — Entomophagie", "Sequence XIX — Entomophagy", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XX — Production des biocarburants", "Sequence XX — Biofuel production", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+        ["Séquence XXI — Valorisation des déchets de l’environnement de l’Homme", "Sequence XXI — Recovery and reuse of human-environment waste", "Module IV — Biotechnologie", "Module IV — Biotechnology"],
+      ];
+      const { data: oldChapters, error: oldChaptersError } = await db.from("course_chapters")
+        .select("id").eq("curriculum_id", curriculum.id);
+      if (oldChaptersError) throw oldChaptersError;
+      svteehbOriginalChapterIds = (oldChapters ?? []).map((row: any) => String(row.id));
+      const { error: deactivateError } = await db.from("course_chapters")
+        .update({ is_active: false }).eq("curriculum_id", curriculum.id);
+      if (deactivateError) throw deactivateError;
+      for (let index = 0; index < sequenceRows.length; index++) {
+        const [titleFr, titleEn, moduleFr, moduleEn] = sequenceRows[index];
+        const { error: insertError } = await db.from("course_chapters").insert({
+          curriculum_id: curriculum.id,
+          title_fr: titleFr,
+          title_en: titleEn,
+          description_fr: moduleFr,
+          description_en: moduleEn,
+          position: index + 1,
+          is_active: true,
+          source_title: "Document de cours SVTEEHB Terminale D fourni pour l’intégration",
+        });
+        if (insertError) throw insertError;
+      }
+    }
+
 
     // Determine every active classroom that actually studies this subject.
     // Then choose the same canonical curriculum that the student catalogue uses:
@@ -331,6 +383,7 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
     }
 
     const report: any[] = [];
+    const keptContentItemIds = new Set<string>();
     for (const generated of chapters) {
       const parsedTitle = String(generated.title_fr).trim().slice(0, 250);
       // The selected chapter is only a source context. Always use the chapter
@@ -462,6 +515,8 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         status = restoreExisting ? "restored_new" : (publishGeneratedLessons ? "imported_published" : "imported_draft");
       }
 
+      keptContentItemIds.add(String(item.id));
+
       // Explicit links guarantee that every selected classroom's matching
       // chapter receives the same lesson, even if its title punctuation differs.
       const links = [...targetChapterIds].map((chapterId) => ({
@@ -480,6 +535,49 @@ ${extracted.slice(0, isSvteehbTerminalD ? 450000 : 90000)}`;
         content_item_id: item.id,
         linked_chapters: targetChapterIds.size,
       });
+    }
+
+
+    if (isSvteehbTerminalD) {
+      const { data: oldItems, error: oldItemsError } = await db.from("chapter_content_items")
+        .select("id,chapter_id").in("chapter_id", svteehbOriginalChapterIds).eq("content_type", "course");
+      if (oldItemsError) throw oldItemsError;
+      const oldChapterSet = new Set(svteehbOriginalChapterIds);
+      for (const oldItem of oldItems ?? []) {
+        const oldId = String(oldItem.id);
+        if (keptContentItemIds.has(oldId)) continue;
+        const { data: links, error: linksError } = await db.from("chapter_content_item_chapters")
+          .select("chapter_id").eq("content_item_id", oldId);
+        if (linksError) throw linksError;
+        const outsideLinks = [...new Set((links ?? [])
+          .map((row: any) => String(row.chapter_id))
+          .filter((chapterId: string) => !oldChapterSet.has(chapterId)))];
+        const { error: unlinkError } = await db.from("chapter_content_item_chapters")
+          .delete().eq("content_item_id", oldId).in("chapter_id", svteehbOriginalChapterIds);
+        if (unlinkError) throw unlinkError;
+        if (outsideLinks.length) {
+          const { error: moveError } = await db.from("chapter_content_items")
+            .update({ chapter_id: outsideLinks[0] }).eq("id", oldId);
+          if (moveError) throw moveError;
+        } else {
+          const { error: deleteError } = await db.from("chapter_content_items")
+            .delete().eq("id", oldId);
+          if (deleteError) throw deleteError;
+        }
+      }
+      const { data: oldCourses, error: oldCoursesError } = await db.from("courses")
+        .select("id").in("chapter_id", svteehbOriginalChapterIds);
+      if (oldCoursesError) throw oldCoursesError;
+      const oldCourseIds = (oldCourses ?? []).map((row: any) => String(row.id));
+      if (oldCourseIds.length) {
+        const { error: deleteLessonsError } = await db.from("lessons").delete().in("course_id", oldCourseIds);
+        if (deleteLessonsError) throw deleteLessonsError;
+        const { error: deleteCoursesError } = await db.from("courses").delete().in("id", oldCourseIds);
+        if (deleteCoursesError) throw deleteCoursesError;
+      }
+      const { error: hideSourceError } = await db.from("chapter_content_items")
+        .update({ is_published: false }).eq("id", contentItemId);
+      if (hideSourceError) throw hideSourceError;
     }
 
     return json({
