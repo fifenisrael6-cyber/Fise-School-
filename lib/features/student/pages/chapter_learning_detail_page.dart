@@ -527,7 +527,11 @@ class _ChapterLearningDetailPageState
         return;
       }
       final lesson = lessons.first;
-      if ((lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
+      final hasStructuredLesson = lesson.pages.isNotEmpty ||
+          (lesson.bodyFor(widget.locale.languageCode)?.trim().isNotEmpty ?? false);
+      if (!hasStructuredLesson &&
+          (lesson.sourcePdfPath ?? '').trim().isNotEmpty) {
+        // Fallback uniquement pour les anciens cours sans contenu reconstruit.
         await _openOriginalPdfLesson(lesson);
       } else {
         await Navigator.of(context).push(MaterialPageRoute<void>(
@@ -731,7 +735,11 @@ class _ChapterLearningDetailPageState
 
     return GestureDetector(
       onTap: () {
-        if ((item.sourcePdfPath ?? '').trim().isNotEmpty) {
+        final hasStructuredLesson = item.pages.isNotEmpty ||
+            (item.bodyFor(widget.locale.languageCode)?.trim().isNotEmpty ?? false);
+        if (!hasStructuredLesson &&
+            (item.sourcePdfPath ?? '').trim().isNotEmpty) {
+          // Ne garder l'ancien lecteur source que comme secours des anciens cours.
           _openOriginalPdfLesson(item);
         } else {
           Navigator.of(context).push(MaterialPageRoute<void>(
@@ -789,7 +797,9 @@ class _ChapterLearningDetailPageState
                         style: TextStyle(fontSize: bodySize, height: _a4Layout ? 1.85 : 1.75, color: const Color(0xFF1E293B)),
                       ),
                     ],
-                    if ((item.sourcePdfPath ?? '').trim().isNotEmpty) ...[
+                    if (item.pages.isEmpty &&
+                        (body.isEmpty) &&
+                        (item.sourcePdfPath ?? '').trim().isNotEmpty) ...[
                       const SizedBox(height: 20),
                       OutlinedButton.icon(
                         onPressed: () => _openOriginalPdfLesson(item),
