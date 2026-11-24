@@ -143,7 +143,7 @@ serve(async (req) => {
 
     const body = await req.json();
     const contentItemId = String(body?.content_item_id ?? "").trim();
-    const restoreExisting = body?.restore_existing === true;
+    let restoreExisting = body?.restore_existing === true;
     if (!contentItemId) return json({ error: "content_item_id manquant." }, 400);
     const db = createClient(url, service);
 
@@ -154,12 +154,6 @@ serve(async (req) => {
     if (source.content_type !== "pdf" || !source.storage_path) {
       return json({ error: "Le contenu source doit être un PDF stocké." }, 400);
     }
-
-    const isSvteehbTerminalD = curriculum.id === "0c34d759-a33d-42c1-9eaf-ad5654aea0e1";
-    if (isSvteehbTerminalD) restoreExisting = true;
-
-    // Lessons generated from the PDF follow the administrator publication choice.
-    const publishGeneratedLessons = isSvteehbTerminalD || source.is_published === true;
 
     const { data: sourceChapter, error: chapterError } = await db.from("course_chapters")
       .select("id,curriculum_id,title_fr,title_en,position")
@@ -172,6 +166,14 @@ serve(async (req) => {
     if (curriculumError || !curriculum || !curriculum.is_active) {
       return json({ error: "Le programme du chapitre est introuvable ou inactif." }, 400);
     }
+
+    // Le programme doit être chargé avant de tester son identifiant.
+    const isSvteehbTerminalD = curriculum.id === "0c34d759-a33d-42c1-9eaf-ad5654aea0e1";
+    if (isSvteehbTerminalD) restoreExisting = true;
+
+    // Les leçons générées suivent le choix de publication de l'administrateur.
+    const publishGeneratedLessons = isSvteehbTerminalD || source.is_published === true;
+
     const { data: subject, error: subjectError } = await db.from("subjects")
       .select("id,name_fr,name_en,teaching_stream").eq("id", curriculum.subject_id).single();
     if (subjectError || !subject) throw new Error("Matière du programme introuvable.");
